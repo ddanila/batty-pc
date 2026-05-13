@@ -14,24 +14,37 @@ The toolchain pattern mirrors two sibling projects:
 
 ## Status
 
-Reverse engineering in progress. Static "hello mode-13h" boots in QEMU
-and renders the original loading screen at 1:1 pixels with an
-authentic ZX palette. The game-logic side is being archaeology'd in
-`notes/`.
+Hi-score screen is now reproduced by *our* C renderer pixel-for-pixel
+against the original — driven from the same byte-level markup buffer
+the original walks, using the same 43-glyph font we extracted from the
+tape blob. `make test` headlessly diffs three rendered screens
+against ZEsarUX snapshots and currently passes pixel-identical:
 
-| Stage                          | State    |
-|--------------------------------|----------|
-| Mode-13h toolchain + QEMU      | ✓ working |
-| `.SCR` loading-screen decoder  | ✓ shipped |
-| TAP parser + block extraction  | ✓ shipped |
-| z80dasm-based recursive trace  | ✓ shipped |
-| Snapshot diff (3 snapshots)    | ✓ shipped |
-| Init chain decoded             | ✓ documented (`notes/init.md`) |
-| Menu refresh chain             | ✓ documented (`notes/menu.md`) |
-| Text/markup encoding cracked   | ✓ documented (`notes/encoding.md`) |
-| Sprite blitter                 | open      |
-| Game logic / main loop          | open      |
-| Re-implementation in C          | not started |
+```
+PASS state1_hiscore_static   (snap1 blit          → snap1 reference)
+PASS state2_hiscore_rendered (markup + font → C  → snap1 reference)
+PASS state3_mainmenu_static  (snap2 blit          → snap2 reference)
+```
+
+| Stage                                | State |
+|--------------------------------------|-------|
+| Mode-13h toolchain + QEMU            | ✓ working |
+| `.SCR` loading-screen decoder        | ✓ shipped |
+| TAP parser + block extraction        | ✓ shipped |
+| z80dasm-based recursive trace        | ✓ shipped |
+| Snapshot diff (3 snapshots)          | ✓ shipped |
+| Init chain decoded                   | ✓ `notes/init.md` |
+| Menu refresh chain                   | ✓ `notes/menu.md` |
+| Text/markup encoding cracked         | ✓ `notes/encoding.md` |
+| 43-glyph font extracted              | ✓ `assets/font.bin` |
+| Sprite-data base address found       | ✓ `0x6B13` (right after the font) |
+| Hi-score C renderer (markup-driven)  | ✓ shipped — pixel-identical |
+| Main menu (Phase A static blit)      | ✓ shipped |
+| Headless visual regression test      | ✓ `make test` (`notes/testing.md`) |
+| Main menu Phase B (markup-driven)    | open |
+| Sprite blitter (the real game one)   | open |
+| Game logic / main loop / dynamic     | open |
+| Replay-driven gameplay testing       | open |
 
 ## Quick build / run
 
@@ -50,6 +63,7 @@ make regions      # static signature scan of the main blob
 make candidates   # render byte regions as PNG strips (assets/candidates/)
 make run-original # boot the original .tap in ZEsarUX (ZRCP on :10000)
 make snapshot     # dump RAM+screen from running ZEsarUX
+make test         # headless visual regression vs ZEsarUX snapshots
 ```
 
 See [`scripts/`](scripts/) for the rest (TAP parser, basic detokenizer,
@@ -61,9 +75,10 @@ reverse-search).
 ```
 src/                Our re-implementation (C, Open Watcom v2 16-bit)
   main.c            mode 13h init + loading-screen blit
-scripts/            Python tooling (asset extraction + RE)
+scripts/            Python tooling (asset extraction + RE + tests)
   extract_scr.py        ZX .SCR → flat 8bpp bitmap
   extract_tap.py        TAP container → per-block dumps
+  extract_font.py       Pull 43-glyph font from 0x6A15 → assets/font.bin
   detokenize_basic.py   ZX BASIC detokenizer
   scan_regions.py       Static data/code signature scan
   trace_entry.py        Recursive-descent reachability walker
@@ -73,13 +88,16 @@ scripts/            Python tooling (asset extraction + RE)
   render_field_cache.py De-interleave 0xE400 region as 256×112 PNG
   render_sprites.py     Render 4 sprite regions identified via sub_6853h
   match_sprites_in_vram.py  Match sprite bytes to VRAM snapshots
+  find_font.py          Recover font from displayed glyphs via VRAM
   snapshot_ram.py       ZEsarUX ZRCP snapshot capture
   scan_text.py          ASCII/text scan across RAM
+  test_visual.py        Headless QEMU + pixel-diff regression test
   zrcp.py               (symlink) ZEsarUX remote-control client
 notes/              Reverse engineering findings — read these first
   init.md           Tape loader, shift table at 0xF200, sub_6853h, XOR unpacker
   menu.md           Menu polling loop, sub_926bh, state addrs
-  encoding.md       Char/markup encoding for menu text + hi-score
+  encoding.md       Char/markup encoding, 43-glyph font, sprite-base @ 0x6B13
+  testing.md        How `make test` works + what it does (and doesn't) cover
 original/           The original game (see "Original assets" below)
   batty.tap, BATTY.TZX  Tape images
   Batty.scr             Loading-screen framebuffer

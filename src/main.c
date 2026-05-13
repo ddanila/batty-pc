@@ -1,12 +1,15 @@
-/* batty — mode-13h hello + ZX loading screen blit.
+/* batty — title -> static hi-score -> font-rendered hi-score.
  *
- * Sets VGA mode 0x13, programs the first 16 palette entries to the
- * standard ZX Spectrum colours (non-bright + bright × ink/paper),
- * then streams LOADING.BIN row-by-row into the 256x192 playfield
- * area at (32, 4). ESC quits.
+ * State machine: any non-ESC key advances; ESC at any point exits.
+ *   1. LOADING.BIN    Original ZX loading screen (8bpp 256×192).
+ *   2. HISCORE.BIN    Snap1 hi-score screen, byte-for-byte.
+ *   3. (font render)  Same screen drawn programmatically through
+ *                     FONT.BIN — proves we control the glyph path.
  *
- * LOADING.BIN is produced offline by scripts/extract_scr.py from
- * the original .SCR — one byte per pixel, palette index 0..15. */
+ * Glyph format (extracted via scripts/extract_font.py):
+ *   - 36 glyphs × 6 bytes (8 px wide × 6 px tall, top 2 rows of the
+ *     8-row char cell are renderer-side blank padding).
+ *   - Index = markup char-code: 0..9 = digits, 0x0A..0x23 = A..Z. */
 
 #include <conio.h>
 #include <i86.h>
@@ -65,9 +68,9 @@ static void fill(int x, int y, int w, int h, unsigned char c) {
     }
 }
 
-/* Stream LOADING.BIN straight into VGA. 192 reads of 256 bytes —
+/* Stream a 256x192 8bpp asset straight into VGA. 192 reads of 256 B —
  * keeps the small-model near-data segment unburdened. */
-static int blit_loading_screen(const char *path) {
+static int blit_screen(const char *path) {
     FILE *f = fopen(path, "rb");
     int y;
     unsigned char row_buf[PLAYFIELD_W];
@@ -84,19 +87,183 @@ static int blit_loading_screen(const char *path) {
     return 0;
 }
 
-int main(void) {
-    int rc;
-    set_mode(0x13);
-    set_palette(zx_palette, 16);
+/* Repaint the border + blit one named asset. On asset-missing, paint
+ * the playfield magenta so the failure is unmistakable in QEMU. */
+static void show(const char *path) {
     fill(0, 0, SCREEN_W, SCREEN_H, COL_BORDER);
-
-    rc = blit_loading_screen("LOADING.BIN");
-    if (rc != 0) {
-        /* Asset missing — paint a magenta band so the failure is obvious. */
+    if (blit_screen(path) != 0) {
         fill(BORDER_X, BORDER_Y, PLAYFIELD_W, PLAYFIELD_H, 3 /* magenta */);
     }
+}
 
-    while (getch() != 27) { /* ESC quits */ }
+/* 36 × 6 = 216 B. Small enough to live in near data, big enough to
+ * justify loading from disk once rather than embedding as a const. */
+#define FONT_N      43
+#define FONT_ROWS   6
+static unsigned char font[FONT_N * FONT_ROWS];
+
+static int load_font(const char *path) {
+    FILE *f = fopen(path, "rb");
+    if (!f) return -1;
+    if (fread(font, 1, sizeof(font), f) != sizeof(font)) {
+        fclose(f);
+        return -2;
+    }
+    fclose(f);
+    return 0;
+}
+
+/* Draw glyph `code` (0..35) at VGA pixel (x, y) using palette index
+ * `color`. Bits are OR'd onto whatever's there; pixels with bit 0
+ * are left as-is. Glyph is 6 rows × 8 cols. */
+static void draw_glyph(int x, int y, unsigned char color, unsigned char code) {
+    int r, i;
+    unsigned char b;
+    unsigned char __far *dst;
+    if (code >= FONT_N) return;
+    dst = vga + (long)y * SCREEN_W + x;
+    for (r = 0; r < FONT_ROWS; r++) {
+        b = font[code * FONT_ROWS + r];
+        for (i = 0; i < 8; i++) {
+            if (b & (0x80 >> i)) dst[i] = color;
+        }
+        dst += SCREEN_W;
+    }
+}
+
+/* ZX attribute byte (paper=0 always here) -> our palette index. */
+static unsigned char attr_to_palette(unsigned char attr) {
+    /* bit 6 = bright, bits 0..2 = ink colour. */
+    unsigned char bright = (attr >> 6) & 1;
+    unsigned char ink    = attr & 7;
+    return (unsigned char)(bright * 8 + ink);
+}
+
+/* The markup buffer (extracted from snap1 RAM at 0x8FD1).
+ * Format (see notes/encoding.md):
+ *   header row: <0x38|0x30> Y attr count digits... 0x24
+ *   data row:   <0x58>      Y attr count <count payload bytes>
+ *   payload:    0x00..0x09 digit, 0x0A..0x23 letter,
+ *               0x26 space, 0x40..0x47 inline colour change.
+ * Records terminate when the next row-marker (0x58|0x38|0x30) is seen
+ * or at 0x24 (end-of-field). */
+#define MARKUP_MAX 512
+static unsigned char markup[MARKUP_MAX];
+static int markup_len;
+
+static int load_markup(const char *path) {
+    FILE *f = fopen(path, "rb");
+    int n;
+    if (!f) return -1;
+    n = fread(markup, 1, MARKUP_MAX, f);
+    fclose(f);
+    markup_len = n;
+    return (n > 0) ? 0 : -2;
+}
+
+/* Map a markup row marker to its starting X (pixel column). */
+static int x_for_marker(unsigned char m) {
+    switch (m) {
+        case 0x38: return 7 * 8;   /* "1." .. "9."          col 7  */
+        case 0x30: return 6 * 8;   /* "10."                 col 6  */
+        case 0x50: return 10 * 8;  /* title / divider rows  col 10 */
+        default:   return 0;
+    }
+}
+
+static int render_data(int p) {
+    /*unsigned char marker =*/ p++;
+    unsigned char y_pix  = markup[p++];
+    unsigned char attr   = markup[p++];
+    unsigned char count  = markup[p++];
+    unsigned char colour = attr_to_palette(attr);
+    /* Empirically tuned vs the original snap1 image: data rows start
+     * one char further right than headers, and the y_pix encoding is
+     * one char-row lower than the glyph's actual top. */
+    int x = BORDER_X + 11 * 8;
+    int y = BORDER_Y + y_pix - 5;
+    int i;
+    for (i = 0; i < count; i++) {
+        unsigned char c = markup[p++];
+        if (c <= 0x09) {
+            /* Digits render verbatim — including leading zeros.
+             * Original shows e.g. "090000" not "90000". */
+            draw_glyph(x, y, colour, c);
+        } else if (c >= 0x0A && c <= 0x23) {
+            draw_glyph(x, y, colour, c);
+        } else if (c == 0x26) {
+            /* space — nothing to draw */
+        } else if (c >= 0x40 && c <= 0x4F) {
+            colour = attr_to_palette(c);
+            x -= 8;             /* attribute is in-band: don't advance X */
+        }
+        x += 8;
+    }
+    return p;
+}
+
+/* Header-style record: marker, Y, attr, count, count payload bytes.
+ * Used for 0x38 / 0x30 / 0x50 — same structure, different X start. */
+static int render_header_like(int p) {
+    unsigned char marker = markup[p++];
+    unsigned char y_pix  = markup[p++];
+    unsigned char attr   = markup[p++];
+    unsigned char count  = markup[p++];
+    unsigned char colour = attr_to_palette(attr);
+    int x = BORDER_X + x_for_marker(marker);
+    int y = BORDER_Y + y_pix - 5;
+    int i;
+    for (i = 0; i < count; i++) {
+        draw_glyph(x, y, colour, markup[p++]);
+        x += 8;
+    }
+    return p;
+}
+
+/* Walk the whole markup buffer once. */
+static void render_markup(void) {
+    int p = 0;
+    while (p < markup_len) {
+        unsigned char m = markup[p];
+        if      (m == 0x38 || m == 0x30 || m == 0x50) p = render_header_like(p);
+        else if (m == 0x58)                            p = render_data(p);
+        else                                           p++;
+    }
+}
+
+/* Bright-red 2-pixel-thick frame around the 256×192 playfield —
+ * matches the original's drawn-in-pixels frame (not just the attribute
+ * gutter). Palette index 10 = bright red. */
+static void draw_red_frame(void) {
+    int r;
+    for (r = 0; r < 2; r++) {
+        fill(BORDER_X,                       BORDER_Y + r,                    PLAYFIELD_W, 1, 10);
+        fill(BORDER_X,                       BORDER_Y + PLAYFIELD_H - 1 - r,  PLAYFIELD_W, 1, 10);
+        fill(BORDER_X + r,                   BORDER_Y,                        1, PLAYFIELD_H, 10);
+        fill(BORDER_X + PLAYFIELD_W - 1 - r, BORDER_Y,                        1, PLAYFIELD_H, 10);
+    }
+}
+
+static void demo_full(void) {
+    fill(0, 0, SCREEN_W, SCREEN_H, COL_BORDER);
+    draw_red_frame();
+    render_markup();
+}
+
+int main(void) {
+    set_mode(0x13);
+    set_palette(zx_palette, 16);
+
+    if (load_font("FONT.BIN") != 0 || load_markup("MARKUP.BIN") != 0) {
+        /* Asset missing — flash border so we notice on boot. */
+        fill(0, 0, SCREEN_W, SCREEN_H, 10 /* bright red */);
+    }
+
+    for (;;) {
+        show("HISCORE.BIN");  if (getch() == 27) break;
+        demo_full();          if (getch() == 27) break;
+        show("MAINMENU.BIN"); if (getch() == 27) break;
+    }
 
     set_mode(0x03);
     return 0;

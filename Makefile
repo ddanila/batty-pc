@@ -33,7 +33,9 @@ OBJ     = $(SRC:src/%.c=build/%.obj)
 HEADERS = $(wildcard src/*.h)
 EXE     = build/batty.exe
 
-ASSETS  = assets/loading.bin
+ASSETS  = assets/loading.bin assets/hi_score.bin assets/main_menu.bin assets/font.bin assets/markup.bin
+HISCORE_SNAP  ?= build/snapshots/20260513T202038Z/screen.scr
+MAINMENU_SNAP ?= build/snapshots/20260513T202041Z/screen.scr
 
 FLOPPY_SRC ?= vendor/msdos/floppy-minimal.img
 FLOPPY_OUT  = build/batty.img
@@ -41,7 +43,7 @@ FLOPPY_OUT  = build/batty.img
 ZESARUX ?= ../generaly/tools/zesarux/src/zesarux
 ZRCP_PORT ?= 10000
 
-.PHONY: all clean run floppy assets help run-original snapshot candidates regions
+.PHONY: all clean run floppy assets help run-original snapshot candidates regions test
 
 all: $(EXE) $(ASSETS)
 
@@ -71,12 +73,25 @@ assets: $(ASSETS)
 assets/loading.bin: original/Batty.scr scripts/extract_scr.py
 	python3 scripts/extract_scr.py $< $@
 
+assets/hi_score.bin: $(HISCORE_SNAP) scripts/extract_scr.py
+	python3 scripts/extract_scr.py $< $@
+
+assets/main_menu.bin: $(MAINMENU_SNAP) scripts/extract_scr.py
+	python3 scripts/extract_scr.py $< $@
+
+assets/font.bin: original/blocks/03_DATA_headless.dat.bin scripts/extract_font.py
+	python3 scripts/extract_font.py
+
 floppy: $(FLOPPY_OUT)
 
 $(FLOPPY_OUT): $(EXE) $(ASSETS) $(FLOPPY_SRC)
 	cp "$(FLOPPY_SRC)" $@
 	mcopy -i $@ -o $(EXE) ::BATTY.EXE
-	mcopy -i $@ -o assets/loading.bin ::LOADING.BIN
+	mcopy -i $@ -o assets/loading.bin  ::LOADING.BIN
+	mcopy -i $@ -o assets/hi_score.bin ::HISCORE.BIN
+	mcopy -i $@ -o assets/main_menu.bin ::MAINMENU.BIN
+	mcopy -i $@ -o assets/font.bin     ::FONT.BIN
+	mcopy -i $@ -o assets/markup.bin   ::MARKUP.BIN
 	@printf '@ECHO OFF\r\nBATTY\r\n' > build/AUTOEXEC.BAT
 	mcopy -i $@ -o build/AUTOEXEC.BAT ::AUTOEXEC.BAT
 	@echo "Floppy ready: $@"
@@ -97,6 +112,9 @@ candidates: build/regions.blockdef
 	python3 scripts/render_candidates.py \
 		original/blocks/03_DATA_headless.dat.bin \
 		build/regions.blockdef assets/candidates
+
+test: $(FLOPPY_OUT)
+	python3 scripts/test_visual.py
 
 run-original:
 	$(ZESARUX) --noconfigfile --machine 48k \

@@ -11,6 +11,7 @@ build/*.lst
 
 # Re-generatable analysis artifacts (`make regions`, etc.)
 # Keep snapshots/ since they're laboriously captured by hand.
+build/test_visual/
 
 # Python
 __pycache__/
