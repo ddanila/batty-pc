@@ -2,7 +2,8 @@
 
 MS-DOS / 8086 re-creation of **Batty** (Elite Software / Hit-Pak, 1987,
 ZX Spectrum 48K). VGA mode 13h (320×200×256), 1:1 pixel-faithful inside
-the 256×192 playfield, border around it. Runs in QEMU with Open Watcom v2.
+the 256×192 playfield, border around it. Built with Open Watcom v2,
+boots in QEMU.
 
 The toolchain pattern mirrors two sibling projects:
 
