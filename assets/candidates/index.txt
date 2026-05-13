@@ -1,0 +1,29 @@
+# Batty sprite candidates
+# Layout per PNG: 4 columns side-by-side, widths 1/2/3/4 bytes
+# Zoom: 3x.  Origin: 0x6800.
+
+idx    addr   size  type
+  0  0x6b21     33  bytedata  -> 6b21_0033B.png
+  1  0x6fb6     20  bytedata  -> 6fb6_0020B.png
+  2  0x7892     41  bytedata  -> 7892_0041B.png
+  3  0x79f1     96  bytedata  -> 79f1_0096B.png
+  4  0x7a6f     51  bytedata  -> 7a6f_0051B.png
+  5  0x7b2e   1351  bytedata  -> 7b2e_1351B.png
+  6  0x81f1    783  bytedata  -> 81f1_0783B.png
+  7  0x8525     60  bytedata  -> 8525_0060B.png
+  8  0x8593     70  bytedata  -> 8593_0070B.png
+  9  0x8651     53  bytedata  -> 8651_0053B.png
+ 10  0x86b9     41  bytedata  -> 86b9_0041B.png
+ 11  0x87cd     56  bytedata  -> 87cd_0056B.png
+ 12  0x8a57     33  bytedata  -> 8a57_0033B.png
+ 13  0x8cdc     36  bytedata  -> 8cdc_0036B.png
+ 14  0x8dba     90  bytedata  -> 8dba_0090B.png
+ 15  0x9347    183  bytedata  -> 9347_0183B.png
+ 16  0x9b36    313  bytedata  -> 9b36_0313B.png
+ 17  0xac0a     25  bytedata  -> ac0a_0025B.png
+ 18  0xb6f4     61  bytedata  -> b6f4_0061B.png
+ 19  0xc0b8     60  bytedata  -> c0b8_0060B.png
+Whole-blob (width=1, 2x zoom) -> _whole_w1.png
+Whole-blob (width=2, 2x zoom) -> _whole_w2.png
+Whole-blob (width=3, 2x zoom) -> _whole_w3.png
+Whole-blob (width=4, 2x zoom) -> _whole_w4.png

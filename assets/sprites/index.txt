@@ -1,0 +1,64 @@
+# sprite renders (16 px wide × N rows). origin 0x6800.
+
+## region 0x7B16  height=2  count=12
+  -> 7B16_sheet.png  (all 12 side by side)
+  -> 7B16_00.png
+  -> 7B16_01.png
+  -> 7B16_02.png
+  -> 7B16_03.png
+  -> 7B16_04.png
+  -> 7B16_05.png
+  -> 7B16_06.png
+  -> 7B16_07.png
+  -> 7B16_08.png
+  -> 7B16_09.png
+  -> 7B16_10.png
+  -> 7B16_11.png
+
+## region 0x7E38  height=4  count=13
+  -> 7E38_sheet.png  (all 13 side by side)
+  -> 7E38_00.png
+  -> 7E38_01.png
+  -> 7E38_02.png
+  -> 7E38_03.png
+  -> 7E38_04.png
+  -> 7E38_05.png
+  -> 7E38_06.png
+  -> 7E38_07.png
+  -> 7E38_08.png
+  -> 7E38_09.png
+  -> 7E38_10.png
+  -> 7E38_11.png
+  -> 7E38_12.png
+
+## region 0x7F42  height=6  count=13
+  -> 7F42_sheet.png  (all 13 side by side)
+  -> 7F42_00.png
+  -> 7F42_01.png
+  -> 7F42_02.png
+  -> 7F42_03.png
+  -> 7F42_04.png
+  -> 7F42_05.png
+  -> 7F42_06.png
+  -> 7F42_07.png
+  -> 7F42_08.png
+  -> 7F42_09.png
+  -> 7F42_10.png
+  -> 7F42_11.png
+  -> 7F42_12.png
+
+## region 0x8188  height=4  count=13
+  -> 8188_sheet.png  (all 13 side by side)
+  -> 8188_00.png
+  -> 8188_01.png
+  -> 8188_02.png
+  -> 8188_03.png
+  -> 8188_04.png
+  -> 8188_05.png
+  -> 8188_06.png
+  -> 8188_07.png
+  -> 8188_08.png
+  -> 8188_09.png
+  -> 8188_10.png
+  -> 8188_11.png
+  -> 8188_12.png

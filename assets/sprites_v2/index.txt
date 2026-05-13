@@ -1,0 +1,13 @@
+# sprite renders v2 — width=byte0*16, height=byte1
+
+## 0x7B16  width=32px  height=12  body=48B
+  -> 7B16.png
+
+## 0x7E38  width=64px  height=13  body=104B
+  -> 7E38.png
+
+## 0x7F42  width=96px  height=13  body=156B
+  -> 7F42.png
+
+## 0x8188  width=64px  height=13  body=104B
+  -> 8188.png
