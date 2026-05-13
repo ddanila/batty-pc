@@ -5,30 +5,47 @@ The hi-score screen was easy because it's static. The main menu isn't:
 1. It's **animated** — at least the prompt-style elements probably cycle
    on a frame counter (the `0x8D46` counter ticks every IM-1 fire).
 2. It's **interactive** — `A` and `B` toggle a control-config state
-   visible on screen (e.g. "KEYBOARD / KEMPSTON / DEFINE KEYS").
+   visible on screen (e.g. "KEYBOARD / KEMPSTON / CURSOR").
 3. The snap2 PPM is a single frame; whatever happened to be invisible at
-   that exact moment is missing from `MAINMENU.BIN`, so the static blit
-   matches one frame and one frame only.
+   that exact moment is missing from `MAINMENU.BIN`. The COPYRIGHT line
+   we found at `0x95EB` was off-screen / not painted yet at snap2.
+
+## Already confirmed (initial probe)
+
+- **Markup encoding is reused.** snap2's RAM at `0x8FD1..` is still the
+  stale hi-score buffer byte-for-byte; the menu's render path uses a
+  *different* source buffer.
+- **Menu strings live in the blob, not dynamically composed.** Hits
+  found in snap2 at `0x95Ax..0x9620`: DOUBLE PLAY, START GAME,
+  KEYBOARD, KEMPSTON, CURSOR, COPYRIGHT HIT PAK 1987, BATTY (the title
+  proper).
+- **Marker byte / 8 = X column.** The hi-score `0x38 / 0x50 / 0x58`
+  markers + the menu's new `0x60` / `0x68` all fit `col = marker / 8`:
+  0x30→6, 0x38→7, 0x40→8, 0x50→10, 0x58→11, 0x60→12, 0x68→13.
+  This makes our `x_for_marker` switch unnecessary and any future
+  marker auto-decodable.
 
 So we go data-driven for the menu the same way we did for hi-score, but
 have to find the dynamic bits too.
 
-## Stage 1 — confirm the markup-driven path works for the menu
+## Stage 1 — find the menu's markup buffer + walk it
 
-Static-content side is hopefully identical to hi-score:
+The menu strings live at `0x95A0..~0x9620` in the blob, but we still
+need the *records* that wrap them (`<marker> <Y> <attr> <count>
+<payload>`). Probe outward from the known string hits.
 
-- [ ] `make snapshot` while the original is on the main menu (we already
-      have `20260513T202041Z`). Dump bytes at `0x8FD1..0x9200` and
-      visually walk them — same record markers (`0x30 / 0x38 / 0x50 /
-      0x58`) plus any new ones we haven't seen.
-- [ ] Decode each record with the existing parser. Anything that the
-      parser can't classify (unknown marker, unknown glyph code, novel
-      attribute escape) is something the menu uses but hi-score didn't.
-- [ ] Extract a `assets/main_menu_markup.bin` and add a new state in
-      `main.c` cycle:
-        state 4 = `demo_menu()` = render menu from markup.
-- [ ] Test: snap2 may still mismatch a few px (animation frame
-      mismatch); accept that as expected and triage by location.
+- [ ] Dump `0x9580..0x9650` from snap2 RAM and parse with our existing
+      record schema, treating any `0x?8 / 0x?0` byte with sensible
+      `Y / attr / count` following as a record start.
+- [ ] Refactor `render_header_like` and `x_for_marker` to use the
+      `col = marker / 8` formula. One code path handles all of
+      0x30/0x38/0x40/0x50/0x58/0x60/0x68/…
+- [ ] Bundle the menu's record range as `assets/main_menu_markup.bin`.
+      Add a new state in `main.c` cycle: state 4 = `demo_menu()` =
+      render menu from this markup with the same renderer hi-score
+      uses.
+- [ ] Test: snap2 may still mismatch px in dynamic regions; accept and
+      triage by mismatch *location* — those are the animated bits.
 
 ## Stage 2 — find the dynamic / animated elements
 
