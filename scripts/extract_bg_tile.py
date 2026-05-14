@@ -12,9 +12,12 @@ at offset cycle * 32.
 import sys
 from pathlib import Path
 
-# Pure-bg region: lower playfield, y >= 128, x in [64, 80).
-ORIGIN_Y = 128
-ORIGIN_BYTE_X = 8     # = pixel x 64; 2 bytes wide.
+# Pure-bg region: y=160..175 byte_x 8..9. y=128 had snap3-state
+# debris contaminating tile row 0 on the cyan / white cycle GTs
+# (verified empirically: y=128 row 0 = `00 00` for L4 but the real
+# tile row 0 is `EF EF` per y=160). The y=160..175 window is clear.
+ORIGIN_Y = 160
+ORIGIN_BYTE_X = 8
 
 # One representative level per cycle. Tiles are byte-identical within
 # a cycle (verified) so any level in the cycle works.
