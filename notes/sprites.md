@@ -221,3 +221,36 @@ inspect at width 2 bytes (= 16 px wide blocks).
 - The **bat / ball / power-up blitters**. Probably also call
   `sub_adbch` but from different higher-level wrappers tied to
   per-entity state. Trace 0xBB39+ (after the main frame-sync) to map.
+
+## Phase A2 in progress — cache layout
+
+3584 B cache ÷ 16 B/chunk = **224 chunks**, each chunk a 16-px-wide
+× 8-row sprite slice the blitter consumes per call. Rendered as a
+14 × 16 grid in `assets/sprite_cache/grid_snap3.png` (via
+`scripts/render_cache_grid.py`). Every chunk visually resembles a
+**vertical brick-segment slice** — small rectangular structures
+with side-bars and a top edge.
+
+So the cache is overwhelmingly brick variants. 224 factors:
+
+- **32 logical bricks × 7 shift copies** — matches the 7-shift LUT
+  built at 0xF200 by `0x6800..0x6820`.
+- **28 logical bricks × 8 shift copies** — would include the
+  unshifted source.
+
+Either interpretation lines up with the per-frame `sub_ad8fh`
+brick blitter that needs to draw bricks at sub-byte-aligned X
+offsets (= shift count > 0). The brick field is 12 × 15 = 180
+cells, and 32 brick variants (× colours / damage states) is a
+plausible budget for a 1987 brick-breaker.
+
+Next A2 step: detect the shift-group boundary (e.g. cache[0..15]
+vs cache[16..31] — are they the same sprite at different shifts?
+If yes, that proves the layout). Then dump each logical brick as
+a 16×8 PNG to verify against the visible brick types in snap3.
+
+The `0x9789` pointer inside `sub_ad8fh` / `sub_ad8eh+0` (`ld iy,
+(l9789h)`) is the "live brick descriptor list" — IY walks 180
+entries (one per visible brick), each entry's bits drive the
+skip/end checks in `sub_adbch`. That's how empty / destroyed
+bricks get skipped each frame.
