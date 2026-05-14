@@ -223,13 +223,6 @@ static void draw_frame(unsigned char colour) {
     }
 }
 
-static void demo_full(void) {
-    load_markup("MARKUP.BIN");
-    fill(0, 0, SCREEN_W, SCREEN_H, COL_BORDER);
-    draw_frame(10);   /* bright red */
-    render_markup();
-}
-
 /* Player input-device state — mirrors the original's bytes at
  * 0xB7EF (A toggles, player 1) and 0xB7F7 (B toggles, player 2).
  * Range 0..3 = KEYBOARD / KEMPSTON / CURSOR / INTERFACE II. */
@@ -339,36 +332,155 @@ static void draw_bottom_sprites(void) {
 }
 
 
+static unsigned long bios_ticks(void);
+
+/* Currently selected game mode. 0 = none (idle, no blink — matches the
+ * snap2 default). 1, 2, 3 = "1 PLAYER" / "2 PLAYERS" / "DOUBLE PLAY"
+ * — option line at the corresponding Y blinks when set. */
+static unsigned char selected_mode = 0;
+
+static int option_y_pix_for_mode(unsigned char mode) {
+    switch (mode) {
+        case 1: return 0x2F;     /* "1 - 1 PLAYER"    */
+        case 2: return 0x3F;     /* "2 - 2 PLAYERS"   */
+        case 3: return 0x4F;     /* "3 - DOUBLE PLAY" */
+        default: return -1;
+    }
+}
+
+/* When a mode is selected, alternate visibility on the option line at
+ * ~2 Hz via the BIOS tick counter. ON phase = leave the markup-rendered
+ * line as-is; OFF phase = black-out the line (= the "off frame" of the
+ * blink). */
+static void apply_option_blink(void) {
+    int y_pix = option_y_pix_for_mode(selected_mode);
+    int y;
+    if (y_pix < 0) return;
+    if ((bios_ticks() >> 2) & 1) return;     /* ON phase */
+    y = BORDER_Y + y_pix - 5;
+    /* Option text spans col 10..23ish (DOUBLE PLAY = 15 chars). Cover
+     * cols 10..24 (= 15 cells = 120 px wide) × 6 px tall. */
+    fill(BORDER_X + 10 * 8, y, 15 * 8, 6, 0);
+}
+
 static void render_menu_screen(void) {
     fill(0, 0, SCREEN_W, SCREEN_H, COL_BORDER);
     draw_frame(11);              /* bright magenta */
     render_markup();
     draw_player_indicators();
     draw_bottom_sprites();
+    apply_option_blink();
 }
 
-/* Interactive menu. Returns 1 if ESC pressed (exit BATTY), 0 if any
- * other non-A/B key (advance to next cycle state). A/B keys cycle
- * the player state in-place and stay in the menu. */
-static int demo_menu(void) {
-    load_markup("MENUMARK.BIN");
-    render_menu_screen();
+/* BIOS tick counter @ ~18.2 Hz. INT 1Ah AH=0 returns CX:DX. One unit
+ * ≈ 55 ms — coarse but plenty for attract-mode timing. */
+static unsigned long bios_ticks(void) {
+    union REGS r;
+    r.h.ah = 0;
+    int86(0x1A, &r, &r);
+    return ((unsigned long)r.x.cx << 16) | r.x.dx;
+}
+
+/* Attract-mode state machine — same shape as the original game:
+ *   TITLE   one-shot loading screen on boot, timeout -> MENU
+ *   MENU    interactive (A/B cycle device, any other key advances),
+ *           idle timeout -> HI_SCORE
+ *   HI_SCORE static-ish, any key or timeout -> MENU
+ *   ESC quits anywhere. */
+typedef enum { ST_TITLE, ST_MENU, ST_HISCORE, ST_QUIT } state_t;
+
+#define TITLE_TIMEOUT_TICKS   60    /* ~3.3 s */
+#define MENU_TIMEOUT_TICKS   200    /* ~11 s  */
+#define HISCORE_TIMEOUT_TICKS 120   /* ~6.6 s */
+
+/* In test mode (BATTYALL=1) we want explicit key control over every
+ * transition. Set at startup based on env. */
+static int auto_advance = 1;
+#define TIMED_OUT(start, ticks) (auto_advance && (bios_ticks() - (start) > (ticks)))
+
+static void render_hiscore_screen(void) {
+    load_markup("MARKUP.BIN");
+    fill(0, 0, SCREEN_W, SCREEN_H, COL_BORDER);
+    draw_frame(10);                  /* bright red */
+    render_markup();
+}
+
+static state_t run_title(void) {
+    unsigned long start;
+    show("LOADING.BIN");
+    start = bios_ticks();
     for (;;) {
-        int k = getch();
-        if (k == 27)                       return 1;   /* ESC */
-        else if (k == 'a' || k == 'A')     p1_dev = (p1_dev + 1) & 3;
-        else if (k == 'b' || k == 'B')     p2_dev = (p2_dev + 1) & 3;
-        else                               return 0;   /* advance */
-        render_menu_screen();
+        if (kbhit()) {
+            int k = getch();
+            return (k == 27) ? ST_QUIT : ST_MENU;
+        }
+        if (TIMED_OUT(start, TITLE_TIMEOUT_TICKS)) return ST_MENU;
     }
 }
 
-/* Cycle controlled by BATTYALL env var (set by the test floppy's
- * AUTOEXEC). Unset -> menu-only loop. Set (any value) -> full 4-state
- * cycle. Env var is reliable; argc/argv plumbing through the DOS PSP
- * with the 16-bit small-model startup is not. */
+static state_t run_menu(void) {
+    unsigned long last_input;
+    int last_blink_phase = -1;
+    load_markup("MENUMARK.BIN");
+    render_menu_screen();
+    last_input = bios_ticks();
+    for (;;) {
+        if (kbhit()) {
+            int k = getch();
+            if (k == 27) return ST_QUIT;
+            if (k == 'a' || k == 'A') {
+                p1_dev = (p1_dev + 1) & 3;
+                render_menu_screen();
+                last_input = bios_ticks();
+                continue;
+            }
+            if (k == 'b' || k == 'B') {
+                p2_dev = (p2_dev + 1) & 3;
+                render_menu_screen();
+                last_input = bios_ticks();
+                continue;
+            }
+            if (k >= '1' && k <= '3') {
+                selected_mode = (unsigned char)(k - '0');
+                render_menu_screen();
+                last_input = bios_ticks();
+                last_blink_phase = -1;       /* force redraw next phase tick */
+                continue;
+            }
+            /* 0 / ENTER / other — would start a game; advance for now. */
+            return ST_HISCORE;
+        }
+        /* Re-render only when blink phase actually flips. */
+        if (selected_mode != 0) {
+            int phase = (int)((bios_ticks() >> 2) & 1);
+            if (phase != last_blink_phase) {
+                render_menu_screen();
+                last_blink_phase = phase;
+            }
+        }
+        if (TIMED_OUT(last_input, MENU_TIMEOUT_TICKS)) return ST_HISCORE;
+    }
+}
+
+static state_t run_hiscore(void) {
+    unsigned long start;
+    render_hiscore_screen();
+    start = bios_ticks();
+    for (;;) {
+        if (kbhit()) {
+            int k = getch();
+            return (k == 27) ? ST_QUIT : ST_MENU;
+        }
+        if (TIMED_OUT(start, HISCORE_TIMEOUT_TICKS)) return ST_MENU;
+    }
+}
+
 int main(void) {
-    int full_cycle = (getenv("BATTYALL") != NULL);
+    state_t state = ST_TITLE;
+    /* BATTYALL=1 (test floppy AUTOEXEC) disables auto-advance so the
+     * test orchestrator's `sendkey` drives every transition. Plain
+     * `make run` floppy leaves it on for the natural attract cycle. */
+    if (getenv("BATTYALL") != NULL) auto_advance = 0;
     set_mode(0x13);
     set_palette(zx_palette, 16);
 
@@ -378,12 +490,12 @@ int main(void) {
         fill(0, 0, SCREEN_W, SCREEN_H, 10 /* bright red */);
     }
 
-    for (;;) {
-        show("MAINMENU.BIN"); if (getch() == 27) break;
-        if (demo_menu())                       break;   /* ESC inside menu */
-        if (full_cycle) {
-            show("HISCORE.BIN"); if (getch() == 27) break;
-            demo_full();         if (getch() == 27) break;
+    while (state != ST_QUIT) {
+        switch (state) {
+            case ST_TITLE:   state = run_title();   break;
+            case ST_MENU:    state = run_menu();    break;
+            case ST_HISCORE: state = run_hiscore(); break;
+            default:         state = ST_QUIT;       break;
         }
     }
 

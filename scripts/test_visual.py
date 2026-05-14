@@ -168,15 +168,15 @@ def main():
 
     SNAP_HISCORE = Path('build/snapshots/20260513T202038Z/screen.scr')
     SNAP_MENU    = Path('build/snapshots/20260513T202041Z/screen.scr')
+    TITLE_SCR    = Path('original/Batty.scr')
     # `assert_match=False` => captured, diff-reported, but not failing
-    # the test. Used for screens we're actively iterating on (e.g.
-    # menu_rendered, where the markup intentionally paints things
-    # snap2 didn't catch — COPYRIGHT line, etc.).
+    # the test. Menu has known residual 0.35% diff (markup paints
+    # content snap2 didn't catch on its single static frame).
+    # New attract-mode flow: TITLE -> MENU -> HISCORE.
     checkpoints = [
-        ('state1_mainmenu_static',   SNAP_MENU,    True),
-        ('state2_mainmenu_rendered', SNAP_MENU,    False),
-        ('state3_hiscore_static',    SNAP_HISCORE, True),
-        ('state4_hiscore_rendered',  SNAP_HISCORE, True),
+        ('state1_title',   TITLE_SCR,    True),
+        ('state2_menu',    SNAP_MENU,    False),
+        ('state3_hiscore', SNAP_HISCORE, True),
     ]
 
     script = [f'SLEEP {args.boot_wait}']
