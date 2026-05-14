@@ -33,12 +33,15 @@ OBJ     = $(SRC:src/%.c=build/%.obj)
 HEADERS = $(wildcard src/*.h)
 EXE     = build/batty.exe
 
-ASSETS  = assets/loading.bin assets/hi_score.bin assets/main_menu.bin assets/font.bin assets/markup.bin
-HISCORE_SNAP  ?= build/snapshots/20260513T202038Z/screen.scr
-MAINMENU_SNAP ?= build/snapshots/20260513T202041Z/screen.scr
+ASSETS  = assets/loading.bin assets/hi_score.bin assets/main_menu.bin \
+          assets/font.bin assets/markup.bin assets/main_menu_markup.bin
+HISCORE_SNAP      ?= build/snapshots/20260513T202038Z/screen.scr
+MAINMENU_SNAP     ?= build/snapshots/20260513T202041Z/screen.scr
+MAINMENU_SNAP_RAM ?= build/snapshots/20260513T202041Z/ram_4000_FFFF.bin
 
-FLOPPY_SRC ?= vendor/msdos/floppy-minimal.img
-FLOPPY_OUT  = build/batty.img
+FLOPPY_SRC      ?= vendor/msdos/floppy-minimal.img
+FLOPPY_OUT       = build/batty.img        # `make run`: 2-state menu loop
+TEST_FLOPPY_OUT  = build/batty-test.img   # `make test`: full 4-state cycle
 
 ZESARUX ?= ../generaly/tools/zesarux/src/zesarux
 ZRCP_PORT ?= 10000
@@ -82,8 +85,16 @@ assets/main_menu.bin: $(MAINMENU_SNAP) scripts/extract_scr.py
 assets/font.bin: original/blocks/03_DATA_headless.dat.bin scripts/extract_font.py
 	python3 scripts/extract_font.py
 
+# Main-menu markup: 11 records, snap2 RAM 0x9571..0x961F (175 B).
+# Bundled as MENUMARK.BIN on the floppy.
+assets/main_menu_markup.bin: $(MAINMENU_SNAP_RAM)
+	@python3 -c "from pathlib import Path; \
+		Path('$@').write_bytes(Path('$<').read_bytes()[0x9571-0x4000 : 0x9620-0x4000])"
+	@echo "wrote $@ ($$(wc -c < $@) bytes)"
+
 floppy: $(FLOPPY_OUT)
 
+# Both floppies ship the same EXE + assets; only AUTOEXEC.BAT differs.
 $(FLOPPY_OUT): $(EXE) $(ASSETS) $(FLOPPY_SRC)
 	cp "$(FLOPPY_SRC)" $@
 	mcopy -i $@ -o $(EXE) ::BATTY.EXE
@@ -92,9 +103,23 @@ $(FLOPPY_OUT): $(EXE) $(ASSETS) $(FLOPPY_SRC)
 	mcopy -i $@ -o assets/main_menu.bin ::MAINMENU.BIN
 	mcopy -i $@ -o assets/font.bin     ::FONT.BIN
 	mcopy -i $@ -o assets/markup.bin   ::MARKUP.BIN
+	mcopy -i $@ -o assets/main_menu_markup.bin ::MENUMARK.BIN
 	@printf '@ECHO OFF\r\nBATTY\r\n' > build/AUTOEXEC.BAT
 	mcopy -i $@ -o build/AUTOEXEC.BAT ::AUTOEXEC.BAT
-	@echo "Floppy ready: $@"
+	@echo "Floppy ready: $@  (menu-only cycle)"
+
+$(TEST_FLOPPY_OUT): $(EXE) $(ASSETS) $(FLOPPY_SRC)
+	cp "$(FLOPPY_SRC)" $@
+	mcopy -i $@ -o $(EXE) ::BATTY.EXE
+	mcopy -i $@ -o assets/loading.bin  ::LOADING.BIN
+	mcopy -i $@ -o assets/hi_score.bin ::HISCORE.BIN
+	mcopy -i $@ -o assets/main_menu.bin ::MAINMENU.BIN
+	mcopy -i $@ -o assets/font.bin     ::FONT.BIN
+	mcopy -i $@ -o assets/markup.bin   ::MARKUP.BIN
+	mcopy -i $@ -o assets/main_menu_markup.bin ::MENUMARK.BIN
+	@printf '@ECHO OFF\r\nSET BATTYALL=1\r\nBATTY\r\n' > build/AUTOEXEC-T.BAT
+	mcopy -i $@ -o build/AUTOEXEC-T.BAT ::AUTOEXEC.BAT
+	@echo "Test floppy ready: $@  (full 4-state cycle)"
 
 run: $(FLOPPY_OUT)
 	bash scripts/run.sh $(FLOPPY_OUT)
@@ -113,8 +138,8 @@ candidates: build/regions.blockdef
 		original/blocks/03_DATA_headless.dat.bin \
 		build/regions.blockdef assets/candidates
 
-test: $(FLOPPY_OUT)
-	python3 scripts/test_visual.py
+test: $(TEST_FLOPPY_OUT)
+	python3 scripts/test_visual.py --floppy $(TEST_FLOPPY_OUT)
 
 run-original:
 	$(ZESARUX) --noconfigfile --machine 48k \

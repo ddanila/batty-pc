@@ -14,6 +14,7 @@
 #include <conio.h>
 #include <i86.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #define SCREEN_W      320
@@ -161,38 +162,36 @@ static int load_markup(const char *path) {
     return (n > 0) ? 0 : -2;
 }
 
-/* Map a markup row marker to its starting X (pixel column). */
-static int x_for_marker(unsigned char m) {
-    switch (m) {
-        case 0x38: return 7 * 8;   /* "1." .. "9."          col 7  */
-        case 0x30: return 6 * 8;   /* "10."                 col 6  */
-        case 0x50: return 10 * 8;  /* title / divider rows  col 10 */
-        default:   return 0;
-    }
+/* All row markers observed are multiples of 8 in [0x30, 0x70):
+ *   0x30 0x38 0x40 0x50 0x58 0x60 0x68 …
+ * And `marker / 8` is the X column in cells (0x30→6, 0x68→13).
+ * One record-walker handles them all. */
+static int is_row_marker(unsigned char b) {
+    /* 0x28 (col 5, COPYRIGHT) .. 0x70 (col 14, BATTY title), all
+     * multiples of 8. col = b / 8. */
+    return (b & 7) == 0 && b >= 0x28 && b < 0x78;
 }
 
-static int render_data(int p) {
-    /*unsigned char marker =*/ p++;
+/* Record: marker | Y | attr | count | count payload bytes.
+ * Payload bytes: 0x00-0x09 = digit, 0x0A-0x23 = letter, 0x24-0x2A =
+ * specials (period/comma/space/dash/_/II/=), 0x40-0x4F = in-band
+ * colour escape. */
+static int render_record(int p) {
+    unsigned char marker = markup[p++];
     unsigned char y_pix  = markup[p++];
     unsigned char attr   = markup[p++];
     unsigned char count  = markup[p++];
     unsigned char colour = attr_to_palette(attr);
-    /* Empirically tuned vs the original snap1 image: data rows start
-     * one char further right than headers, and the y_pix encoding is
-     * one char-row lower than the glyph's actual top. */
-    int x = BORDER_X + 11 * 8;
+    int x = BORDER_X + (int)(marker / 8) * 8;
     int y = BORDER_Y + y_pix - 5;
     int i;
     for (i = 0; i < count; i++) {
         unsigned char c = markup[p++];
-        if (c <= 0x09) {
-            /* Digits render verbatim — including leading zeros.
-             * Original shows e.g. "090000" not "90000". */
+        if (c == 0x26) {
+            /* explicit no-draw — the font's space glyph might have
+             * stray bits we don't want painted. */
+        } else if (c <= 0x2A) {
             draw_glyph(x, y, colour, c);
-        } else if (c >= 0x0A && c <= 0x23) {
-            draw_glyph(x, y, colour, c);
-        } else if (c == 0x26) {
-            /* space — nothing to draw */
         } else if (c >= 0x40 && c <= 0x4F) {
             colour = attr_to_palette(c);
             x -= 8;             /* attribute is in-band: don't advance X */
@@ -202,67 +201,63 @@ static int render_data(int p) {
     return p;
 }
 
-/* Header-style record: marker, Y, attr, count, count payload bytes.
- * Used for 0x38 / 0x30 / 0x50 — same structure, different X start. */
-static int render_header_like(int p) {
-    unsigned char marker = markup[p++];
-    unsigned char y_pix  = markup[p++];
-    unsigned char attr   = markup[p++];
-    unsigned char count  = markup[p++];
-    unsigned char colour = attr_to_palette(attr);
-    int x = BORDER_X + x_for_marker(marker);
-    int y = BORDER_Y + y_pix - 5;
-    int i;
-    for (i = 0; i < count; i++) {
-        draw_glyph(x, y, colour, markup[p++]);
-        x += 8;
-    }
-    return p;
-}
-
-/* Walk the whole markup buffer once. */
 static void render_markup(void) {
     int p = 0;
     while (p < markup_len) {
-        unsigned char m = markup[p];
-        if      (m == 0x38 || m == 0x30 || m == 0x50) p = render_header_like(p);
-        else if (m == 0x58)                            p = render_data(p);
-        else                                           p++;
+        if (is_row_marker(markup[p])) p = render_record(p);
+        else                          p++;
     }
 }
 
-/* Bright-red 2-pixel-thick frame around the 256×192 playfield —
- * matches the original's drawn-in-pixels frame (not just the attribute
- * gutter). Palette index 10 = bright red. */
-static void draw_red_frame(void) {
+/* 2-pixel-thick frame around the 256×192 playfield — matches the
+ * original's drawn-in-pixels frame (not just the attribute gutter).
+ * Palette indices: 10 = bright red (hi-score), 11 = bright magenta (menu). */
+static void draw_frame(unsigned char colour) {
     int r;
     for (r = 0; r < 2; r++) {
-        fill(BORDER_X,                       BORDER_Y + r,                    PLAYFIELD_W, 1, 10);
-        fill(BORDER_X,                       BORDER_Y + PLAYFIELD_H - 1 - r,  PLAYFIELD_W, 1, 10);
-        fill(BORDER_X + r,                   BORDER_Y,                        1, PLAYFIELD_H, 10);
-        fill(BORDER_X + PLAYFIELD_W - 1 - r, BORDER_Y,                        1, PLAYFIELD_H, 10);
+        fill(BORDER_X,                       BORDER_Y + r,                    PLAYFIELD_W, 1, colour);
+        fill(BORDER_X,                       BORDER_Y + PLAYFIELD_H - 1 - r,  PLAYFIELD_W, 1, colour);
+        fill(BORDER_X + r,                   BORDER_Y,                        1, PLAYFIELD_H, colour);
+        fill(BORDER_X + PLAYFIELD_W - 1 - r, BORDER_Y,                        1, PLAYFIELD_H, colour);
     }
 }
 
 static void demo_full(void) {
+    load_markup("MARKUP.BIN");
     fill(0, 0, SCREEN_W, SCREEN_H, COL_BORDER);
-    draw_red_frame();
+    draw_frame(10);   /* bright red */
     render_markup();
 }
 
+/* Render the main menu from the inline markup at 0x9571 in snap2.
+ * Menu's frame is bright magenta (palette 11), not red. */
+static void demo_menu(void) {
+    load_markup("MENUMARK.BIN");
+    fill(0, 0, SCREEN_W, SCREEN_H, COL_BORDER);
+    draw_frame(11);   /* bright magenta */
+    render_markup();
+}
+
+/* Cycle controlled by BATTYALL env var (set by the test floppy's
+ * AUTOEXEC). Unset -> menu-only loop. Set (any value) -> full 4-state
+ * cycle. Env var is reliable; argc/argv plumbing through the DOS PSP
+ * with the 16-bit small-model startup is not. */
 int main(void) {
+    int full_cycle = (getenv("BATTYALL") != NULL);
     set_mode(0x13);
     set_palette(zx_palette, 16);
 
-    if (load_font("FONT.BIN") != 0 || load_markup("MARKUP.BIN") != 0) {
-        /* Asset missing — flash border so we notice on boot. */
+    if (load_font("FONT.BIN") != 0) {
         fill(0, 0, SCREEN_W, SCREEN_H, 10 /* bright red */);
     }
 
     for (;;) {
-        show("HISCORE.BIN");  if (getch() == 27) break;
-        demo_full();          if (getch() == 27) break;
         show("MAINMENU.BIN"); if (getch() == 27) break;
+        demo_menu();          if (getch() == 27) break;
+        if (full_cycle) {
+            show("HISCORE.BIN"); if (getch() == 27) break;
+            demo_full();         if (getch() == 27) break;
+        }
     }
 
     set_mode(0x03);

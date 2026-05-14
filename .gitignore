@@ -5,7 +5,9 @@ vendor/
 # Build outputs
 build/batty.exe
 build/batty.img
+build/batty-test.img
 build/AUTOEXEC.BAT
+build/AUTOEXEC-T.BAT
 build/*.obj
 build/*.lst
 

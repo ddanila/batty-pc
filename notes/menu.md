@@ -80,14 +80,32 @@ the snapshots happened to be at idle (default 0).
 | `sub_b796h`   | text renderer — walks markup buffer          |
 | `sub_b61ch`   | live-state → render-buffer composer          |
 
+## Input-device state bytes (verified from disassembly)
+
+A and B keys cycle each player's input device through 4 options
+(KEYBOARD → KEMPSTON → CURSOR → INTERFACE II → wrap). Routines found
+at `0x94BD` (A) and `0x9502` (B):
+
+| Byte    | Cycled by | Range | Trigger                                |
+|---------|-----------|-------|----------------------------------------|
+| `0xB7EF` | A key     | 0..3  | `LD A, 0FDh; CALL sub_97a7h; RRA` — bit 0 = A |
+| `0xB7F7` | B key     | 0..3  | `LD A, 07Fh; CALL sub_97a7h; AND 010h` — bit 4 = B |
+| `0x938A` | debounce  | —     | decremented each frame; prevents auto-repeat |
+
+After updating the byte each handler calls `sub_b5f8h` (the in-place
+redraw routine) — pressing A or B just patches the one option label
+on screen, not a full menu redraw.
+
+All three current snapshots have these bytes = 0 (KEYBOARD/default),
+so neither has yet exercised the dynamic transition. A future
+"after-A-press" snapshot would confirm.
+
 ## Unresolved
 
-- The actual *menu choice* state byte (which option the cursor is on) —
-  not `0xB7E5` despite that being read by the handler.
 - The hi-score table source (where the "current" entries live before
   `sub_926bh` composes them into the render buffer at `0x8FD1`). The
   source pointer is `0xBF00` but the format there hasn't been parsed
-  yet — that's the next ticket.
+  yet.
 - The 1 unknown branch (`jp (hl)`) at `0xC0B7` from the trace tool —
   almost certainly a dispatch table somewhere in the menu's choose-option
   chain.
