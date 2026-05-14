@@ -348,19 +348,43 @@ static int option_y_pix_for_mode(unsigned char mode) {
     }
 }
 
-/* When a mode is selected, alternate visibility on the option line at
- * ~2 Hz via the BIOS tick counter. ON phase = leave the markup-rendered
- * line as-is; OFF phase = black-out the line (= the "off frame" of the
- * blink). */
+/* ZX FLASH-style inversion of the selected option's row. The original
+ * sets bit 7 (FLASH) of the option's attribute byte and sub_b4ec then
+ * branches into a different draw path (SMC-patches bytes at 0xB550
+ * and 0xB617). For our VGA recreation we just alternate normal vs
+ * inverted rendering at ~2 Hz: ON = leave the markup output as-is;
+ * OFF = paint a solid ink-coloured block over the option's row and
+ * re-draw the glyphs in black (= paper) so the line reads as a green
+ * bar with text-shaped holes — the canonical ZX flash look. */
 static void apply_option_blink(void) {
     int y_pix = option_y_pix_for_mode(selected_mode);
-    int y;
+    int y, p, x, i, count, glyph_x;
+    unsigned char marker, attr, c, colour;
     if (y_pix < 0) return;
-    if ((bios_ticks() >> 2) & 1) return;     /* ON phase */
-    y = BORDER_Y + y_pix - 5;
-    /* Option text spans col 10..23ish (DOUBLE PLAY = 15 chars). Cover
-     * cols 10..24 (= 15 cells = 120 px wide) × 6 px tall. */
-    fill(BORDER_X + 10 * 8, y, 15 * 8, 6, 0);
+    if ((bios_ticks() >> 4) & 1) return;     /* ON phase = normal output */
+    /* Walk the markup buffer to find the record at this Y_pix and
+     * re-render its row inverted. */
+    p = 0;
+    while (p < markup_len) {
+        if (!is_row_marker(markup[p])) { p++; continue; }
+        marker = markup[p];
+        if (markup[p + 1] != (unsigned char)y_pix) { p += 4 + markup[p + 3]; continue; }
+        attr   = markup[p + 2];
+        count  = markup[p + 3];
+        colour = attr_to_palette(attr);
+        x      = BORDER_X + (int)(marker / 8) * 8;
+        y      = BORDER_Y + y_pix - 5;
+        /* Solid bar in the option's ink colour. */
+        fill(x, y, count * 8, FONT_ROWS, colour);
+        /* Re-draw the glyphs in BLACK (= paper) on top. */
+        glyph_x = x;
+        for (i = 0; i < count; i++) {
+            c = markup[p + 4 + i];
+            if (c != 0x26 && c <= 0x2A) draw_glyph(glyph_x, y, 0, c);
+            glyph_x += 8;
+        }
+        return;
+    }
 }
 
 static void render_menu_screen(void) {
