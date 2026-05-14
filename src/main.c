@@ -349,20 +349,24 @@ static void draw_bottom_sprites(void) {
 #define LVL_SIZE   (N_LEVELS * LVL_CELLS)
 #define BRICK_W_PX 16
 #define BRICK_H_PX  8
-#define CACHE_SIZE 3584
 #define BRICK_FIELD_X  8     /* relative to playfield top-left */
 #define BRICK_FIELD_Y 16
 
-/* Per-level attribute band: 12 char-rows x 32 cols of ZX attribute
- * bytes, captured from the brick-field zone of each level's GT
- * .scr. Lookup: attr = level_attrs[lvl*ATTR_BAND_SIZE + r*32 + col]. */
-#define ATTR_ROWS       12
+/* Per-level attribute band: FULL 24 char-rows x 32 cols of ZX
+ * attribute bytes captured from each level's GT .scr.
+ * Lookup: attr = level_attrs[lvl*ATTR_BAND_SIZE + r*32 + col]
+ * where r is the char-row index (0..23):
+ *    0..1   top HUD
+ *    2..13  brick zone (rendered by render_brick_field)
+ *   14..21  side-frame interior
+ *   22..23  bottom (bat / lives) */
+#define ATTR_ROWS       24
 #define ATTR_COLS       32
 #define ATTR_BAND_SIZE  (ATTR_ROWS * ATTR_COLS)
 #define ATTR_TOTAL_SIZE (N_LEVELS * ATTR_BAND_SIZE)
+#define BRICK_ATTR_ROW_BASE 2     /* brick char-rows start at attr-row 2 */
 
 static unsigned char levels[LVL_SIZE];
-static unsigned char sprite_cache[CACHE_SIZE];
 static unsigned char level_attrs[ATTR_TOTAL_SIZE];
 
 /* Per-cell 16x8-pixel bitmap, one slot per (level, row, col). Lookup:
@@ -374,13 +378,17 @@ static unsigned char level_attrs[ATTR_TOTAL_SIZE];
 #define BRICK_BMP_SIZE 43200u
 static unsigned char brick_bitmaps[BRICK_BMP_SIZE];
 
-/* 16x16-pixel hex pattern tile (1bpp; 2 bytes wide x 16 rows = 32 B).
- * Tiled across the playfield as the level background; colour comes
- * from the level's bg attribute (top-left of its attr band). */
+/* 16x16-pixel hex pattern tile, one per colour cycle. Cycle index:
+ *   0  yellow  (L1, L5, L9, L13)
+ *   1  green   (L2, L6, L10, L14)
+ *   2  cyan    (L3, L7, L11, L15)
+ *   3  white   (L4, L8, L12)
+ * Within a cycle the bitmap is byte-identical. */
 #define BG_TILE_W_PX 16
 #define BG_TILE_H_PX 16
 #define BG_TILE_SIZE (BG_TILE_H_PX * 2)
-static unsigned char bg_tile[BG_TILE_SIZE];
+#define BG_TILE_CYCLES 4
+static unsigned char bg_tile[BG_TILE_CYCLES * BG_TILE_SIZE];
 
 /* Bat + on-bat ball composite: 5 bytes wide x 19 rows = 95 B (40 x 19
  * px). Captures the bat, the ball resting on it, AND the bat's shadow
@@ -428,16 +436,6 @@ static int load_levels(const char *path) {
     FILE *f = fopen(path, "rb");
     if (!f) return -1;
     if (fread(levels, 1, sizeof(levels), f) != sizeof(levels)) {
-        fclose(f); return -2;
-    }
-    fclose(f);
-    return 0;
-}
-
-static int load_sprite_cache(const char *path) {
-    FILE *f = fopen(path, "rb");
-    if (!f) return -1;
-    if (fread(sprite_cache, 1, sizeof(sprite_cache), f) != sizeof(sprite_cache)) {
         fclose(f); return -2;
     }
     fclose(f);
@@ -513,11 +511,14 @@ static unsigned char paper_pal(unsigned char attr) {
 }
 
 /* Paint a strip of pixels with per-char-cell ink/paper. `pixels` is
- * `cols_bytes` bytes wide and `rows_px` rows tall. `attrs` is
- * `cols_bytes` x ceil(rows_px / 8) char-rows. The strip is drawn at
- * playfield-relative (x0_px, y0_px). */
+ * `cols_bytes` bytes wide and `rows_px` rows tall (row-major). `attrs`
+ * is also indexed [char_row][char_col] but its row stride is
+ * `attr_stride` (in bytes), which can differ from `cols_bytes` when
+ * the attr source is a wider 2D buffer (e.g. the 32-col-wide
+ * level_attrs band sliced down to a 3-col side strip). The strip is
+ * drawn at playfield-relative (x0_px, y0_px). */
 static void paint_strip(const unsigned char *pixels,
-                        const unsigned char *attrs,
+                        const unsigned char *attrs, int attr_stride,
                         int cols_bytes, int rows_px,
                         int x0_px, int y0_px) {
     int char_row, char_col, pix_row, bit;
@@ -525,7 +526,7 @@ static void paint_strip(const unsigned char *pixels,
     int char_rows = rows_px / 8;
     for (char_row = 0; char_row < char_rows; char_row++) {
         for (char_col = 0; char_col < cols_bytes; char_col++) {
-            attr  = attrs[char_row * cols_bytes + char_col];
+            attr  = attrs[char_row * attr_stride + char_col];
             ink   = ink_pal(attr);
             paper = paper_pal(attr);
             for (pix_row = 0; pix_row < 8; pix_row++) {
@@ -541,19 +542,23 @@ static void paint_strip(const unsigned char *pixels,
     }
 }
 
-/* Paint the perimeter frame (top + left + right strips). Painted
- * LAST so it overlays whatever bg/bricks/bat painted earlier. */
-static void render_frame(void) {
+/* Paint the perimeter frame using L1's pixel bits (the ornament
+ * shape is level-invariant; HUD score digits do drift across our
+ * patched-capture GTs but L1's "0/100k/0" matches a fresh start
+ * anywhere) with PER-LEVEL attrs sourced from level_attrs. The
+ * attrs colour the cyan ornament, the bg shadow band, and the
+ * HUD digits correctly per level. */
+static void render_frame(unsigned char level_idx) {
     const unsigned char *top_px    = frame_l1;
-    const unsigned char *top_attr  = top_px    + FRAME_TOP_PX;
-    const unsigned char *left_px   = top_attr  + FRAME_TOP_ATTRS;
-    const unsigned char *left_attr = left_px   + FRAME_SIDE_PX;
-    const unsigned char *right_px  = left_attr + FRAME_SIDE_ATTRS;
-    const unsigned char *right_attr= right_px  + FRAME_SIDE_PX;
-    paint_strip(top_px,   top_attr,   32, 16, 0, 0);
-    paint_strip(left_px,  left_attr,  FRAME_SIDE_W, 176, 0, 16);
-    paint_strip(right_px, right_attr, FRAME_SIDE_W, 176,
-                (32 - FRAME_SIDE_W) * 8, 16);
+    const unsigned char *left_px   = top_px  + FRAME_TOP_PX  + FRAME_TOP_ATTRS;
+    const unsigned char *right_px  = left_px + FRAME_SIDE_PX + FRAME_SIDE_ATTRS;
+    const unsigned char *lattr = level_attrs + (unsigned int)level_idx * ATTR_BAND_SIZE;
+    int right_col = 32 - FRAME_SIDE_W;
+    paint_strip(top_px,   lattr,                      32, 32, 16,             0,  0);
+    paint_strip(left_px,  lattr + 2 * ATTR_COLS,      32,
+                FRAME_SIDE_W, 176, 0, 16);
+    paint_strip(right_px, lattr + 2 * ATTR_COLS + right_col, 32,
+                FRAME_SIDE_W, 176, right_col * 8, 16);
 }
 
 /* Paint a width-bytes x height-px raw-pixel block at (x_px, y_px)
@@ -615,7 +620,10 @@ static void render_brick_field(unsigned char level_idx) {
     bm_base   = (unsigned int)level_idx * (LVL_CELLS * 16);
     for (r = 0; r < LVL_ROWS; r++) {
         for (c = 0; c < LVL_COLS; c++) {
-            attr  = level_attrs[attr_base + r * ATTR_COLS + 1 + c * 2];
+            /* attr-row index = brick-row + BRICK_ATTR_ROW_BASE (HUD rows
+             * 0..1 live before the brick zone in the 24-row band). */
+            attr  = level_attrs[attr_base + (r + BRICK_ATTR_ROW_BASE) * ATTR_COLS
+                                + 1 + c * 2];
             ink   = ink_pal(attr);
             paper = paper_pal(attr);
             x = BORDER_X + BRICK_FIELD_X + c * BRICK_W_PX;
@@ -627,19 +635,20 @@ static void render_brick_field(unsigned char level_idx) {
 }
 
 /* Tile the 16x16 hex pattern across the full 256x192 playfield,
- * using `attr`'s ink for set bits and paper for clear bits. Painted
- * BEFORE the bricks so the bricks overwrite the pattern in their
- * 16x8 cells. */
-static void paint_hex_bg(unsigned char attr) {
+ * using `attr`'s ink for set bits and paper for clear bits. Tile
+ * pattern picked from `cycle` (0..3 = yellow/green/cyan/white).
+ * Painted BEFORE the bricks so the bricks overwrite the pattern in
+ * their 16x8 cells. */
+static void paint_hex_bg(unsigned char attr, unsigned char cycle) {
     unsigned char ink   = ink_pal(attr);
     unsigned char paper = paper_pal(attr);
+    const unsigned char *tile = bg_tile + (int)cycle * BG_TILE_SIZE;
     int x, y, tx, ty, byte_col, bit;
     unsigned char b;
     for (y = 0; y < PLAYFIELD_H; y++) {
         ty = y & 15;
         for (byte_col = 0; byte_col < PLAYFIELD_W / 8; byte_col++) {
-            /* Source byte: tile row ty, byte_col mod 2 (= 16-px h period). */
-            b = bg_tile[ty * 2 + (byte_col & 1)];
+            b = tile[ty * 2 + (byte_col & 1)];
             tx = byte_col * 8;
             for (bit = 0; bit < 8; bit++) {
                 x = tx + bit;
@@ -652,17 +661,19 @@ static void paint_hex_bg(unsigned char attr) {
 
 static void render_level_screen(unsigned char level_idx) {
     /* Per-level background attribute: cols 0 / 1 carry side-edge
-     * stripes; the bulk bg starts at col 2. Sample (row 0, col 14) —
-     * deep inside the brick band, where the attr is reliably the
-     * level's bg colour. */
-    unsigned char bg_attr = level_attrs[(int)level_idx * ATTR_BAND_SIZE + 14];
+     * stripes; the bulk bg starts at col 2. Sample the brick-zone
+     * top row (= attr-row 2) at col 14 — deep inside the brick band,
+     * where the attr is reliably the level's bg colour. */
+    unsigned char bg_attr = level_attrs[(int)level_idx * ATTR_BAND_SIZE
+                                        + BRICK_ATTR_ROW_BASE * ATTR_COLS + 14];
+    unsigned char cycle   = (unsigned char)(level_idx & 3);
     fill(0, 0, SCREEN_W, SCREEN_H, COL_BORDER);
     draw_frame(10);              /* bright red — placeholder */
-    paint_hex_bg(bg_attr);
+    paint_hex_bg(bg_attr, cycle);
     render_brick_field(level_idx);
     render_bat(bg_attr);
     render_lives(bg_attr);
-    render_frame();
+    render_frame(level_idx);
 }
 
 
@@ -892,7 +903,6 @@ int main(void) {
         load_indicator("INDICAT.BIN") != 0 ||
         load_bottom_sprites("BOTSPR.BIN") != 0 ||
         load_levels("LEVELS.BIN") != 0 ||
-        load_sprite_cache("CACHE.BIN") != 0 ||
         load_level_attrs("LVLATTR.BIN") != 0 ||
         load_bg_tile("BGTILE.BIN") != 0 ||
         load_bat("BATL1.BIN") != 0 ||

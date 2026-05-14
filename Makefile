@@ -36,7 +36,7 @@ EXE     = build/batty.exe
 ASSETS  = assets/loading.bin assets/hi_score.bin assets/main_menu.bin \
           assets/font.bin assets/markup.bin assets/main_menu_markup.bin \
           assets/indicator.bin assets/bottom_sprites.bin \
-          assets/levels.bin assets/sprite_cache.bin assets/level_attrs.bin \
+          assets/levels.bin assets/level_attrs.bin \
           assets/bg_tile.bin assets/bat_l1.bin assets/frame_l1.bin \
           assets/brick_bitmaps.bin assets/lives_l1.bin
 HISCORE_SNAP      ?= build/snapshots/20260513T202038Z/screen.scr
@@ -118,15 +118,6 @@ assets/levels.bin: original/blocks/03_DATA_headless.dat.bin
 		Path('$@').write_bytes(Path('$<').read_bytes()[0x6CDB-0x6800 : 0x7766-0x6800+1])"
 	@echo "wrote $@ ($$(wc -c < $@) bytes)"
 
-# Gameplay sprite cache: 3584 B at RAM 0xE400..0xF1FF from snap3
-# (level 1, just started). Holds the 8 brick base sprites plus
-# pre-shifted variants and bat/ball/HUD chunks. Cache slots are
-# indexed directly by cell-value (`cell * 16`) per notes/levels.md.
-assets/sprite_cache.bin: $(LEVEL1_SNAP_RAM)
-	@python3 -c "from pathlib import Path; \
-		Path('$@').write_bytes(Path('$<').read_bytes()[0xE400-0x4000 : 0xF200-0x4000])"
-	@echo "wrote $@ ($$(wc -c < $@) bytes)"
-
 # Per-level brick attribute bands extracted from the GT captures.
 # 15 levels x 12 char rows x 32 cols = 5760 B. Char rows 2..13 cover
 # the brick field; we ship the full 12 rows so the C lookup stays
@@ -203,7 +194,6 @@ $(FLOPPY_OUT): $(EXE) $(ASSETS) $(FLOPPY_SRC)
 	mcopy -i $@ -o assets/indicator.bin ::INDICAT.BIN
 	mcopy -i $@ -o assets/bottom_sprites.bin ::BOTSPR.BIN
 	mcopy -i $@ -o assets/levels.bin ::LEVELS.BIN
-	mcopy -i $@ -o assets/sprite_cache.bin ::CACHE.BIN
 	mcopy -i $@ -o assets/level_attrs.bin ::LVLATTR.BIN
 	mcopy -i $@ -o assets/bg_tile.bin ::BGTILE.BIN
 	mcopy -i $@ -o assets/bat_l1.bin ::BATL1.BIN
@@ -226,7 +216,6 @@ $(TEST_FLOPPY_OUT): $(EXE) $(ASSETS) $(FLOPPY_SRC)
 	mcopy -i $@ -o assets/indicator.bin ::INDICAT.BIN
 	mcopy -i $@ -o assets/bottom_sprites.bin ::BOTSPR.BIN
 	mcopy -i $@ -o assets/levels.bin ::LEVELS.BIN
-	mcopy -i $@ -o assets/sprite_cache.bin ::CACHE.BIN
 	mcopy -i $@ -o assets/level_attrs.bin ::LVLATTR.BIN
 	mcopy -i $@ -o assets/bg_tile.bin ::BGTILE.BIN
 	mcopy -i $@ -o assets/bat_l1.bin ::BATL1.BIN
