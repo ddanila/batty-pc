@@ -32,13 +32,30 @@ lock it in as a pixel-identical regression test. Same pattern
 
 ## Current checkpoints
 
-| State | Source     | Expected snapshot          | Notes                              |
-|-------|------------|----------------------------|------------------------------------|
-| 1     | `HISCORE.BIN` static blit  | `20260513T202038Z`  | The bitmap decoded from the snapshot itself — sanity baseline. |
-| 2     | C markup renderer           | `20260513T202038Z`  | Programmatic re-render. The real test of the toolchain. |
-| 3     | `MAINMENU.BIN` static blit  | `20260513T202041Z`  | Snap2 (main menu). |
+The test exercises the full attract-mode flow (TITLE → MENU → HISCORE)
+on the `batty-test.img` floppy, which sets `BATTYALL=1` in AUTOEXEC so
+the C side disables auto-advance — every transition is driven by
+`sendkey ret` from the Python harness.
 
-All three pass pixel-identical (49 152 px each).
+| State | Renderer in C            | Expected snapshot                  | Notes                                                                       |
+|-------|--------------------------|------------------------------------|-----------------------------------------------------------------------------|
+| 1     | `LOADING.BIN` static blit | `original/Batty.scr`              | Title / loading screen, decoded from the tape's screen$ block.              |
+| 2     | Markup + sprites + blink   | `20260513T202041Z` (snap2)        | Main menu rendered from `MENUMARK.BIN` + indicators + bottom sprites.       |
+| 3     | Markup hi-score            | `20260513T202038Z` (snap1)        | Hi-score table rendered from `MARKUP.BIN`.                                  |
+
+All three currently pass pixel-identical (49 152 px each).
+
+### Determinism for the menu checkpoint
+
+The menu has an active blink: by default `selected_mode = 1` (= "1 -
+1 PLAYER") and that line strobes white ↔ invisible at ~4.5 Hz. snap2
+was captured during the BLACK half (selected row's 11 attr cells at
+`0x58AE..0x58B8` are all `0x00`).
+
+To keep the test pixel-identical regardless of capture timing, the C
+helper `blink_phase()` pins the phase to 0 (BLACK) when `auto_advance`
+is off (= the test mode signalled by `BATTYALL`). `make run`'s floppy
+leaves `BATTYALL` unset and the user sees the natural blink.
 
 ## What the test does *not* yet cover
 

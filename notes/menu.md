@@ -119,8 +119,74 @@ redraw routine) — pressing A or B just patches the one option label
 on screen, not a full menu redraw.
 
 All three current snapshots have these bytes = 0 (KEYBOARD/default),
-so neither has yet exercised the dynamic transition. A future
+so neither has yet exercised the A/B transition. A future
 "after-A-press" snapshot would confirm.
+
+## Selected-option blink — `sub_961c` at `0x961C`
+
+Pressing 1 / 2 / 3 selects a play mode; the selected option's text
+portion blinks white ↔ invisible. The mechanism is a per-frame
+attribute-area rewrite (no hardware FLASH bit involved):
+
+- `sub_961c` writes **11 attribute bytes** to the screen attribute area
+  for the currently selected option's row, covering cols 14..24
+  (= text after the "N - " prefix at cols 10..13). 11 cells is fixed
+  width — wider than "1 PLAYER" / "2 PLAYERS", just enough to span
+  "DOUBLE PLAY".
+- The value comes from a 16-entry table at `0x9643`:
+  `{0x00 ×8, 0x47 ×8}`. 8 phases of attr `0x00` (black ink on black
+  paper = invisible) then 8 phases of attr `0x47` (bright white).
+- Phase advances when `(frame_counter & 0x1F) == 0` — every 32 menu
+  frames.
+- The default green from the markup attr is **overwritten every frame**
+  for the selected row; you never actually see green on a selected
+  option.
+
+### Boot default
+
+`(0xB7E5) = 0` at menu entry, which maps to mode "1 PLAYER" in the
+dispatch at `0x9494`. So the menu enters with "1 - 1 PLAYER" already
+selected and blinking, before any key is pressed.
+
+snap2 corroborates: row 5 (= "1 - 1 PLAYER", `Y=0x2F`) text cells
+(`0x58AE..0x58B8`) are all `0x00`, captured during the BLACK half of
+that initial blink. The "1 - " prefix at cols 10..13 keeps its markup
+attr `0x44` (bright green) — `sub_961c` doesn't touch the prefix.
+
+### Attribute-area layout, verified against snap2
+
+For the three option rows in snap2 (cols 10..24):
+
+| char_row | Content       | Y       | cells 10..13 | cells 14..24                 |
+|----------|---------------|---------|--------------|------------------------------|
+| 5        | 1 PLAYER      | 0x2F=47 | 0x44 (green) | 0x00 (BLACK blink half)       |
+| 7        | 2 PLAYERS     | 0x3F=63 | 0x44 (green) | 0x44 (cols 14..22), 0x47 elsewhere |
+| 9        | DOUBLE PLAY   | 0x4F=79 | 0x44 (green) | 0x44 (green)                  |
+
+Char-row from `Y/8`. Gap rows 6 & 8 sit at 0x47 (white) but contain
+no pixel bits, so they render as black paper — irrelevant to the
+visible diff. The white attrs beyond text on row 7 (cols 23..24) are
+likewise off-text and invisible.
+
+Conclusion: nothing in snap2's attribute area contradicts the
+"selected row blinks via `sub_961c`, everything else uses markup
+attr" model. There's no separate "highlight neighbour" path.
+
+## C-side blink implementation
+
+`apply_option_blink` in `src/main.c` mirrors the original:
+
+- Always blacks out 11 cells × `FONT_ROWS` px at cols 14..24 of the
+  selected row (= erases the green pixels `render_markup` just painted).
+- On the WHITE phase, redraws the glyphs from payload index 4+ in
+  palette index 15 (bright white).
+- `blink_phase()` returns `(bios_ticks >> 1) & 1` in `make run` mode
+  (~4.5 Hz half-period) and is **pinned to 0 (BLACK) in test mode**
+  so screendumps deterministically reproduce snap2's BLACK-phase
+  capture (see `notes/testing.md`).
+
+`run_menu`'s polling loop re-renders the menu whenever `blink_phase()`
+flips, so the visible white half actually appears.
 
 ## Unresolved
 
