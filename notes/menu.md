@@ -80,6 +80,28 @@ the snapshots happened to be at idle (default 0).
 | `sub_b796h`   | text renderer — walks markup buffer          |
 | `sub_b61ch`   | live-state → render-buffer composer          |
 
+## Player-indicator overlay (drawn outside the markup buffer)
+
+After rendering the menu from the markup buffer (records 0x9571..0x961F),
+two ~6×8-px glyph clusters remain unrendered when comparing to snap2:
+
+- **playfield y=18..23**: non-bright white (`224,224,224`) glyph runs
+  starting at `x≈16` (col 2). 8 cells worth of text.
+- **playfield y=100..105**: bright white (`255,255,255`) glyph runs
+  starting at `x≈40` (col 5). Right at the **KEYBOARD** row.
+
+Neither y is matched by any record in `0x9000..0x9700`. These pixels
+are painted by **`sub_b5f8h`** (the redraw helper the A/B handlers
+call) directly to VRAM — *not* through the markup pipeline. That's
+the **player-1 / player-2 indicator overlay**: digits or markers
+showing which input device each player currently has selected.
+
+When implementing in C:
+- The overlay needs its own draw path (separate from `render_markup`).
+- Position is per-player and per-current-state-byte.
+- For the snap2 default (both players = KEYBOARD), the indicators
+  cluster at the KEYBOARD row (y=100..105).
+
 ## Input-device state bytes (verified from disassembly)
 
 A and B keys cycle each player's input device through 4 options
