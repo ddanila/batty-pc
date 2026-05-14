@@ -86,14 +86,15 @@ assets/main_menu.bin: $(MAINMENU_SNAP) scripts/extract_scr.py
 assets/font.bin: original/blocks/03_DATA_headless.dat.bin scripts/extract_font.py
 	python3 scripts/extract_font.py
 
-# Main-menu markup: snap2 RAM 0x9581..0x961F (~159 B). Skip the
-# leading "1 - 1 PLAYER" record (0x9571..0x9580, 16 B) — the original
-# doesn't display it on the static menu screen (only 3 of 4 player-
-# count options are shown). Likely state-conditional; revisit once
-# the menu state byte and render dispatch are decoded.
+# Main-menu markup: snap2 RAM 0x954D..0x9613 (199 B). Includes the
+# "1 UP"/"2 UP" titles and "000000" score displays as proper markup
+# records (cols 2/3/24/25, attr 0x07 = non-bright white).
+# End is *exactly* the last record's last byte — any trailing bytes
+# can contain spurious multiple-of-8 values that the parser would
+# misread as new records.
 assets/main_menu_markup.bin: $(MAINMENU_SNAP_RAM)
 	@python3 -c "from pathlib import Path; \
-		Path('$@').write_bytes(Path('$<').read_bytes()[0x9581-0x4000 : 0x9620-0x4000])"
+		Path('$@').write_bytes(Path('$<').read_bytes()[0x954D-0x4000 : 0x9614-0x4000])"
 	@echo "wrote $@ ($$(wc -c < $@) bytes)"
 
 # Player indicators: 32x16px each. P1 at blob 0x92C1, P2 at 0x9303

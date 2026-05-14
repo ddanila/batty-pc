@@ -167,9 +167,10 @@ static int load_markup(const char *path) {
  * And `marker / 8` is the X column in cells (0x30→6, 0x68→13).
  * One record-walker handles them all. */
 static int is_row_marker(unsigned char b) {
-    /* 0x28 (col 5, COPYRIGHT) .. 0x70 (col 14, BATTY title), all
-     * multiples of 8. col = b / 8. */
-    return (b & 7) == 0 && b >= 0x28 && b < 0x78;
+    /* Any non-zero multiple of 8 — col = b / 8. Observed markers
+     * span col 2 (0x10, "000000" P1 score) through col 25 (0xC8,
+     * "2 UP" label). Zero is filtered out so it's never a marker. */
+    return b != 0 && (b & 7) == 0;
 }
 
 /* Record: marker | Y | attr | count | count payload bytes.
@@ -294,54 +295,11 @@ static void draw_player_indicators(void) {
     draw_indicator(ind_p2, BORDER_X + IND_P2_X, p2_y, 15);
 }
 
-/* Six "0" digits at the top of the menu for each player's current
- * score. Not in the markup buffer — painted directly to VRAM by the
- * original (same direct-paint mechanism as the indicators). Non-bright
- * white = palette 7. P1 at cols 2..7, P2 at cols 24..29, both at
- * playfield y=18..23. */
-static unsigned int p1_score = 0;
-static unsigned int p2_score = 0;
-
-static void draw_score_at(int col, unsigned int score) {
-    int x = BORDER_X + col * 8;
-    int y = BORDER_Y + 18;
-    int i;
-    unsigned char digits[6];
-    for (i = 5; i >= 0; i--) {
-        digits[i] = (unsigned char)(score % 10);
-        score /= 10;
-    }
-    for (i = 0; i < 6; i++) {
-        draw_glyph(x + i * 8, y, 7, digits[i]);
-    }
-}
-
-static void draw_scores(void) {
-    draw_score_at(2,  p1_score);
-    draw_score_at(24, p2_score);
-}
-
-/* "1UP" / "2UP" titles above each player's score, in non-bright white
- * (attr 0x07 = palette index 7). Char_row 1, glyph_top at playfield
- * y=10 -> VGA y=14. Cols 3, 5, 6 for P1 (col 4 stays blank); cols
- * 25, 27, 28 for P2. */
-static void draw_player_titles(void) {
-    int y = BORDER_Y + 10;
-    /* '1' = 1, '2' = 2, 'U' = 0x1E, 'P' = 0x19 */
-    draw_glyph(BORDER_X +  3 * 8, y, 7, 1);    /* 1 */
-    draw_glyph(BORDER_X +  5 * 8, y, 7, 0x1E); /* U */
-    draw_glyph(BORDER_X +  6 * 8, y, 7, 0x19); /* P */
-    draw_glyph(BORDER_X + 25 * 8, y, 7, 2);    /* 2 */
-    draw_glyph(BORDER_X + 27 * 8, y, 7, 0x1E); /* U */
-    draw_glyph(BORDER_X + 28 * 8, y, 7, 0x19); /* P */
-}
 
 static void render_menu_screen(void) {
     fill(0, 0, SCREEN_W, SCREEN_H, COL_BORDER);
     draw_frame(11);              /* bright magenta */
     render_markup();
-    draw_player_titles();
-    draw_scores();
     draw_player_indicators();
 }
 
