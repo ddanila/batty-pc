@@ -32,9 +32,10 @@ BRICK_X0, BRICK_Y0 = 8, 16                        # playfield-relative
 ATTR_BASE = 6144
 
 
-def cell_attr(scr_bytes, r, c):
-    # Brick at grid (r, c) -> char-row 2+r, char-col 1+c*2 (left half).
-    return scr_bytes[ATTR_BASE + (2 + r) * 32 + (1 + c * 2)]
+def half_attr(scr_bytes, r, c, half):
+    # Brick at grid (r, c) spans char-cols (1+c*2) and (1+c*2+1).
+    # half=0 -> left, half=1 -> right.
+    return scr_bytes[ATTR_BASE + (2 + r) * 32 + (1 + c * 2 + half)]
 
 
 def paper_idx(attr):
@@ -49,9 +50,13 @@ def main():
         idx = decode(scr)
         for r in range(ROWS):
             for c in range(COLS):
-                paper = paper_idx(cell_attr(scr, r, c))
+                # Each 8-pixel byte_col of the brick has its own attribute
+                # (and thus its own paper colour). Decode each byte using
+                # its own half-attr's paper so the resulting bitmap is the
+                # pure "ink-or-not" mask the original would composite.
                 for dy in range(CELL_H_PX):
                     for byte_col in range(CELL_W_PX // 8):
+                        paper = paper_idx(half_attr(scr, r, c, byte_col))
                         b = 0
                         for bit in range(8):
                             px = idx[(BRICK_Y0 + r * CELL_H_PX + dy) * 256 +

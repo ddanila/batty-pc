@@ -592,15 +592,20 @@ static void render_lives(unsigned char attr) {
                 LIVES_X_PX, LIVES_Y_PX, attr);
 }
 
-/* Blit one 16-byte (16x8) brick bitmap to VGA at (x, y). Bit=1 -> ink,
- * bit=0 -> paper. */
+/* Blit one 16-byte (16x8) brick bitmap to VGA at (x, y). Each 8-pixel
+ * half uses its own (ink, paper) since the ZX attribute area maps
+ * one attr per 8-px char cell and a brick spans TWO of them. */
 static void draw_brick_bitmap(int x, int y, const unsigned char *bm,
-                              unsigned char ink, unsigned char paper) {
-    int row, byte_col, bit;
-    unsigned char b;
+                              unsigned char ink_l, unsigned char paper_l,
+                              unsigned char ink_r, unsigned char paper_r) {
+    int row, bit;
+    unsigned char b, ink, paper;
+    int byte_col;
     for (row = 0; row < BRICK_H_PX; row++) {
         for (byte_col = 0; byte_col < 2; byte_col++) {
             b = bm[row * 2 + byte_col];
+            ink   = byte_col ? ink_r   : ink_l;
+            paper = byte_col ? paper_r : paper_l;
             for (bit = 0; bit < 8; bit++) {
                 vga[(long)(y + row) * SCREEN_W + x + byte_col * 8 + bit] =
                     (b & (0x80 >> bit)) ? ink : paper;
@@ -612,7 +617,7 @@ static void draw_brick_bitmap(int x, int y, const unsigned char *bm,
 static void render_brick_field(unsigned char level_idx) {
     int r, c, attr_base, x, y;
     unsigned int bm_base, bm_off;
-    unsigned char attr, ink, paper;
+    unsigned char attr_l, attr_r;
     if (level_idx >= N_LEVELS) return;
     attr_base = (int)level_idx * ATTR_BAND_SIZE;
     /* 14 * (180*16) = 40320 — needs unsigned to avoid 16-bit signed-int
@@ -620,16 +625,19 @@ static void render_brick_field(unsigned char level_idx) {
     bm_base   = (unsigned int)level_idx * (LVL_CELLS * 16);
     for (r = 0; r < LVL_ROWS; r++) {
         for (c = 0; c < LVL_COLS; c++) {
-            /* attr-row index = brick-row + BRICK_ATTR_ROW_BASE (HUD rows
-             * 0..1 live before the brick zone in the 24-row band). */
-            attr  = level_attrs[attr_base + (r + BRICK_ATTR_ROW_BASE) * ATTR_COLS
-                                + 1 + c * 2];
-            ink   = ink_pal(attr);
-            paper = paper_pal(attr);
+            /* Two attrs per brick — the 8-pixel halves can have
+             * different ink/paper (especially at letters/colour
+             * boundaries like L15's "ELITE"). */
+            attr_l = level_attrs[attr_base + (r + BRICK_ATTR_ROW_BASE) * ATTR_COLS
+                                 + 1 + c * 2];
+            attr_r = level_attrs[attr_base + (r + BRICK_ATTR_ROW_BASE) * ATTR_COLS
+                                 + 1 + c * 2 + 1];
             x = BORDER_X + BRICK_FIELD_X + c * BRICK_W_PX;
             y = BORDER_Y + BRICK_FIELD_Y + r * BRICK_H_PX;
             bm_off = bm_base + (unsigned int)(r * LVL_COLS + c) * 16u;
-            draw_brick_bitmap(x, y, brick_bitmaps + bm_off, ink, paper);
+            draw_brick_bitmap(x, y, brick_bitmaps + bm_off,
+                              ink_pal(attr_l), paper_pal(attr_l),
+                              ink_pal(attr_r), paper_pal(attr_r));
         }
     }
 }
