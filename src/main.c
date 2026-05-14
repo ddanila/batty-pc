@@ -470,9 +470,12 @@ static state_t run_menu(void) {
             /* 0 / ENTER / other — would start a game; advance for now. */
             return ST_HISCORE;
         }
-        /* Re-render only when blink phase actually flips. */
+        /* Re-render when blink phase flips. Uses the SAME shift as
+         * apply_option_blink so we always render at the right phase
+         * (was a bug: mismatched shifts meant we only ever caught the
+         * green phase and the white half was invisible). */
         if (selected_mode != 0) {
-            int phase = (int)((bios_ticks() >> 2) & 1);
+            int phase = (int)((bios_ticks() >> 1) & 1);
             if (phase != last_blink_phase) {
                 render_menu_screen();
                 last_blink_phase = phase;
