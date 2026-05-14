@@ -348,35 +348,44 @@ static int option_y_pix_for_mode(unsigned char mode) {
     }
 }
 
-/* Re-render the selected option's TEXT portion (= payload indices 4+,
- * skipping the "N - " prefix) in bright white during half the blink
- * cycle. The original's mechanism (sub_961c at 0x961C) writes an
- * attribute-byte table to 11 cells of the screen attribute area,
- * cycling 8 black phases + 8 white phases at the menu's per-frame
- * rate. We emulate the *visual* (green ↔ white alternation on the
- * text portion only) with a simple two-phase software override —
- * the markup re-paints green every frame from render_markup, and on
- * the WHITE phase here we overwrite the green pixel bits with white. */
+/* Selected option's TEXT portion (payload indices 4+, after "N - ")
+ * strobes WHITE ↔ INVISIBLE. Original mechanism (sub_961c at 0x961C):
+ * always writes one of 11 attribute bytes to screen-attr area 0x5800+
+ * for the option's row, picked from the 16-entry table at 0x9643 =
+ * {0x00 ×8, 0x47 ×8}. Half the cycle the cells are attr=0x00 (black
+ * ink on black paper = invisible), the other half attr=0x47 (bright
+ * white). The default green from the markup attr is OVERWRITTEN every
+ * frame — never visible.
+ *
+ * We emulate that on VGA: always black-out the text cells (= erase
+ * the green pixels the markup just drew); on the WHITE phase also
+ * re-draw the glyphs in bright white. */
 static void apply_option_blink(void) {
     int y_pix = option_y_pix_for_mode(selected_mode);
-    int y, p, i, count;
+    int y, p, i, count, x_text, text_cells, phase;
     unsigned char marker, c;
     if (y_pix < 0) return;
-    if (((bios_ticks() >> 1) & 1) == 0) return;   /* green half: leave as-is */
+    phase = (int)((bios_ticks() >> 1) & 1);         /* ~4.5 Hz half-period */
     p = 0;
     while (p < markup_len) {
         if (!is_row_marker(markup[p])) { p++; continue; }
         if (markup[p + 1] != (unsigned char)y_pix) {
             p += 4 + markup[p + 3]; continue;
         }
-        marker = markup[p];
-        count  = markup[p + 3];
-        y      = BORDER_Y + y_pix - 5;
-        for (i = 4; i < count; i++) {                /* skip "N - " prefix */
-            c = markup[p + 4 + i];
-            if (c != 0x26 && c <= 0x2A) {
-                int gx = BORDER_X + (int)(marker / 8) * 8 + i * 8;
-                draw_glyph(gx, y, 15, c);            /* overwrite green w/ bright white */
+        marker     = markup[p];
+        count      = markup[p + 3];
+        text_cells = count - 4;                     /* skip "N - " prefix (4 chars) */
+        x_text     = BORDER_X + (int)(marker / 8) * 8 + 4 * 8;
+        y          = BORDER_Y + y_pix - 5;
+        /* Erase the green pixels the markup just painted. */
+        fill(x_text, y, text_cells * 8, FONT_ROWS, 0);
+        /* WHITE phase: redraw glyphs from index 4+ in bright white. */
+        if (phase) {
+            for (i = 4; i < count; i++) {
+                c = markup[p + 4 + i];
+                if (c != 0x26 && c <= 0x2A) {
+                    draw_glyph(x_text + (i - 4) * 8, y, 15, c);
+                }
             }
         }
         return;
