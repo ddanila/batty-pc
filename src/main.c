@@ -295,11 +295,12 @@ static void draw_player_indicators(void) {
     draw_indicator(ind_p2, BORDER_X + IND_P2_X, p2_y, 15);
 }
 
-/* Bottom-row decorative sprites at char_row 7: 32×5 px each, in bright
- * white. Sources from blob 0x93AE (left, char_row 7 cols 3..6) and
- * 0x93E4 (right, cols 25..28). Stored bottom-to-top, 20 B each. */
+/* Bottom decorative sprite + arrow combined: 32×13 px each, bright
+ * white. Sources from blob 0x938E (P1) and 0x93C4 (P2), 52 B each
+ * stored bottom-to-top. The 13-row visual is: 5 rows of decorative
+ * sprite, 2 blank rows, 6 rows of small downward arrow. */
 #define BOTSPR_W_BYTES 4
-#define BOTSPR_H       5
+#define BOTSPR_H       13
 static unsigned char bot_p1[BOTSPR_W_BYTES * BOTSPR_H];
 static unsigned char bot_p2[BOTSPR_W_BYTES * BOTSPR_H];
 

@@ -105,14 +105,19 @@ assets/indicator.bin: original/blocks/03_DATA_headless.dat.bin
 		Path('$@').write_bytes(Path('$<').read_bytes()[0x92C1-0x6800 : 0x92C1-0x6800+132])"
 	@echo "wrote $@ ($$(wc -c < $@) bytes)"
 
-# Bottom decorative sprites: 32x5 each, bright white, painted at
-# char_row 7 cols 3..6 (P1, blob 0x93AE) and cols 25..28 (P2, blob
-# 0x93E4). 20 bytes each, stored bottom-to-top (the original's
-# sub_b5f8h paints upward, decrementing H in VRAM). Bundled as 40 B.
+# Bottom decorative sprite + arrow combined: 32x13 each (4 bytes
+# width × 13 rows) stored bottom-to-top per sub_b5f8h's convention.
+# Source: blob 0x938E (P1) and 0x93C4 (P2). Each blob has a (w, h)
+# header at -2: 0x938C/0x93C2 = `04 0D`. We bundle just the bodies
+# (52 B each) and hardcode dimensions C-side. Visual layout
+# top-to-bottom:
+#   rows 0..4 :  decorative sprite (was our previous 20-B extraction)
+#   rows 5..6 :  blank gap
+#   rows 7..12:  small downward arrow
 assets/bottom_sprites.bin: original/blocks/03_DATA_headless.dat.bin
 	@python3 -c "from pathlib import Path; b=Path('$<').read_bytes(); \
-		Path('$@').write_bytes(b[0x93AE-0x6800:0x93AE-0x6800+20] + \
-		                        b[0x93E4-0x6800:0x93E4-0x6800+20])"
+		Path('$@').write_bytes(b[0x938E-0x6800:0x938E-0x6800+52] + \
+		                        b[0x93C4-0x6800:0x93C4-0x6800+52])"
 	@echo "wrote $@ ($$(wc -c < $@) bytes)"
 
 floppy: $(FLOPPY_OUT)
