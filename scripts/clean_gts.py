@@ -76,8 +76,8 @@ def main():
             continue
         ref = Path(f'build/level_gt/level_{primary_n:02d}.scr').read_bytes()
 
-        # 2) HUD strip (y=0..15) - copy pixel bytes from cycle primary
-        for py in range(0, 16):
+        # 2) HUD strip (y=0..23 = full 24-px HUD: ornament + labels + scores)
+        for py in range(0, 24):
             for bx in range(32):
                 off = zx_byte_off(py, bx)
                 if scr[off] != ref[off]:
@@ -88,8 +88,8 @@ def main():
                 off = zx_byte_off(py, bx)
                 if scr[off] != ref[off]:
                     scr[off] = ref[off]; changed += 1
-        # Side strips (cols 0..2 and 29..31) for y=16..175
-        for py in range(16, 176):
+        # Side strips (cols 0..2 and 29..31) for y=24..175
+        for py in range(24, 176):
             for bx in list(range(0, 3)) + list(range(29, 32)):
                 off = zx_byte_off(py, bx)
                 if scr[off] != ref[off]:

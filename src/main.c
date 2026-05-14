@@ -433,10 +433,13 @@ static unsigned char lives_l1[LIVES_CYCLES * LIVES_SIZE];
  *   right attrs : 3 cols x  22 rows =  66 B
  * Total: 1764 B. */
 #define FRAME_SIDE_W     3
-#define FRAME_TOP_PX     (32 * 16)
-#define FRAME_TOP_ATTRS  (32 * 2)
-#define FRAME_SIDE_PX    (FRAME_SIDE_W * 176)
-#define FRAME_SIDE_ATTRS (FRAME_SIDE_W * 22)
+#define FRAME_TOP_H_PX   24        /* HUD is 24 px tall: y=0..7 ornament,
+                                    * y=8..15 labels, y=16..23 scores */
+#define FRAME_SIDE_H_PX  168       /* y=24..191 below the HUD */
+#define FRAME_TOP_PX     (32 * FRAME_TOP_H_PX)
+#define FRAME_TOP_ATTRS  (32 * (FRAME_TOP_H_PX / 8))
+#define FRAME_SIDE_PX    (FRAME_SIDE_W * FRAME_SIDE_H_PX)
+#define FRAME_SIDE_ATTRS (FRAME_SIDE_W * (FRAME_SIDE_H_PX / 8))
 #define FRAME_SIZE  (FRAME_TOP_PX + FRAME_TOP_ATTRS + \
                      2 * (FRAME_SIDE_PX + FRAME_SIDE_ATTRS))
 #define FRAME_CYCLES 4
@@ -575,11 +578,14 @@ static void render_frame(unsigned char cycle, unsigned char level_idx) {
     const unsigned char *right_px = left_px + FRAME_SIDE_PX + FRAME_SIDE_ATTRS;
     const unsigned char *lattr = level_attrs + (unsigned int)level_idx * ATTR_BAND_SIZE;
     int right_col = 32 - FRAME_SIDE_W;
-    paint_strip(top_px,   lattr,                      32, 32, 16,             0,  0);
-    paint_strip(left_px,  lattr + 2 * ATTR_COLS,      32,
-                FRAME_SIDE_W, 176, 0, 16);
-    paint_strip(right_px, lattr + 2 * ATTR_COLS + right_col, 32,
-                FRAME_SIDE_W, 176, right_col * 8, 16);
+    paint_strip(top_px,   lattr, 32, 32, FRAME_TOP_H_PX,
+                0, 0);
+    paint_strip(left_px,  lattr + (FRAME_TOP_H_PX / 8) * ATTR_COLS, 32,
+                FRAME_SIDE_W, FRAME_SIDE_H_PX,
+                0, FRAME_TOP_H_PX);
+    paint_strip(right_px, lattr + (FRAME_TOP_H_PX / 8) * ATTR_COLS + right_col, 32,
+                FRAME_SIDE_W, FRAME_SIDE_H_PX,
+                right_col * 8, FRAME_TOP_H_PX);
 }
 
 /* Paint a width-bytes x height-px raw-pixel block at (x_px, y_px)

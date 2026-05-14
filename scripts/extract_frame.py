@@ -21,8 +21,9 @@ import sys
 from pathlib import Path
 
 ATTR_BASE = 6144
-TOP_ROWS_PX  = 16
-SIDE_ROWS_PX = 176
+TOP_ROWS_PX  = 24       # HUD: y=0..7 frame ornament + y=8..15 labels +
+                        # y=16..23 score digits.
+SIDE_ROWS_PX = 168      # y=24..191 (side frame below the HUD)
 SIDE_BYTES_W = 3
 # One representative level per cycle (yellow / green / cyan / white).
 CYCLES = ['build/level_gt/level_01.scr',
@@ -37,20 +38,27 @@ def zx_byte_off(py, byte_x):
 
 def extract_one(scr):
     buf = bytearray()
+    # Top strip: y=0..(TOP_ROWS_PX-1), all 32 cols
     for py in range(0, TOP_ROWS_PX):
         for bx in range(32):
             buf.append(scr[zx_byte_off(py, bx)])
-    buf += scr[ATTR_BASE : ATTR_BASE + 2 * 32]
-    for py in range(16, 16 + SIDE_ROWS_PX):
+    # Top attrs: char-rows 0..(TOP_ROWS_PX/8 - 1)
+    top_char_rows = TOP_ROWS_PX // 8
+    for cr in range(top_char_rows):
+        buf += scr[ATTR_BASE + cr * 32 : ATTR_BASE + cr * 32 + 32]
+    # Left strip: y=TOP_ROWS_PX..(TOP_ROWS_PX + SIDE_ROWS_PX - 1)
+    for py in range(TOP_ROWS_PX, TOP_ROWS_PX + SIDE_ROWS_PX):
         for bx in range(0, SIDE_BYTES_W):
             buf.append(scr[zx_byte_off(py, bx)])
-    for cr in range(2, 24):
+    side_char_rows = SIDE_ROWS_PX // 8
+    for cr in range(top_char_rows, top_char_rows + side_char_rows):
         buf += scr[ATTR_BASE + cr * 32 : ATTR_BASE + cr * 32 + SIDE_BYTES_W]
+    # Right strip
     right_start = 32 - SIDE_BYTES_W
-    for py in range(16, 16 + SIDE_ROWS_PX):
+    for py in range(TOP_ROWS_PX, TOP_ROWS_PX + SIDE_ROWS_PX):
         for bx in range(right_start, 32):
             buf.append(scr[zx_byte_off(py, bx)])
-    for cr in range(2, 24):
+    for cr in range(top_char_rows, top_char_rows + side_char_rows):
         buf += scr[ATTR_BASE + cr * 32 + right_start : ATTR_BASE + cr * 32 + 32]
     return bytes(buf)
 
