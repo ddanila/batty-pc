@@ -295,12 +295,55 @@ static void draw_player_indicators(void) {
     draw_indicator(ind_p2, BORDER_X + IND_P2_X, p2_y, 15);
 }
 
+/* Bottom-row decorative sprites at char_row 7: 32×5 px each, in bright
+ * white. Sources from blob 0x93AE (left, char_row 7 cols 3..6) and
+ * 0x93E4 (right, cols 25..28). Stored bottom-to-top, 20 B each. */
+#define BOTSPR_W_BYTES 4
+#define BOTSPR_H       5
+static unsigned char bot_p1[BOTSPR_W_BYTES * BOTSPR_H];
+static unsigned char bot_p2[BOTSPR_W_BYTES * BOTSPR_H];
+
+static int load_bottom_sprites(const char *path) {
+    FILE *f = fopen(path, "rb");
+    if (!f) return -1;
+    if (fread(bot_p1, 1, sizeof(bot_p1), f) != sizeof(bot_p1) ||
+        fread(bot_p2, 1, sizeof(bot_p2), f) != sizeof(bot_p2)) {
+        fclose(f); return -2;
+    }
+    fclose(f);
+    return 0;
+}
+
+static void draw_bottom_sprite(const unsigned char *bitmap, int x, int y_top,
+                                unsigned char colour) {
+    int r, c, b;
+    for (r = 0; r < BOTSPR_H; r++) {
+        /* bitmap stored bottom-to-top: source row 0 = visual row 4. */
+        int dst_y = y_top + (BOTSPR_H - 1 - r);
+        for (c = 0; c < BOTSPR_W_BYTES; c++) {
+            unsigned char byte = bitmap[r * BOTSPR_W_BYTES + c];
+            for (b = 0; b < 8; b++) {
+                if (byte & (0x80 >> b)) {
+                    vga[(long)dst_y * SCREEN_W + x + c * 8 + b] = colour;
+                }
+            }
+        }
+    }
+}
+
+static void draw_bottom_sprites(void) {
+    int y = BORDER_Y + 59;        /* playfield y=59 = top of glyph in char_row 7 */
+    draw_bottom_sprite(bot_p1, BORDER_X +  3 * 8, y, 15);
+    draw_bottom_sprite(bot_p2, BORDER_X + 25 * 8, y, 15);
+}
+
 
 static void render_menu_screen(void) {
     fill(0, 0, SCREEN_W, SCREEN_H, COL_BORDER);
     draw_frame(11);              /* bright magenta */
     render_markup();
     draw_player_indicators();
+    draw_bottom_sprites();
 }
 
 /* Interactive menu. Returns 1 if ESC pressed (exit BATTY), 0 if any
@@ -328,7 +371,9 @@ int main(void) {
     set_mode(0x13);
     set_palette(zx_palette, 16);
 
-    if (load_font("FONT.BIN") != 0 || load_indicator("INDICAT.BIN") != 0) {
+    if (load_font("FONT.BIN") != 0 ||
+        load_indicator("INDICAT.BIN") != 0 ||
+        load_bottom_sprites("BOTSPR.BIN") != 0) {
         fill(0, 0, SCREEN_W, SCREEN_H, 10 /* bright red */);
     }
 

@@ -35,7 +35,7 @@ EXE     = build/batty.exe
 
 ASSETS  = assets/loading.bin assets/hi_score.bin assets/main_menu.bin \
           assets/font.bin assets/markup.bin assets/main_menu_markup.bin \
-          assets/indicator.bin
+          assets/indicator.bin assets/bottom_sprites.bin
 HISCORE_SNAP      ?= build/snapshots/20260513T202038Z/screen.scr
 MAINMENU_SNAP     ?= build/snapshots/20260513T202041Z/screen.scr
 MAINMENU_SNAP_RAM ?= build/snapshots/20260513T202041Z/ram_4000_FFFF.bin
@@ -105,6 +105,16 @@ assets/indicator.bin: original/blocks/03_DATA_headless.dat.bin
 		Path('$@').write_bytes(Path('$<').read_bytes()[0x92C1-0x6800 : 0x92C1-0x6800+132])"
 	@echo "wrote $@ ($$(wc -c < $@) bytes)"
 
+# Bottom decorative sprites: 32x5 each, bright white, painted at
+# char_row 7 cols 3..6 (P1, blob 0x93AE) and cols 25..28 (P2, blob
+# 0x93E4). 20 bytes each, stored bottom-to-top (the original's
+# sub_b5f8h paints upward, decrementing H in VRAM). Bundled as 40 B.
+assets/bottom_sprites.bin: original/blocks/03_DATA_headless.dat.bin
+	@python3 -c "from pathlib import Path; b=Path('$<').read_bytes(); \
+		Path('$@').write_bytes(b[0x93AE-0x6800:0x93AE-0x6800+20] + \
+		                        b[0x93E4-0x6800:0x93E4-0x6800+20])"
+	@echo "wrote $@ ($$(wc -c < $@) bytes)"
+
 floppy: $(FLOPPY_OUT)
 
 # Both floppies ship the same EXE + assets; only AUTOEXEC.BAT differs.
@@ -118,6 +128,7 @@ $(FLOPPY_OUT): $(EXE) $(ASSETS) $(FLOPPY_SRC)
 	mcopy -i $@ -o assets/markup.bin   ::MARKUP.BIN
 	mcopy -i $@ -o assets/main_menu_markup.bin ::MENUMARK.BIN
 	mcopy -i $@ -o assets/indicator.bin ::INDICAT.BIN
+	mcopy -i $@ -o assets/bottom_sprites.bin ::BOTSPR.BIN
 	@printf '@ECHO OFF\r\nBATTY\r\n' > build/AUTOEXEC.BAT
 	mcopy -i $@ -o build/AUTOEXEC.BAT ::AUTOEXEC.BAT
 	@echo "Floppy ready: $@  (menu-only cycle)"
@@ -132,6 +143,7 @@ $(TEST_FLOPPY_OUT): $(EXE) $(ASSETS) $(FLOPPY_SRC)
 	mcopy -i $@ -o assets/markup.bin   ::MARKUP.BIN
 	mcopy -i $@ -o assets/main_menu_markup.bin ::MENUMARK.BIN
 	mcopy -i $@ -o assets/indicator.bin ::INDICAT.BIN
+	mcopy -i $@ -o assets/bottom_sprites.bin ::BOTSPR.BIN
 	@printf '@ECHO OFF\r\nSET BATTYALL=1\r\nBATTY\r\n' > build/AUTOEXEC-T.BAT
 	mcopy -i $@ -o build/AUTOEXEC-T.BAT ::AUTOEXEC.BAT
 	@echo "Test floppy ready: $@  (full 4-state cycle)"
