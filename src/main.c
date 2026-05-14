@@ -391,18 +391,21 @@ static unsigned char bg_tile[BG_TILE_SIZE];
 #define BAT_Y_PX    167
 static unsigned char bat_l1[BAT_SIZE];
 
-/* Perimeter frame (top + left + right, no bottom): 1368 B.
+/* Perimeter frame (top + left + right, no bottom). Each side strip is
+ * 3 cols wide -- the third col (col 2 left, col 29 right) is the
+ * shadow the original casts just inside the cyan frame edge.
  *   top  pixels: 32 cols x 16 rows  = 512 B
  *   top  attrs : 32 cols x  2 rows  =  64 B
- *   left pixels:  2 cols x 176 rows = 352 B
- *   left attrs :  2 cols x  22 rows =  44 B
- *   right pixels: 2 cols x 176 rows = 352 B
- *   right attrs : 2 cols x  22 rows =  44 B
- * Each strip is paint-it-verbatim against playfield coordinates. */
+ *   left pixels:  3 cols x 176 rows = 528 B
+ *   left attrs :  3 cols x  22 rows =  66 B
+ *   right pixels: 3 cols x 176 rows = 528 B
+ *   right attrs : 3 cols x  22 rows =  66 B
+ * Total: 1764 B. */
+#define FRAME_SIDE_W     3
 #define FRAME_TOP_PX     (32 * 16)
 #define FRAME_TOP_ATTRS  (32 * 2)
-#define FRAME_SIDE_PX    (2 * 176)
-#define FRAME_SIDE_ATTRS (2 * 22)
+#define FRAME_SIDE_PX    (FRAME_SIDE_W * 176)
+#define FRAME_SIDE_ATTRS (FRAME_SIDE_W * 22)
 #define FRAME_SIZE  (FRAME_TOP_PX + FRAME_TOP_ATTRS + \
                      2 * (FRAME_SIDE_PX + FRAME_SIDE_ATTRS))
 static unsigned char frame_l1[FRAME_SIZE];
@@ -523,9 +526,10 @@ static void render_frame(void) {
     const unsigned char *left_attr = left_px   + FRAME_SIDE_PX;
     const unsigned char *right_px  = left_attr + FRAME_SIDE_ATTRS;
     const unsigned char *right_attr= right_px  + FRAME_SIDE_PX;
-    paint_strip(top_px,   top_attr,   32, 16,   0,  0);
-    paint_strip(left_px,  left_attr,   2, 176,  0, 16);
-    paint_strip(right_px, right_attr,  2, 176, 30 * 8, 16);
+    paint_strip(top_px,   top_attr,   32, 16, 0, 0);
+    paint_strip(left_px,  left_attr,  FRAME_SIDE_W, 176, 0, 16);
+    paint_strip(right_px, right_attr, FRAME_SIDE_W, 176,
+                (32 - FRAME_SIDE_W) * 8, 16);
 }
 
 /* Paint the bat+ball composite at its initial L1 position. The bitmap
