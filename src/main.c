@@ -382,15 +382,21 @@ static unsigned char bg_tile[BG_TILE_SIZE];
 #define BAT_Y_PX    167
 static unsigned char bat_l1[BAT_SIZE];
 
-/* Top-strip HUD: 32 cols x 16 rows of pixels (512 B) followed by 2
- * char-rows of attrs (32 cols x 2 rows = 64 B). Total 576 B. Painted
- * across playfield y=0..15 with per-char-cell ink/paper. */
-#define HUD_W_BYTES 32
-#define HUD_H_PX    16
-#define HUD_PIXELS  (HUD_W_BYTES * HUD_H_PX)
-#define HUD_ATTRS   (HUD_W_BYTES * 2)
-#define HUD_SIZE    (HUD_PIXELS + HUD_ATTRS)
-static unsigned char hud_l1[HUD_SIZE];
+/* Perimeter frame (top + left + right, no bottom): 1368 B.
+ *   top  pixels: 32 cols x 16 rows  = 512 B
+ *   top  attrs : 32 cols x  2 rows  =  64 B
+ *   left pixels:  2 cols x 176 rows = 352 B
+ *   left attrs :  2 cols x  22 rows =  44 B
+ *   right pixels: 2 cols x 176 rows = 352 B
+ *   right attrs : 2 cols x  22 rows =  44 B
+ * Each strip is paint-it-verbatim against playfield coordinates. */
+#define FRAME_TOP_PX     (32 * 16)
+#define FRAME_TOP_ATTRS  (32 * 2)
+#define FRAME_SIDE_PX    (2 * 176)
+#define FRAME_SIDE_ATTRS (2 * 22)
+#define FRAME_SIZE  (FRAME_TOP_PX + FRAME_TOP_ATTRS + \
+                     2 * (FRAME_SIDE_PX + FRAME_SIDE_ATTRS))
+static unsigned char frame_l1[FRAME_SIZE];
 
 static int load_levels(const char *path) {
     FILE *f = fopen(path, "rb");
@@ -442,10 +448,10 @@ static int load_bat(const char *path) {
     return 0;
 }
 
-static int load_hud(const char *path) {
+static int load_frame(const char *path) {
     FILE *f = fopen(path, "rb");
     if (!f) return -1;
-    if (fread(hud_l1, 1, sizeof(hud_l1), f) != sizeof(hud_l1)) {
+    if (fread(frame_l1, 1, sizeof(frame_l1), f) != sizeof(frame_l1)) {
         fclose(f); return -2;
     }
     fclose(f);
@@ -461,28 +467,47 @@ static unsigned char paper_pal(unsigned char attr) {
     return (unsigned char)(((attr >> 3) & 7) | ((attr & 0x40) >> 3));
 }
 
-/* Paint the top-strip HUD at playfield y=0..15. Each char cell uses
- * its own (ink, paper) decoded from the per-cell attribute in the
- * trailing 64-byte attr band. */
-static void render_hud(void) {
+/* Paint a strip of pixels with per-char-cell ink/paper. `pixels` is
+ * `cols_bytes` bytes wide and `rows_px` rows tall. `attrs` is
+ * `cols_bytes` x ceil(rows_px / 8) char-rows. The strip is drawn at
+ * playfield-relative (x0_px, y0_px). */
+static void paint_strip(const unsigned char *pixels,
+                        const unsigned char *attrs,
+                        int cols_bytes, int rows_px,
+                        int x0_px, int y0_px) {
     int char_row, char_col, pix_row, bit;
     unsigned char attr, ink, paper, b;
-    for (char_row = 0; char_row < 2; char_row++) {
-        for (char_col = 0; char_col < HUD_W_BYTES; char_col++) {
-            attr  = hud_l1[HUD_PIXELS + char_row * HUD_W_BYTES + char_col];
+    int char_rows = rows_px / 8;
+    for (char_row = 0; char_row < char_rows; char_row++) {
+        for (char_col = 0; char_col < cols_bytes; char_col++) {
+            attr  = attrs[char_row * cols_bytes + char_col];
             ink   = ink_pal(attr);
             paper = paper_pal(attr);
             for (pix_row = 0; pix_row < 8; pix_row++) {
                 int y = char_row * 8 + pix_row;
-                b = hud_l1[y * HUD_W_BYTES + char_col];
+                b = pixels[y * cols_bytes + char_col];
                 for (bit = 0; bit < 8; bit++) {
-                    vga[(long)(BORDER_Y + y) * SCREEN_W +
-                        BORDER_X + char_col * 8 + bit] =
+                    vga[(long)(BORDER_Y + y0_px + y) * SCREEN_W +
+                        BORDER_X + x0_px + char_col * 8 + bit] =
                         (b & (0x80 >> bit)) ? ink : paper;
                 }
             }
         }
     }
+}
+
+/* Paint the perimeter frame (top + left + right strips). Painted
+ * LAST so it overlays whatever bg/bricks/bat painted earlier. */
+static void render_frame(void) {
+    const unsigned char *top_px    = frame_l1;
+    const unsigned char *top_attr  = top_px    + FRAME_TOP_PX;
+    const unsigned char *left_px   = top_attr  + FRAME_TOP_ATTRS;
+    const unsigned char *left_attr = left_px   + FRAME_SIDE_PX;
+    const unsigned char *right_px  = left_attr + FRAME_SIDE_ATTRS;
+    const unsigned char *right_attr= right_px  + FRAME_SIDE_PX;
+    paint_strip(top_px,   top_attr,   32, 16,   0,  0);
+    paint_strip(left_px,  left_attr,   2, 176,  0, 16);
+    paint_strip(right_px, right_attr,  2, 176, 30 * 8, 16);
 }
 
 /* Paint the bat+ball composite at its initial L1 position. The bitmap
@@ -590,7 +615,7 @@ static void render_level_screen(unsigned char level_idx) {
     paint_hex_bg(bg_attr);
     render_brick_field(level_idx);
     render_bat(bg_attr);
-    render_hud();
+    render_frame();
 }
 
 
@@ -824,7 +849,7 @@ int main(void) {
         load_level_attrs("LVLATTR.BIN") != 0 ||
         load_bg_tile("BGTILE.BIN") != 0 ||
         load_bat("BATL1.BIN") != 0 ||
-        load_hud("HUDL1.BIN") != 0) {
+        load_frame("FRAMEL1.BIN") != 0) {
         fill(0, 0, SCREEN_W, SCREEN_H, 10 /* bright red */);
     }
 
