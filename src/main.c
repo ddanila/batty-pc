@@ -334,10 +334,13 @@ static void draw_bottom_sprites(void) {
 
 static unsigned long bios_ticks(void);
 
-/* Currently selected game mode. 0 = none (idle, no blink — matches the
- * snap2 default). 1, 2, 3 = "1 PLAYER" / "2 PLAYERS" / "DOUBLE PLAY"
- * — option line at the corresponding Y blinks when set. */
-static unsigned char selected_mode = 0;
+/* Currently selected game mode. 1, 2, 3 = "1 PLAYER" / "2 PLAYERS" /
+ * "DOUBLE PLAY" — option line at the corresponding Y blinks when set.
+ * Boot default is 1: in the original game "1 PLAYER" is already
+ * selected on menu entry and starts blinking before any key is
+ * pressed (snap2's selected-row attrs are 0x00 = the BLACK half of
+ * that initial blink). */
+static unsigned char selected_mode = 1;
 
 static int option_y_pix_for_mode(unsigned char mode) {
     switch (mode) {
@@ -347,6 +350,14 @@ static int option_y_pix_for_mode(unsigned char mode) {
         default: return -1;
     }
 }
+
+/* sub_961c writes a fixed 11 attribute bytes at cols 14..24 — that's
+ * wider than "1 PLAYER" / "2 PLAYERS" payload, just covering the
+ * full "DOUBLE PLAY" extent. The off-text cells were already black
+ * paper so the over-blank is invisible; we mirror the same constant. */
+#define BLINK_CELLS  11
+
+static int blink_phase(void);
 
 /* Selected option's TEXT portion (payload indices 4+, after "N - ")
  * strobes WHITE ↔ INVISIBLE. Original mechanism (sub_961c at 0x961C):
@@ -362,25 +373,24 @@ static int option_y_pix_for_mode(unsigned char mode) {
  * re-draw the glyphs in bright white. */
 static void apply_option_blink(void) {
     int y_pix = option_y_pix_for_mode(selected_mode);
-    int y, p, i, count, x_text, text_cells, phase;
+    int y, p, i, count, x_text;
     unsigned char marker, c;
     if (y_pix < 0) return;
-    phase = (int)((bios_ticks() >> 1) & 1);         /* ~4.5 Hz half-period */
     p = 0;
     while (p < markup_len) {
         if (!is_row_marker(markup[p])) { p++; continue; }
         if (markup[p + 1] != (unsigned char)y_pix) {
             p += 4 + markup[p + 3]; continue;
         }
-        marker     = markup[p];
-        count      = markup[p + 3];
-        text_cells = count - 4;                     /* skip "N - " prefix (4 chars) */
-        x_text     = BORDER_X + (int)(marker / 8) * 8 + 4 * 8;
-        y          = BORDER_Y + y_pix - 5;
-        /* Erase the green pixels the markup just painted. */
-        fill(x_text, y, text_cells * 8, FONT_ROWS, 0);
+        marker = markup[p];
+        count  = markup[p + 3];
+        x_text = BORDER_X + (int)(marker / 8) * 8 + 4 * 8;
+        y      = BORDER_Y + y_pix - 5;
+        /* Erase the green pixels the markup just painted across all
+         * 11 cells the original would have attr=0x00'd. */
+        fill(x_text, y, BLINK_CELLS * 8, FONT_ROWS, 0);
         /* WHITE phase: redraw glyphs from index 4+ in bright white. */
-        if (phase) {
+        if (blink_phase()) {
             for (i = 4; i < count; i++) {
                 c = markup[p + 4 + i];
                 if (c != 0x26 && c <= 0x2A) {
@@ -426,6 +436,15 @@ typedef enum { ST_TITLE, ST_MENU, ST_HISCORE, ST_QUIT } state_t;
  * transition. Set at startup based on env. */
 static int auto_advance = 1;
 #define TIMED_OUT(start, ticks) (auto_advance && (bios_ticks() - (start) > (ticks)))
+
+/* Blink phase for the selected option's text. Test mode pins it to 0
+ * (BLACK / invisible) so the screendump matches snap2's captured BLACK
+ * half deterministically. `make run` uses real-time bios_ticks so the
+ * user sees the actual blink. */
+static int blink_phase(void) {
+    if (!auto_advance) return 0;
+    return (int)((bios_ticks() >> 1) & 1);   /* ~4.5 Hz half-period */
+}
 
 static void render_hiscore_screen(void) {
     load_markup("MARKUP.BIN");
@@ -479,12 +498,10 @@ static state_t run_menu(void) {
             /* 0 / ENTER / other — would start a game; advance for now. */
             return ST_HISCORE;
         }
-        /* Re-render when blink phase flips. Uses the SAME shift as
-         * apply_option_blink so we always render at the right phase
-         * (was a bug: mismatched shifts meant we only ever caught the
-         * green phase and the white half was invisible). */
+        /* Re-render when blink phase flips. Shares blink_phase() with
+         * apply_option_blink so we always render at the right phase. */
         if (selected_mode != 0) {
-            int phase = (int)((bios_ticks() >> 1) & 1);
+            int phase = blink_phase();
             if (phase != last_blink_phase) {
                 render_menu_screen();
                 last_blink_phase = phase;
