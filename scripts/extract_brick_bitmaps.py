@@ -28,14 +28,15 @@ N_LEVELS = 15
 ROWS, COLS = 12, 15
 CELL_W_PX, CELL_H_PX = 16, 8
 BYTES_PER_CELL = (CELL_W_PX // 8) * CELL_H_PX     # 2 * 8 = 16
-BRICK_X0, BRICK_Y0 = 8, 16                        # playfield-relative
+BRICK_X0, BRICK_Y0 = 8, 24                        # playfield-relative
 ATTR_BASE = 6144
 
 
 def half_attr(scr_bytes, r, c, half):
     # Brick at grid (r, c) spans char-cols (1+c*2) and (1+c*2+1).
     # half=0 -> left, half=1 -> right.
-    return scr_bytes[ATTR_BASE + (2 + r) * 32 + (1 + c * 2 + half)]
+    # With BRICK_Y0=24, brick row r occupies char-row 3+r.
+    return scr_bytes[ATTR_BASE + (3 + r) * 32 + (1 + c * 2 + half)]
 
 
 def paper_idx(attr):

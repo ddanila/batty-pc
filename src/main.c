@@ -350,7 +350,14 @@ static void draw_bottom_sprites(void) {
 #define BRICK_W_PX 16
 #define BRICK_H_PX  8
 #define BRICK_FIELD_X  8     /* relative to playfield top-left */
-#define BRICK_FIELD_Y 16
+#define BRICK_FIELD_Y 24     /* the original draws 12 brick rows at
+                              * y=24..119 (NOT y=16..111 as the disasm
+                              * suggests at first glance - sub_ad8fh
+                              * blits to VRAM 0x4081 = pixel (8, 16)
+                              * but each brick is composited from
+                              * multiple passes starting one row down).
+                              * Verified by lining up GT pixels with
+                              * level data row 0 of each level. */
 
 /* Per-level attribute band: FULL 24 char-rows x 32 cols of ZX
  * attribute bytes captured from each level's GT .scr.
@@ -364,7 +371,8 @@ static void draw_bottom_sprites(void) {
 #define ATTR_COLS       32
 #define ATTR_BAND_SIZE  (ATTR_ROWS * ATTR_COLS)
 #define ATTR_TOTAL_SIZE (N_LEVELS * ATTR_BAND_SIZE)
-#define BRICK_ATTR_ROW_BASE 2     /* brick char-rows start at attr-row 2 */
+#define BRICK_ATTR_ROW_BASE 3     /* brick char-rows start at attr-row 3
+                                   * (= y=24..119 / 8 = char rows 3..14) */
 
 static unsigned char levels[LVL_SIZE];
 static unsigned char level_attrs[ATTR_TOTAL_SIZE];
