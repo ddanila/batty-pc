@@ -33,9 +33,16 @@ SNA_PATH = SNAP_DIR.parent / f"{SNAP_DIR.name}.sna"
 OUT_DIR  = Path("build/level_gt")
 
 LEVEL_INIT_PC = 0xBA4C
+# Breakpoint right after `call sub_b765h` (= 0xBA6C+3 = 0xBA6F).
+# sub_b765h is the full brick-field repaint; trapping here grabs the
+# screen between brick-paint and the "PLAYER N / ROUND NN" banner +
+# attribute LDIR that follow, so the captured screen shows the bare
+# brick layout without overlays.
+POST_BRICKS_PC = 0xBA6F
 LEVEL_COUNTER = 0xB7EA
 N_LEVELS = 15
-SETTLE_SECONDS = 1.2
+SETTLE_SECONDS = 2.0       # generous; sub_b765h's double-halt sync
+                           # needs multiple frames to finish painting
 
 
 def ensure_sna():
@@ -51,7 +58,7 @@ def capture_one(zc, level_n):
     zc.write_memory(LEVEL_COUNTER, bytes([level_n]))
     zc.set_register('PC', LEVEL_INIT_PC)
     zc.exit_cpu_step()
-    time.sleep(SETTLE_SECONDS)
+    time.sleep(SETTLE_SECONDS)                   # banner appears + clears
     zc.enter_cpu_step()
     scr = OUT_DIR / f"level_{level_n+1:02d}.scr"
     zc.save_screen(str(scr.resolve()))
@@ -74,12 +81,10 @@ def main():
                                extra_args=[], port=10000, headless=True)
     try:
         print(f"  connected: {zc.get_version()}")
-        scrs = []
         for n in range(first - 1, last):
             scr = capture_one(zc, n)
             ok = scr.exists() and scr.stat().st_size == 6912
             print(f"  level {n+1:2d}: {scr.name}  {'OK' if ok else 'FAIL'}")
-            if ok: scrs.append(scr)
     finally:
         try: zc.exit_emulator()
         except Exception: pass
