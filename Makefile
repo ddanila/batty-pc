@@ -37,7 +37,7 @@ ASSETS  = assets/loading.bin assets/hi_score.bin assets/main_menu.bin \
           assets/font.bin assets/markup.bin assets/main_menu_markup.bin \
           assets/indicator.bin assets/bottom_sprites.bin \
           assets/levels.bin assets/sprite_cache.bin assets/level_attrs.bin \
-          assets/bg_tile.bin assets/bat_l1.bin
+          assets/bg_tile.bin assets/bat_l1.bin assets/hud_l1.bin
 HISCORE_SNAP      ?= build/snapshots/20260513T202038Z/screen.scr
 MAINMENU_SNAP     ?= build/snapshots/20260513T202041Z/screen.scr
 MAINMENU_SNAP_RAM ?= build/snapshots/20260513T202041Z/ram_4000_FFFF.bin
@@ -150,6 +150,13 @@ assets/bat_l1.bin: build/level_gt/level_01.scr scripts/extract_bat.py
 	python3 scripts/extract_bat.py $@
 	@echo "wrote $@ ($$(wc -c < $@) bytes)"
 
+# Top-strip HUD: 1UP / HI / 2UP titles + 000000 score displays. Extracted
+# from L1's GT capture as raw pixels + 2 rows of per-char attrs (576 B).
+# Static for now; per-frame score updates land with gameplay (Phase E+).
+assets/hud_l1.bin: build/level_gt/level_01.scr scripts/extract_hud.py
+	python3 scripts/extract_hud.py $@
+	@echo "wrote $@ ($$(wc -c < $@) bytes)"
+
 # Bottom decorative sprite + arrow combined: 32x13 each (4 bytes
 # width × 13 rows) stored bottom-to-top per sub_b5f8h's convention.
 # Source: blob 0x938E (P1) and 0x93C4 (P2). Each blob has a (w, h)
@@ -184,6 +191,7 @@ $(FLOPPY_OUT): $(EXE) $(ASSETS) $(FLOPPY_SRC)
 	mcopy -i $@ -o assets/level_attrs.bin ::LVLATTR.BIN
 	mcopy -i $@ -o assets/bg_tile.bin ::BGTILE.BIN
 	mcopy -i $@ -o assets/bat_l1.bin ::BATL1.BIN
+	mcopy -i $@ -o assets/hud_l1.bin ::HUDL1.BIN
 	@printf '@ECHO OFF\r\nBATTY\r\n' > build/AUTOEXEC.BAT
 	mcopy -i $@ -o build/AUTOEXEC.BAT ::AUTOEXEC.BAT
 	@echo "Floppy ready: $@  (menu-only cycle)"
@@ -204,6 +212,7 @@ $(TEST_FLOPPY_OUT): $(EXE) $(ASSETS) $(FLOPPY_SRC)
 	mcopy -i $@ -o assets/level_attrs.bin ::LVLATTR.BIN
 	mcopy -i $@ -o assets/bg_tile.bin ::BGTILE.BIN
 	mcopy -i $@ -o assets/bat_l1.bin ::BATL1.BIN
+	mcopy -i $@ -o assets/hud_l1.bin ::HUDL1.BIN
 	@printf '@ECHO OFF\r\nSET BATTYALL=1\r\nBATTY\r\n' > build/AUTOEXEC-T.BAT
 	mcopy -i $@ -o build/AUTOEXEC-T.BAT ::AUTOEXEC.BAT
 	@echo "Test floppy ready: $@  (full 4-state cycle)"

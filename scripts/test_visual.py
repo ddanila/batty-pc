@@ -174,17 +174,16 @@ def main():
     # roi=None  -> diff the full 256x192 playfield
     # roi=(x0, y0, x1, y1) -> diff only that sub-rectangle in playfield coords
     # `assert_match=False` => captured, diff-reported, but not failing.
-    # state4_level1 ROI covers the brick zone (8..248, 16..112) plus the
-    # bat strip (8..248, 167..183). We diff the union by using a single
-    # bounding box that includes both bands; the gap rows (113..166) are
-    # plain hex bg which mostly matches anyway so the metric stays
-    # meaningful.
-    BRICK_ROI = (8, 16, 8 + 240, 184)
+    # state4_level1 now diffs the full 256x192 playfield: HUD strip
+    # (y=0..15), brick zone (y=16..112), bat region (y=167..182), and
+    # the hex-bg gap rows. Side-edge cells (cols 0..1, 30..31) still
+    # have side-stripe sprites we haven't ported, so the diff won't go
+    # to zero - but the headline number reflects total L1 fidelity.
     checkpoints = [
         ('state1_title',    TITLE_SCR,    True,  None),
         ('state2_menu',     SNAP_MENU,    False, None),
         ('state3_hiscore',  SNAP_HISCORE, True,  None),
-        ('state4_level1',   GT_LEVEL1,    False, BRICK_ROI),
+        ('state4_level1',   GT_LEVEL1,    False, None),
     ]
 
     script = [f'SLEEP {args.boot_wait}']

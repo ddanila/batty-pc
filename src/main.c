@@ -382,6 +382,16 @@ static unsigned char bg_tile[BG_TILE_SIZE];
 #define BAT_Y_PX    167
 static unsigned char bat_l1[BAT_SIZE];
 
+/* Top-strip HUD: 32 cols x 16 rows of pixels (512 B) followed by 2
+ * char-rows of attrs (32 cols x 2 rows = 64 B). Total 576 B. Painted
+ * across playfield y=0..15 with per-char-cell ink/paper. */
+#define HUD_W_BYTES 32
+#define HUD_H_PX    16
+#define HUD_PIXELS  (HUD_W_BYTES * HUD_H_PX)
+#define HUD_ATTRS   (HUD_W_BYTES * 2)
+#define HUD_SIZE    (HUD_PIXELS + HUD_ATTRS)
+static unsigned char hud_l1[HUD_SIZE];
+
 static int load_levels(const char *path) {
     FILE *f = fopen(path, "rb");
     if (!f) return -1;
@@ -432,6 +442,16 @@ static int load_bat(const char *path) {
     return 0;
 }
 
+static int load_hud(const char *path) {
+    FILE *f = fopen(path, "rb");
+    if (!f) return -1;
+    if (fread(hud_l1, 1, sizeof(hud_l1), f) != sizeof(hud_l1)) {
+        fclose(f); return -2;
+    }
+    fclose(f);
+    return 0;
+}
+
 /* ZX attribute byte -> our 16-entry palette indices for ink + paper.
  * attr = flash | bright | paper(3) | ink(3). bit 6 = bright. */
 static unsigned char ink_pal(unsigned char attr) {
@@ -439,6 +459,30 @@ static unsigned char ink_pal(unsigned char attr) {
 }
 static unsigned char paper_pal(unsigned char attr) {
     return (unsigned char)(((attr >> 3) & 7) | ((attr & 0x40) >> 3));
+}
+
+/* Paint the top-strip HUD at playfield y=0..15. Each char cell uses
+ * its own (ink, paper) decoded from the per-cell attribute in the
+ * trailing 64-byte attr band. */
+static void render_hud(void) {
+    int char_row, char_col, pix_row, bit;
+    unsigned char attr, ink, paper, b;
+    for (char_row = 0; char_row < 2; char_row++) {
+        for (char_col = 0; char_col < HUD_W_BYTES; char_col++) {
+            attr  = hud_l1[HUD_PIXELS + char_row * HUD_W_BYTES + char_col];
+            ink   = ink_pal(attr);
+            paper = paper_pal(attr);
+            for (pix_row = 0; pix_row < 8; pix_row++) {
+                int y = char_row * 8 + pix_row;
+                b = hud_l1[y * HUD_W_BYTES + char_col];
+                for (bit = 0; bit < 8; bit++) {
+                    vga[(long)(BORDER_Y + y) * SCREEN_W +
+                        BORDER_X + char_col * 8 + bit] =
+                        (b & (0x80 >> bit)) ? ink : paper;
+                }
+            }
+        }
+    }
 }
 
 /* Paint the bat+ball composite at its initial L1 position. The bitmap
@@ -546,6 +590,7 @@ static void render_level_screen(unsigned char level_idx) {
     paint_hex_bg(bg_attr);
     render_brick_field(level_idx);
     render_bat(bg_attr);
+    render_hud();
 }
 
 
@@ -778,7 +823,8 @@ int main(void) {
         load_sprite_cache("CACHE.BIN") != 0 ||
         load_level_attrs("LVLATTR.BIN") != 0 ||
         load_bg_tile("BGTILE.BIN") != 0 ||
-        load_bat("BATL1.BIN") != 0) {
+        load_bat("BATL1.BIN") != 0 ||
+        load_hud("HUDL1.BIN") != 0) {
         fill(0, 0, SCREEN_W, SCREEN_H, 10 /* bright red */);
     }
 
