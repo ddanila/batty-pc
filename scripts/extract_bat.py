@@ -16,9 +16,9 @@ from pathlib import Path
 
 SRC = Path('build/level_gt/level_01.scr')
 BAT_Y0 = 167
-BAT_Y1 = 183           # exclusive (16 rows)
+BAT_Y1 = 186           # exclusive (19 rows; includes the bat's shadow band)
 BAT_BYTE_X0 = 14       # = pixel x 112
-BAT_BYTE_X1 = 18       # exclusive (4 bytes = 32 px)
+BAT_BYTE_X1 = 19       # exclusive (5 bytes = 40 px; bat widens at the base)
 
 
 def zx_byte_off(py, byte_x):

@@ -382,14 +382,28 @@ static unsigned char brick_bitmaps[BRICK_BMP_SIZE];
 #define BG_TILE_SIZE (BG_TILE_H_PX * 2)
 static unsigned char bg_tile[BG_TILE_SIZE];
 
-/* Bat + on-bat ball composite: 4 bytes wide x 16 rows = 64 B (32 x 16
- * px). L1-specific static snapshot at playfield (112, 167). */
-#define BAT_W_BYTES 4
-#define BAT_H_PX    16
+/* Bat + on-bat ball composite: 5 bytes wide x 19 rows = 95 B (40 x 19
+ * px). Captures the bat, the ball resting on it, AND the bat's shadow
+ * pixels just below. The bat is 32 px wide at the top, 40 at the
+ * base; we include the wider edge col so the shadow's right-most
+ * pixels are covered (the wider area painted with bg attr just
+ * reproduces the hex tile underneath, no harm). */
+#define BAT_W_BYTES 5
+#define BAT_H_PX    19
 #define BAT_SIZE    (BAT_W_BYTES * BAT_H_PX)
 #define BAT_X_PX    112
 #define BAT_Y_PX    167
 static unsigned char bat_l1[BAT_SIZE];
+
+/* Second life indicator (the right-hand of the pair at bottom-left).
+ * The first one is captured by the 3-col-wide left frame strip; this
+ * is the part that falls outside the frame. 2 bytes wide x 8 rows. */
+#define LIVES_W_BYTES 2
+#define LIVES_H_PX    8
+#define LIVES_SIZE    (LIVES_W_BYTES * LIVES_H_PX)
+#define LIVES_X_PX    24     /* byte_x 3 = pixel x 24 */
+#define LIVES_Y_PX    183
+static unsigned char lives_l1[LIVES_SIZE];
 
 /* Perimeter frame (top + left + right, no bottom). Each side strip is
  * 3 cols wide -- the third col (col 2 left, col 29 right) is the
@@ -469,6 +483,16 @@ static int load_bat(const char *path) {
     return 0;
 }
 
+static int load_lives(const char *path) {
+    FILE *f = fopen(path, "rb");
+    if (!f) return -1;
+    if (fread(lives_l1, 1, sizeof(lives_l1), f) != sizeof(lives_l1)) {
+        fclose(f); return -2;
+    }
+    fclose(f);
+    return 0;
+}
+
 static int load_frame(const char *path) {
     FILE *f = fopen(path, "rb");
     if (!f) return -1;
@@ -532,26 +556,35 @@ static void render_frame(void) {
                 (32 - FRAME_SIDE_W) * 8, 16);
 }
 
-/* Paint the bat+ball composite at its initial L1 position. The bitmap
- * is a 32x16 raw byte block (4 bytes per row, 16 rows); bit=1 -> ink,
- * bit=0 -> paper, using the bg attribute (yellow ink on black paper
- * for L1). Overwrites the hex bg painted earlier. */
-static void render_bat(unsigned char attr) {
+/* Paint a width-bytes x height-px raw-pixel block at (x_px, y_px)
+ * playfield-relative, using ink/paper from `attr`. Used for all
+ * paint-it-verbatim composites (bat, lives, etc.). */
+static void paint_block(const unsigned char *src, int w_bytes, int h_px,
+                        int x_px, int y_px, unsigned char attr) {
     unsigned char ink   = ink_pal(attr);
     unsigned char paper = paper_pal(attr);
     int r, c, bit;
     unsigned char b;
-    int x0 = BORDER_X + BAT_X_PX;
-    int y0 = BORDER_Y + BAT_Y_PX;
-    for (r = 0; r < BAT_H_PX; r++) {
-        for (c = 0; c < BAT_W_BYTES; c++) {
-            b = bat_l1[r * BAT_W_BYTES + c];
+    int x0 = BORDER_X + x_px;
+    int y0 = BORDER_Y + y_px;
+    for (r = 0; r < h_px; r++) {
+        for (c = 0; c < w_bytes; c++) {
+            b = src[r * w_bytes + c];
             for (bit = 0; bit < 8; bit++) {
                 vga[(long)(y0 + r) * SCREEN_W + x0 + c * 8 + bit] =
                     (b & (0x80 >> bit)) ? ink : paper;
             }
         }
     }
+}
+
+static void render_bat(unsigned char attr) {
+    paint_block(bat_l1, BAT_W_BYTES, BAT_H_PX, BAT_X_PX, BAT_Y_PX, attr);
+}
+
+static void render_lives(unsigned char attr) {
+    paint_block(lives_l1, LIVES_W_BYTES, LIVES_H_PX,
+                LIVES_X_PX, LIVES_Y_PX, attr);
 }
 
 /* Blit one 16-byte (16x8) brick bitmap to VGA at (x, y). Bit=1 -> ink,
@@ -628,6 +661,7 @@ static void render_level_screen(unsigned char level_idx) {
     paint_hex_bg(bg_attr);
     render_brick_field(level_idx);
     render_bat(bg_attr);
+    render_lives(bg_attr);
     render_frame();
 }
 
@@ -863,7 +897,8 @@ int main(void) {
         load_bg_tile("BGTILE.BIN") != 0 ||
         load_bat("BATL1.BIN") != 0 ||
         load_frame("FRAMEL1.BIN") != 0 ||
-        load_brick_bitmaps("BRICKBMS.BIN") != 0) {
+        load_brick_bitmaps("BRICKBMS.BIN") != 0 ||
+        load_lives("LIVESL1.BIN") != 0) {
         fill(0, 0, SCREEN_W, SCREEN_H, 10 /* bright red */);
     }
 
