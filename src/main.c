@@ -371,12 +371,11 @@ static unsigned char level_attrs[ATTR_TOTAL_SIZE];
 
 /* Per-cell 16x8-pixel bitmap, one slot per (level, row, col). Lookup:
  *   bitmap_off = (level * LVL_CELLS + r * LVL_COLS + c) * 16
- * Extracted from the 15 GT .scr captures - bypasses the original's
- * multi-pass neighbour-aware compositor until we port it.
- * Size literal so 16-bit signed int overflow doesn't bite the array
- * declaration (15 * 180 * 16 = 43200 > 32767). */
+ * 43200 B - dwarfs the rest of our data and busts the small-model
+ * 64 KB DGROUP, so we put it in its own far segment. Access goes
+ * via the __far pointer; small-model code path everywhere else. */
 #define BRICK_BMP_SIZE 43200u
-static unsigned char brick_bitmaps[BRICK_BMP_SIZE];
+static unsigned char __far brick_bitmaps[BRICK_BMP_SIZE];
 
 /* 16x16-pixel hex pattern tile, one per colour cycle. Cycle index:
  *   0  yellow  (L1, L5, L9, L13)
@@ -401,7 +400,8 @@ static unsigned char bg_tile[BG_TILE_CYCLES * BG_TILE_SIZE];
 #define BAT_SIZE    (BAT_W_BYTES * BAT_H_PX)
 #define BAT_X_PX    112
 #define BAT_Y_PX    167
-static unsigned char bat_l1[BAT_SIZE];
+#define BAT_CYCLES  4
+static unsigned char bat_l1[BAT_CYCLES * BAT_SIZE];
 
 /* Second life indicator (the right-hand of the pair at bottom-left).
  * The first one is captured by the 3-col-wide left frame strip; this
@@ -411,7 +411,8 @@ static unsigned char bat_l1[BAT_SIZE];
 #define LIVES_SIZE    (LIVES_W_BYTES * LIVES_H_PX)
 #define LIVES_X_PX    24     /* byte_x 3 = pixel x 24 */
 #define LIVES_Y_PX    183
-static unsigned char lives_l1[LIVES_SIZE];
+#define LIVES_CYCLES  4
+static unsigned char lives_l1[LIVES_CYCLES * LIVES_SIZE];
 
 /* Perimeter frame (top + left + right, no bottom). Each side strip is
  * 3 cols wide -- the third col (col 2 left, col 29 right) is the
@@ -430,7 +431,8 @@ static unsigned char lives_l1[LIVES_SIZE];
 #define FRAME_SIDE_ATTRS (FRAME_SIDE_W * 22)
 #define FRAME_SIZE  (FRAME_TOP_PX + FRAME_TOP_ATTRS + \
                      2 * (FRAME_SIDE_PX + FRAME_SIDE_ATTRS))
-static unsigned char frame_l1[FRAME_SIZE];
+#define FRAME_CYCLES 4
+static unsigned char frame_l1[FRAME_CYCLES * FRAME_SIZE];
 
 static int load_levels(const char *path) {
     FILE *f = fopen(path, "rb");
@@ -454,11 +456,21 @@ static int load_level_attrs(const char *path) {
 
 static int load_brick_bitmaps(const char *path) {
     FILE *f = fopen(path, "rb");
-    size_t n;
+    /* Far destination: small-model fread expects a near buffer, so
+     * read into a near chunk and _fmemcpy into the far segment. */
+    unsigned char buf[512];
+    size_t n, total = 0;
     if (!f) return -1;
-    n = fread(brick_bitmaps, 1, sizeof(brick_bitmaps), f);
+    while (total < BRICK_BMP_SIZE) {
+        size_t want = BRICK_BMP_SIZE - total;
+        if (want > sizeof(buf)) want = sizeof(buf);
+        n = fread(buf, 1, want, f);
+        if (n == 0) break;
+        _fmemcpy(brick_bitmaps + total, buf, n);
+        total += n;
+    }
     fclose(f);
-    return (n == sizeof(brick_bitmaps)) ? 0 : -2;
+    return (total == BRICK_BMP_SIZE) ? 0 : -2;
 }
 
 static int load_bg_tile(const char *path) {
@@ -548,10 +560,11 @@ static void paint_strip(const unsigned char *pixels,
  * anywhere) with PER-LEVEL attrs sourced from level_attrs. The
  * attrs colour the cyan ornament, the bg shadow band, and the
  * HUD digits correctly per level. */
-static void render_frame(unsigned char level_idx) {
-    const unsigned char *top_px    = frame_l1;
-    const unsigned char *left_px   = top_px  + FRAME_TOP_PX  + FRAME_TOP_ATTRS;
-    const unsigned char *right_px  = left_px + FRAME_SIDE_PX + FRAME_SIDE_ATTRS;
+static void render_frame(unsigned char cycle, unsigned char level_idx) {
+    const unsigned char *base     = frame_l1 + (unsigned int)cycle * FRAME_SIZE;
+    const unsigned char *top_px   = base;
+    const unsigned char *left_px  = top_px  + FRAME_TOP_PX  + FRAME_TOP_ATTRS;
+    const unsigned char *right_px = left_px + FRAME_SIDE_PX + FRAME_SIDE_ATTRS;
     const unsigned char *lattr = level_attrs + (unsigned int)level_idx * ATTR_BAND_SIZE;
     int right_col = 32 - FRAME_SIDE_W;
     paint_strip(top_px,   lattr,                      32, 32, 16,             0,  0);
@@ -583,19 +596,23 @@ static void paint_block(const unsigned char *src, int w_bytes, int h_px,
     }
 }
 
-static void render_bat(unsigned char attr) {
-    paint_block(bat_l1, BAT_W_BYTES, BAT_H_PX, BAT_X_PX, BAT_Y_PX, attr);
+static void render_bat(unsigned char cycle, unsigned char attr) {
+    const unsigned char *src = bat_l1 + (int)cycle * BAT_SIZE;
+    paint_block(src, BAT_W_BYTES, BAT_H_PX, BAT_X_PX, BAT_Y_PX, attr);
 }
 
-static void render_lives(unsigned char attr) {
-    paint_block(lives_l1, LIVES_W_BYTES, LIVES_H_PX,
+static void render_lives(unsigned char cycle, unsigned char attr) {
+    const unsigned char *src = lives_l1 + (int)cycle * LIVES_SIZE;
+    paint_block(src, LIVES_W_BYTES, LIVES_H_PX,
                 LIVES_X_PX, LIVES_Y_PX, attr);
 }
 
 /* Blit one 16-byte (16x8) brick bitmap to VGA at (x, y). Each 8-pixel
  * half uses its own (ink, paper) since the ZX attribute area maps
- * one attr per 8-px char cell and a brick spans TWO of them. */
-static void draw_brick_bitmap(int x, int y, const unsigned char *bm,
+ * one attr per 8-px char cell and a brick spans TWO of them. The
+ * bitmap pointer is __far because brick_bitmaps lives in its own
+ * far segment (it's 43 KB - too big for our DGROUP). */
+static void draw_brick_bitmap(int x, int y, const unsigned char __far *bm,
                               unsigned char ink_l, unsigned char paper_l,
                               unsigned char ink_r, unsigned char paper_r) {
     int row, bit;
@@ -679,9 +696,9 @@ static void render_level_screen(unsigned char level_idx) {
     draw_frame(10);              /* bright red — placeholder */
     paint_hex_bg(bg_attr, cycle);
     render_brick_field(level_idx);
-    render_bat(bg_attr);
-    render_lives(bg_attr);
-    render_frame(level_idx);
+    render_bat(cycle, bg_attr);
+    render_lives(cycle, bg_attr);
+    render_frame(cycle, level_idx);
 }
 
 

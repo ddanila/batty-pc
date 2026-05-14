@@ -14,29 +14,37 @@ and replace this static asset.
 import sys
 from pathlib import Path
 
-SRC = Path('build/level_gt/level_01.scr')
-BAT_Y0 = 167
-BAT_Y1 = 186           # exclusive (19 rows; includes the bat's shadow band)
-BAT_BYTE_X0 = 14       # = pixel x 112
-BAT_BYTE_X1 = 19       # exclusive (5 bytes = 40 px; bat widens at the base)
+BAT_Y0, BAT_Y1 = 167, 186
+BAT_BYTE_X0, BAT_BYTE_X1 = 14, 19
+CYCLES = ['build/level_gt/level_01.scr',
+          'build/level_gt/level_02.scr',
+          'build/level_gt/level_03.scr',
+          'build/level_gt/level_04.scr']
 
 
 def zx_byte_off(py, byte_x):
     return ((py & 0xC0) * 32) + ((py & 7) * 256) + ((py & 0x38) * 4) + byte_x
 
 
-def main():
-    out_path = Path(sys.argv[1]) if len(sys.argv) > 1 else Path('assets/bat_l1.bin')
-    scr = SRC.read_bytes()
+def extract_one(scr):
     h = BAT_Y1 - BAT_Y0
     w = BAT_BYTE_X1 - BAT_BYTE_X0
     buf = bytearray(w * h)
     for r in range(h):
         for c in range(w):
             buf[r * w + c] = scr[zx_byte_off(BAT_Y0 + r, BAT_BYTE_X0 + c)]
+    return bytes(buf)
+
+
+def main():
+    out_path = Path(sys.argv[1]) if len(sys.argv) > 1 else Path('assets/bat_l1.bin')
+    blob = bytearray()
+    for src in CYCLES:
+        scr = Path(src).read_bytes()
+        blob.extend(extract_one(scr))
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_bytes(bytes(buf))
-    print(f'wrote {out_path} ({len(buf)} B = {w*8} x {h} px)')
+    out_path.write_bytes(bytes(blob))
+    print(f'wrote {out_path} ({len(blob)} B = 4 cycles x {len(blob)//4} B)')
 
 
 if __name__ == '__main__':

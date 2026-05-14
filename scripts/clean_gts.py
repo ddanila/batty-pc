@@ -64,32 +64,39 @@ def main():
                     scr[off] = bg_attr
                     changed += 1
 
-        if n == 1:
+        # Cycle primary - the representative level for cleaning the
+        # non-brick areas. Levels in the same cycle share frame / bat
+        # / lives pixel bits (= same per-cycle bg hex pattern bits
+        # baked into the ornament gaps), so each level is cleaned
+        # against its cycle's primary capture.
+        primary_n = (cycle % 4) + 1     # cycle 0 -> L1, 1 -> L2, 2 -> L3, 3 -> L4
+        if n == primary_n:
             path.write_bytes(bytes(scr))
-            print(f'L{n:2d}: cleaned {changed} bytes (L1 reference, mid only)')
+            print(f'L{n:2d}: cleaned {changed} bytes (cycle primary, mid only)')
             continue
+        ref = Path(f'build/level_gt/level_{primary_n:02d}.scr').read_bytes()
 
-        # 2) HUD strip (y=0..15) - copy pixel bytes from L1
+        # 2) HUD strip (y=0..15) - copy pixel bytes from cycle primary
         for py in range(0, 16):
             for bx in range(32):
                 off = zx_byte_off(py, bx)
-                if scr[off] != l1[off]:
-                    scr[off] = l1[off]; changed += 1
+                if scr[off] != ref[off]:
+                    scr[off] = ref[off]; changed += 1
         # Bottom strip (y=176..191)
         for py in range(176, 192):
             for bx in range(32):
                 off = zx_byte_off(py, bx)
-                if scr[off] != l1[off]:
-                    scr[off] = l1[off]; changed += 1
-        # Side strips (cols 0, 1, 2 and 29, 30, 31) for y=16..175
+                if scr[off] != ref[off]:
+                    scr[off] = ref[off]; changed += 1
+        # Side strips (cols 0..2 and 29..31) for y=16..175
         for py in range(16, 176):
             for bx in list(range(0, 3)) + list(range(29, 32)):
                 off = zx_byte_off(py, bx)
-                if scr[off] != l1[off]:
-                    scr[off] = l1[off]; changed += 1
+                if scr[off] != ref[off]:
+                    scr[off] = ref[off]; changed += 1
 
         path.write_bytes(bytes(scr))
-        print(f'L{n:2d}: cleaned {changed} bytes')
+        print(f'L{n:2d}: cleaned {changed} bytes (vs L{primary_n})')
 
 
 if __name__ == '__main__':
