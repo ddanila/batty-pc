@@ -457,12 +457,14 @@ static void render_brick_field(unsigned char level_idx) {
             paper = paper_pal(attr);
             x = BORDER_X + BRICK_FIELD_X + c * BRICK_W_PX;
             y = BORDER_Y + BRICK_FIELD_Y + r * BRICK_H_PX;
-            if (cell & 0x80) {
-                /* Empty cell: leave the hex bg paint_hex_bg already laid
-                 * down — overwriting with flat paper would hide the
-                 * pattern. */
-                continue;
-            }
+            /* sub_adbch's per-frame blitter skips on (bit 7 | bit 4)
+             * because bit-4-set cells are statically painted once at
+             * level-init from a different sprite source we haven't
+             * located yet (see notes/levels.md). We mask only bit 7
+             * here so the 0x11..0x15 cells still render via cache[V*16]
+             * — visually imperfect but covers the GT frame area
+             * better than leaving plain hex bg. */
+            if (cell & 0x80) continue;
             draw_brick(x, y, cell, ink, paper);
         }
     }

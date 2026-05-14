@@ -110,6 +110,51 @@ Implications:
 
 Pure-Python; uses the snap3 cache as the sprite source.
 
+## Per-cell diagnostic — `scripts/diff_bricks.py`
+
+Compares our C `state4_level1.ppm` against the GT `level_01.scr` on a
+per-cell basis (12×15 grid, 16×8 px each). Baseline against the
+hex-bg-tile + colour-attr renderer:
+
+| Cell value | Cells in L1 | Diff cells | px-diff %  | Note                            |
+|-----------|-------------|------------|------------|---------------------------------|
+| `0x07`    | 11          | 11         | 43.3 %     | active brick — should be in cache |
+| `0x12`    | 22          | 22         | 60.3 %     | skip-4 frame piece                |
+| `0x13`    | 24          | 24         | 58.3 %     | skip-4 frame piece                |
+| `0x14`    |  5          |  5         | 80.5 %     | skip-4 frame piece                |
+| `0x15`    | 16          | 16         | 76.6 %     | skip-4 frame piece                |
+| `0xC0`    | 102         | 59         | 34.3 %     | empty — bg only                   |
+
+## Skip-4 cells — `scripts/find_static_brick_sprites.py`
+
+For each of `0x11..0x15`, extracts the actual 16×8 bitmap from L1's
+GT capture (per cell, by comparing each pixel to its attr's paper
+colour) and searches the entire cache for a matching chunk:
+
+- `0x14` and `0x15`: **all instances** in L1 share one simple
+  top-left-corner outline (top row + left column). No match found
+  anywhere in the cache → the sprite lives in the blob, not the
+  runtime cache.
+- `0x12` and `0x13`: bitmaps **vary across instances** — these are
+  context-dependent (probably neighbour-aware: corner / edge /
+  T-junction variants of the same frame piece).
+- `cache[V*16..V*16+16]` for V in `0x11..0x15` holds **unrelated
+  data**, so the naive `cell × 16` mapping that works for active
+  bricks is wrong for the skip-4 range.
+
+Implications:
+
+- `sub_adbch` skips bit-4-set cells deliberately — they're painted by
+  a separate "level-init frame pass" using sprites from the blob.
+- That pass is somewhere in the 0xBA4C call chain between `sub_9776h`
+  (install level pointer) and `sub_b765h` (active-brick repaint);
+  prime suspects: `sub_be8bh`, `sub_b7f8h`, `sub_bdcfh`, `sub_bdf6h`,
+  `sub_8f60h`.
+- Until that pass is reverse-engineered, our render uses
+  `cache[V*16]` for skip-4 cells too — visually imperfect (43% of
+  the residual diff comes from those cells) but better than leaving
+  them as plain hex bg.
+
 ## What this unlocks
 
 - **Ship as data**: dump the 2700 B and 30 B pointer table → drop
