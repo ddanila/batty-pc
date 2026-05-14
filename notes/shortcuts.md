@@ -54,9 +54,19 @@ spawn power-ups, etc. We can't fake bricks once they're changing.
 
 ## 2. Frame / bat / lives are L1-specific raw-pixel composites
 
+**Status**: partially repaid — the FRAME now uses per-level attrs
+from the extended `level_attrs.bin` (24 char-rows). Bg tile per-
+cycle (yellow/green/cyan/white). Bat and lives still use the L1
+bg attr (which IS the level's bg attr, so colour is right) but
+the pixel-block is L1-only — wrong-position for L2..L15 where the
+bat might start elsewhere.
+
 **What we ship**:
 - `frame_l1.bin` (1764 B) — top + 3-col left + 3-col right strips
-  lifted from L1.scr.
+  lifted from L1.scr. Pixel bits used as-is; attrs sourced per-level
+  from `level_attrs` at render time.
+- `bg_tile.bin` (128 B = 4 cycles × 32 B) — hex pattern tile, one
+  bitmap per 4-level colour cycle.
 - `bat_l1.bin` (95 B) — 5×19 px block including bat + ball + shadow.
 - `lives_l1.bin` (16 B) — the second life indicator (2×8 px).
 - All rendered via `paint_block()` / `paint_strip()` byte-for-byte.
@@ -140,14 +150,10 @@ the input handler.
 **When to repay**: first thing in Phase E (bat motion). The bat
 must move with input.
 
-## 6. Sprite cache is now dead weight
+## 6. Sprite cache is now dead weight  ✅ RESOLVED
 
-`assets/sprite_cache.bin` (3584 B) was loaded as the source for the
-old `cache[V*16]` brick lookup. After `brick_bitmaps.bin` replaced
-that path, nothing reads from `sprite_cache[]` any more.
-
-**Action**: delete the asset + load step. Five-minute cleanup,
-3.5 KB freed.
+Dropped in the per-cycle-tile / per-level-attrs commit. 3.5 KB
+freed; no code reads from it.
 
 ## 7. Frame's "shadow" band is conflated with the frame
 
@@ -164,17 +170,44 @@ asset rather than computed.
 
 ## Priority matrix
 
-| Shortcut                          | Effort  | Blocking what?                  |
-|-----------------------------------|---------|---------------------------------|
-| 1. Brick compositor               | Days    | Phase E (gameplay) brick hits    |
-| 2a. Per-level frame               | Hours   | L2..L15 visual correctness       |
-| 2b. Bat sprite + position byte    | Hours   | Phase E (motion)                 |
-| 2c. Lives counter wiring          | Hours   | Lives changing during play       |
-| 3. Attribute source               | Hours   | Bundled with #1 cleanup          |
-| 4. Dynamic scores                 | Hour    | First brick hit during play      |
-| 5. Bat position runtime           | Bundled with 2b                            |
-| 6. Drop sprite_cache              | 5 min   | Nothing (just clutter)           |
-| 7. Frame / brick shadow theory    | Bundled with 1 + 2a                        |
+| Shortcut                                  | Effort  | Blocking what?                  |
+|-------------------------------------------|---------|---------------------------------|
+| 1. Brick compositor                       | Days    | Phase E (gameplay) brick hits    |
+| 2a. Per-level frame (attrs ✅, pixels ❌)  | Hours   | L2..L15 visual correctness       |
+| 2b. Bat sprite + position byte            | Hours   | Phase E (motion)                 |
+| 2c. Lives counter wiring                  | Hours   | Lives changing during play       |
+| 3. Attribute source                       | Hours   | Bundled with #1 cleanup          |
+| 4. Dynamic scores                         | Hour    | First brick hit during play      |
+| 5. Bat position runtime                   | Bundled with 2b                            |
+| 6. Drop sprite_cache  ✅                  | done    | -                                |
+| 7. Frame / brick shadow theory            | Bundled with 1 + 2a                        |
+
+## L2..L15 sweep status (after attr + per-cycle-tile fix)
+
+Headline diff numbers per level (full-playfield RGB diff):
+
+```
+L 1:  0.00%    L 6: 12.19%    L11: 15.47%
+L 2:  5.72%    L 7: 13.24%    L12: 10.31%
+L 3:  7.27%    L 8: 11.05%    L13:  7.18%
+L 4: 14.37%    L 9:  6.95%    L14: 11.40%
+L 5:  7.69%    L10:  7.65%    L15: 17.52%
+```
+
+Residual breakdown (verified on L2 / L15 per-region counts):
+
+- **HUD score digits**: ~150-200 px / level. Our render shows L1's
+  "0/100k/0" score; GT shows whatever score state each
+  patched-capture inherited from snap3. Fixable via:
+  (a) re-capturing GTs from a fresh game state (= proper play-
+      through capture), or
+  (b) shipping per-level HUD bitmaps (~512 B/level, 7.5 KB total).
+- **Brick / hex shadow bands**: ~1-2 px tall dark lines between
+  brick rows and just below the top frame edge. Our brick bitmaps
+  include the brick's shadow when present but not the inter-row
+  shadow rendered by a separate pass in the original.
+- **Per-level frame fine details**: tiny variations in the cyan
+  ornament between colour cycles - few dozen pixels each.
 
 ## What's NOT a shortcut
 
