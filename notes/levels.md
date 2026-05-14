@@ -125,6 +125,37 @@ hex-bg-tile + colour-attr renderer:
 | `0x15`    | 16          | 16         | 76.6 %     | skip-4 frame piece                |
 | `0xC0`    | 102         | 59         | 34.3 %     | empty — bg only                   |
 
+## Active 0x07 cells are also neighbour-aware
+
+Reran `find_static_brick_sprites.py` extended to dump every variant
+of 0x07 in L1. Result: **7 distinct bitmaps across 11 cells**.
+
+- Row-0 middle (cols 4, 5, 9, 10): clean "horizontal connector"
+  hex pattern
+- Row-0 edges/junctions (cols 3, 6, 7, 8, 11): variants of the
+  connector
+- Row 3 cols 2 and 12 (= isolated 0x07 in a sea of 0x13): the
+  *same* L-shape outline that 0x14 / 0x15 use
+
+Conclusion: 0x07 isn't a "type-7 brick sprite" — it's a frame
+cell whose bitmap is picked from a small library of outline /
+connector pieces based on the layout of *adjacent* skip-flagged
+cells. The cache's naive `cell * 16` lookup doesn't apply to
+*any* of the frame cells; only the 8 brick base sprites at slots
+6/7/8/9/2B/2C/2D/2E that show up in the active-brick rows.
+
+The level-init pipeline (sub_b765h → sub_ad8fh → sub_adach →
+sub_adbch) makes multiple passes with different (IX) source
+pointers from a list at 0xAF6F. Each pass paints all 180 cells
+using ONE source, gated by per-cell flags via 0x9789. So a final
+brick's appearance is the OR of many partial paints — that's how
+neighbour-aware patterns get composited.
+
+Until we reverse-engineer the multi-pass driver fully, our
+single-shot `cache[cell*16]` renderer is at its limit. The L1
+state4 diff stays at 46% — bg + active-brick rows match
+reasonably; the frame layer is qualitatively wrong.
+
 ## Skip-4 cells — `scripts/find_static_brick_sprites.py`
 
 For each of `0x11..0x15`, extracts the actual 16×8 bitmap from L1's
