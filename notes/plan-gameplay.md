@@ -6,6 +6,15 @@ pixel-identical). This is the plan for porting the actual game.
 Original [`plan.md`](plan.md) covered the menu phase and is now
 historical reference.
 
+> **Technical debt warning**: the L1 static render (state4_level1)
+> is pixel-identical via shipped-pixel-data shortcuts. Before each
+> phase touches a shortcut's area, the proper port must land first.
+> See [`shortcuts.md`](shortcuts.md) for the full list and priority
+> matrix. In particular: the brick compositor (shortcut #1) is a
+> blocker for Phase E gameplay; the per-level frame / bat /
+> dynamic scores (#2, #4) need repaying as we move levels and
+> introduce motion.
+
 ## Phase A — Sprite system trace
 
 Goal: understand how anything moving gets to VRAM.
