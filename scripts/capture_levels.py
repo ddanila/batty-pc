@@ -41,8 +41,12 @@ LEVEL_INIT_PC = 0xBA4C
 POST_BRICKS_PC = 0xBA6F
 LEVEL_COUNTER = 0xB7EA
 N_LEVELS = 15
-SETTLE_SECONDS = 2.0       # generous; sub_b765h's double-halt sync
-                           # needs multiple frames to finish painting
+# Settle just long enough for level-init to paint bricks + LDIR the
+# attribute band (~100 ms in real-time emulator speed). Longer
+# settles let the ball + power-ups inherited from snap3's mid-game
+# state drift across the mid-playfield -> phantom sprites in GT
+# captures (and corresponding diffs in our render).
+SETTLE_SECONDS = 2.0
 
 
 def ensure_sna():
@@ -54,11 +58,12 @@ def ensure_sna():
 def capture_one(zc, level_n):
     zc.enter_cpu_step()
     zc.snapshot_load(str(SNA_PATH.resolve()))
-    zc.enter_cpu_step()                          # snapshot-load resumes the CPU
+    time.sleep(0.3)
+    zc.enter_cpu_step()
     zc.write_memory(LEVEL_COUNTER, bytes([level_n]))
     zc.set_register('PC', LEVEL_INIT_PC)
     zc.exit_cpu_step()
-    time.sleep(SETTLE_SECONDS)                   # banner appears + clears
+    time.sleep(SETTLE_SECONDS)
     zc.enter_cpu_step()
     scr = OUT_DIR / f"level_{level_n+1:02d}.scr"
     zc.save_screen(str(scr.resolve()))
@@ -81,10 +86,15 @@ def main():
                                extra_args=[], port=10000, headless=True)
     try:
         print(f"  connected: {zc.get_version()}")
+        time.sleep(0.5)                            # let ZEsarUX finish startup
         for n in range(first - 1, last):
-            scr = capture_one(zc, n)
-            ok = scr.exists() and scr.stat().st_size == 6912
-            print(f"  level {n+1:2d}: {scr.name}  {'OK' if ok else 'FAIL'}")
+            try:
+                scr = capture_one(zc, n)
+                ok = scr.exists() and scr.stat().st_size == 6912
+                print(f"  level {n+1:2d}: {scr.name}  {'OK' if ok else 'FAIL'}")
+            except Exception as e:
+                print(f"  level {n+1:2d}: EXCEPTION {e}")
+                break
     finally:
         try: zc.exit_emulator()
         except Exception: pass
