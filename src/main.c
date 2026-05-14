@@ -229,13 +229,49 @@ static void demo_full(void) {
     render_markup();
 }
 
-/* Render the main menu from the inline markup at 0x9571 in snap2.
- * Menu's frame is bright magenta (palette 11), not red. */
-static void demo_menu(void) {
-    load_markup("MENUMARK.BIN");
+/* Player input-device state — mirrors the original's bytes at
+ * 0xB7EF (A toggles, player 1) and 0xB7F7 (B toggles, player 2).
+ * Range 0..3 = KEYBOARD / KEMPSTON / CURSOR / INTERFACE II. */
+static unsigned char p1_dev = 0;
+static unsigned char p2_dev = 0;
+
+/* y_pix value (in the markup's coord system) for each option label.
+ * Pulled directly from MENUMARK.BIN's KEYBOARD/KEMPSTON/CURSOR/
+ * INTERFACE II records. */
+static const unsigned char option_y_pix[4] = { 0x67, 0x77, 0x87, 0x97 };
+
+/* Draw "1" + "2" digit indicators at the row of the currently selected
+ * option for each player. The original's sub_b5f8h paints them
+ * directly to VRAM (outside the markup buffer), so we do the same
+ * via draw_glyph. Bright white = palette 15. */
+static void draw_player_indicators(void) {
+    int p1y = BORDER_Y + option_y_pix[p1_dev] - 5;
+    int p2y = BORDER_Y + option_y_pix[p2_dev] - 5;
+    draw_glyph(BORDER_X + 5 * 8, p1y, 15, 1);   /* digit 1 */
+    draw_glyph(BORDER_X + 7 * 8, p2y, 15, 2);   /* digit 2 */
+}
+
+static void render_menu_screen(void) {
     fill(0, 0, SCREEN_W, SCREEN_H, COL_BORDER);
-    draw_frame(11);   /* bright magenta */
+    draw_frame(11);              /* bright magenta */
     render_markup();
+    draw_player_indicators();
+}
+
+/* Interactive menu. Returns 1 if ESC pressed (exit BATTY), 0 if any
+ * other non-A/B key (advance to next cycle state). A/B keys cycle
+ * the player state in-place and stay in the menu. */
+static int demo_menu(void) {
+    load_markup("MENUMARK.BIN");
+    render_menu_screen();
+    for (;;) {
+        int k = getch();
+        if (k == 27)                       return 1;   /* ESC */
+        else if (k == 'a' || k == 'A')     p1_dev = (p1_dev + 1) & 3;
+        else if (k == 'b' || k == 'B')     p2_dev = (p2_dev + 1) & 3;
+        else                               return 0;   /* advance */
+        render_menu_screen();
+    }
 }
 
 /* Cycle controlled by BATTYALL env var (set by the test floppy's
@@ -253,7 +289,7 @@ int main(void) {
 
     for (;;) {
         show("MAINMENU.BIN"); if (getch() == 27) break;
-        demo_menu();          if (getch() == 27) break;
+        if (demo_menu())                       break;   /* ESC inside menu */
         if (full_cycle) {
             show("HISCORE.BIN"); if (getch() == 27) break;
             demo_full();         if (getch() == 27) break;
