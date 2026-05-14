@@ -1,4 +1,8 @@
-# Plan — main menu Phase B and beyond
+# Plan — main menu phase (historical)
+
+> **Status:** menu phases done — all three checkpoints (TITLE, MENU,
+> HISCORE) pixel-identical against snapshots. For the next phase of
+> work (gameplay recreation) see [`plan-gameplay.md`](plan-gameplay.md).
 
 The hi-score screen was easy because it's static. The main menu isn't:
 
