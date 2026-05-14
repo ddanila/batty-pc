@@ -251,10 +251,10 @@ run-original:
 		--enable-remoteprotocol --remoteprotocol-port $(ZRCP_PORT) \
 		--quickexit $(CURDIR)/original/batty.tap
 
-# Same but with an infinite-lives patch (NOPs out the `dec a` at PC
-# 0xBD35 in the lives-decrement sequence). Use `make snapshot` from
-# another terminal to capture clean per-level GTs as you play
-# through.
+# Same but with an infinite-lives patch (replaces `dec a` with `or a`
+# at PC 0xBD35 - keeps lives at 3 forever and deterministically clears
+# Z so the game-over branch never fires). Use `make snapshot` from
+# another terminal to capture clean per-level GTs as you play through.
 run-original-cheat:
 	python3 scripts/run_original_cheat.py
 
