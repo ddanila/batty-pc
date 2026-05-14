@@ -235,20 +235,57 @@ static void demo_full(void) {
 static unsigned char p1_dev = 0;
 static unsigned char p2_dev = 0;
 
-/* y_pix value (in the markup's coord system) for each option label.
- * Pulled directly from MENUMARK.BIN's KEYBOARD/KEMPSTON/CURSOR/
- * INTERFACE II records. */
-static const unsigned char option_y_pix[4] = { 0x67, 0x77, 0x87, 0x97 };
+/* Player indicators 32×16 each: P1 at blob 0x92C1, P2 at 0x9303.
+ * Stored on disk as one 132 B blob: P1 header+body (66) then P2 (66). */
+#define INDICATOR_W_BYTES  4
+#define INDICATOR_H        16
+#define INDICATOR_ROW_BYTES INDICATOR_W_BYTES
+static unsigned char ind_p1[INDICATOR_W_BYTES * INDICATOR_H];
+static unsigned char ind_p2[INDICATOR_W_BYTES * INDICATOR_H];
 
-/* Draw "1" + "2" digit indicators at the row of the currently selected
- * option for each player. The original's sub_b5f8h paints them
- * directly to VRAM (outside the markup buffer), so we do the same
- * via draw_glyph. Bright white = palette 15. */
+static int load_indicator(const char *path) {
+    FILE *f = fopen(path, "rb");
+    unsigned char hdr[2];
+    if (!f) return -1;
+    if (fread(hdr, 1, 2, f) != 2 ||
+        fread(ind_p1, 1, sizeof(ind_p1), f) != sizeof(ind_p1) ||
+        fread(hdr, 1, 2, f) != 2 ||
+        fread(ind_p2, 1, sizeof(ind_p2), f) != sizeof(ind_p2)) {
+        fclose(f); return -2;
+    }
+    fclose(f);
+    return 0;
+}
+
+static void draw_indicator(const unsigned char *bitmap, int x, int y,
+                           unsigned char colour) {
+    int r, c, b;
+    for (r = 0; r < INDICATOR_H; r++) {
+        for (c = 0; c < INDICATOR_W_BYTES; c++) {
+            unsigned char byte = bitmap[r * INDICATOR_W_BYTES + c];
+            for (b = 0; b < 8; b++) {
+                if (byte & (0x80 >> b)) {
+                    vga[(long)(y + r) * SCREEN_W + x + c * 8 + b] = colour;
+                }
+            }
+        }
+    }
+}
+
+/* Position state mirrors the original's words at (l92BD) for P1 and
+ * (l92BF) for P2: high byte = Y (cycles 0x6C, 0x7C, 0x8C, 0x9C), low
+ * byte = fixed X (0x28 P1 = col 5, 0xB8 P2 = col 23). The bitmap top
+ * is stored_Y - 15 = 0x6C + state*0x10 - 15. */
+#define IND_BASE_Y    0x6C
+#define IND_Y_STRIDE  0x10
+#define IND_P1_X      0x28
+#define IND_P2_X      0xB8
+
 static void draw_player_indicators(void) {
-    int p1y = BORDER_Y + option_y_pix[p1_dev] - 5;
-    int p2y = BORDER_Y + option_y_pix[p2_dev] - 5;
-    draw_glyph(BORDER_X + 5 * 8, p1y, 15, 1);   /* digit 1 */
-    draw_glyph(BORDER_X + 7 * 8, p2y, 15, 2);   /* digit 2 */
+    int p1_y = BORDER_Y + IND_BASE_Y + p1_dev * IND_Y_STRIDE - 15;
+    int p2_y = BORDER_Y + IND_BASE_Y + p2_dev * IND_Y_STRIDE - 15;
+    draw_indicator(ind_p1, BORDER_X + IND_P1_X, p1_y, 15);
+    draw_indicator(ind_p2, BORDER_X + IND_P2_X, p2_y, 15);
 }
 
 static void render_menu_screen(void) {
@@ -283,7 +320,7 @@ int main(void) {
     set_mode(0x13);
     set_palette(zx_palette, 16);
 
-    if (load_font("FONT.BIN") != 0) {
+    if (load_font("FONT.BIN") != 0 || load_indicator("INDICAT.BIN") != 0) {
         fill(0, 0, SCREEN_W, SCREEN_H, 10 /* bright red */);
     }
 
