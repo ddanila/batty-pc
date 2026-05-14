@@ -169,18 +169,22 @@ def main():
     SNAP_HISCORE = Path('build/snapshots/20260513T202038Z/screen.scr')
     SNAP_MENU    = Path('build/snapshots/20260513T202041Z/screen.scr')
     TITLE_SCR    = Path('original/Batty.scr')
-    # `assert_match=False` => captured, diff-reported, but not failing
-    # the test. Menu has known residual 0.35% diff (markup paints
-    # content snap2 didn't catch on its single static frame).
-    # New attract-mode flow: TITLE -> MENU -> HISCORE.
+    GT_LEVEL1    = Path('build/level_gt/level_01.scr')
+    # Per checkpoint: (label, expected_scr, assert_match, roi)
+    # roi=None  -> diff the full 256x192 playfield
+    # roi=(x0, y0, x1, y1) -> diff only that sub-rectangle in playfield coords
+    # `assert_match=False` => captured, diff-reported, but not failing.
+    BRICK_ROI = (8, 16, 8 + 240, 16 + 96)
     checkpoints = [
-        ('state1_title',   TITLE_SCR,    True),
-        ('state2_menu',    SNAP_MENU,    False),
-        ('state3_hiscore', SNAP_HISCORE, True),
+        ('state1_title',    TITLE_SCR,    True,  None),
+        ('state2_menu',     SNAP_MENU,    False, None),
+        ('state3_hiscore',  SNAP_HISCORE, True,  None),
+        ('state4_level1',   GT_LEVEL1,    False, BRICK_ROI),
     ]
 
     script = [f'SLEEP {args.boot_wait}']
-    for i, (label, _, _) in enumerate(checkpoints):
+    for i, cp in enumerate(checkpoints):
+        label = cp[0]
         script.append(f'screendump {out/label}.ppm')
         script.append('SLEEP 0.3')
         if i < len(checkpoints) - 1:
@@ -192,22 +196,34 @@ def main():
     run_qemu(floppy, script, out / 'qemu.log')
 
     failed = 0
-    for label, expected_scr, assert_match in checkpoints:
+    for label, expected_scr, assert_match, roi in checkpoints:
         ppm_path = out / f'{label}.ppm'
         if not ppm_path.exists():
             print(f'  FAIL {label}: no PPM produced'); failed += 1; continue
         actual   = ppm_inner_to_indices(ppm_path)
         expected = expected_from_scr(expected_scr)
-        diff = sum(1 for a, e in zip(actual, expected)
-                   if PALETTE_RGB[a] != PALETTE_RGB[e])
-        total = PLAYFIELD_W * PLAYFIELD_H
-        pct  = 100.0 * diff / total
+        if roi is None:
+            diff = sum(1 for a, e in zip(actual, expected)
+                       if PALETTE_RGB[a] != PALETTE_RGB[e])
+            total = PLAYFIELD_W * PLAYFIELD_H
+        else:
+            x0, y0, x1, y1 = roi
+            diff = 0
+            total = (x1 - x0) * (y1 - y0)
+            for y in range(y0, y1):
+                row = y * PLAYFIELD_W
+                for x in range(x0, x1):
+                    if PALETTE_RGB[actual[row + x]] != PALETTE_RGB[expected[row + x]]:
+                        diff += 1
+        pct = 100.0 * diff / total
         if diff == 0:
-            print(f'  PASS {label}: pixel-identical ({total} px)')
+            print(f'  PASS {label}: pixel-identical ({total} px)'
+                  + (f' [roi {roi}]' if roi else ''))
         else:
             make_diff_png(actual, expected, out / f'{label}_diff.png')
             tag = 'FAIL' if assert_match else 'INFO'
-            print(f'  {tag} {label}: {diff}/{total} px differ ({pct:.2f}%)')
+            roi_tag = f' [roi {roi}]' if roi else ''
+            print(f'  {tag} {label}: {diff}/{total} px differ ({pct:.2f}%){roi_tag}')
             print(f'        diff -> {out}/{label}_diff.png')
             if assert_match:
                 failed += 1
