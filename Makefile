@@ -35,10 +35,12 @@ EXE     = build/batty.exe
 
 ASSETS  = assets/loading.bin assets/hi_score.bin assets/main_menu.bin \
           assets/font.bin assets/markup.bin assets/main_menu_markup.bin \
-          assets/indicator.bin assets/bottom_sprites.bin
+          assets/indicator.bin assets/bottom_sprites.bin \
+          assets/levels.bin assets/sprite_cache.bin
 HISCORE_SNAP      ?= build/snapshots/20260513T202038Z/screen.scr
 MAINMENU_SNAP     ?= build/snapshots/20260513T202041Z/screen.scr
 MAINMENU_SNAP_RAM ?= build/snapshots/20260513T202041Z/ram_4000_FFFF.bin
+LEVEL1_SNAP_RAM   ?= build/snapshots/20260513T202101Z/ram_4000_FFFF.bin
 
 FLOPPY_SRC      ?= vendor/msdos/floppy-minimal.img
 FLOPPY_OUT       = build/batty.img        # `make run`: 2-state menu loop
@@ -105,6 +107,24 @@ assets/indicator.bin: original/blocks/03_DATA_headless.dat.bin
 		Path('$@').write_bytes(Path('$<').read_bytes()[0x92C1-0x6800 : 0x92C1-0x6800+132])"
 	@echo "wrote $@ ($$(wc -c < $@) bytes)"
 
+# 15 static level layouts: 180 B each (12 rows x 15 cols, 1 B/cell)
+# at blob 0x6CDB..0x7766. Pointer table at 0x6CBD (15 LE 16-bit ptrs)
+# isn't shipped — we sequence levels by index in C since the deltas
+# are uniform (0xB4).
+assets/levels.bin: original/blocks/03_DATA_headless.dat.bin
+	@python3 -c "from pathlib import Path; \
+		Path('$@').write_bytes(Path('$<').read_bytes()[0x6CDB-0x6800 : 0x7766-0x6800+1])"
+	@echo "wrote $@ ($$(wc -c < $@) bytes)"
+
+# Gameplay sprite cache: 3584 B at RAM 0xE400..0xF1FF from snap3
+# (level 1, just started). Holds the 8 brick base sprites plus
+# pre-shifted variants and bat/ball/HUD chunks. Cache slots are
+# indexed directly by cell-value (`cell * 16`) per notes/levels.md.
+assets/sprite_cache.bin: $(LEVEL1_SNAP_RAM)
+	@python3 -c "from pathlib import Path; \
+		Path('$@').write_bytes(Path('$<').read_bytes()[0xE400-0x4000 : 0xF200-0x4000])"
+	@echo "wrote $@ ($$(wc -c < $@) bytes)"
+
 # Bottom decorative sprite + arrow combined: 32x13 each (4 bytes
 # width × 13 rows) stored bottom-to-top per sub_b5f8h's convention.
 # Source: blob 0x938E (P1) and 0x93C4 (P2). Each blob has a (w, h)
@@ -134,6 +154,8 @@ $(FLOPPY_OUT): $(EXE) $(ASSETS) $(FLOPPY_SRC)
 	mcopy -i $@ -o assets/main_menu_markup.bin ::MENUMARK.BIN
 	mcopy -i $@ -o assets/indicator.bin ::INDICAT.BIN
 	mcopy -i $@ -o assets/bottom_sprites.bin ::BOTSPR.BIN
+	mcopy -i $@ -o assets/levels.bin ::LEVELS.BIN
+	mcopy -i $@ -o assets/sprite_cache.bin ::CACHE.BIN
 	@printf '@ECHO OFF\r\nBATTY\r\n' > build/AUTOEXEC.BAT
 	mcopy -i $@ -o build/AUTOEXEC.BAT ::AUTOEXEC.BAT
 	@echo "Floppy ready: $@  (menu-only cycle)"
@@ -149,6 +171,8 @@ $(TEST_FLOPPY_OUT): $(EXE) $(ASSETS) $(FLOPPY_SRC)
 	mcopy -i $@ -o assets/main_menu_markup.bin ::MENUMARK.BIN
 	mcopy -i $@ -o assets/indicator.bin ::INDICAT.BIN
 	mcopy -i $@ -o assets/bottom_sprites.bin ::BOTSPR.BIN
+	mcopy -i $@ -o assets/levels.bin ::LEVELS.BIN
+	mcopy -i $@ -o assets/sprite_cache.bin ::CACHE.BIN
 	@printf '@ECHO OFF\r\nSET BATTYALL=1\r\nBATTY\r\n' > build/AUTOEXEC-T.BAT
 	mcopy -i $@ -o build/AUTOEXEC-T.BAT ::AUTOEXEC.BAT
 	@echo "Test floppy ready: $@  (full 4-state cycle)"

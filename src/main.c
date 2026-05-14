@@ -331,6 +331,95 @@ static void draw_bottom_sprites(void) {
     draw_bottom_sprite(bot_p2, BORDER_X + 25 * 8, y, 15);
 }
 
+/* --- Levels + brick blitter -------------------------------------------
+ *
+ * 15 levels x 180 B (12 rows x 15 cols, 1 B/cell). Per cell: bit 7 or
+ * bit 4 set = skip; else low bits index the sprite cache at
+ * (cell_value * 16). Each cache chunk is 16 bytes = 2 bytes wide x 8
+ * rows, blitted at (col*16, row*8) inside a 240x96 brick region
+ * starting at pixel (8, 16) of the playfield (= VRAM 0x4081 in the
+ * original — see notes/sprites.md).
+ *
+ * For Phase B2 we blit everything in bright-white (palette 15). Per-
+ * level / per-row colour comes later. */
+#define N_LEVELS   15
+#define LVL_ROWS   12
+#define LVL_COLS   15
+#define LVL_CELLS  (LVL_ROWS * LVL_COLS)
+#define LVL_SIZE   (N_LEVELS * LVL_CELLS)
+#define BRICK_W_PX 16
+#define BRICK_H_PX  8
+#define CACHE_SIZE 3584
+#define BRICK_FIELD_X  8     /* relative to playfield top-left */
+#define BRICK_FIELD_Y 16
+
+static unsigned char levels[LVL_SIZE];
+static unsigned char sprite_cache[CACHE_SIZE];
+
+static int load_levels(const char *path) {
+    FILE *f = fopen(path, "rb");
+    if (!f) return -1;
+    if (fread(levels, 1, sizeof(levels), f) != sizeof(levels)) {
+        fclose(f); return -2;
+    }
+    fclose(f);
+    return 0;
+}
+
+static int load_sprite_cache(const char *path) {
+    FILE *f = fopen(path, "rb");
+    if (!f) return -1;
+    if (fread(sprite_cache, 1, sizeof(sprite_cache), f) != sizeof(sprite_cache)) {
+        fclose(f); return -2;
+    }
+    fclose(f);
+    return 0;
+}
+
+/* Blit one 16x8 chunk from sprite_cache[cell*16..] to VGA at (x, y).
+ * Bit-set pixels get `colour`; bit-clear are left untouched. */
+static void draw_brick(int x, int y, unsigned char cell, unsigned char colour) {
+    int row, byte_col, bit;
+    unsigned char b;
+    const unsigned char *chunk = sprite_cache + (int)cell * 16;
+    for (row = 0; row < BRICK_H_PX; row++) {
+        for (byte_col = 0; byte_col < 2; byte_col++) {
+            b = chunk[row * 2 + byte_col];
+            for (bit = 0; bit < 8; bit++) {
+                if (b & (0x80 >> bit)) {
+                    vga[(long)(y + row) * SCREEN_W + x + byte_col * 8 + bit] = colour;
+                }
+            }
+        }
+    }
+}
+
+static void render_brick_field(unsigned char level_idx) {
+    int r, c, base;
+    unsigned char cell;
+    if (level_idx >= N_LEVELS) return;
+    base = (int)level_idx * LVL_CELLS;
+    for (r = 0; r < LVL_ROWS; r++) {
+        for (c = 0; c < LVL_COLS; c++) {
+            cell = levels[base + r * LVL_COLS + c];
+            /* sub_adbch's per-frame blitter skips on (bit 7 | bit 4)
+             * because bit-4-set cells are statically painted once at
+             * level-init and don't need redrawing. We're a one-shot
+             * render so we treat only bit-7-set (= 0xC0) as empty. */
+            if (cell & 0x80) continue;
+            draw_brick(BORDER_X + BRICK_FIELD_X + c * BRICK_W_PX,
+                       BORDER_Y + BRICK_FIELD_Y + r * BRICK_H_PX,
+                       cell, 15);
+        }
+    }
+}
+
+static void render_level_screen(unsigned char level_idx) {
+    fill(0, 0, SCREEN_W, SCREEN_H, COL_BORDER);
+    draw_frame(10);              /* bright red — placeholder */
+    render_brick_field(level_idx);
+}
+
 
 static unsigned long bios_ticks(void);
 
@@ -426,11 +515,12 @@ static unsigned long bios_ticks(void) {
  *           idle timeout -> HI_SCORE
  *   HI_SCORE static-ish, any key or timeout -> MENU
  *   ESC quits anywhere. */
-typedef enum { ST_TITLE, ST_MENU, ST_HISCORE, ST_QUIT } state_t;
+typedef enum { ST_TITLE, ST_MENU, ST_HISCORE, ST_LEVEL, ST_QUIT } state_t;
 
 #define TITLE_TIMEOUT_TICKS   60    /* ~3.3 s */
 #define MENU_TIMEOUT_TICKS   200    /* ~11 s  */
 #define HISCORE_TIMEOUT_TICKS 120   /* ~6.6 s */
+#define LEVEL_TIMEOUT_TICKS   40    /* ~2.2 s per level in the cycle */
 
 /* In test mode (BATTYALL=1) we want explicit key control over every
  * transition. Set at startup based on env. */
@@ -518,10 +608,30 @@ static state_t run_hiscore(void) {
     for (;;) {
         if (kbhit()) {
             int k = getch();
-            return (k == 27) ? ST_QUIT : ST_MENU;
+            return (k == 27) ? ST_QUIT : ST_LEVEL;
         }
-        if (TIMED_OUT(start, HISCORE_TIMEOUT_TICKS)) return ST_MENU;
+        if (TIMED_OUT(start, HISCORE_TIMEOUT_TICKS)) return ST_LEVEL;
     }
+}
+
+/* Cycle through L1..L15 (and back to TITLE), pausing
+ * LEVEL_TIMEOUT_TICKS on each. Any key advances; ESC quits. */
+static state_t run_level(void) {
+    unsigned char i;
+    unsigned long start;
+    for (i = 0; i < N_LEVELS; i++) {
+        render_level_screen(i);
+        start = bios_ticks();
+        for (;;) {
+            if (kbhit()) {
+                int k = getch();
+                if (k == 27) return ST_QUIT;
+                break;
+            }
+            if (TIMED_OUT(start, LEVEL_TIMEOUT_TICKS)) break;
+        }
+    }
+    return ST_TITLE;
 }
 
 int main(void) {
@@ -535,7 +645,9 @@ int main(void) {
 
     if (load_font("FONT.BIN") != 0 ||
         load_indicator("INDICAT.BIN") != 0 ||
-        load_bottom_sprites("BOTSPR.BIN") != 0) {
+        load_bottom_sprites("BOTSPR.BIN") != 0 ||
+        load_levels("LEVELS.BIN") != 0 ||
+        load_sprite_cache("CACHE.BIN") != 0) {
         fill(0, 0, SCREEN_W, SCREEN_H, 10 /* bright red */);
     }
 
@@ -544,6 +656,7 @@ int main(void) {
             case ST_TITLE:   state = run_title();   break;
             case ST_MENU:    state = run_menu();    break;
             case ST_HISCORE: state = run_hiscore(); break;
+            case ST_LEVEL:   state = run_level();   break;
             default:         state = ST_QUIT;       break;
         }
     }
