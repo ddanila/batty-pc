@@ -182,32 +182,54 @@ asset rather than computed.
 | 6. Drop sprite_cache  ✅                  | done    | -                                |
 | 7. Frame / brick shadow theory            | Bundled with 1 + 2a                        |
 
-## L2..L15 sweep status (after attr + per-cycle-tile fix)
+## L2..L15 sweep status
 
-Headline diff numbers per level (full-playfield RGB diff):
+Headline diff numbers per level (full-playfield RGB diff), progress
+across the visual-parity grind:
 
 ```
-L 1:  0.00%    L 6: 12.19%    L11: 15.47%
-L 2:  5.72%    L 7: 13.24%    L12: 10.31%
-L 3:  7.27%    L 8: 11.05%    L13:  7.18%
-L 4: 14.37%    L 9:  6.95%    L14: 11.40%
-L 5:  7.69%    L10:  7.65%    L15: 17.52%
+              raw     per-cycle  per-half  mid-band  full-clean
+                     tile+attrs   attrs    cleaning
+L 1:  0.00%   0.00%   0.00%      0.00%     0.00%     0.00%
+L 2: 24.93%   5.72%   5.59%      6.03%     2.66%
+L 3: 22.95%   7.27%   6.61%      6.91%     3.86%
+L 4: 28.35%  14.37%  13.07%      8.18%     5.44%
+L 5:  9.01%   7.69%   7.69%      4.83%     2.76%
+L 6: 28.55%  12.19%  12.19%     10.10%     4.70%
+L 7: 28.53%  13.24%  11.16%      5.54%     2.85%
+L 8: 25.13%  11.05%   9.62%      7.08%     3.98%
+L 9:  7.83%   6.95%   3.82%      2.87%     1.77%
+L10: 26.80%   7.65%   6.48%      5.98%     3.00%
+L11: 30.41%  15.47%  12.74%      5.49%     2.94%
+L12: 24.89%  10.31%   8.75%      6.65%     3.84%
+L13:  8.45%   7.18%   7.18%      6.07%     2.28%
+L14: 29.02%  11.40%   9.71%      7.94%     4.81%
+L15: 31.39%  17.52%  12.83%      7.87%     4.09%
 ```
 
-Residual breakdown (verified on L2 / L15 per-region counts):
+Max diff: 31% raw → 5.44% after full clean. Average: from ~22%
+raw to ~3% after full clean.
 
-- **HUD score digits**: ~150-200 px / level. Our render shows L1's
-  "0/100k/0" score; GT shows whatever score state each
-  patched-capture inherited from snap3. Fixable via:
-  (a) re-capturing GTs from a fresh game state (= proper play-
-      through capture), or
-  (b) shipping per-level HUD bitmaps (~512 B/level, 7.5 KB total).
-- **Brick / hex shadow bands**: ~1-2 px tall dark lines between
-  brick rows and just below the top frame edge. Our brick bitmaps
-  include the brick's shadow when present but not the inter-row
-  shadow rendered by a separate pass in the original.
-- **Per-level frame fine details**: tiny variations in the cyan
-  ornament between colour cycles - few dozen pixels each.
+Residual breakdown (verified on L4 / L6 per-region counts):
+
+- **Brick drop-shadow bands**: 1-px dark lines below each brick row
+  rendered by a separate pass in the original. Our brick_bitmaps
+  capture only the 8-px brick body, not the shadow row that the
+  original paints between rows.
+- **Bat-X drift**: snap3's bat X varies slightly between captures
+  because the level-init at 0xBA4C doesn't reset the bat position;
+  the cleaning replaces snap3's bat region with L1's bat, but the
+  actual GT capture had it at a slightly different X.
+- **A handful of fine brick boundary pixels** where our per-half
+  attr split still under-captures the original's painting order.
+
+The patched-capture method's residual artifact zone is now well-
+characterised; pushing below ~3% / level requires either:
+  (a) a real playthrough capture of each level (no more
+      patched-capture), or
+  (b) porting the brick drop-shadow pass from the original
+      (bundled with shortcut #1 - the multi-pass brick
+      compositor).
 
 ## What's NOT a shortcut
 
