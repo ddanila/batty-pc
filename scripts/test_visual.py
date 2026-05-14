@@ -174,7 +174,12 @@ def main():
     # roi=None  -> diff the full 256x192 playfield
     # roi=(x0, y0, x1, y1) -> diff only that sub-rectangle in playfield coords
     # `assert_match=False` => captured, diff-reported, but not failing.
-    BRICK_ROI = (8, 16, 8 + 240, 16 + 96)
+    # state4_level1 ROI covers the brick zone (8..248, 16..112) plus the
+    # bat strip (8..248, 167..183). We diff the union by using a single
+    # bounding box that includes both bands; the gap rows (113..166) are
+    # plain hex bg which mostly matches anyway so the metric stays
+    # meaningful.
+    BRICK_ROI = (8, 16, 8 + 240, 184)
     checkpoints = [
         ('state1_title',    TITLE_SCR,    True,  None),
         ('state2_menu',     SNAP_MENU,    False, None),

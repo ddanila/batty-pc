@@ -373,6 +373,15 @@ static unsigned char level_attrs[ATTR_TOTAL_SIZE];
 #define BG_TILE_SIZE (BG_TILE_H_PX * 2)
 static unsigned char bg_tile[BG_TILE_SIZE];
 
+/* Bat + on-bat ball composite: 4 bytes wide x 16 rows = 64 B (32 x 16
+ * px). L1-specific static snapshot at playfield (112, 167). */
+#define BAT_W_BYTES 4
+#define BAT_H_PX    16
+#define BAT_SIZE    (BAT_W_BYTES * BAT_H_PX)
+#define BAT_X_PX    112
+#define BAT_Y_PX    167
+static unsigned char bat_l1[BAT_SIZE];
+
 static int load_levels(const char *path) {
     FILE *f = fopen(path, "rb");
     if (!f) return -1;
@@ -413,6 +422,16 @@ static int load_bg_tile(const char *path) {
     return 0;
 }
 
+static int load_bat(const char *path) {
+    FILE *f = fopen(path, "rb");
+    if (!f) return -1;
+    if (fread(bat_l1, 1, sizeof(bat_l1), f) != sizeof(bat_l1)) {
+        fclose(f); return -2;
+    }
+    fclose(f);
+    return 0;
+}
+
 /* ZX attribute byte -> our 16-entry palette indices for ink + paper.
  * attr = flash | bright | paper(3) | ink(3). bit 6 = bright. */
 static unsigned char ink_pal(unsigned char attr) {
@@ -420,6 +439,28 @@ static unsigned char ink_pal(unsigned char attr) {
 }
 static unsigned char paper_pal(unsigned char attr) {
     return (unsigned char)(((attr >> 3) & 7) | ((attr & 0x40) >> 3));
+}
+
+/* Paint the bat+ball composite at its initial L1 position. The bitmap
+ * is a 32x16 raw byte block (4 bytes per row, 16 rows); bit=1 -> ink,
+ * bit=0 -> paper, using the bg attribute (yellow ink on black paper
+ * for L1). Overwrites the hex bg painted earlier. */
+static void render_bat(unsigned char attr) {
+    unsigned char ink   = ink_pal(attr);
+    unsigned char paper = paper_pal(attr);
+    int r, c, bit;
+    unsigned char b;
+    int x0 = BORDER_X + BAT_X_PX;
+    int y0 = BORDER_Y + BAT_Y_PX;
+    for (r = 0; r < BAT_H_PX; r++) {
+        for (c = 0; c < BAT_W_BYTES; c++) {
+            b = bat_l1[r * BAT_W_BYTES + c];
+            for (bit = 0; bit < 8; bit++) {
+                vga[(long)(y0 + r) * SCREEN_W + x0 + c * 8 + bit] =
+                    (b & (0x80 >> bit)) ? ink : paper;
+            }
+        }
+    }
 }
 
 /* Blit one 16x8 chunk from sprite_cache[cell*16..] to VGA at (x, y).
@@ -504,6 +545,7 @@ static void render_level_screen(unsigned char level_idx) {
     draw_frame(10);              /* bright red — placeholder */
     paint_hex_bg(bg_attr);
     render_brick_field(level_idx);
+    render_bat(bg_attr);
 }
 
 
@@ -735,7 +777,8 @@ int main(void) {
         load_levels("LEVELS.BIN") != 0 ||
         load_sprite_cache("CACHE.BIN") != 0 ||
         load_level_attrs("LVLATTR.BIN") != 0 ||
-        load_bg_tile("BGTILE.BIN") != 0) {
+        load_bg_tile("BGTILE.BIN") != 0 ||
+        load_bat("BATL1.BIN") != 0) {
         fill(0, 0, SCREEN_W, SCREEN_H, 10 /* bright red */);
     }
 
