@@ -365,6 +365,14 @@ static unsigned char levels[LVL_SIZE];
 static unsigned char sprite_cache[CACHE_SIZE];
 static unsigned char level_attrs[ATTR_TOTAL_SIZE];
 
+/* 16x16-pixel hex pattern tile (1bpp; 2 bytes wide x 16 rows = 32 B).
+ * Tiled across the playfield as the level background; colour comes
+ * from the level's bg attribute (top-left of its attr band). */
+#define BG_TILE_W_PX 16
+#define BG_TILE_H_PX 16
+#define BG_TILE_SIZE (BG_TILE_H_PX * 2)
+static unsigned char bg_tile[BG_TILE_SIZE];
+
 static int load_levels(const char *path) {
     FILE *f = fopen(path, "rb");
     if (!f) return -1;
@@ -389,6 +397,16 @@ static int load_level_attrs(const char *path) {
     FILE *f = fopen(path, "rb");
     if (!f) return -1;
     if (fread(level_attrs, 1, sizeof(level_attrs), f) != sizeof(level_attrs)) {
+        fclose(f); return -2;
+    }
+    fclose(f);
+    return 0;
+}
+
+static int load_bg_tile(const char *path) {
+    FILE *f = fopen(path, "rb");
+    if (!f) return -1;
+    if (fread(bg_tile, 1, sizeof(bg_tile), f) != sizeof(bg_tile)) {
         fclose(f); return -2;
     }
     fclose(f);
@@ -422,12 +440,6 @@ static void draw_brick(int x, int y, unsigned char cell,
     }
 }
 
-/* Fill a 16x8 rectangle with a single palette index — used for the
- * empty (bit-7-set) cells where there's no sprite, just background. */
-static void fill_brick(int x, int y, unsigned char colour) {
-    fill(x, y, BRICK_W_PX, BRICK_H_PX, colour);
-}
-
 static void render_brick_field(unsigned char level_idx) {
     int r, c, base, attr_base, x, y;
     unsigned char cell, attr, ink, paper;
@@ -446,18 +458,49 @@ static void render_brick_field(unsigned char level_idx) {
             x = BORDER_X + BRICK_FIELD_X + c * BRICK_W_PX;
             y = BORDER_Y + BRICK_FIELD_Y + r * BRICK_H_PX;
             if (cell & 0x80) {
-                /* Empty cell — paint background only. */
-                fill_brick(x, y, paper);
-            } else {
-                draw_brick(x, y, cell, ink, paper);
+                /* Empty cell: leave the hex bg paint_hex_bg already laid
+                 * down — overwriting with flat paper would hide the
+                 * pattern. */
+                continue;
+            }
+            draw_brick(x, y, cell, ink, paper);
+        }
+    }
+}
+
+/* Tile the 16x16 hex pattern across the full 256x192 playfield,
+ * using `attr`'s ink for set bits and paper for clear bits. Painted
+ * BEFORE the bricks so the bricks overwrite the pattern in their
+ * 16x8 cells. */
+static void paint_hex_bg(unsigned char attr) {
+    unsigned char ink   = ink_pal(attr);
+    unsigned char paper = paper_pal(attr);
+    int x, y, tx, ty, byte_col, bit;
+    unsigned char b;
+    for (y = 0; y < PLAYFIELD_H; y++) {
+        ty = y & 15;
+        for (byte_col = 0; byte_col < PLAYFIELD_W / 8; byte_col++) {
+            /* Source byte: tile row ty, byte_col mod 2 (= 16-px h period). */
+            b = bg_tile[ty * 2 + (byte_col & 1)];
+            tx = byte_col * 8;
+            for (bit = 0; bit < 8; bit++) {
+                x = tx + bit;
+                vga[(long)(BORDER_Y + y) * SCREEN_W + BORDER_X + x] =
+                    (b & (0x80 >> bit)) ? ink : paper;
             }
         }
     }
 }
 
 static void render_level_screen(unsigned char level_idx) {
+    /* Per-level background attribute: cols 0 / 1 carry side-edge
+     * stripes; the bulk bg starts at col 2. Sample (row 0, col 14) —
+     * deep inside the brick band, where the attr is reliably the
+     * level's bg colour. */
+    unsigned char bg_attr = level_attrs[(int)level_idx * ATTR_BAND_SIZE + 14];
     fill(0, 0, SCREEN_W, SCREEN_H, COL_BORDER);
     draw_frame(10);              /* bright red — placeholder */
+    paint_hex_bg(bg_attr);
     render_brick_field(level_idx);
 }
 
@@ -689,7 +732,8 @@ int main(void) {
         load_bottom_sprites("BOTSPR.BIN") != 0 ||
         load_levels("LEVELS.BIN") != 0 ||
         load_sprite_cache("CACHE.BIN") != 0 ||
-        load_level_attrs("LVLATTR.BIN") != 0) {
+        load_level_attrs("LVLATTR.BIN") != 0 ||
+        load_bg_tile("BGTILE.BIN") != 0) {
         fill(0, 0, SCREEN_W, SCREEN_H, 10 /* bright red */);
     }
 

@@ -16,6 +16,8 @@ build/*.lst
 build/test_visual/
 build/snap*.sna
 build/snapshots/*.sna
+# Ad-hoc preview captures while iterating on the level renderer
+build/level_preview/
 
 # Python
 __pycache__/
