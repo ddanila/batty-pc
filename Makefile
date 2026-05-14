@@ -51,7 +51,7 @@ TEST_FLOPPY_OUT  = build/batty-test.img   # `make test`: full 4-state cycle
 ZESARUX ?= ../generaly/tools/zesarux/src/zesarux
 ZRCP_PORT ?= 10000
 
-.PHONY: all clean run floppy assets help run-original snapshot candidates regions test
+.PHONY: all clean run floppy assets help run-original run-original-cheat snapshot candidates regions test
 
 all: $(EXE) $(ASSETS)
 
@@ -250,6 +250,13 @@ run-original:
 	$(ZESARUX) --noconfigfile --machine 48k \
 		--enable-remoteprotocol --remoteprotocol-port $(ZRCP_PORT) \
 		--quickexit $(CURDIR)/original/batty.tap
+
+# Same but with an infinite-lives patch (NOPs out the `dec a` at PC
+# 0xBD35 in the lives-decrement sequence). Use `make snapshot` from
+# another terminal to capture clean per-level GTs as you play
+# through.
+run-original-cheat:
+	python3 scripts/run_original_cheat.py
 
 snapshot:
 	@mkdir -p build/snapshots
