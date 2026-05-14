@@ -257,15 +257,21 @@ static int load_indicator(const char *path) {
     return 0;
 }
 
+/* The original's row-advancer sub_b56eh moves the destination UP in
+ * pixel rows (decrements H, which in ZX VRAM addressing reduces
+ * pixel_row_in_char). So bitmap row 0 = bottom visually. We flip
+ * here so (x, y) is still the top-left, and bitmap rows draw top to
+ * bottom on screen. */
 static void draw_indicator(const unsigned char *bitmap, int x, int y,
                            unsigned char colour) {
     int r, c, b;
     for (r = 0; r < INDICATOR_H; r++) {
+        int dst_row = y + (INDICATOR_H - 1 - r);
         for (c = 0; c < INDICATOR_W_BYTES; c++) {
             unsigned char byte = bitmap[r * INDICATOR_W_BYTES + c];
             for (b = 0; b < 8; b++) {
                 if (byte & (0x80 >> b)) {
-                    vga[(long)(y + r) * SCREEN_W + x + c * 8 + b] = colour;
+                    vga[(long)dst_row * SCREEN_W + x + c * 8 + b] = colour;
                 }
             }
         }
