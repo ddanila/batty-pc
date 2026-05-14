@@ -353,8 +353,17 @@ static void draw_bottom_sprites(void) {
 #define BRICK_FIELD_X  8     /* relative to playfield top-left */
 #define BRICK_FIELD_Y 16
 
+/* Per-level attribute band: 12 char-rows x 32 cols of ZX attribute
+ * bytes, captured from the brick-field zone of each level's GT
+ * .scr. Lookup: attr = level_attrs[lvl*ATTR_BAND_SIZE + r*32 + col]. */
+#define ATTR_ROWS       12
+#define ATTR_COLS       32
+#define ATTR_BAND_SIZE  (ATTR_ROWS * ATTR_COLS)
+#define ATTR_TOTAL_SIZE (N_LEVELS * ATTR_BAND_SIZE)
+
 static unsigned char levels[LVL_SIZE];
 static unsigned char sprite_cache[CACHE_SIZE];
+static unsigned char level_attrs[ATTR_TOTAL_SIZE];
 
 static int load_levels(const char *path) {
     FILE *f = fopen(path, "rb");
@@ -376,9 +385,29 @@ static int load_sprite_cache(const char *path) {
     return 0;
 }
 
+static int load_level_attrs(const char *path) {
+    FILE *f = fopen(path, "rb");
+    if (!f) return -1;
+    if (fread(level_attrs, 1, sizeof(level_attrs), f) != sizeof(level_attrs)) {
+        fclose(f); return -2;
+    }
+    fclose(f);
+    return 0;
+}
+
+/* ZX attribute byte -> our 16-entry palette indices for ink + paper.
+ * attr = flash | bright | paper(3) | ink(3). bit 6 = bright. */
+static unsigned char ink_pal(unsigned char attr) {
+    return (unsigned char)((attr & 7) | ((attr & 0x40) >> 3));
+}
+static unsigned char paper_pal(unsigned char attr) {
+    return (unsigned char)(((attr >> 3) & 7) | ((attr & 0x40) >> 3));
+}
+
 /* Blit one 16x8 chunk from sprite_cache[cell*16..] to VGA at (x, y).
- * Bit-set pixels get `colour`; bit-clear are left untouched. */
-static void draw_brick(int x, int y, unsigned char cell, unsigned char colour) {
+ * Bit-set pixels use `ink`, bit-clear use `paper`. */
+static void draw_brick(int x, int y, unsigned char cell,
+                       unsigned char ink, unsigned char paper) {
     int row, byte_col, bit;
     unsigned char b;
     const unsigned char *chunk = sprite_cache + (int)cell * 16;
@@ -386,30 +415,42 @@ static void draw_brick(int x, int y, unsigned char cell, unsigned char colour) {
         for (byte_col = 0; byte_col < 2; byte_col++) {
             b = chunk[row * 2 + byte_col];
             for (bit = 0; bit < 8; bit++) {
-                if (b & (0x80 >> bit)) {
-                    vga[(long)(y + row) * SCREEN_W + x + byte_col * 8 + bit] = colour;
-                }
+                vga[(long)(y + row) * SCREEN_W + x + byte_col * 8 + bit] =
+                    (b & (0x80 >> bit)) ? ink : paper;
             }
         }
     }
 }
 
+/* Fill a 16x8 rectangle with a single palette index — used for the
+ * empty (bit-7-set) cells where there's no sprite, just background. */
+static void fill_brick(int x, int y, unsigned char colour) {
+    fill(x, y, BRICK_W_PX, BRICK_H_PX, colour);
+}
+
 static void render_brick_field(unsigned char level_idx) {
-    int r, c, base;
-    unsigned char cell;
+    int r, c, base, attr_base, x, y;
+    unsigned char cell, attr, ink, paper;
     if (level_idx >= N_LEVELS) return;
-    base = (int)level_idx * LVL_CELLS;
+    base      = (int)level_idx * LVL_CELLS;
+    attr_base = (int)level_idx * ATTR_BAND_SIZE;
     for (r = 0; r < LVL_ROWS; r++) {
         for (c = 0; c < LVL_COLS; c++) {
             cell = levels[base + r * LVL_COLS + c];
-            /* sub_adbch's per-frame blitter skips on (bit 7 | bit 4)
-             * because bit-4-set cells are statically painted once at
-             * level-init and don't need redrawing. We're a one-shot
-             * render so we treat only bit-7-set (= 0xC0) as empty. */
-            if (cell & 0x80) continue;
-            draw_brick(BORDER_X + BRICK_FIELD_X + c * BRICK_W_PX,
-                       BORDER_Y + BRICK_FIELD_Y + r * BRICK_H_PX,
-                       cell, 15);
+            /* Brick at grid col c occupies char cols (1+c*2) and (1+c*2+1)
+             * in the 32-col attr band. Left half's attr is canonical
+             * (both halves share colour for any one brick). */
+            attr  = level_attrs[attr_base + r * ATTR_COLS + 1 + c * 2];
+            ink   = ink_pal(attr);
+            paper = paper_pal(attr);
+            x = BORDER_X + BRICK_FIELD_X + c * BRICK_W_PX;
+            y = BORDER_Y + BRICK_FIELD_Y + r * BRICK_H_PX;
+            if (cell & 0x80) {
+                /* Empty cell — paint background only. */
+                fill_brick(x, y, paper);
+            } else {
+                draw_brick(x, y, cell, ink, paper);
+            }
         }
     }
 }
@@ -647,7 +688,8 @@ int main(void) {
         load_indicator("INDICAT.BIN") != 0 ||
         load_bottom_sprites("BOTSPR.BIN") != 0 ||
         load_levels("LEVELS.BIN") != 0 ||
-        load_sprite_cache("CACHE.BIN") != 0) {
+        load_sprite_cache("CACHE.BIN") != 0 ||
+        load_level_attrs("LVLATTR.BIN") != 0) {
         fill(0, 0, SCREEN_W, SCREEN_H, 10 /* bright red */);
     }
 

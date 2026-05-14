@@ -36,7 +36,7 @@ EXE     = build/batty.exe
 ASSETS  = assets/loading.bin assets/hi_score.bin assets/main_menu.bin \
           assets/font.bin assets/markup.bin assets/main_menu_markup.bin \
           assets/indicator.bin assets/bottom_sprites.bin \
-          assets/levels.bin assets/sprite_cache.bin
+          assets/levels.bin assets/sprite_cache.bin assets/level_attrs.bin
 HISCORE_SNAP      ?= build/snapshots/20260513T202038Z/screen.scr
 MAINMENU_SNAP     ?= build/snapshots/20260513T202041Z/screen.scr
 MAINMENU_SNAP_RAM ?= build/snapshots/20260513T202041Z/ram_4000_FFFF.bin
@@ -125,6 +125,15 @@ assets/sprite_cache.bin: $(LEVEL1_SNAP_RAM)
 		Path('$@').write_bytes(Path('$<').read_bytes()[0xE400-0x4000 : 0xF200-0x4000])"
 	@echo "wrote $@ ($$(wc -c < $@) bytes)"
 
+# Per-level brick attribute bands extracted from the GT captures.
+# 15 levels x 12 char rows x 32 cols = 5760 B. Char rows 2..13 cover
+# the brick field; we ship the full 12 rows so the C lookup stays
+# simple. Generated only if the GT captures exist (run
+# `python3 scripts/capture_levels.py` to refresh).
+assets/level_attrs.bin: build/level_gt/level_01.scr scripts/extract_level_attrs.py
+	python3 scripts/extract_level_attrs.py $@
+	@echo "wrote $@ ($$(wc -c < $@) bytes)"
+
 # Bottom decorative sprite + arrow combined: 32x13 each (4 bytes
 # width × 13 rows) stored bottom-to-top per sub_b5f8h's convention.
 # Source: blob 0x938E (P1) and 0x93C4 (P2). Each blob has a (w, h)
@@ -156,6 +165,7 @@ $(FLOPPY_OUT): $(EXE) $(ASSETS) $(FLOPPY_SRC)
 	mcopy -i $@ -o assets/bottom_sprites.bin ::BOTSPR.BIN
 	mcopy -i $@ -o assets/levels.bin ::LEVELS.BIN
 	mcopy -i $@ -o assets/sprite_cache.bin ::CACHE.BIN
+	mcopy -i $@ -o assets/level_attrs.bin ::LVLATTR.BIN
 	@printf '@ECHO OFF\r\nBATTY\r\n' > build/AUTOEXEC.BAT
 	mcopy -i $@ -o build/AUTOEXEC.BAT ::AUTOEXEC.BAT
 	@echo "Floppy ready: $@  (menu-only cycle)"
@@ -173,6 +183,7 @@ $(TEST_FLOPPY_OUT): $(EXE) $(ASSETS) $(FLOPPY_SRC)
 	mcopy -i $@ -o assets/bottom_sprites.bin ::BOTSPR.BIN
 	mcopy -i $@ -o assets/levels.bin ::LEVELS.BIN
 	mcopy -i $@ -o assets/sprite_cache.bin ::CACHE.BIN
+	mcopy -i $@ -o assets/level_attrs.bin ::LVLATTR.BIN
 	@printf '@ECHO OFF\r\nSET BATTYALL=1\r\nBATTY\r\n' > build/AUTOEXEC-T.BAT
 	mcopy -i $@ -o build/AUTOEXEC-T.BAT ::AUTOEXEC.BAT
 	@echo "Test floppy ready: $@  (full 4-state cycle)"
