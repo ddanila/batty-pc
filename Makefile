@@ -86,11 +86,14 @@ assets/main_menu.bin: $(MAINMENU_SNAP) scripts/extract_scr.py
 assets/font.bin: original/blocks/03_DATA_headless.dat.bin scripts/extract_font.py
 	python3 scripts/extract_font.py
 
-# Main-menu markup: 11 records, snap2 RAM 0x9571..0x961F (175 B).
-# Bundled as MENUMARK.BIN on the floppy.
+# Main-menu markup: snap2 RAM 0x9581..0x961F (~159 B). Skip the
+# leading "1 - 1 PLAYER" record (0x9571..0x9580, 16 B) — the original
+# doesn't display it on the static menu screen (only 3 of 4 player-
+# count options are shown). Likely state-conditional; revisit once
+# the menu state byte and render dispatch are decoded.
 assets/main_menu_markup.bin: $(MAINMENU_SNAP_RAM)
 	@python3 -c "from pathlib import Path; \
-		Path('$@').write_bytes(Path('$<').read_bytes()[0x9571-0x4000 : 0x9620-0x4000])"
+		Path('$@').write_bytes(Path('$<').read_bytes()[0x9581-0x4000 : 0x9620-0x4000])"
 	@echo "wrote $@ ($$(wc -c < $@) bytes)"
 
 # Player indicators: 32x16px each. P1 at blob 0x92C1, P2 at 0x9303
