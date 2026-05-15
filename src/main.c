@@ -468,9 +468,17 @@ static unsigned char ball_stuck   = 1;
  * 3-byte BCD-ish representation across current_score_1up + the in-game
  * digits at score_1up_in_game. lives starts at 3 per original
  * game_restart at $B9A0 (LD A,$03 / LD (lives_1up),A). */
-#define POINTS_PER_BRICK   50      /* placeholder; the original picks
-                                    * per-colour values via brik_value
-                                    * at $B2BD - port deferred. */
+
+/* Per-brick scoring table from points_table at $AFE4 (BCD source,
+ * decimal here). Indexed by brik_value+$01 in the original - that
+ * byte tracks the ball's row position so top-row bricks score more
+ * than bottom-row. We approximate with the brick's row index, which
+ * matches "higher up = more points" exactly. Metal bricks (cell low
+ * nibble >= 6) get DOUBLE per the JP C, add_points_to_score test at
+ * $AFD6. */
+static const unsigned int points_table[12] = {
+    120, 110, 100, 90, 80, 70, 60, 50, 40, 30, 20, 10
+};
 #define LIVES_INIT          3
 static unsigned long score      = 0;
 static int           lives      = LIVES_INIT;
@@ -1879,8 +1887,17 @@ static int brick_collision(int prev_x, int prev_y, int new_x, int new_y) {
     row = (cy - 32) / 8;
     cell = &live_level[row * LVL_COLS + col];
     if (*cell & 0x90) return 0;
+    {
+        /* Snapshot the cell value before we mark it destroyed - need the
+         * low nibble to tell normal from metal for the 2x point modifier
+         * (= the JP C, add_points_to_score check at $AFD6). */
+        unsigned char cell_val = *cell;
+        unsigned int idx = (unsigned int)((row < 12) ? row : 11);
+        unsigned int pts = points_table[idx];
+        if ((cell_val & 0x0F) >= 6) pts *= 2;     /* metal -> double */
+        score += pts;
+    }
     *cell |= 0x80;
-    score += POINTS_PER_BRICK;
     snd_q_push(SND_NORMAL_BRIK);            /* brick-break click */
     /* Maybe drop a bonus. Port of set_bonus's selection logic at
      * $9D5A: random index into bonus_table_current (= _first for
