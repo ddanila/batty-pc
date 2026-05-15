@@ -2608,6 +2608,7 @@ static void redraw_bat(unsigned char cycle, unsigned char bg_attr) {
 }
 
 static void render_hud_score(void);
+static void render_hud_high_score(void);
 static void render_hud_powerups(void);
 
 /* Full-frame compose. Walks the same scr_buff -> attr_buff -> VGA
@@ -2664,6 +2665,7 @@ static void redraw_full_with_ball(unsigned char level_idx) {
     if (bonus_active) render_bonus_to_buff(bg_attr);
     buff_to_vga();
     render_hud_score();
+    render_hud_high_score();
     render_hud_powerups();
 }
 
@@ -2689,11 +2691,15 @@ static void score_to_codes(unsigned long s, unsigned char out[6]) {
  * (y <= 127) and the bat (y >= 167). 6 digits * 8 px = 48 px wide,
  * centred at playfield x. Only drawn once score > 0 so state4_level1
  * (captured at score=0) stays pixel-identical against the GT. */
-/* Live score lives in the top HUD strip, overlaying the frame's
- * baked-in "000000" placeholder for the 1UP score. Char row 1 (y=8),
- * char col 4 onwards (x=32). 6 digits * 8 px = 48 px wide. */
+/* Live 1UP score in the top HUD strip, overlaying the frame's
+ * baked-in placeholder. Char row 1 (y=8), char col 4 (x=32).
+ * 6 digits * 8 px = 48 px wide. */
 #define HUD_SCORE_X (BORDER_X + 32)
 #define HUD_SCORE_Y (BORDER_Y + 8)
+/* Hi-score also in the top HUD strip, centre region — char col 15
+ * (x=120), same row. */
+#define HUD_HISCORE_X (BORDER_X + 120)
+#define HUD_HISCORE_Y (BORDER_Y + 8)
 /* Power-up letter chips sit in the empty band between the brick
  * field (y <= 127) and the bat (y >= 167), away from the top HUD. */
 #define HUD_POWERUP_X (BORDER_X + 192)
@@ -2702,6 +2708,11 @@ static void render_hud_score(void) {
     unsigned char digits[6];
     score_to_codes(score, digits);
     draw_text(HUD_SCORE_X, HUD_SCORE_Y, 15, digits, 6);
+}
+static void render_hud_high_score(void) {
+    unsigned char digits[6];
+    score_to_codes(high_score, digits);
+    draw_text(HUD_HISCORE_X, HUD_HISCORE_Y, 15, digits, 6);
 }
 /* Letter chips for the active power-up effects, painted in the bonus
  * colour so the player can see at a glance what's running. Encoded
