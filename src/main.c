@@ -880,6 +880,63 @@ static void blit_masked_sprite(unsigned int sprite_off, int x_px, int y_px,
     blit_masked_sprite_ptr(sprites_blob + sprite_off, x_px, y_px, ink, paper);
 }
 
+/* Original blit into the 1-bit scr_buff: per byte,
+ *   scr_buff' = (mask | scr_buff) ^ pixel
+ * mirroring sub_94BC. Three useful pixel outcomes:
+ *   - mask=1, pix=0  -> bit forced to 1 (solid body, ink colour in
+ *     the buff_to_vga pass).
+ *   - mask=1, pix=1  -> bit forced to 0 (sprite's internal texture,
+ *     paper colour).
+ *   - mask=0, pix=1  -> bit inverted (XOR shadow — toggles the bg
+ *     pattern bit at that pixel; what produces the dotted bat-shadow
+ *     band on rows 10..12).
+ *   - mask=0, pix=0  -> bit preserved (transparent).
+ * Handles non-byte-aligned x by emitting each source byte across two
+ * destination bytes with a per-row shift. */
+static void blit_masked_to_scr_buff_ptr(const unsigned char *src,
+                                         int x_px, int y_px) {
+    int w = src[0];
+    int h = src[1];
+    const unsigned char *p = src + 2;
+    int shift     = x_px & 7;
+    int start_col = x_px >> 3;
+    int rshift    = 8 - shift;
+    int row, col_byte;
+    for (row = 0; row < h; row++) {
+        int y = y_px + row;
+        if (y < 0 || y >= PLAYFIELD_H) { p += (unsigned)w * 2; continue; }
+        for (col_byte = 0; col_byte < w; col_byte++) {
+            unsigned char mask = *p++;
+            unsigned char pix  = *p++;
+            int dst_l = start_col + col_byte;
+            int dst_r = dst_l + 1;
+            unsigned char m_l, p_l, m_r, p_r;
+            unsigned int row_base = (unsigned int)y * 32U;
+            if (shift == 0) {
+                m_l = mask; p_l = pix; m_r = 0; p_r = 0;
+            } else {
+                m_l = (unsigned char)(mask >> shift);
+                p_l = (unsigned char)(pix  >> shift);
+                m_r = (unsigned char)(mask << rshift);
+                p_r = (unsigned char)(pix  << rshift);
+            }
+            if (dst_l >= 0 && dst_l < 32) {
+                unsigned char *d = &scr_buff[row_base + dst_l];
+                *d = (unsigned char)(((unsigned char)(m_l | *d)) ^ p_l);
+            }
+            if (shift != 0 && dst_r >= 0 && dst_r < 32) {
+                unsigned char *d = &scr_buff[row_base + dst_r];
+                *d = (unsigned char)(((unsigned char)(m_r | *d)) ^ p_r);
+            }
+        }
+    }
+}
+
+static void blit_masked_to_scr_buff(unsigned int sprite_off,
+                                     int x_px, int y_px) {
+    blit_masked_to_scr_buff_ptr(sprites_blob + sprite_off, x_px, y_px);
+}
+
 static void blit_masked_sprite_ptr(const unsigned char *src,
                                     int x_px, int y_px,
                                     unsigned char ink, unsigned char paper) {
@@ -1136,14 +1193,17 @@ static void render_bat(unsigned char cycle, unsigned char attr) {
     /* Bat sprite layout (both spr_bat_normal and spr_bat_big):
      *   rows 0..9  - body (mask=1 = bat colour, pixel=1 = paper for
      *                internal texture).
-     *   rows 10..12 - shadow drop (sparse mask=1 dots forming a
-     *                  checkerboard - the pixel pattern IS the shadow,
-     *                  same attr as the body so it just adds a dotted
-     *                  band below the bat).
-     * One blit covers the whole sprite. */
+     *   rows 10..12 - shadow drop (mask=0 dotted pattern with pix=1 -
+     *                  the original OR-blit's (mask|screen)^pix flips
+     *                  bg bits at those positions, producing the
+     *                  textured shadow band below the bat).
+     * One blit into scr_buff covers the whole sprite; buff_to_vga
+     * picks up the bg attr at each char cell so the bat inherits the
+     * surrounding bg's ink/paper. */
     unsigned int spr;
-    int x;
+    int x, y;
     (void)cycle;
+    (void)attr;
     if (bat_extra_px >= BAT_BIG_EXTRA_PX) {
         spr = SPR_BAT_BIG;
         x   = BAT_X - BAT_BIG_EXTRA_PX;
@@ -1151,15 +1211,29 @@ static void render_bat(unsigned char cycle, unsigned char attr) {
         spr = SPR_BAT_NORMAL;
         x   = BAT_X;
         if (bat_extra_px > 0) {
-            unsigned char ink = ink_pal(attr);
-            int y_top = BORDER_Y + BAT_Y_PX;
-            fill(BORDER_X + BAT_X - bat_extra_px, y_top + 1,
-                 bat_extra_px, 8, ink);
-            fill(BORDER_X + BAT_X + BAT_W_BYTES * 8, y_top + 1,
-                 bat_extra_px, 8, ink);
+            /* Resize ramp side-fillers: stuff solid bits into scr_buff
+             * so buff_to_vga lights them with bg's ink. */
+            int side_w = bat_extra_px;
+            int row;
+            for (row = 0; row < 8; row++) {
+                int yy = BAT_Y_PX + 1 + row;
+                int bx;
+                if (yy < 0 || yy >= PLAYFIELD_H) continue;
+                for (bx = BAT_X - side_w; bx < BAT_X; bx++) {
+                    if (bx >= 0 && bx < PLAYFIELD_W) {
+                        scr_buff[yy * 32 + (bx >> 3)] |= (unsigned char)(0x80 >> (bx & 7));
+                    }
+                }
+                for (bx = BAT_X + BAT_W_BYTES * 8; bx < BAT_X + BAT_W_BYTES * 8 + side_w; bx++) {
+                    if (bx >= 0 && bx < PLAYFIELD_W) {
+                        scr_buff[yy * 32 + (bx >> 3)] |= (unsigned char)(0x80 >> (bx & 7));
+                    }
+                }
+            }
         }
     }
-    blit_masked_sprite(spr, x, BAT_Y_PX, ink_pal(attr), paper_pal(attr));
+    y = BAT_Y_PX;
+    blit_masked_to_scr_buff(spr, x, y);
 }
 
 /* Display (lives - 2) right-side indicators next to the left one
@@ -1169,13 +1243,13 @@ static void render_lives(unsigned char cycle, unsigned char attr) {
     int show = lives - 2;
     int i;
     (void)cycle;
+    (void)attr;
     if (show < 0) show = 0;
     if (show > LIVES_DYNAMIC_MAX) show = LIVES_DYNAMIC_MAX;
     for (i = 0; i < show; i++) {
-        blit_masked_sprite(SPR_LIVES,
-                           LIVES_X_PX + i * 16,
-                           LIVES_Y_PX,
-                           ink_pal(attr), paper_pal(attr));
+        blit_masked_to_scr_buff(SPR_LIVES,
+                                LIVES_X_PX + i * 16,
+                                LIVES_Y_PX);
     }
 }
 
@@ -1358,9 +1432,9 @@ static void render_level_screen(unsigned char level_idx) {
     draw_frame(10);              /* bright red — placeholder */
     paint_bg_to_buff(bg_attr, cycle);
     render_brick_band(level_idx);
-    buff_to_vga();
     render_bat(cycle, bg_attr);
     render_lives(cycle, bg_attr);
+    buff_to_vga();
     render_frame(cycle, level_idx);
 }
 
@@ -1848,23 +1922,47 @@ static state_t run_hiscore(void) {
     }
 }
 
-/* Repaint a horizontal strip of the playfield with the level's hex bg
- * tile + attr. Used to erase the bat's previous position before
- * redrawing at the new X. */
-static void paint_bg_strip(unsigned char attr, unsigned char cycle,
-                           int y0, int h) {
-    unsigned char ink   = ink_pal(attr);
-    unsigned char paper = paper_pal(attr);
+/* Restore a horizontal strip of scr_buff to the level's hex bg tile
+ * and attr_buff (for the char rows the strip covers) to bg_attr.
+ * Used to wipe a sprite's previous position before re-blitting. */
+static void paint_bg_strip_to_buff(unsigned char attr, unsigned char cycle,
+                                    int y0, int h) {
     const unsigned char *tile = bg_tile + (int)cycle * BG_TILE_SIZE;
-    int x, y, ty, byte_col, bit;
-    unsigned char b;
-    for (y = y0; y < y0 + h; y++) {
-        ty = y & 15;
-        for (byte_col = 0; byte_col < PLAYFIELD_W / 8; byte_col++) {
-            b = tile[ty * 2 + (byte_col & 1)];
+    int y, byte_col, char_row;
+    int y_end = y0 + h;
+    if (y_end > PLAYFIELD_H) y_end = PLAYFIELD_H;
+    for (y = y0; y < y_end; y++) {
+        int ty = y & 15;
+        for (byte_col = 0; byte_col < 32; byte_col++) {
+            scr_buff[y * 32 + byte_col] = tile[ty * 2 + (byte_col & 1)];
+        }
+    }
+    {
+        int char_row_lo = y0 / 8;
+        int char_row_hi = (y_end - 1) / 8;
+        for (char_row = char_row_lo; char_row <= char_row_hi && char_row < ATTR_ROWS; char_row++) {
+            for (byte_col = 0; byte_col < 32; byte_col++) {
+                attr_buff[char_row * 32 + byte_col] = attr;
+            }
+        }
+    }
+}
+
+/* Flush a horizontal strip of scr_buff/attr_buff to VGA — partial
+ * version of buff_to_vga used after a paint_bg_strip_to_buff +
+ * sprite blits to redraw just the affected band. */
+static void buff_to_vga_strip(int y0, int h) {
+    int y, byte_col, bit;
+    int y_end = y0 + h;
+    if (y_end > PLAYFIELD_H) y_end = PLAYFIELD_H;
+    for (y = y0; y < y_end; y++) {
+        for (byte_col = 0; byte_col < 32; byte_col++) {
+            unsigned char b = scr_buff[y * 32 + byte_col];
+            unsigned char attr = attr_buff[(y / 8) * 32 + byte_col];
+            unsigned char ink = ink_pal(attr);
+            unsigned char paper = paper_pal(attr);
             for (bit = 0; bit < 8; bit++) {
-                x = byte_col * 8 + bit;
-                vga[(long)(BORDER_Y + y) * SCREEN_W + BORDER_X + x] =
+                vga[(long)(BORDER_Y + y) * SCREEN_W + BORDER_X + byte_col * 8 + bit] =
                     (b & (0x80 >> bit)) ? ink : paper;
             }
         }
@@ -2286,11 +2384,14 @@ static void step_ball(void) {
  * timeout still trips, so the cycle keeps moving even with no input.
  * Under BATTYALL=1 (test floppy) auto-advance is off and the test
  * orchestrator drives every transition via sendkey. */
-/* Redraw the bat band only (y=167..185). Independent of bricks. */
+/* Redraw the bat band only (y=167..185). Independent of bricks.
+ * Re-fills the strip's scr_buff/attr_buff with bg, blits bat + lives
+ * via the scr_buff pipeline, then flushes the strip to VGA. */
 static void redraw_bat(unsigned char cycle, unsigned char bg_attr) {
-    paint_bg_strip(bg_attr, cycle, BAT_Y_PX, BAT_H_PX);
+    paint_bg_strip_to_buff(bg_attr, cycle, BAT_Y_PX, BAT_H_PX);
     render_bat(cycle, bg_attr);
     render_lives(cycle, bg_attr);
+    buff_to_vga_strip(BAT_Y_PX, BAT_H_PX);
 }
 
 static void render_hud_score(void);
