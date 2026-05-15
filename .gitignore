@@ -19,6 +19,17 @@ build/snapshots/*.sna
 # Ad-hoc preview captures while iterating on the level renderer
 build/level_preview/
 
+# Re-built from the original/disasm/ submodule via scripts/build_modded_batty.py
+build/modded_batty/
+
+# Single-emulator capture-pipeline scratch files
+build/level_gt/_post_tape_boot.sna
+build/level_gt/level_*_modded.*
+build/level_gt_backup_*/
+
+# Claude Code session files
+.claude/
+
 # Python
 __pycache__/
 *.pyc
