@@ -617,7 +617,7 @@ static unsigned int bricks_destroyed = 0;
  *   then h rows of w (mask, pixel) pairs - blit semantics described
  *   in blit_masked_sprite below.
  * The constants below are offsets WITHIN sprites_blob. */
-#define SPRITES_BLOB_SIZE 0xCB4
+#define SPRITES_BLOB_SIZE 0xE94
 static unsigned char sprites_blob[SPRITES_BLOB_SIZE];
 #define SPR_BIG_BALL     (0x7A8C - 0x7A8C)   /* = 0x000 */
 #define SPR_LIVES        (0x7AFC - 0x7A8C)   /* = 0x070 */
@@ -637,6 +637,17 @@ static unsigned char sprites_blob[SPRITES_BLOB_SIZE];
  * tick counter and (misc_12 >> 2) % N_FRAMES as the frame index. */
 static const unsigned int spr_bird_frames[3] = { SPR_BIRD_1, SPR_BIRD_2, SPR_BIRD_3 };
 static const unsigned int spr_ufo_frames[3]  = { SPR_UFO_1,  SPR_UFO_2,  SPR_UFO_3  };
+
+#define SPR_BLAST_1      (0x87E6 - 0x7A8C)   /* = 0xd5a */
+#define SPR_BLAST_2      (0x881C - 0x7A8C)   /* = 0xd90 */
+#define SPR_BLAST_3      (0x8852 - 0x7A8C)   /* = 0xdc6 */
+#define SPR_BLAST_4      (0x888C - 0x7A8C)   /* = 0xe00 */
+#define SPR_BLAST_5      (0x88CE - 0x7A8C)   /* = 0xe42 */
+static const unsigned int spr_blast_frames[5] = {
+    SPR_BLAST_1, SPR_BLAST_2, SPR_BLAST_3, SPR_BLAST_4, SPR_BLAST_5
+};
+#define BLAST_FRAMES 5
+#define BLAST_TICKS_PER_FRAME 3
 
 /* Perimeter frame (top + left + right, no bottom). Each side strip is
  * 3 cols wide -- the third col (col 2 left, col 29 right) is the
@@ -955,7 +966,18 @@ static void handling_bonus_obj(object_t *o) { (void)o; }
 static void handling_bullet_obj(object_t *o){ (void)o; }
 static void handling_rocket_obj(object_t *o){ (void)o; }
 static void handling_spark_obj(object_t *o) { (void)o; }
-static void handling_blast_obj(object_t *o) { (void)o; }
+/* Port of handling_blast at $AA30. Advances the blast frame counter
+ * via misc_12 (tick) and sprite_num (frame index = misc_12 / 3 mod 5).
+ * Original deactivates when sprite_num reaches 9; we deactivate when
+ * we've shown all BLAST_FRAMES frames. */
+static void handling_blast_obj(object_t *o) {
+    o->misc_12++;
+    if (o->misc_12 >= BLAST_FRAMES * BLAST_TICKS_PER_FRAME) {
+        o->sprite_set |= 0x80;       /* BIT 7 = inactive */
+        return;
+    }
+    o->sprite_num = (unsigned char)(o->misc_12 / BLAST_TICKS_PER_FRAME);
+}
 static void handling_400pts_obj(object_t *o){ (void)o; }
 
 /* Birds/UFOs cross the playfield horizontally. Original handlers
@@ -2047,8 +2069,12 @@ static void kill_enemy_by_bat(void) {
     by_b = BAT_Y_PX + 8;                            /* body, not shadow */
     if (ex_r <= bx_l || ex_l >= bx_r) return;
     if (ey_b <= by_t || ey_t >= by_b) return;
-    /* Hit. */
-    e->sprite_set = 0x80;                           /* deactivate */
+    /* Hit. Transition to blast state (per $A4C4): sprite_set = $0A
+     * so handling_table_routines dispatches to handling_blast_obj
+     * which animates the 5-frame explosion then deactivates. */
+    e->sprite_set = 0x0A;
+    e->sprite_num = 0;
+    e->misc_12 = 0;                                 /* reset tick counter */
     score += 350;                                   /* $0350 BCD */
     snd_q_push(SND_SHOT);                           /* descending zip ~= blast */
 }
@@ -2150,10 +2176,17 @@ static void redraw_full_with_ball(unsigned char level_idx) {
     bg_attr = bg_attr_per_cycle[level_idx & 3];
     if (BALL_VISIBLE) render_ball(BALL_X, BALL_Y, bg_attr);
     if ((enemy->sprite_set & 0x7F) != 0 && !(enemy->sprite_set & 0x80)) {
-        unsigned char frame = enemy->sprite_num % 3;
-        unsigned int spr = (enemy->sprite_set == 0x09)
-                         ? spr_bird_frames[frame]
-                         : spr_ufo_frames[frame];
+        unsigned int spr;
+        if ((enemy->sprite_set & 0x7F) == 0x0A) {
+            unsigned char frame = enemy->sprite_num;
+            if (frame >= BLAST_FRAMES) frame = BLAST_FRAMES - 1;
+            spr = spr_blast_frames[frame];
+        } else {
+            unsigned char frame = enemy->sprite_num % 3;
+            spr = (enemy->sprite_set == 0x09)
+                ? spr_bird_frames[frame]
+                : spr_ufo_frames[frame];
+        }
         blit_masked_sprite(spr, enemy->x_coord, enemy->y_coord,
                            ink_pal(bg_attr), paper_pal(bg_attr));
     }
