@@ -800,59 +800,58 @@ static unsigned char paper_pal(unsigned char attr) {
     return (unsigned char)(((attr >> 3) & 7) | ((attr & 0x40) >> 3));
 }
 
-/* Paint a strip of pixels with per-char-cell ink/paper. `pixels` is
- * `cols_bytes` bytes wide and `rows_px` rows tall (row-major). `attrs`
- * is also indexed [char_row][char_col] but its row stride is
- * `attr_stride` (in bytes), which can differ from `cols_bytes` when
- * the attr source is a wider 2D buffer (e.g. the 32-col-wide
- * level_attrs band sliced down to a 3-col side strip). The strip is
- * drawn at playfield-relative (x0_px, y0_px). */
-static void paint_strip(const unsigned char *pixels,
-                        const unsigned char *attrs, int attr_stride,
-                        int cols_bytes, int rows_px,
-                        int x0_px, int y0_px) {
-    int char_row, char_col, pix_row, bit;
-    unsigned char attr, ink, paper, b;
+/* Buffer-pipeline variant of paint_strip: write the strip's pixel
+ * data into scr_buff (overwriting the bg pattern that paint_bg_to_buff
+ * left there) and the attrs into attr_buff. Called before bat / ball
+ * / enemy / etc blits so those sprites can OR-merge into the frame
+ * via the original (mask | screen) ^ pixel semantics — exactly the
+ * way the original game's frame and bat coexist in the side strips. */
+static void paint_strip_to_buff(const unsigned char *pixels,
+                                 const unsigned char *attrs, int attr_stride,
+                                 int cols_bytes, int rows_px,
+                                 int x0_px, int y0_px) {
+    int char_row, char_col, pix_row;
     int char_rows = rows_px / 8;
+    int byte_col_off = x0_px / 8;
+    int char_row_off = y0_px / 8;
     for (char_row = 0; char_row < char_rows; char_row++) {
         for (char_col = 0; char_col < cols_bytes; char_col++) {
-            attr  = attrs[char_row * attr_stride + char_col];
-            ink   = ink_pal(attr);
-            paper = paper_pal(attr);
+            int abs_col = byte_col_off + char_col;
+            int abs_char_row = char_row_off + char_row;
+            if (abs_col < 0 || abs_col >= 32) continue;
+            if (abs_char_row < 0 || abs_char_row >= ATTR_ROWS) continue;
+            attr_buff[abs_char_row * 32 + abs_col] =
+                attrs[char_row * attr_stride + char_col];
             for (pix_row = 0; pix_row < 8; pix_row++) {
-                int y = char_row * 8 + pix_row;
-                b = pixels[y * cols_bytes + char_col];
-                for (bit = 0; bit < 8; bit++) {
-                    vga[(long)(BORDER_Y + y0_px + y) * SCREEN_W +
-                        BORDER_X + x0_px + char_col * 8 + bit] =
-                        (b & (0x80 >> bit)) ? ink : paper;
-                }
+                int y = y0_px + char_row * 8 + pix_row;
+                if (y < 0 || y >= PLAYFIELD_H) continue;
+                scr_buff[y * 32 + abs_col] =
+                    pixels[(char_row * 8 + pix_row) * cols_bytes + char_col];
             }
         }
     }
 }
 
-/* Paint the perimeter frame using L1's pixel bits (the ornament
- * shape is level-invariant; HUD score digits do drift across our
- * patched-capture GTs but L1's "0/100k/0" matches a fresh start
- * anywhere) with PER-LEVEL attrs sourced from level_attrs. The
- * attrs colour the cyan ornament, the bg shadow band, and the
- * HUD digits correctly per level. */
-static void render_frame(unsigned char cycle, unsigned char level_idx) {
+/* Paint the frame top + sides into scr_buff / attr_buff using the
+ * per-level attrs from level_attrs. Called BEFORE bat / ball / etc
+ * blits so the frame's pixels participate in the OR-blit — fixes
+ * "bat invisible at extremes" where direct-VGA frame painting
+ * overwrote the side-strip half of the bat sprite. */
+static void paint_frame_to_buff(unsigned char cycle, unsigned char level_idx) {
     const unsigned char *base     = frame_l1 + (unsigned int)cycle * FRAME_SIZE;
     const unsigned char *top_px   = base;
     const unsigned char *left_px  = top_px  + FRAME_TOP_PX  + FRAME_TOP_ATTRS;
     const unsigned char *right_px = left_px + FRAME_SIDE_PX + FRAME_SIDE_ATTRS;
     const unsigned char *lattr = level_attrs + (unsigned int)level_idx * ATTR_BAND_SIZE;
     int right_col = 32 - FRAME_SIDE_W;
-    paint_strip(top_px,   lattr, 32, 32, FRAME_TOP_H_PX,
-                0, 0);
-    paint_strip(left_px,  lattr + (FRAME_TOP_H_PX / 8) * ATTR_COLS, 32,
-                FRAME_SIDE_W, FRAME_SIDE_H_PX,
-                0, FRAME_TOP_H_PX);
-    paint_strip(right_px, lattr + (FRAME_TOP_H_PX / 8) * ATTR_COLS + right_col, 32,
-                FRAME_SIDE_W, FRAME_SIDE_H_PX,
-                right_col * 8, FRAME_TOP_H_PX);
+    paint_strip_to_buff(top_px,   lattr, 32, 32, FRAME_TOP_H_PX,
+                        0, 0);
+    paint_strip_to_buff(left_px,  lattr + (FRAME_TOP_H_PX / 8) * ATTR_COLS, 32,
+                        FRAME_SIDE_W, FRAME_SIDE_H_PX,
+                        0, FRAME_TOP_H_PX);
+    paint_strip_to_buff(right_px, lattr + (FRAME_TOP_H_PX / 8) * ATTR_COLS + right_col, 32,
+                        FRAME_SIDE_W, FRAME_SIDE_H_PX,
+                        right_col * 8, FRAME_TOP_H_PX);
 }
 
 /* Blit an original-format masked sprite at playfield (x_px, y_px).
@@ -1222,19 +1221,21 @@ static void render_bat(unsigned char cycle, unsigned char attr) {
      *                  the original OR-blit's (mask|screen)^pix flips
      *                  bg bits at those positions, producing the
      *                  textured shadow band below the bat).
-     * One blit into scr_buff covers the whole sprite; buff_to_vga
-     * picks up the bg attr at each char cell so the bat inherits the
-     * surrounding bg's ink/paper. */
+     * One blit into scr_buff covers the whole sprite; we also force
+     * the bg_attr into attr_buff for every cell the bat touches so
+     * the bat stays bg-coloured even when it slides into the side
+     * strip cells (whose attrs were set by paint_frame_to_buff). */
     unsigned int spr;
-    int x, y;
+    int x, y, sprite_w;
     (void)cycle;
-    (void)attr;
     if (bat_extra_px >= BAT_BIG_EXTRA_PX) {
         spr = SPR_BAT_BIG;
         x   = BAT_X - BAT_BIG_EXTRA_PX;
+        sprite_w = BAT_W_BYTES * 8 + 2 * BAT_BIG_EXTRA_PX;
     } else {
         spr = SPR_BAT_NORMAL;
         x   = BAT_X;
+        sprite_w = BAT_W_BYTES * 8 + 2 * bat_extra_px;
         if (bat_extra_px > 0) {
             /* Resize ramp side-fillers: stuff solid bits into scr_buff
              * so buff_to_vga lights them with bg's ink. */
@@ -1258,6 +1259,11 @@ static void render_bat(unsigned char cycle, unsigned char attr) {
         }
     }
     y = BAT_Y_PX;
+    /* Force bg attr on every cell the bat sprite covers (body + shadow
+     * rows). Bat is 13 rows tall = 2 char cells vertically; reach can
+     * extend into the side-strip cells when at extremes. */
+    blit_sprite_attrs_to_buff(x - bat_extra_px, y,
+                              sprite_w, 13, attr);
     blit_masked_to_scr_buff(spr, x, y);
 }
 
@@ -1457,10 +1463,14 @@ static void render_level_screen(unsigned char level_idx) {
     draw_frame(10);              /* bright red — placeholder */
     paint_bg_to_buff(bg_attr, cycle);
     render_brick_band(level_idx);
+    /* Frame must paint AFTER bricks so its side-strip attrs override
+     * the leftmost / rightmost brick's body attrs that print_briks_c
+     * lays into the same cells; and BEFORE sprites so the bat / ball
+     * OR-blit over the frame pixels (fixes "bat invisible at edges"). */
+    paint_frame_to_buff(cycle, level_idx);
     render_bat(cycle, bg_attr);
     render_lives(cycle, bg_attr);
     buff_to_vga();
-    render_frame(cycle, level_idx);
 }
 
 
@@ -2425,7 +2435,13 @@ static void step_ball(void) {
  * Re-fills the strip's scr_buff/attr_buff with bg, blits bat + lives
  * via the scr_buff pipeline, then flushes the strip to VGA. */
 static void redraw_bat(unsigned char cycle, unsigned char bg_attr) {
+    /* Note: paint_frame_to_buff writes outside this strip too, but
+     * buff_to_vga_strip only flushes BAT_Y_PX..BAT_H_PX so the off-
+     * strip side-strip pixels just sit in scr_buff until the next
+     * full redraw. Inside the strip, the frame side cells are
+     * restored before the bat OR-blit lands on them. */
     paint_bg_strip_to_buff(bg_attr, cycle, BAT_Y_PX, BAT_H_PX);
+    paint_frame_to_buff(cycle, current_level_idx_var);
     render_bat(cycle, bg_attr);
     render_lives(cycle, bg_attr);
     buff_to_vga_strip(BAT_Y_PX, BAT_H_PX);
@@ -2453,6 +2469,7 @@ static void redraw_full_with_ball(unsigned char level_idx) {
     draw_frame(10);              /* bright red — placeholder */
     paint_bg_to_buff(bg_attr, cycle);
     render_brick_band(level_idx);
+    paint_frame_to_buff(cycle, level_idx);
     render_bat(cycle, bg_attr);
     render_lives(cycle, bg_attr);
     if (BALL_VISIBLE) render_ball_to_buff(BALL_X, BALL_Y);
@@ -2464,6 +2481,7 @@ static void redraw_full_with_ball(unsigned char level_idx) {
     }
     if ((enemy->sprite_set & 0x7F) != 0 && !(enemy->sprite_set & 0x80)) {
         unsigned int spr;
+        int spr_w_px, spr_h_px;
         if ((enemy->sprite_set & 0x7F) == 0x0A) {
             unsigned char frame = enemy->sprite_num;
             if (frame >= BLAST_FRAMES) frame = BLAST_FRAMES - 1;
@@ -2474,11 +2492,17 @@ static void redraw_full_with_ball(unsigned char level_idx) {
                 ? spr_bird_frames[frame]
                 : spr_ufo_frames[frame];
         }
+        /* Force bg attr in the enemy's char cells so it shows over
+         * the brick row's attrs (otherwise the enemy would inherit
+         * red / cyan / etc brick colours and visually disappear). */
+        spr_w_px = sprites_blob[spr]     * 8;
+        spr_h_px = sprites_blob[spr + 1];
+        blit_sprite_attrs_to_buff(enemy->x_coord, enemy->y_coord,
+                                   spr_w_px, spr_h_px, bg_attr);
         blit_masked_to_scr_buff(spr, enemy->x_coord, enemy->y_coord);
     }
     if (bonus_active) render_bonus_to_buff();
     buff_to_vga();
-    render_frame(cycle, level_idx);
     render_hud_score();
     render_hud_powerups();
 }
