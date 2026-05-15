@@ -1535,12 +1535,14 @@ static void redraw_bat(unsigned char cycle, unsigned char bg_attr) {
 }
 
 static void render_hud_score(void);
+static void render_hud_powerups(void);
 
 /* Redraw the whole level (frame, bg, bricks, bat, lives) and paint the
- * ball + any falling bonus on top. */
+ * ball + any falling bonus + power-up letter chips on top. */
 static void redraw_full_with_ball(unsigned char level_idx) {
     render_level_screen(level_idx);
     render_hud_score();
+    render_hud_powerups();
     if (bonus_active) render_bonus();
     if (ball_visible) render_ball(ball_x, ball_y, 15);
 }
@@ -1569,11 +1571,30 @@ static void score_to_codes(unsigned long s, unsigned char out[6]) {
  * (captured at score=0) stays pixel-identical against the GT. */
 #define HUD_SCORE_X (BORDER_X + 104)
 #define HUD_SCORE_Y (BORDER_Y + 140)
+#define HUD_POWERUP_X (BORDER_X + 192)
+#define HUD_POWERUP_Y HUD_SCORE_Y
 static void render_hud_score(void) {
     unsigned char digits[6];
     if (score == 0) return;
     score_to_codes(score, digits);
     draw_text(HUD_SCORE_X, HUD_SCORE_Y, 15, digits, 6);
+}
+/* Letter chips for the active power-up effects, painted in the bonus
+ * colour so the player can see at a glance what's running. Encoded
+ * letter codes: B=0x0B, G=0x10, S=0x1C per notes/encoding.md. */
+static void render_hud_powerups(void) {
+    int x = HUD_POWERUP_X;
+    if (slow_ticks > 0) {
+        draw_glyph(x, HUD_POWERUP_Y, bonus_colours[BONUS_TYPE_SLOW], 0x1C);
+        x += 10;
+    }
+    if (big_bat_ticks > 0) {
+        draw_glyph(x, HUD_POWERUP_Y, bonus_colours[BONUS_TYPE_BIG_BAT], 0x0B);
+        x += 10;
+    }
+    if (big_ball_ticks > 0) {
+        draw_glyph(x, HUD_POWERUP_Y, bonus_colours[BONUS_TYPE_BIG_BALL], 0x10);
+    }
 }
 
 /* Show a "GAME OVER" screen with the final score + high score, hold
