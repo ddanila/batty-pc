@@ -2025,6 +2025,34 @@ static void enemy_prepare(void) {
     e->bonus_applied = 0x10;
 }
 
+/* Port of kill_enemy_by_bat at $A4B8 / kill_enemy at $A4C4. AABB check
+ * between the alien body rect and the bat; on overlap, deactivate the
+ * alien, award 350 BCD points (LD BC, $0350 at $A4E0), and push the
+ * alien-blast sound. Full blast animation via sprite_set = $0A and
+ * handling_blast is deferred - we just mark inactive for now. */
+static void kill_enemy_by_bat(void) {
+    object_t *e = &objects[OBJ_ENEMY];
+    int ex_l, ex_r, ey_t, ey_b;
+    int bx_l, bx_r, by_t, by_b;
+    if ((e->sprite_set & 0x7F) == 0) return;        /* slot empty */
+    if (e->sprite_set & 0x80)       return;        /* inactive */
+    if ((e->sprite_set & 0x7F) == 0x0A) return;    /* already exploding */
+    ex_l = e->x_coord;
+    ex_r = e->x_coord + e->w_body_px;
+    ey_t = e->y_coord;
+    ey_b = e->y_coord + e->h_body_px;
+    bx_l = BAT_X;
+    bx_r = BAT_X + BAT_W_BYTES * 8;
+    by_t = BAT_Y_PX;
+    by_b = BAT_Y_PX + 8;                            /* body, not shadow */
+    if (ex_r <= bx_l || ex_l >= bx_r) return;
+    if (ey_b <= by_t || ey_t >= by_b) return;
+    /* Hit. */
+    e->sprite_set = 0x80;                           /* deactivate */
+    score += 350;                                   /* $0350 BCD */
+    snd_q_push(SND_SHOT);                           /* descending zip ~= blast */
+}
+
 /* Step the ball one frame: handle wall + bat collisions. If the ball
  * exits the bottom of the playfield it respawns stuck on the bat. */
 static void step_ball(void) {
@@ -2341,6 +2369,10 @@ static state_t run_level(void) {
                  *   call_for_all_obj(ix_buf_addr_calc) */
                 enemy_prepare();
                 call_for_all_obj(handling_object);
+                kill_enemy_by_bat();             /* called from handling_bat
+                                                  * in the original at $98A8;
+                                                  * here outside since our
+                                                  * bat handler doesn't exist */
                 call_for_all_obj(ix_buf_addr_calc);
                 snd_q_tick();
                 sound_tick();
