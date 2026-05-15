@@ -463,6 +463,11 @@ static unsigned char bg_tile[BG_TILE_CYCLES * BG_TILE_SIZE];
 static int ball_dx     = +BALL_SPEED;
 static int ball_dy     = -BALL_SPEED;
 static unsigned char ball_stuck   = 1;
+/* Stuck-on-bat dwell counter. While ball_stuck, the ball rides the
+ * bat; SPACE detaches immediately; after STUCK_TIMEOUT ticks the ball
+ * auto-launches. ~5 sec at 50 Hz. */
+#define STUCK_TIMEOUT 250
+static unsigned int stuck_ticks = 0;
 /* ball_visible is encoded in objects[OBJ_BALL_1].sprite_set bit 7:
  *   sprite_set == 0x02  -> active, drawn
  *   sprite_set == 0x82  -> inactive, not drawn (BIT 7 set per
@@ -2178,7 +2183,8 @@ static void step_ball(void) {
     if (next_y > BAT_Y_PX + BAT_H_PX) {
         if (lives > 0) lives--;
         ball_stuck = 1;
-        BALL_HIDE();
+        stuck_ticks = 0;
+        BALL_SHOW();                     /* sits on bat again, ready to relaunch */
         BALL_X = BAT_X + BALL_X_OFFSET_ON_BAT;
         BALL_Y = BAT_Y_PX - ball_sz;
         ball_dx = +BALL_SPEED;
@@ -2353,9 +2359,10 @@ static state_t run_level(void) {
         BAT_X         = BAT_X_INIT;
         BAT_PREV_X    = BAT_X_INIT;
         ball_stuck    = 1;
-        BALL_HIDE();
+        BALL_SHOW();                      /* visible from level entry; sits on the bat */
         BALL_X        = BAT_X_INIT + BALL_X_OFFSET_ON_BAT;
         BALL_Y        = BAT_Y_PX - BALL_H_PX;
+        stuck_ticks   = 0;                /* counts up while waiting for launch */
         ball_dx       = +BALL_SPEED;
         ball_dy       = -BALL_SPEED;
         bonus_active   = 0;
@@ -2411,6 +2418,7 @@ static state_t run_level(void) {
                 } else if (k == KEY_SPACE) {
                     BALL_SHOW();
                     ball_stuck   = 0;
+                    stuck_ticks  = 0;
                     /* Shallow launch angle (|dx| < |dy|) so the ball
                      * traverses each brick row across multiple cols
                      * - lots of L1's bricks would otherwise be missed
@@ -2447,8 +2455,20 @@ static state_t run_level(void) {
                 if (key_state[SC_RIGHT]) {
                     if (BAT_X < BAT_X_MAX) BAT_X += 4;
                 }
-                if (BALL_VISIBLE && !ball_stuck) {
-                    /* slow_ticks > 0: step on odd ticks only -> 25 Hz */
+                if (ball_stuck) {
+                    /* Ball rides the bat until SPACE or timeout. */
+                    BALL_X = BAT_X + BALL_X_OFFSET_ON_BAT;
+                    BALL_Y = BAT_Y_PX - eff_ball_size();
+                    ball_moved = 1;
+                    stuck_ticks++;
+                    if (stuck_ticks >= STUCK_TIMEOUT) {
+                        ball_stuck = 0;          /* auto-launch */
+                        /* Pick an initial direction toward the centre. */
+                        int bat_centre = BAT_X + (BAT_W_BYTES * 8) / 2;
+                        ball_dx = (bat_centre < PLAYFIELD_W / 2) ? +1 : -1;
+                        ball_dy = -BALL_SPEED;
+                    }
+                } else if (BALL_VISIBLE) {
                     int slow_skip = (slow_ticks > 0) && ((now & 1) == 0);
                     if (!slow_skip) {
                         step_ball();
