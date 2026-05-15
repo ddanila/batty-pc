@@ -455,12 +455,13 @@ static unsigned char bg_tile[BG_TILE_CYCLES * BG_TILE_SIZE];
 #define BAT_W_BYTES 4
 #define BAT_H_PX    13
 #define BAT_Y_PX    0xAD            /* = 173, matches object_bat_1.y_coord */
-/* The original uses x_min=$08, x_max=$F8-w_body. Our shipped
- * frame_l1.bin strip is wider (3 cols = 24 px) than the original's
- * ornament (~8 px), so we clamp inside our wider frame until the
- * proper frame painter lands (drops frame_l1.bin). */
-#define BAT_X_MIN    24
-#define BAT_X_MAX   200
+/* Match the original's clamps: $08..$F8-w_body. For our 32-px normal
+ * bat that's 8..216; for the 48-px big bat 8..200. The wider shipped
+ * frame strip can clip the bat at the edges, but the user prefers
+ * full reach over partial-visibility cosmetics. Proper fix awaits
+ * the frame ornament painter port. */
+#define BAT_X_MIN     8
+#define BAT_X_MAX   216
 #define BAT_X_INIT  0x74             /* = 116, matches object_bat_1.x_coord */
 /* The bat's authoritative state lives in objects[OBJ_BAT_1] - macros
  * defined after the object table below. */
@@ -2319,8 +2320,11 @@ static void redraw_full_with_ball(unsigned char level_idx) {
     render_hud_powerups();
     if (bonus_active) render_bonus();
     if (bomb_active) {
+        /* Bomb inherits the bg's attr - the original paints sprites
+         * into scr_buff and the surrounding char cell's attr in
+         * attr_buff drives the colour. */
         blit_masked_sprite_ptr(spr_bomb_data, bomb_x, bomb_y,
-                               10 /* bright red */, 0);
+                               ink_pal(bg_attr), paper_pal(bg_attr));
     }
     if (pts_400_ticks > 0) {
         unsigned char ink = ink_pal(bg_attr);
