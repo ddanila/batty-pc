@@ -625,7 +625,18 @@ static unsigned char sprites_blob[SPRITES_BLOB_SIZE];
 #define SPR_BAT_NORMAL   (0x7E38 - 0x7A8C)   /* = 0x3ac */
 #define SPR_BAT_BIG      (0x7F42 - 0x7A8C)   /* = 0x4b6 */
 #define SPR_UFO_1        (0x83B0 - 0x7A8C)   /* = 0x924 */
+#define SPR_UFO_2        (0x8406 - 0x7A8C)   /* = 0x97a */
+#define SPR_UFO_3        (0x8462 - 0x7A8C)   /* = 0x9d6 */
 #define SPR_BIRD_1       (0x860E - 0x7A8C)   /* = 0xb82 */
+#define SPR_BIRD_2       (0x866A - 0x7A8C)   /* = 0xbde */
+#define SPR_BIRD_3       (0x86C6 - 0x7A8C)   /* = 0xc3a */
+
+/* Frame tables for alien animation. The original cycles via the
+ * sprite_num field per the per-tick logic in handling_bird at $A9BC;
+ * we walk these arrays directly using descriptor's misc_12 as the
+ * tick counter and (misc_12 >> 2) % N_FRAMES as the frame index. */
+static const unsigned int spr_bird_frames[3] = { SPR_BIRD_1, SPR_BIRD_2, SPR_BIRD_3 };
+static const unsigned int spr_ufo_frames[3]  = { SPR_UFO_1,  SPR_UFO_2,  SPR_UFO_3  };
 
 /* Perimeter frame (top + left + right, no bottom). Each side strip is
  * 3 cols wide -- the third col (col 2 left, col 29 right) is the
@@ -954,9 +965,14 @@ static void handling_400pts_obj(object_t *o){ (void)o; }
  * checks the rest of the code can probe. */
 static void handling_bird_obj(object_t *o) {
     /* Advance per IX+$07 = speed; cross from left edge to right when
-     * dir LSB = 0, else right-to-left. */
+     * dir LSB = 0, else right-to-left. misc_12 doubles as the frame
+     * tick counter - the original keeps animation timing in $12/$13;
+     * we use misc_12 as a single per-alien counter and pick frame
+     * index = (misc_12 >> 2) mod 3 for a ~12 Hz wing flap at 50 Hz. */
     int dx = (o->dir & 1) ? -(int)o->speed : (int)o->speed;
     int nx = (int)o->x_coord + dx;
+    o->misc_12++;
+    o->sprite_num = (unsigned char)((o->misc_12 >> 2) % 3);
     if (nx < 8 || nx >= PLAYFIELD_W - 8 - (int)o->w_body_px) {
         o->sprite_set |= 0x80;       /* off-screen: BIT 7 = inactive */
         return;
@@ -2106,7 +2122,10 @@ static void redraw_full_with_ball(unsigned char level_idx) {
     bg_attr = bg_attr_per_cycle[level_idx & 3];
     if (BALL_VISIBLE) render_ball(BALL_X, BALL_Y, bg_attr);
     if ((enemy->sprite_set & 0x7F) != 0 && !(enemy->sprite_set & 0x80)) {
-        unsigned int spr = (enemy->sprite_set == 0x09) ? SPR_BIRD_1 : SPR_UFO_1;
+        unsigned char frame = enemy->sprite_num % 3;
+        unsigned int spr = (enemy->sprite_set == 0x09)
+                         ? spr_bird_frames[frame]
+                         : spr_ufo_frames[frame];
         blit_masked_sprite(spr, enemy->x_coord, enemy->y_coord,
                            ink_pal(bg_attr), paper_pal(bg_attr));
     }
