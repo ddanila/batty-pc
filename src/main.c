@@ -1088,6 +1088,10 @@ static unsigned long pit_ticks(void) {
  * action game's audio normally feels. */
 static unsigned long sound_end_tick = 0;
 
+/* Pause flag: while set, the per-frame body does no physics; only P
+ * (toggle), ESC (quit), and ENTER (advance) are responded to. */
+static unsigned char paused = 0;
+
 static void sound_silence(void) {
     _disable();
     outp(0x61, (unsigned char)(inp(0x61) & 0xFC));
@@ -1249,6 +1253,8 @@ static void paint_bg_strip(unsigned char attr, unsigned char cycle,
 #define KEY_ENTER 13
 #define KEY_ESC   27
 #define KEY_SPACE 32
+#define KEY_P_LOWER 'p'
+#define KEY_P_UPPER 'P'
 
 /* Paint the ball at (x, y) playfield-relative in `colour`. Size is
  * 4x4 normally; 8x8 while the BIG_BALL power-up is active. */
@@ -1576,6 +1582,7 @@ static state_t run_level(void) {
     slow_ticks = 0;
     big_bat_ticks = 0;
     big_ball_ticks = 0;
+    paused = 0;
 
     for (i = 0; i < N_LEVELS; i++) {
         int k;
@@ -1608,6 +1615,27 @@ static state_t run_level(void) {
             if (kbhit()) {
                 int k = getch();
                 if (k == KEY_ESC) return ST_QUIT;
+                if (k == KEY_P_LOWER || k == KEY_P_UPPER) {
+                    paused = !paused;
+                    sound_silence();
+                    if (paused) {
+                        /* Paint a "PAUSED" banner over the current frame. */
+                        static const unsigned char paused_codes[] = {
+                            0x19, 0x0A, 0x1D, 0x1C, 0x0E, 0x0D  /* P A U S E D */
+                        };
+                        draw_text(BORDER_X + 13 * 8, BORDER_Y + 90, 15,
+                                  paused_codes, 6);
+                    } else {
+                        /* Resuming: schedule a full redraw to erase banner. */
+                        bat_moved = 1;
+                        ball_moved = 1;
+                    }
+                    continue;
+                }
+                if (paused) {
+                    if (k == KEY_ENTER) break;        /* allow level advance */
+                    continue;                          /* swallow other input */
+                }
                 if (k == KEY_EXT_PREFIX) {
                     int ext = getch();
                     if (ext == KEY_LEFT) {
@@ -1627,6 +1655,10 @@ static state_t run_level(void) {
 
             /* Frame tick at 50 Hz from our PIT IRQ. */
             now = pit_ticks();
+            if (paused) {
+                last_tick = now;                       /* stop ball motion */
+                continue;
+            }
             if (now != last_tick) {
                 last_tick = now;
                 if (ball_visible && !ball_stuck) {
