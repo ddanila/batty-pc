@@ -24,6 +24,8 @@ script = [
     f'screendump {OUT}/after_release.ppm', 'SLEEP 0.3',
     'SLEEP 2.0',                     # let ball bounce
     f'screendump {OUT}/after_bounces.ppm', 'SLEEP 0.3',
+    'SLEEP 8.0',                     # plenty of time to hit bricks
+    f'screendump {OUT}/after_8s.ppm', 'SLEEP 0.3',
     'sendkey left', 'sendkey left', 'sendkey left', 'SLEEP 0.5',
     f'screendump {OUT}/after_bat_left.ppm', 'SLEEP 0.3',
     'sendkey esc',

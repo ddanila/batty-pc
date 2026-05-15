@@ -363,6 +363,12 @@ static void draw_bottom_sprites(void) {
                                    * (= y=24..119 / 8 = char rows 3..14) */
 
 static unsigned char levels[LVL_SIZE];
+
+/* Mutable per-game copy of the current level's 180 cells (the
+ * original keeps the equivalent at $6100, current_level_copy). Bricks
+ * destroyed by the ball get bit 7 set here, making print_briks_c skip
+ * them on the next repaint. */
+static unsigned char live_level[LVL_CELLS];
 static unsigned char level_attrs[ATTR_TOTAL_SIZE];
 
 /* Ported brick compositor (was: shortcut #1 in notes/shortcuts.md).
@@ -750,7 +756,7 @@ static void render_brick_band(unsigned char level_idx) {
     int char_row, char_col, y, byte_col, bit;
     unsigned char cycle = (unsigned char)(level_idx & 3);
     const unsigned char *tile  = bg_tile + (int)cycle * BG_TILE_SIZE;
-    const unsigned char *cells = &levels[level_idx * LVL_CELLS];
+    const unsigned char *cells = live_level;
     const unsigned char *lattr = &level_attrs[(int)level_idx * ATTR_BAND_SIZE];
 
     if (level_idx >= N_LEVELS) return;
@@ -1071,6 +1077,25 @@ static void render_ball(int x, int y, unsigned char colour) {
     }
 }
 
+/* Brick band geometry: 12 rows * 8 px starting at y=32, 15 cols * 16 px
+ * starting at x=8. Returns 1 if the ball overlaps a live brick (after
+ * the destruction is applied); 0 otherwise. */
+static int brick_collision(int bx, int by) {
+    int cx = bx + BALL_W_PX / 2;
+    int cy = by + BALL_H_PX / 2;
+    int col, row;
+    if (cy < 32 || cy >= 32 + LVL_ROWS * 8) return 0;
+    if (cx < 8  || cx >= 8  + LVL_COLS * 16) return 0;
+    col = (cx - 8) / 16;
+    row = (cy - 32) / 8;
+    {
+        unsigned char *cell = &live_level[row * LVL_COLS + col];
+        if (*cell & 0x90) return 0;       /* already empty / frame piece */
+        *cell |= 0x80;                    /* mark destroyed */
+        return 1;
+    }
+}
+
 /* Step the ball one frame: handle wall + bat collisions. If the ball
  * exits the bottom of the playfield it respawns stuck on the bat. */
 static void step_ball(void) {
@@ -1106,6 +1131,13 @@ static void step_ball(void) {
         ball_dy = -BALL_SPEED;
         return;
     }
+    /* Brick collision: simple center-point test. First cut bounces dy
+     * only, ignoring side hits - good enough until we hook side-aware
+     * physics (axis-of-deepest-penetration) in a future cut. */
+    if (brick_collision(next_x, next_y)) {
+        ball_dy = -ball_dy;
+        next_y  = ball_y;                /* unwind the y advance */
+    }
     ball_x = next_x;
     ball_y = next_y;
 }
@@ -1140,6 +1172,7 @@ static state_t run_level(void) {
     unsigned char cycle;
     unsigned char bg_attr;
     for (i = 0; i < N_LEVELS; i++) {
+        int k;
         bat_x         = BAT_X_INIT;
         bat_x_prev    = BAT_X_INIT;
         ball_stuck    = 1;
@@ -1148,6 +1181,10 @@ static state_t run_level(void) {
         ball_y        = BAT_Y_PX - BALL_H_PX;
         ball_dx       = +BALL_SPEED;
         ball_dy       = -BALL_SPEED;
+        /* Seed mutable brick state from the read-only level data. */
+        for (k = 0; k < LVL_CELLS; k++) {
+            live_level[k] = levels[(int)i * LVL_CELLS + k];
+        }
         render_level_screen(i);
         cycle = (unsigned char)(i & 3);
         bg_attr = level_attrs[(int)i * ATTR_BAND_SIZE
