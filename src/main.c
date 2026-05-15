@@ -474,21 +474,31 @@ static int           lives = LIVES_INIT;
 #define BONUS_SPAWN_EVERY 3    /* every Nth brick drops a bonus.
                                 * Capped at 1 active at a time so rapid
                                 * row-bursts often drop fewer in practice. */
-#define BONUS_TYPE_LIFE   0     /* +1 life on catch */
-#define BONUS_TYPE_SLOW   1     /* halves ball speed for SLOW_DURATION ticks */
-#define SLOW_DURATION   250     /* ~5 sec at 50 Hz */
+#define BONUS_TYPE_LIFE     0     /* +1 life on catch */
+#define BONUS_TYPE_SLOW     1     /* halves ball speed */
+#define BONUS_TYPE_BIG_BAT  2     /* bat 8 px wider on each side */
+#define BONUS_TYPE_BIG_BALL 3     /* ball is 8x8 instead of 4x4 */
+#define BONUS_TYPE_COUNT    4
+#define SLOW_DURATION     250     /* ~5 sec at 50 Hz */
+#define BIG_BAT_DURATION  500     /* ~10 sec */
+#define BIG_BALL_DURATION 500
+#define BAT_BIG_EXTRA_PX    8     /* width added on each side in big mode */
 static int           bonus_x = 0;
 static int           bonus_y = 0;
 static unsigned char bonus_type   = 0;
 static unsigned char bonus_active = 0;
-static unsigned int  slow_ticks   = 0;   /* >0 = ball is in slow mode */
+static unsigned int  slow_ticks      = 0;
+static unsigned int  big_bat_ticks   = 0;
+static unsigned int  big_ball_ticks  = 0;
 
 /* Bonus colours indexed by type (ZX VGA palette indices). Picked so
  * they don't collide with the per-level bg cycle colours (yellow /
  * green / cyan / white). */
-static const unsigned char bonus_colours[2] = {
-    10,   /* bright red     -> life */
-    11    /* bright magenta -> slow */
+static const unsigned char bonus_colours[BONUS_TYPE_COUNT] = {
+    10,   /* L (life)     - bright red     */
+    11,   /* S (slow)     - bright magenta */
+     9,   /* B (big bat)  - bright blue    */
+    14    /* G (big ball) - bright yellow  */
 };
 
 /* Counter of bricks destroyed since start of game; drives the simple
@@ -678,6 +688,19 @@ static void paint_block(const unsigned char *src, int w_bytes, int h_px,
 static void render_bat(unsigned char cycle, unsigned char attr) {
     const unsigned char *src = bat_l1 + (int)cycle * BAT_SIZE;
     paint_block(src, BAT_W_BYTES, BAT_H_PX, bat_x, BAT_Y_PX, attr);
+    /* BIG_BAT power-up: flank the normal bat sprite with 8-px wide
+     * bright strips on each side. Coarse - the proper port uses
+     * spr_bat_big (6 bytes wide) via the masked-sprite blitter. */
+    if (big_bat_ticks) {
+        unsigned char ink = ink_pal(attr);
+        int y0 = BORDER_Y + BAT_Y_PX;
+        int xL = BORDER_X + bat_x - BAT_BIG_EXTRA_PX;
+        int xR = BORDER_X + bat_x + BAT_W_BYTES * 8;
+        /* Only paint the central 8 rows so it visually merges with the
+         * sprite's main bat-body band rather than the shadow tail. */
+        fill(xL, y0 + 4, BAT_BIG_EXTRA_PX, 6, ink);
+        fill(xR, y0 + 4, BAT_BIG_EXTRA_PX, 6, ink);
+    }
 }
 
 static void render_lives(unsigned char cycle, unsigned char attr) {
@@ -1172,13 +1195,15 @@ static void paint_bg_strip(unsigned char attr, unsigned char cycle,
 #define KEY_ESC   27
 #define KEY_SPACE 32
 
-/* Paint a 4x4 ball at (x, y) playfield-relative in `colour`. */
+/* Paint the ball at (x, y) playfield-relative in `colour`. Size is
+ * 4x4 normally; 8x8 while the BIG_BALL power-up is active. */
 static void render_ball(int x, int y, unsigned char colour) {
     int r, c;
     int x0 = BORDER_X + x;
     int y0 = BORDER_Y + y;
-    for (r = 0; r < BALL_H_PX; r++) {
-        for (c = 0; c < BALL_W_PX; c++) {
+    int sz = big_ball_ticks ? 8 : BALL_W_PX;
+    for (r = 0; r < sz; r++) {
+        for (c = 0; c < sz; c++) {
             vga[(long)(y0 + r) * SCREEN_W + x0 + c] = colour;
         }
     }
@@ -1197,49 +1222,79 @@ static void render_bonus(void) {
             vga[(long)(y0 + r) * SCREEN_W + x0 + c] = col;
         }
     }
-    /* Punch a single black pixel column at byte_col=2..5 to suggest a
-     * letter shape - L on the life bonus, S on slow. Coarse but cheap. */
+    /* Punch a coarse letter shape in black pixels so the player can
+     * tell the four bonus types apart. L / S / B / G in 4x6 cells. */
     {
         int x;
-        if (bonus_type == BONUS_TYPE_LIFE) {
-            /* L: vertical bar at x=2 + horizontal bar at y=4..5 */
-            for (r = 0; r < BONUS_H_PX; r++) vga[(long)(y0+r)*SCREEN_W + x0+2] = 0;
-            for (x = 2; x < 6; x++) vga[(long)(y0+5)*SCREEN_W + x0+x] = 0;
-        } else {
-            /* S: three horizontal bars and alternating vertical pixels */
-            for (x = 2; x < 6; x++) {
-                vga[(long)(y0+1)*SCREEN_W + x0+x] = 0;
-                vga[(long)(y0+3)*SCREEN_W + x0+x] = 0;
-                vga[(long)(y0+5)*SCREEN_W + x0+x] = 0;
-            }
-            vga[(long)(y0+2)*SCREEN_W + x0+2] = 0;
-            vga[(long)(y0+4)*SCREEN_W + x0+5] = 0;
+        switch (bonus_type) {
+            case BONUS_TYPE_LIFE:   /* L: vertical bar + bottom row */
+                for (r = 0; r < BONUS_H_PX; r++) vga[(long)(y0+r)*SCREEN_W + x0+2] = 0;
+                for (x = 2; x < 6; x++) vga[(long)(y0+5)*SCREEN_W + x0+x] = 0;
+                break;
+            case BONUS_TYPE_SLOW:   /* S: three horizontal bars */
+                for (x = 2; x < 6; x++) {
+                    vga[(long)(y0+1)*SCREEN_W + x0+x] = 0;
+                    vga[(long)(y0+3)*SCREEN_W + x0+x] = 0;
+                    vga[(long)(y0+5)*SCREEN_W + x0+x] = 0;
+                }
+                vga[(long)(y0+2)*SCREEN_W + x0+2] = 0;
+                vga[(long)(y0+4)*SCREEN_W + x0+5] = 0;
+                break;
+            case BONUS_TYPE_BIG_BAT: /* B: vert bar + 2 stubs */
+                for (r = 0; r < BONUS_H_PX; r++) vga[(long)(y0+r)*SCREEN_W + x0+2] = 0;
+                for (x = 2; x < 6; x++) {
+                    vga[(long)(y0+0)*SCREEN_W + x0+x] = 0;
+                    vga[(long)(y0+2)*SCREEN_W + x0+x] = 0;
+                    vga[(long)(y0+5)*SCREEN_W + x0+x] = 0;
+                }
+                vga[(long)(y0+1)*SCREEN_W + x0+5] = 0;
+                vga[(long)(y0+3)*SCREEN_W + x0+5] = 0;
+                vga[(long)(y0+4)*SCREEN_W + x0+5] = 0;
+                break;
+            case BONUS_TYPE_BIG_BALL: /* G: C-shape with a tab */
+                for (r = 1; r < 5; r++) vga[(long)(y0+r)*SCREEN_W + x0+2] = 0;
+                for (x = 2; x < 6; x++) {
+                    vga[(long)(y0+0)*SCREEN_W + x0+x] = 0;
+                    vga[(long)(y0+5)*SCREEN_W + x0+x] = 0;
+                }
+                vga[(long)(y0+3)*SCREEN_W + x0+4] = 0;
+                vga[(long)(y0+3)*SCREEN_W + x0+5] = 0;
+                vga[(long)(y0+4)*SCREEN_W + x0+5] = 0;
+                break;
         }
     }
 }
 
-/* Apply the effect that comes with `type`. Centralised so test +
- * runtime invocations stay consistent. */
+/* Apply the effect that comes with `type`. Catching the same type
+ * while already active extends the duration. */
 static void bonus_apply(unsigned char type) {
     switch (type) {
-        case BONUS_TYPE_LIFE: lives++; break;
-        case BONUS_TYPE_SLOW: slow_ticks = SLOW_DURATION; break;
+        case BONUS_TYPE_LIFE:     lives++; break;
+        case BONUS_TYPE_SLOW:     slow_ticks     = SLOW_DURATION; break;
+        case BONUS_TYPE_BIG_BAT:  big_bat_ticks  = BIG_BAT_DURATION; break;
+        case BONUS_TYPE_BIG_BALL: big_ball_ticks = BIG_BALL_DURATION; break;
         default: break;
     }
 }
 
-/* Advance the falling bonus + check for catch on the bat. Called from
- * the per-frame tick alongside step_ball. */
+/* Current effective bat geometry (varies with big_bat_ticks). */
+static int eff_bat_left(void)  { return bat_x - (big_bat_ticks ? BAT_BIG_EXTRA_PX : 0); }
+static int eff_bat_right(void) { return bat_x + BAT_W_BYTES * 8 + (big_bat_ticks ? BAT_BIG_EXTRA_PX : 0); }
+
+/* Current effective ball geometry (varies with big_ball_ticks). */
+static int eff_ball_size(void) { return big_ball_ticks ? 8 : BALL_W_PX; }
+
+/* Advance the falling bonus, check for catch on the bat, and tick down
+ * any active effect timers. */
 static void step_bonus(void) {
     int bat_left, bat_right;
-    if (!bonus_active) {
-        if (slow_ticks > 0) slow_ticks--;
-        return;
-    }
+    if (slow_ticks    > 0) slow_ticks--;
+    if (big_bat_ticks > 0) big_bat_ticks--;
+    if (big_ball_ticks > 0) big_ball_ticks--;
+    if (!bonus_active) return;
     bonus_y += BONUS_FALL_SPEED;
-    bat_left  = bat_x;
-    bat_right = bat_x + BAT_W_BYTES * 8;
-    /* Catch: bonus rect overlaps bat top row. */
+    bat_left  = eff_bat_left();
+    bat_right = eff_bat_right();
     if (bonus_y + BONUS_H_PX >= BAT_Y_PX
         && bonus_y < BAT_Y_PX + BAT_H_PX
         && bonus_x + BONUS_W_PX > bat_left
@@ -1248,9 +1303,7 @@ static void step_bonus(void) {
         bonus_active = 0;
         return;
     }
-    /* Off the bottom of the playfield. */
     if (bonus_y > PLAYFIELD_H) bonus_active = 0;
-    if (slow_ticks > 0) slow_ticks--;
 }
 
 
@@ -1263,8 +1316,9 @@ static void step_bonus(void) {
  *   2 = horizontal hit (entered from a side)       -> caller flips dx
  * The previous ball position is needed to disambiguate corner cases. */
 static int brick_collision(int prev_x, int prev_y, int new_x, int new_y) {
-    int cx = new_x + BALL_W_PX / 2;
-    int cy = new_y + BALL_H_PX / 2;
+    int sz = eff_ball_size();
+    int cx = new_x + sz / 2;
+    int cy = new_y + sz / 2;
     int col, row, brick_top, brick_bot, prev_cy;
     unsigned char *cell;
     if (cy < 32 || cy >= 32 + LVL_ROWS * 8) return 0;
@@ -1282,12 +1336,12 @@ static int brick_collision(int prev_x, int prev_y, int new_x, int new_y) {
         bonus_active = 1;
         bonus_x = 8 + col * 16 + (16 - BONUS_W_PX) / 2;   /* brick centre x */
         bonus_y = 32 + row * 8;                            /* brick top y */
-        /* Alternate life / slow based on the counter so a run shows both. */
-        bonus_type = (unsigned char)(((bricks_destroyed / BONUS_SPAWN_EVERY) & 1));
+        /* Cycle types 0..3 so a run shows all four. */
+        bonus_type = (unsigned char)((bricks_destroyed / BONUS_SPAWN_EVERY) % BONUS_TYPE_COUNT);
     }
     brick_top = 32 + row * 8;
     brick_bot = brick_top + 8;
-    prev_cy   = prev_y + BALL_H_PX / 2;
+    prev_cy   = prev_y + sz / 2;
     (void)prev_x;
     if (prev_cy < brick_top || prev_cy >= brick_bot) return 1;  /* vertical */
     return 2;                                                    /* horizontal */
@@ -1307,46 +1361,52 @@ static int live_bricks_remaining(void) {
  * exits the bottom of the playfield it respawns stuck on the bat. */
 static void step_ball(void) {
     int next_x, next_y;
-    int bat_left  = bat_x;
-    int bat_right = bat_x + BAT_W_BYTES * 8;     /* 40 px */
+    int bat_left  = eff_bat_left();
+    int bat_right = eff_bat_right();
     int bat_top   = BAT_Y_PX;
+    int ball_sz   = eff_ball_size();
     if (ball_stuck) {
         ball_x = bat_x + BALL_X_OFFSET_ON_BAT;
-        ball_y = BAT_Y_PX - BALL_H_PX;
+        ball_y = BAT_Y_PX - ball_sz;
         return;
     }
     next_x = ball_x + ball_dx;
     next_y = ball_y + ball_dy;
     /* Side walls: flip dx, preserving the magnitude the bat-deflection
      * may have set (so a sharp angle survives wall bounces). */
-    if (next_x < BALL_X_MIN) { next_x = BALL_X_MIN; ball_dx = -ball_dx; }
-    else if (next_x > BALL_X_MAX) { next_x = BALL_X_MAX; ball_dx = -ball_dx; }
+    {
+        int x_max = PLAYFIELD_W - 8 - ball_sz;   /* 244 normal, 240 big */
+        if (next_x < BALL_X_MIN)        { next_x = BALL_X_MIN; ball_dx = -ball_dx; }
+        else if (next_x > x_max)        { next_x = x_max;      ball_dx = -ball_dx; }
+    }
     if (next_y < BALL_Y_TOP) { next_y = BALL_Y_TOP; ball_dy = +BALL_SPEED; }
     /* Bat top: ball moving down, ball overlaps bat in X. Use a 5-zone
      * deflection so the ball gains horizontal control from where the
      * player intercepts it - the classic brick-breaker mechanic. */
     if (ball_dy > 0
-        && next_y + BALL_H_PX >= bat_top
+        && next_y + ball_sz >= bat_top
         && next_y < bat_top
-        && next_x + BALL_W_PX > bat_left
+        && next_x + ball_sz > bat_left
         && next_x < bat_right) {
-        int hit_x = (next_x + BALL_W_PX / 2) - bat_left;   /* 0..40 */
-        next_y  = bat_top - BALL_H_PX;
+        int hit_x = (next_x + ball_sz / 2) - bat_left;
+        int span  = bat_right - bat_left;
+        next_y  = bat_top - ball_sz;
         ball_dy = -BALL_SPEED;
-        if      (hit_x <  8) ball_dx = -2;
-        else if (hit_x < 16) ball_dx = -1;
-        else if (hit_x < 24) ball_dx = (ball_dx >= 0) ? +1 : -1;
-        else if (hit_x < 32) ball_dx = +1;
-        else                 ball_dx = +2;
+        /* Same 5-zone split, normalised to the (possibly-bigger) bat span. */
+        if      (hit_x * 5 < span * 1) ball_dx = -2;
+        else if (hit_x * 5 < span * 2) ball_dx = -1;
+        else if (hit_x * 5 < span * 3) ball_dx = (ball_dx >= 0) ? +1 : -1;
+        else if (hit_x * 5 < span * 4) ball_dx = +1;
+        else                           ball_dx = +2;
     }
     /* Past the bat (= lost ball). Decrement lives and respawn stuck
      * on the bat. The outer loop checks lives==0 to trigger game over. */
     if (next_y > BAT_Y_PX + BAT_H_PX) {
         if (lives > 0) lives--;
         ball_stuck = 1;
-        ball_visible = 0;            /* hide ball until next SPACE */
+        ball_visible = 0;
         ball_x = bat_x + BALL_X_OFFSET_ON_BAT;
-        ball_y = BAT_Y_PX - BALL_H_PX;
+        ball_y = BAT_Y_PX - ball_sz;
         ball_dx = +BALL_SPEED;
         ball_dy = -BALL_SPEED;
         return;
@@ -1455,6 +1515,8 @@ static state_t run_level(void) {
     bricks_destroyed = 0;
     bonus_active = 0;
     slow_ticks = 0;
+    big_bat_ticks = 0;
+    big_ball_ticks = 0;
 
     for (i = 0; i < N_LEVELS; i++) {
         int k;
@@ -1466,8 +1528,10 @@ static state_t run_level(void) {
         ball_y        = BAT_Y_PX - BALL_H_PX;
         ball_dx       = +BALL_SPEED;
         ball_dy       = -BALL_SPEED;
-        bonus_active  = 0;
-        slow_ticks    = 0;
+        bonus_active   = 0;
+        slow_ticks     = 0;
+        big_bat_ticks  = 0;
+        big_ball_ticks = 0;
         for (k = 0; k < LVL_CELLS; k++) {
             live_level[k] = levels[(int)i * LVL_CELLS + k];
         }
