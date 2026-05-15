@@ -65,19 +65,27 @@ y-strip only: `paint_bg_strip_to_buff` + `render_bat` +
 
 Migration is incremental. Still painting straight to VGA:
 
-- `render_ball` (with passed bg_attr)
-- `render_bonus` (with per-type colour)
-- `render_bomb` (with bg_attr)
-- `render_alien` / bird / UFO / blast (with bg_attr)
-- `render_400pts` (with bg_attr)
-- `render_hud_score` / `render_hud_powerups` (white text)
-- `render_frame` (per-cell attrs from level_attrs)
+- `render_bonus` (per-type colour, not bg_attr — needs an attr_buff
+  port: original writes specific attr values into the bonus's two
+  char cells via `print_sprite_attrib` @ $B656)
+- `render_hud_score` / `render_hud_powerups` (white text — fine on
+  top of `buff_to_vga`)
+- `render_frame` (per-cell attrs from level_attrs.bin — also fine
+  on top of `buff_to_vga`; the frame's 286 -> ~194 px residual diff
+  vs GT is the next parity target, separate concern)
 
-Each of these passes bg_attr at the call site so the colour looks
-right, but they don't pick up per-cell attr variations like the
-buffer pipeline does. Next iteration targets: migrate ball + alien
-first (highest visual impact for parity, and they cross attr cells
-mid-flight).
+Already migrated to scr_buff:
+
+- bg tile + per-cell attrs (`paint_bg_to_buff`)
+- bricks (via `print_briks_c`)
+- bat + lives (`render_bat`, `render_lives`)
+- ball (`render_ball_to_buff`)
+- bomb, 400pts, alien (inline `blit_masked_to_scr_buff` calls in
+  `redraw_full_with_ball`)
+
+Next parity targets: (a) port `print_sprite_attrib` so the bonus and
+brick attrs can land in attr_buff with their proper per-cell values;
+(b) investigate the residual frame-ornament side-strip diff.
 
 ## Key files
 
