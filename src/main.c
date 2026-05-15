@@ -717,21 +717,44 @@ static void paint_block(const unsigned char *src, int w_bytes, int h_px,
     }
 }
 
+/* Draw a visible bat at (bat_x, BAT_Y_PX). The previously-shipped
+ * bat_l1.bin turned out to be the hex bg pattern at the bat position
+ * in the modded-batty GT capture (the gameplay loop was patched to
+ * spin so the bat is never actually drawn into VRAM); it's effectively
+ * invisible against the bg. This hand-drawn placeholder is bright
+ * white with a darker shadow row so the player can see it. The real
+ * port through spr_bat_normal lands alongside the masked-sprite
+ * blitter (obj_processing) work.
+ *
+ * Layout (40 px wide, 10 px tall):
+ *   rows 0..7  -- bright white body (palette 15)
+ *   rows 8..9  -- dark shadow band (palette 1 = blue, looks dim) */
 static void render_bat(unsigned char cycle, unsigned char attr) {
-    const unsigned char *src = bat_l1 + (int)cycle * BAT_SIZE;
-    paint_block(src, BAT_W_BYTES, BAT_H_PX, bat_x, BAT_Y_PX, attr);
-    /* BIG_BAT power-up: flank the normal bat sprite with 8-px wide
-     * bright strips on each side. Coarse - the proper port uses
-     * spr_bat_big (6 bytes wide) via the masked-sprite blitter. */
+    int x0 = BORDER_X + bat_x;
+    int y0 = BORDER_Y + BAT_Y_PX;
+    int w  = BAT_W_BYTES * 8;        /* 40 px */
+    int r, c;
+    (void)cycle; (void)attr;
+    /* Body */
+    for (r = 0; r < 8; r++) {
+        for (c = 0; c < w; c++) {
+            vga[(long)(y0 + r) * SCREEN_W + x0 + c] = 15;
+        }
+    }
+    /* Shadow band */
+    for (r = 8; r < 10; r++) {
+        for (c = 0; c < w; c++) {
+            vga[(long)(y0 + r) * SCREEN_W + x0 + c] = 1;
+        }
+    }
+    /* BIG_BAT power-up: flank the bat with 8-px wide strips. */
     if (big_bat_ticks) {
-        unsigned char ink = ink_pal(attr);
-        int y0 = BORDER_Y + BAT_Y_PX;
-        int xL = BORDER_X + bat_x - BAT_BIG_EXTRA_PX;
-        int xR = BORDER_X + bat_x + BAT_W_BYTES * 8;
-        /* Only paint the central 8 rows so it visually merges with the
-         * sprite's main bat-body band rather than the shadow tail. */
-        fill(xL, y0 + 4, BAT_BIG_EXTRA_PX, 6, ink);
-        fill(xR, y0 + 4, BAT_BIG_EXTRA_PX, 6, ink);
+        int xL = x0 - BAT_BIG_EXTRA_PX;
+        int xR = x0 + w;
+        fill(xL, y0,     BAT_BIG_EXTRA_PX, 8, 15);
+        fill(xR, y0,     BAT_BIG_EXTRA_PX, 8, 15);
+        fill(xL, y0 + 8, BAT_BIG_EXTRA_PX, 2,  1);
+        fill(xR, y0 + 8, BAT_BIG_EXTRA_PX, 2,  1);
     }
 }
 
@@ -1288,16 +1311,47 @@ static void paint_bg_strip(unsigned char attr, unsigned char cycle,
 #define KEY_P_LOWER 'p'
 #define KEY_P_UPPER 'P'
 
-/* Paint the ball at (x, y) playfield-relative in `colour`. Size is
- * 4x4 normally; 8x8 while the BIG_BALL power-up is active. */
+/* Paint the ball at (x, y) playfield-relative in `colour`. Uses
+ * round-cornered disc shapes that approximate the original
+ * spr_ball_normal silhouette ($7B16). Small (4x4) by default, big
+ * (8x8) while the BIG_BALL power-up is active. */
+static const unsigned char ball_small[4] = {
+    0x6,  /* .##. */
+    0xF,  /* #### */
+    0xF,  /* #### */
+    0x6   /* .##. */
+};
+static const unsigned char ball_big[8] = {
+    0x3C,  /* ..####.. */
+    0x7E,  /* .######. */
+    0xFF,  /* ######## */
+    0xFF,  /* ######## */
+    0xFF,  /* ######## */
+    0xFF,  /* ######## */
+    0x7E,  /* .######. */
+    0x3C   /* ..####.. */
+};
 static void render_ball(int x, int y, unsigned char colour) {
-    int r, c;
     int x0 = BORDER_X + x;
     int y0 = BORDER_Y + y;
-    int sz = big_ball_ticks ? 8 : BALL_W_PX;
-    for (r = 0; r < sz; r++) {
-        for (c = 0; c < sz; c++) {
-            vga[(long)(y0 + r) * SCREEN_W + x0 + c] = colour;
+    int r, c;
+    if (big_ball_ticks) {
+        for (r = 0; r < 8; r++) {
+            unsigned char bits = ball_big[r];
+            for (c = 0; c < 8; c++) {
+                if (bits & (0x80 >> c)) {
+                    vga[(long)(y0 + r) * SCREEN_W + x0 + c] = colour;
+                }
+            }
+        }
+    } else {
+        for (r = 0; r < 4; r++) {
+            unsigned char bits = ball_small[r];
+            for (c = 0; c < 4; c++) {
+                if (bits & (0x8 >> c)) {
+                    vga[(long)(y0 + r) * SCREEN_W + x0 + c] = colour;
+                }
+            }
         }
     }
 }
@@ -1394,7 +1448,7 @@ static void step_bonus(void) {
         && bonus_x < bat_right) {
         bonus_apply(bonus_type);
         bonus_active = 0;
-        sound_play(2000, 5);                 /* bonus catch */
+        sound_play(660, 4);                  /* bonus catch (≈ live_add) */
         return;
     }
     if (bonus_y > PLAYFIELD_H) bonus_active = 0;
@@ -1423,7 +1477,9 @@ static int brick_collision(int prev_x, int prev_y, int new_x, int new_y) {
     if (*cell & 0x90) return 0;
     *cell |= 0x80;
     score += POINTS_PER_BRICK;
-    sound_play(1200, 2);                    /* brick-break click */
+    /* play_sound_normall_brik at $C0F3 uses sound_beep with E=$44 (=68).
+     * ZX sound_beep period = 26*E T-states / 3.5 MHz -> ~1976 Hz. */
+    sound_play(1976, 1);                    /* brick-break click */
     /* Maybe drop a bonus. Only one falling at a time - skip if one is
      * already in flight. 1-in-BONUS_SPAWN_MOD bricks roll a bonus. */
     bricks_destroyed++;
@@ -1493,7 +1549,9 @@ static void step_ball(void) {
         else if (hit_x * 5 < span * 3) ball_dx = (ball_dx >= 0) ? +1 : -1;
         else if (hit_x * 5 < span * 4) ball_dx = +1;
         else                           ball_dx = +2;
-        sound_play(800, 3);                  /* ball-on-bat thump */
+        /* play_sound_bat_beat at $C16F uses E=$66 (=102). 26*102 = 2652
+         * T-states / 3.5 MHz -> ~1320 Hz. */
+        sound_play(1320, 2);                 /* ball-on-bat thump */
     }
     /* Past the bat (= lost ball). Decrement lives and respawn stuck
      * on the bat. The outer loop checks lives==0 to trigger game over. */
@@ -1505,7 +1563,10 @@ static void step_ball(void) {
         ball_y = BAT_Y_PX - ball_sz;
         ball_dx = +BALL_SPEED;
         ball_dy = -BALL_SPEED;
-        sound_play(150, 15);                 /* descending miss tone */
+        /* The original cycles down through play_sound_LC122. PC speaker
+         * single-tone approximation: a low 350 Hz that the player reads
+         * as "miss". */
+        sound_play(350, 10);                 /* ball lost */
         return;
     }
     /* Brick collision: side-aware. brick_collision tells us which axis
@@ -1705,6 +1766,16 @@ static state_t run_level(void) {
                 } else if (k == KEY_SPACE) {
                     ball_visible = 1;
                     ball_stuck   = 0;
+                    /* Shallow launch angle (|dx| < |dy|) so the ball
+                     * traverses each brick row across multiple cols
+                     * - lots of L1's bricks would otherwise be missed
+                     * by a 45-deg deterministic launch from the bat's
+                     * default x. Aimed AWAY from the nearest wall. */
+                    {
+                        int bat_centre = bat_x + (BAT_W_BYTES * 8) / 2;
+                        ball_dx = (bat_centre < PLAYFIELD_W / 2) ? +1 : -1;
+                        ball_dy = -BALL_SPEED;
+                    }
                     start = bios_ticks();
                 } else if (k == KEY_ENTER) {
                     break;
