@@ -1089,23 +1089,32 @@ static void render_ball(int x, int y, unsigned char colour) {
 }
 
 /* Brick band geometry: 12 rows * 8 px starting at y=32, 15 cols * 16 px
- * starting at x=8. Returns 1 if the ball overlaps a live brick (after
- * the destruction is applied); 0 otherwise. */
-static int brick_collision(int bx, int by) {
-    int cx = bx + BALL_W_PX / 2;
-    int cy = by + BALL_H_PX / 2;
-    int col, row;
+ * starting at x=8. Determines whether the ball's new center overlaps a
+ * live brick and, if so, marks the brick destroyed and returns which
+ * axis to reverse:
+ *   0 = no hit
+ *   1 = vertical hit (entered from top or bottom)  -> caller flips dy
+ *   2 = horizontal hit (entered from a side)       -> caller flips dx
+ * The previous ball position is needed to disambiguate corner cases. */
+static int brick_collision(int prev_x, int prev_y, int new_x, int new_y) {
+    int cx = new_x + BALL_W_PX / 2;
+    int cy = new_y + BALL_H_PX / 2;
+    int col, row, brick_top, brick_bot, prev_cy;
+    unsigned char *cell;
     if (cy < 32 || cy >= 32 + LVL_ROWS * 8) return 0;
     if (cx < 8  || cx >= 8  + LVL_COLS * 16) return 0;
     col = (cx - 8) / 16;
     row = (cy - 32) / 8;
-    {
-        unsigned char *cell = &live_level[row * LVL_COLS + col];
-        if (*cell & 0x90) return 0;       /* already empty / frame piece */
-        *cell |= 0x80;                    /* mark destroyed */
-        score += POINTS_PER_BRICK;
-        return 1;
-    }
+    cell = &live_level[row * LVL_COLS + col];
+    if (*cell & 0x90) return 0;
+    *cell |= 0x80;
+    score += POINTS_PER_BRICK;
+    brick_top = 32 + row * 8;
+    brick_bot = brick_top + 8;
+    prev_cy   = prev_y + BALL_H_PX / 2;
+    (void)prev_x;
+    if (prev_cy < brick_top || prev_cy >= brick_bot) return 1;  /* vertical */
+    return 2;                                                    /* horizontal */
 }
 
 /* Count remaining destructible bricks (bit 7 clear, bit 4 clear).
@@ -1132,17 +1141,27 @@ static void step_ball(void) {
     }
     next_x = ball_x + ball_dx;
     next_y = ball_y + ball_dy;
-    if (next_x < BALL_X_MIN) { next_x = BALL_X_MIN; ball_dx = +BALL_SPEED; }
-    else if (next_x > BALL_X_MAX) { next_x = BALL_X_MAX; ball_dx = -BALL_SPEED; }
+    /* Side walls: flip dx, preserving the magnitude the bat-deflection
+     * may have set (so a sharp angle survives wall bounces). */
+    if (next_x < BALL_X_MIN) { next_x = BALL_X_MIN; ball_dx = -ball_dx; }
+    else if (next_x > BALL_X_MAX) { next_x = BALL_X_MAX; ball_dx = -ball_dx; }
     if (next_y < BALL_Y_TOP) { next_y = BALL_Y_TOP; ball_dy = +BALL_SPEED; }
-    /* Bat top: ball moving down and ball overlaps bat in X. */
+    /* Bat top: ball moving down, ball overlaps bat in X. Use a 5-zone
+     * deflection so the ball gains horizontal control from where the
+     * player intercepts it - the classic brick-breaker mechanic. */
     if (ball_dy > 0
         && next_y + BALL_H_PX >= bat_top
         && next_y < bat_top
         && next_x + BALL_W_PX > bat_left
         && next_x < bat_right) {
-        next_y = bat_top - BALL_H_PX;
+        int hit_x = (next_x + BALL_W_PX / 2) - bat_left;   /* 0..40 */
+        next_y  = bat_top - BALL_H_PX;
         ball_dy = -BALL_SPEED;
+        if      (hit_x <  8) ball_dx = -2;
+        else if (hit_x < 16) ball_dx = -1;
+        else if (hit_x < 24) ball_dx = (ball_dx >= 0) ? +1 : -1;
+        else if (hit_x < 32) ball_dx = +1;
+        else                 ball_dx = +2;
     }
     /* Past the bat (= lost ball). Decrement lives and respawn stuck
      * on the bat. The outer loop checks lives==0 to trigger game over. */
@@ -1156,12 +1175,12 @@ static void step_ball(void) {
         ball_dy = -BALL_SPEED;
         return;
     }
-    /* Brick collision: simple center-point test. First cut bounces dy
-     * only, ignoring side hits - good enough until we hook side-aware
-     * physics (axis-of-deepest-penetration) in a future cut. */
-    if (brick_collision(next_x, next_y)) {
-        ball_dy = -ball_dy;
-        next_y  = ball_y;                /* unwind the y advance */
+    /* Brick collision: side-aware. brick_collision tells us which axis
+     * the ball entered through; we reverse + unwind that axis. */
+    {
+        int hit = brick_collision(ball_x, ball_y, next_x, next_y);
+        if (hit == 1)        { ball_dy = -ball_dy; next_y = ball_y; }
+        else if (hit == 2)   { ball_dx = -ball_dx; next_x = ball_x; }
     }
     ball_x = next_x;
     ball_y = next_y;
