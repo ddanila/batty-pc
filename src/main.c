@@ -412,10 +412,17 @@ static unsigned char bg_tile[BG_TILE_CYCLES * BG_TILE_SIZE];
 #define BAT_W_BYTES 5
 #define BAT_H_PX    19
 #define BAT_SIZE    (BAT_W_BYTES * BAT_H_PX)
-#define BAT_X_PX    112
 #define BAT_Y_PX    167
 #define BAT_CYCLES  4
+/* X clamp: bat is 40 px wide. Left frame edge ~= pixel 16, right
+ * ~= 240 in playfield coords. Per the original, handling_bat
+ * advances X by +/-4 per frame so we stick to multiples of 4. */
+#define BAT_X_MIN     8
+#define BAT_X_MAX   216
+#define BAT_X_INIT  112
 static unsigned char bat_l1[BAT_CYCLES * BAT_SIZE];
+static int bat_x      = BAT_X_INIT;
+static int bat_x_prev = BAT_X_INIT;
 
 /* Second life indicator (the right-hand of the pair at bottom-left).
  * The first one is captured by the 3-col-wide left frame strip; this
@@ -599,7 +606,7 @@ static void paint_block(const unsigned char *src, int w_bytes, int h_px,
 
 static void render_bat(unsigned char cycle, unsigned char attr) {
     const unsigned char *src = bat_l1 + (int)cycle * BAT_SIZE;
-    paint_block(src, BAT_W_BYTES, BAT_H_PX, BAT_X_PX, BAT_Y_PX, attr);
+    paint_block(src, BAT_W_BYTES, BAT_H_PX, bat_x, BAT_Y_PX, attr);
 }
 
 static void render_lives(unsigned char cycle, unsigned char attr) {
@@ -1001,21 +1008,84 @@ static state_t run_hiscore(void) {
     }
 }
 
-/* Cycle through L1..L15 (and back to TITLE), pausing
- * LEVEL_TIMEOUT_TICKS on each. Any key advances; ESC quits. */
+/* Repaint a horizontal strip of the playfield with the level's hex bg
+ * tile + attr. Used to erase the bat's previous position before
+ * redrawing at the new X. */
+static void paint_bg_strip(unsigned char attr, unsigned char cycle,
+                           int y0, int h) {
+    unsigned char ink   = ink_pal(attr);
+    unsigned char paper = paper_pal(attr);
+    const unsigned char *tile = bg_tile + (int)cycle * BG_TILE_SIZE;
+    int x, y, ty, byte_col, bit;
+    unsigned char b;
+    for (y = y0; y < y0 + h; y++) {
+        ty = y & 15;
+        for (byte_col = 0; byte_col < PLAYFIELD_W / 8; byte_col++) {
+            b = tile[ty * 2 + (byte_col & 1)];
+            for (bit = 0; bit < 8; bit++) {
+                x = byte_col * 8 + bit;
+                vga[(long)(BORDER_Y + y) * SCREEN_W + BORDER_X + x] =
+                    (b & (0x80 >> bit)) ? ink : paper;
+            }
+        }
+    }
+}
+
+/* DOS extended-key scancodes (after a leading 0 byte from getch). */
+#define KEY_EXT_PREFIX 0
+#define KEY_LEFT  75
+#define KEY_RIGHT 77
+#define KEY_ENTER 13
+#define KEY_ESC   27
+
+/* M3 minimal play loop. For each level: full render once, then poll
+ * arrows for bat motion (LEFT/RIGHT = +-4 px, matching the original's
+ * handling_bat step). Any non-arrow key advances; ESC quits.
+ *
+ * In auto-advance mode (the default attract loop) the per-level
+ * timeout still trips, so the cycle keeps moving even with no input.
+ * Under BATTYALL=1 (test floppy) auto-advance is off and the test
+ * orchestrator drives every transition via sendkey. */
 static state_t run_level(void) {
     unsigned char i;
     unsigned long start;
+    unsigned char cycle;
+    unsigned char bg_attr;
     for (i = 0; i < N_LEVELS; i++) {
+        bat_x = BAT_X_INIT;
+        bat_x_prev = BAT_X_INIT;
         render_level_screen(i);
+        cycle = (unsigned char)(i & 3);
+        bg_attr = level_attrs[(int)i * ATTR_BAND_SIZE
+                              + BRICK_ATTR_ROW_BASE * ATTR_COLS + 14];
         start = bios_ticks();
         for (;;) {
             if (kbhit()) {
                 int k = getch();
-                if (k == 27) return ST_QUIT;
-                break;
+                if (k == KEY_ESC) return ST_QUIT;
+                if (k == KEY_EXT_PREFIX) {
+                    int ext = getch();
+                    if (ext == KEY_LEFT) {
+                        if (bat_x > BAT_X_MIN) bat_x -= 4;
+                    } else if (ext == KEY_RIGHT) {
+                        if (bat_x < BAT_X_MAX) bat_x += 4;
+                    }
+                    /* Reset timeout so motion keeps the level shown. */
+                    start = bios_ticks();
+                } else {
+                    /* Any other key (ENTER, space, ...) advances. */
+                    break;
+                }
             }
-            if (TIMED_OUT(start, LEVEL_TIMEOUT_TICKS)) break;
+            if (bat_x != bat_x_prev) {
+                /* Erase bat strip then repaint at new X. */
+                paint_bg_strip(bg_attr, cycle, BAT_Y_PX, BAT_H_PX);
+                render_bat(cycle, bg_attr);
+                /* Lives indicator sits in the same Y band; redraw it. */
+                render_lives(cycle, bg_attr);
+                bat_x_prev = bat_x;
+            }
+            if (auto_advance && TIMED_OUT(start, LEVEL_TIMEOUT_TICKS)) break;
         }
     }
     return ST_TITLE;
