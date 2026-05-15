@@ -12,6 +12,7 @@
  *   - Index = markup char-code: 0..9 = digits, 0x0A..0x23 = A..Z. */
 
 #include <conio.h>
+#include <dos.h>
 #include <i86.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -940,6 +941,68 @@ static unsigned long bios_ticks(void) {
     return ((unsigned long)r.x.cx << 16) | r.x.dx;
 }
 
+/* --- 50 Hz timer harness (M4) ------------------------------------------
+ *
+ * Reprograms PIT timer 0 to fire at 1.193182 MHz / 23864 = ~50 Hz and
+ * installs a __interrupt handler that increments pit_frame_counter.
+ * To keep the BIOS time-of-day at $0040:$006C ticking at 18.2 Hz, we
+ * chain the original INT 8 on every 16-bit overflow of an accumulator
+ * we advance by 23864 per tick (since 65536 / 23864 ~= 2.747, chaining
+ * fires every 3rd tick on average, matching the BIOS rate).
+ *
+ * When chained, the BIOS handler acks the IRQ (sends EOI to the PIC);
+ * when not chained, we send the EOI ourselves. */
+#define PIT_DIV_50HZ 23864
+static void (__interrupt __far *prev_int8)(void) = NULL;
+static volatile unsigned long pit_frame_counter = 0;
+static volatile unsigned int  bios_acc          = 0;
+
+static void __interrupt __far new_int8(void) {
+    unsigned int old;
+    pit_frame_counter++;
+    old = bios_acc;
+    bios_acc += PIT_DIV_50HZ;
+    if (bios_acc < old) {
+        /* 16-bit overflow -> chain BIOS so its tick counter + EOI fire. */
+        _chain_intr(prev_int8);
+        /* _chain_intr does not return. */
+    }
+    outp(0x20, 0x20);   /* EOI: end-of-interrupt for IRQ 0 */
+}
+
+static void timer_install(void) {
+    if (prev_int8) return;
+    prev_int8 = _dos_getvect(0x08);
+    _disable();
+    /* PIT control word: counter 0, lo+hi byte, mode 3 (square wave), binary. */
+    outp(0x43, 0x36);
+    outp(0x40, PIT_DIV_50HZ & 0xFF);
+    outp(0x40, (PIT_DIV_50HZ >> 8) & 0xFF);
+    _dos_setvect(0x08, new_int8);
+    _enable();
+}
+
+static void timer_restore(void) {
+    if (!prev_int8) return;
+    _disable();
+    /* Restore default 18.2 Hz (divisor 0 = 65536). */
+    outp(0x43, 0x36);
+    outp(0x40, 0);
+    outp(0x40, 0);
+    _dos_setvect(0x08, prev_int8);
+    _enable();
+    prev_int8 = NULL;
+}
+
+/* Atomic read of the 32-bit frame counter from main code. */
+static unsigned long pit_ticks(void) {
+    unsigned long v;
+    _disable();
+    v = pit_frame_counter;
+    _enable();
+    return v;
+}
+
 /* Attract-mode state machine — same shape as the original game:
  *   TITLE   one-shot loading screen on boot, timeout -> MENU
  *   MENU    interactive (A/B cycle device, any other key advances),
@@ -1279,7 +1342,7 @@ static state_t run_level(void) {
         bg_attr = level_attrs[(int)i * ATTR_BAND_SIZE
                               + BRICK_ATTR_ROW_BASE * ATTR_COLS + 14];
         start     = bios_ticks();
-        last_tick = start;
+        last_tick = pit_ticks();
         for (;;) {
             unsigned long now;
             int ball_moved = 0;
@@ -1305,8 +1368,8 @@ static state_t run_level(void) {
                 }
             }
 
-            /* Frame tick at ~18.2 Hz (BIOS) - M4 will swap to 50 Hz. */
-            now = bios_ticks();
+            /* Frame tick at 50 Hz from our PIT IRQ. */
+            now = pit_ticks();
             if (now != last_tick) {
                 last_tick = now;
                 if (ball_visible && !ball_stuck) {
@@ -1376,6 +1439,8 @@ int main(void) {
         fill(0, 0, SCREEN_W, SCREEN_H, 10 /* bright red */);
     }
 
+    timer_install();
+
     while (state != ST_QUIT) {
         switch (state) {
             case ST_TITLE:   state = run_title();   break;
@@ -1386,6 +1451,7 @@ int main(void) {
         }
     }
 
+    timer_restore();
     set_mode(0x03);
     return 0;
 }
