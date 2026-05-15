@@ -1400,15 +1400,49 @@ static void render_brick_band(unsigned char level_idx) {
     int char_row, char_col;
     const unsigned char *cells = live_level;
     const unsigned char *lattr = &level_attrs[(int)level_idx * ATTR_BAND_SIZE];
+    unsigned char bg_attr = bg_attr_per_cycle[level_idx & 3];
 
     if (level_idx >= N_LEVELS) return;
 
-    /* Per-level attrs override the bg_attr in char rows 3..16, so
-     * brick colours and shadow attrs land at their cells. */
+    /* Copy the per-level attrs into char rows 3..16 (the brick band,
+     * including frame side strips and pre-dimmed shadow rows). */
     for (char_row = 3; char_row < 17; char_row++) {
         for (char_col = 0; char_col < 32; char_col++) {
             attr_buff[char_row * 32 + char_col] =
                 lattr[char_row * ATTR_COLS + char_col];
+        }
+    }
+
+    /* level_attrs.bin was captured with all bricks alive, so it carries
+     * the brick colour in every brick cell. For cells whose brick is
+     * destroyed (bit 7), reset the body attr to bg_attr — otherwise
+     * destroyed bricks keep showing brick colour even though
+     * print_briks_c skips the body pixels. Also clear the shadow row
+     * (the char row below) when there's no brick below to keep its own
+     * attr. */
+    {
+        int lvl_row, lvl_col;
+        for (lvl_row = 0; lvl_row < LVL_ROWS; lvl_row++) {
+            for (lvl_col = 0; lvl_col < LVL_COLS; lvl_col++) {
+                unsigned char cell = cells[lvl_row * LVL_COLS + lvl_col];
+                if (cell & 0x80) {
+                    int cr  = 4 + lvl_row;
+                    int cc1 = 1 + 2 * lvl_col;
+                    int cc2 = cc1 + 1;
+                    attr_buff[cr * 32 + cc1] = bg_attr;
+                    attr_buff[cr * 32 + cc2] = bg_attr;
+                    if (lvl_row + 1 < LVL_ROWS) {
+                        unsigned char below = cells[(lvl_row + 1) * LVL_COLS + lvl_col];
+                        if (below & 0x80) {
+                            attr_buff[(cr + 1) * 32 + cc1] = bg_attr;
+                            attr_buff[(cr + 1) * 32 + cc2] = bg_attr;
+                        }
+                    } else {
+                        attr_buff[(cr + 1) * 32 + cc1] = bg_attr;
+                        attr_buff[(cr + 1) * 32 + cc2] = bg_attr;
+                    }
+                }
+            }
         }
     }
 
@@ -2139,29 +2173,38 @@ static int brick_collision(int prev_x, int prev_y, int new_x, int new_y) {
     int sz = eff_ball_size();
     int cx = new_x + sz / 2;
     int cy = new_y + sz / 2;
-    int col, row, brick_top, brick_bot, prev_cy;
+    int col, row, brick_top, brick_bot, prev_cy, axis;
     unsigned char *cell;
     if (cy < 32 || cy >= 32 + LVL_ROWS * 8) return 0;
     if (cx < 8  || cx >= 8  + LVL_COLS * 16) return 0;
     col = (cx - 8) / 16;
     row = (cy - 32) / 8;
     cell = &live_level[row * LVL_COLS + col];
-    /* BIT 7 = already destroyed -> ball passes through. */
+    /* BIT 7 = no brick / destroyed: ball passes through. */
     if (*cell & 0x80) return 0;
-    /* BIT 4 = frame piece (decoration). The original's brick blitter
-     * skips these (= no destruction) but the ball still BOUNCES off
-     * them. Return the appropriate axis flip without destroying. */
-    if (*cell & 0x10) {
-        brick_top = 32 + row * 8;
-        brick_bot = brick_top + 8;
-        prev_cy   = prev_y + sz / 2;
-        (void)prev_x;
-        return (prev_cy < brick_top || prev_cy >= brick_bot) ? 1 : 2;
+
+    /* Determine the bounce axis (1 = flip dy, 2 = flip dx) for both
+     * the destructible and undestructible paths. */
+    brick_top = 32 + row * 8;
+    brick_bot = brick_top + 8;
+    prev_cy   = prev_y + sz / 2;
+    (void)prev_x;
+    axis = (prev_cy < brick_top || prev_cy >= brick_bot) ? 1 : 2;
+
+    /* BIT 5 = undestructible: bounce, never destroy.
+     * BIT 4 = "this hit destroys" (1-hit brick OR multi-hit's final
+     *          hit registered by an earlier collision).
+     * Otherwise (bit 4 + bit 5 both clear) = multi-hit brick: this is
+     *          the FIRST collision, so SET BIT 4 and bounce; the next
+     *          hit will hit the BIT 4 branch above and destroy. */
+    if (*cell & 0x20) return axis;
+    if (!(*cell & 0x10)) {
+        *cell |= 0x10;
+        return axis;
     }
+
+    /* BIT 4 set: destroy on this hit. */
     {
-        /* Snapshot the cell value before we mark it destroyed - need the
-         * low nibble to tell normal from metal for the 2x point modifier
-         * (= the JP C, add_points_to_score check at $AFD6). */
         unsigned char cell_val = *cell;
         unsigned int idx = (unsigned int)((row < 12) ? row : 11);
         unsigned int pts = points_table[idx];
@@ -2192,20 +2235,16 @@ static int brick_collision(int prev_x, int prev_y, int new_x, int new_y) {
             }
         }
     }
-    brick_top = 32 + row * 8;
-    brick_bot = brick_top + 8;
-    prev_cy   = prev_y + sz / 2;
-    (void)prev_x;
-    if (prev_cy < brick_top || prev_cy >= brick_bot) return 1;  /* vertical */
-    return 2;                                                    /* horizontal */
+    return axis;
 }
 
-/* Count remaining destructible bricks (bit 7 clear, bit 4 clear).
- * Used to detect level-complete. */
+/* Count remaining destructible bricks: bit 7 clear (still present)
+ * AND bit 5 clear (not undestructible). bit 4 is the multi-hit
+ * "next hit destroys" marker — those still count as destructible. */
 static int live_bricks_remaining(void) {
     int i, n = 0;
     for (i = 0; i < LVL_CELLS; i++) {
-        if (!(live_level[i] & 0x90)) n++;
+        if (!(live_level[i] & 0xA0)) n++;
     }
     return n;
 }
