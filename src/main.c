@@ -937,6 +937,31 @@ static void blit_masked_to_scr_buff(unsigned int sprite_off,
     blit_masked_to_scr_buff_ptr(sprites_blob + sprite_off, x_px, y_px);
 }
 
+/* Port of print_sprite_attrib @ $B656. Sets `attr` in every attr_buff
+ * char cell the sprite's bounding box overlaps, so a buff_to_vga pass
+ * colours the sprite (and any bg pattern bits in the same cells)
+ * with the new ink/paper. Mirrors the original's per-cell colour-clash
+ * behaviour where a sprite repaints its cells' attrs without checking
+ * which bits inside the cell are sprite vs bg. */
+static void blit_sprite_attrs_to_buff(int x_px, int y_px,
+                                       int w_px, int h_px,
+                                       unsigned char attr) {
+    int col_lo = x_px / 8;
+    int col_hi = (x_px + w_px - 1) / 8;
+    int row_lo = y_px / 8;
+    int row_hi = (y_px + h_px - 1) / 8;
+    int r, c;
+    if (col_lo < 0) col_lo = 0;
+    if (row_lo < 0) row_lo = 0;
+    if (col_hi >= ATTR_COLS) col_hi = ATTR_COLS - 1;
+    if (row_hi >= ATTR_ROWS) row_hi = ATTR_ROWS - 1;
+    for (r = row_lo; r <= row_hi; r++) {
+        for (c = col_lo; c <= col_hi; c++) {
+            attr_buff[r * 32 + c] = attr;
+        }
+    }
+}
+
 static void blit_masked_sprite_ptr(const unsigned char *src,
                                     int x_px, int y_px,
                                     unsigned char ink, unsigned char paper) {
@@ -2007,14 +2032,18 @@ static unsigned int spr_for_bonus(unsigned char t) {
     }
 }
 
-/* Paint the bonus using the original spr_bonus_* sprite (mask + pix
- * format). Colors come from the falling-bonus per-type palette so
- * each type stays visually distinct even when sprites share shape
- * details. */
-static void render_bonus(void) {
+/* Paint the bonus into scr_buff (sprite pixels) AND attr_buff (the
+ * per-type ink in the cells the bonus occupies). bonus_colours[] is
+ * a VGA palette index; the matching ZX attr byte is bright-ink with
+ * black paper = 0x40 | (idx & 7). The colour-clash on neighbouring
+ * bg-pattern bits in the same char cell is intentional — the
+ * original game produces the same artefact. */
+static void render_bonus_to_buff(void) {
     unsigned int spr = spr_for_bonus(bonus_type);
     unsigned char col = bonus_colours[bonus_type & 3];
-    blit_masked_sprite(spr, bonus_x, bonus_y, col, 0);
+    unsigned char attr = (unsigned char)(0x40 | (col & 7));
+    blit_masked_to_scr_buff(spr, bonus_x, bonus_y);
+    blit_sprite_attrs_to_buff(bonus_x, bonus_y, BONUS_W_PX, BONUS_H_PX, attr);
 }
 
 /* Apply the effect that comes with `type`. Catching the same type
@@ -2447,11 +2476,11 @@ static void redraw_full_with_ball(unsigned char level_idx) {
         }
         blit_masked_to_scr_buff(spr, enemy->x_coord, enemy->y_coord);
     }
+    if (bonus_active) render_bonus_to_buff();
     buff_to_vga();
     render_frame(cycle, level_idx);
     render_hud_score();
     render_hud_powerups();
-    if (bonus_active) render_bonus();  /* per-type colour, direct-VGA */
 }
 
 /* Render a short string of N character codes via draw_glyph, anchored
