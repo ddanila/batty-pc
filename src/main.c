@@ -2049,11 +2049,20 @@ static void buff_to_vga_strip(int y0, int h) {
 #define KEY_P_UPPER 'P'
 
 /* Paint the ball at (x, y) into scr_buff via the original masked
- * OR-blit. Colour comes from each char cell's attr_buff entry at
- * buff_to_vga time — same palette as the surrounding bg (matches
- * the original, which paints into scr_buff without touching attrs). */
-static void render_ball_to_buff(int x, int y) {
+ * OR-blit, and apply an attr that swaps ink and paper of bg_attr at
+ * the ball's char cells. With bg_attr=$46 (ink=yellow, paper=black)
+ * the ball cells get $70 (ink=black, paper=yellow) so the ball's
+ * set-bit pixels render as the bg's paper colour (black) instead of
+ * blending into the bg ink. Matches the original ZX rendering where
+ * the ball + its drop shadow appear black on the yellow bg pattern. */
+static void render_ball_to_buff(int x, int y, unsigned char bg) {
     unsigned int spr = big_ball_ticks ? SPR_BIG_BALL : SPR_BALL_NORMAL;
+    int w_px = sprites_blob[spr] * 8;
+    int h_px = sprites_blob[spr + 1];
+    unsigned char ball_attr = (unsigned char)((bg & 0xC0)
+                                              | ((bg & 0x07) << 3)
+                                              | ((bg >> 3) & 0x07));
+    blit_sprite_attrs_to_buff(x, y, w_px, h_px, ball_attr);
     blit_masked_to_scr_buff(spr, x, y);
 }
 
@@ -2511,7 +2520,7 @@ static void redraw_full_with_ball(unsigned char level_idx) {
     paint_frame_to_buff(cycle, level_idx);
     render_bat(cycle, bg_attr);
     render_lives(cycle, bg_attr);
-    if (BALL_VISIBLE) render_ball_to_buff(BALL_X, BALL_Y);
+    if (BALL_VISIBLE) render_ball_to_buff(BALL_X, BALL_Y, bg_attr);
     if (bomb_active) {
         blit_masked_to_scr_buff_ptr(spr_bomb_data, bomb_x, bomb_y);
     }
