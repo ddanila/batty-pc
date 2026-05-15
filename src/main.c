@@ -589,6 +589,12 @@ static unsigned char bonus_active = 0;
 static unsigned int  slow_ticks      = 0;
 static unsigned int  big_bat_ticks   = 0;
 static unsigned int  big_ball_ticks  = 0;
+/* Bat resize animation - bat_extra_px ramps 0..8 toward bat_extra_tgt
+ * (port of bat_resize at $9D2C). Width grows / shrinks 1 px / 50 Hz
+ * tick = ~6 px / 100 ms which roughly matches the original's 2-px-
+ * every-other-frame from $9D45's `RR E` gating. */
+static int           bat_extra_px    = 0;
+static int           bat_extra_tgt   = 0;
 
 /* "+400" floating-marker state spawned on bonus catch (port of
  * sprite_set $0B transition at $A6BA + handling_400pts at $A58D).
@@ -1072,9 +1078,27 @@ static void ix_buf_addr_calc(object_t *obj) {
     obj->buf_addr_lo = (unsigned char)(off & 0xFF);
 }
 static void render_bat(unsigned char cycle, unsigned char attr) {
-    unsigned int spr = big_bat_ticks ? SPR_BAT_BIG : SPR_BAT_NORMAL;
-    int x = big_bat_ticks ? (BAT_X - BAT_BIG_EXTRA_PX) : BAT_X;
+    unsigned int spr;
+    int x;
     (void)cycle;
+    if (bat_extra_px >= BAT_BIG_EXTRA_PX) {
+        /* Fully expanded: use the original spr_bat_big sprite. */
+        spr = SPR_BAT_BIG;
+        x   = BAT_X - BAT_BIG_EXTRA_PX;
+    } else {
+        /* Normal or mid-transition: render the small sprite and paint
+         * ink flanks for whatever bat_extra_px has reached. */
+        spr = SPR_BAT_NORMAL;
+        x   = BAT_X;
+        if (bat_extra_px > 0) {
+            unsigned char ink = ink_pal(attr);
+            int y_top = BORDER_Y + BAT_Y_PX;
+            fill(BORDER_X + BAT_X - bat_extra_px,             y_top + 1,
+                 bat_extra_px, 8, ink);
+            fill(BORDER_X + BAT_X + BAT_W_BYTES * 8,          y_top + 1,
+                 bat_extra_px, 8, ink);
+        }
+    }
     blit_masked_sprite(spr, x, BAT_Y_PX, ink_pal(attr), paper_pal(attr));
 }
 
@@ -1847,7 +1871,9 @@ static void bonus_apply(unsigned char type) {
     switch (type) {
         case BONUS_TYPE_LIFE:     lives++; break;
         case BONUS_TYPE_SLOW:     slow_ticks     = SLOW_DURATION; break;
-        case BONUS_TYPE_BIG_BAT:  big_bat_ticks  = BIG_BAT_DURATION; break;
+        case BONUS_TYPE_BIG_BAT:  big_bat_ticks  = BIG_BAT_DURATION;
+                                  bat_extra_tgt  = BAT_BIG_EXTRA_PX;
+                                  break;
         case BONUS_TYPE_BIG_BALL: big_ball_ticks = BIG_BALL_DURATION; break;
         default: break;
     }
@@ -1857,8 +1883,8 @@ static void bonus_apply(unsigned char type) {
 /* spr_bat_big is 48 px wide (6 bytes) vs spr_bat_normal's 32 px (4
  * bytes). Keep the bat visually centred on BAT_X by rendering big
  * bat 8 px further left; hitbox widens correspondingly. */
-static int eff_bat_left(void)  { return BAT_X - (big_bat_ticks ? BAT_BIG_EXTRA_PX : 0); }
-static int eff_bat_right(void) { return BAT_X + BAT_W_BYTES * 8 + (big_bat_ticks ? BAT_BIG_EXTRA_PX : 0); }
+static int eff_bat_left(void)  { return BAT_X - bat_extra_px; }
+static int eff_bat_right(void) { return BAT_X + BAT_W_BYTES * 8 + bat_extra_px; }
 
 /* Current effective ball body size. spr_ball_normal body is 8x7;
  * spr_big_ball body fills the full 2-byte * 12 row sprite at its
@@ -1870,8 +1896,15 @@ static int eff_ball_size(void) { return big_ball_ticks ? 12 : BALL_W_PX; }
 static void step_bonus(void) {
     int bat_left, bat_right;
     if (slow_ticks    > 0) slow_ticks--;
-    if (big_bat_ticks > 0) big_bat_ticks--;
+    if (big_bat_ticks > 0) {
+        big_bat_ticks--;
+        if (big_bat_ticks == 0) bat_extra_tgt = 0;     /* shrink */
+    }
     if (big_ball_ticks > 0) big_ball_ticks--;
+    /* Animate bat width toward target. 1 px / tick = ~8 ticks for the
+     * 0->8 transition (= ~160 ms at 50 Hz). */
+    if (bat_extra_px < bat_extra_tgt) bat_extra_px++;
+    else if (bat_extra_px > bat_extra_tgt) bat_extra_px--;
     if (!bonus_active) return;
     bonus_y += BONUS_FALL_SPEED;
     bat_left  = eff_bat_left();
@@ -2287,6 +2320,8 @@ static state_t run_level(void) {
     slow_ticks = 0;
     big_bat_ticks = 0;
     big_ball_ticks = 0;
+    bat_extra_px = 0;
+    bat_extra_tgt = 0;
     paused = 0;
     high_score_beaten_this_game = 0;
 
@@ -2308,6 +2343,8 @@ static state_t run_level(void) {
         slow_ticks     = 0;
         big_bat_ticks  = 0;
         big_ball_ticks = 0;
+        bat_extra_px   = 0;
+        bat_extra_tgt  = 0;
         for (k = 0; k < LVL_CELLS; k++) {
             live_level[k] = levels[(int)i * LVL_CELLS + k];
         }
@@ -2416,6 +2453,7 @@ static state_t run_level(void) {
                 sound_tick();
                 if (bonus_active) ball_moved = 1;
                 if (pts_400_ticks > 0) ball_moved = 1;
+                if (bat_extra_px != bat_extra_tgt) bat_moved = 1;
                 if (objects[OBJ_ENEMY].sprite_set != 0) ball_moved = 1;
             }
 
