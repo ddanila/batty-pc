@@ -583,11 +583,12 @@ static void save_high_score(void) {
  *   $09 kill_aliens (deferred)
  * map_orig_to_our_bonus translates a table draw to one of our 4
  * supported effects; unsupported codes get rolled away in pick. */
-#define BONUS_TYPE_LIFE     0
-#define BONUS_TYPE_SLOW     1
-#define BONUS_TYPE_BIG_BAT  2
-#define BONUS_TYPE_BIG_BALL 3
-#define BONUS_TYPE_COUNT    4
+#define BONUS_TYPE_LIFE         0
+#define BONUS_TYPE_SLOW         1
+#define BONUS_TYPE_BIG_BAT      2
+#define BONUS_TYPE_BIG_BALL     3
+#define BONUS_TYPE_KILL_ALIENS  4
+#define BONUS_TYPE_COUNT        5
 #define BONUS_TYPE_UNSUPPORTED  0xFF
 
 /* bonus_table_first / bonus_table_second - byte-exact copies of the
@@ -615,6 +616,7 @@ static unsigned char map_orig_to_our_bonus(unsigned char code) {
         case 0x05: return BONUS_TYPE_LIFE;
         case 0x07: return BONUS_TYPE_BIG_BALL;
         case 0x08: return BONUS_TYPE_BIG_BAT;
+        case 0x09: return BONUS_TYPE_KILL_ALIENS;
         default:   return BONUS_TYPE_UNSUPPORTED;
     }
 }
@@ -653,10 +655,11 @@ static unsigned char pts_400_ticks = 0;
  * they don't collide with the per-level bg cycle colours (yellow /
  * green / cyan / white). */
 static const unsigned char bonus_colours[BONUS_TYPE_COUNT] = {
-    10,   /* L (life)     - bright red     */
-    11,   /* S (slow)     - bright magenta */
-     9,   /* B (big bat)  - bright blue    */
-    14    /* G (big ball) - bright yellow  */
+    10,   /* L (life)        - bright red     */
+    11,   /* S (slow)        - bright magenta */
+     9,   /* B (big bat)     - bright blue    */
+    14,   /* G (big ball)    - bright yellow  */
+    13    /* K (kill aliens) - bright cyan    */
 };
 
 /* Counter of bricks destroyed since start of game; drives the simple
@@ -2077,24 +2080,47 @@ static void render_ball(int x, int y, unsigned char attr) {
 /* Map our BONUS_TYPE_* enum to the original spr_bonus_* sprite offset. */
 static unsigned int spr_for_bonus(unsigned char t) {
     switch (t) {
-        case BONUS_TYPE_LIFE:     return SPR_BONUS_EXTRA_LIFE;
-        case BONUS_TYPE_SLOW:     return SPR_BONUS_SLOW;
-        case BONUS_TYPE_BIG_BAT:  return SPR_BONUS_SIZE;
-        case BONUS_TYPE_BIG_BALL: return SPR_BONUS_SMASH;
-        default:                  return SPR_BONUS_SIZE;
+        case BONUS_TYPE_LIFE:        return SPR_BONUS_EXTRA_LIFE;
+        case BONUS_TYPE_SLOW:        return SPR_BONUS_SLOW;
+        case BONUS_TYPE_BIG_BAT:     return SPR_BONUS_SIZE;
+        case BONUS_TYPE_BIG_BALL:    return SPR_BONUS_SMASH;
+        case BONUS_TYPE_KILL_ALIENS: return SPR_BONUS_KILL_ALIENS;
+        default:                     return SPR_BONUS_SIZE;
     }
 }
 
-/* Paint the bonus into scr_buff (sprite pixels) AND attr_buff (the
- * per-type ink in the cells the bonus occupies). bonus_colours[] is
- * a VGA palette index; the matching ZX attr byte is bright-ink with
- * black paper = 0x40 | (idx & 7). The colour-clash on neighbouring
- * bg-pattern bits in the same char cell is intentional — the
- * original game produces the same artefact. */
-static void render_bonus_to_buff(void) {
+/* Paint the bonus into scr_buff + attr_buff. The original game shows
+ * the bonus on a solid-black backdrop inside its char cells (the bg
+ * pattern is wiped under the bonus), so the surrounding bg-pattern
+ * yellow bits don't recolour-clash into the bonus's ink. We clear
+ * scr_buff at the bonus's char cells before the masked blit, then
+ * set attr to (bright | bonus_ink | bg_paper) so the cell's PAPER
+ * matches the surrounding bg paper (typically black) and only the
+ * bonus body shows in the per-type ink colour. */
+static void render_bonus_to_buff(unsigned char bg) {
     unsigned int spr = spr_for_bonus(bonus_type);
-    unsigned char col = bonus_colours[bonus_type & 3];
-    unsigned char attr = (unsigned char)(0x40 | (col & 7));
+    unsigned char idx = (bonus_type < BONUS_TYPE_COUNT)
+                        ? bonus_type : BONUS_TYPE_LIFE;
+    unsigned char col = bonus_colours[idx];
+    unsigned char attr = (unsigned char)(0x40
+                                         | (col & 7)
+                                         | (bg & 0x38));
+    int col_lo = bonus_x / 8;
+    int col_hi = (bonus_x + BONUS_W_PX - 1) / 8;
+    int row_lo = bonus_y / 8;
+    int row_hi = (bonus_y + BONUS_H_PX - 1) / 8;
+    int r, c, y;
+    if (col_lo < 0) col_lo = 0;
+    if (row_lo < 0) row_lo = 0;
+    if (col_hi >= 32) col_hi = 31;
+    if (row_hi >= ATTR_ROWS) row_hi = ATTR_ROWS - 1;
+    for (r = row_lo; r <= row_hi; r++) {
+        for (y = r * 8; y < (r + 1) * 8 && y < PLAYFIELD_H; y++) {
+            for (c = col_lo; c <= col_hi; c++) {
+                scr_buff[y * 32 + c] = 0;
+            }
+        }
+    }
     blit_masked_to_scr_buff(spr, bonus_x, bonus_y);
     blit_sprite_attrs_to_buff(bonus_x, bonus_y, BONUS_W_PX, BONUS_H_PX, attr);
 }
@@ -2109,6 +2135,28 @@ static void bonus_apply(unsigned char type) {
                                   bat_extra_tgt  = BAT_BIG_EXTRA_PX;
                                   break;
         case BONUS_TYPE_BIG_BALL: big_ball_ticks = BIG_BALL_DURATION; break;
+        case BONUS_TYPE_KILL_ALIENS:
+            /* Mark the bat as carrying the kill-aliens bonus (matches
+             * the original's BAT+$14 = $09); enemy_prepare reads this
+             * to skip further alien spawns. Also clear any currently
+             * active alien so the catch has immediate visible effect. */
+            objects[OBJ_BAT_1].bonus_applied = 0x09;
+            objects[OBJ_BAT_2].bonus_applied = 0x09;
+            {
+                object_t *e = &objects[OBJ_ENEMY];
+                if ((e->sprite_set & 0x7F) != 0
+                    && !(e->sprite_set & 0x80)
+                    && (e->sprite_set & 0x7F) != 0x0A) {
+                    /* Transition to blast: 5-frame explosion via
+                     * handling_blast_obj, then auto-clear. */
+                    e->sprite_set = 0x0A;
+                    e->sprite_num = 0;
+                    e->misc_12 = 0;
+                    score += 350;
+                    snd_q_push(SND_SHOT);
+                }
+            }
+            break;
         default: break;
     }
 }
@@ -2549,7 +2597,7 @@ static void redraw_full_with_ball(unsigned char level_idx) {
                                    spr_w_px, spr_h_px, bg_attr);
         blit_masked_to_scr_buff(spr, enemy->x_coord, enemy->y_coord);
     }
-    if (bonus_active) render_bonus_to_buff();
+    if (bonus_active) render_bonus_to_buff(bg_attr);
     buff_to_vga();
     render_hud_score();
     render_hud_powerups();
@@ -2674,6 +2722,8 @@ static state_t run_level(void) {
         big_ball_ticks = 0;
         bat_extra_px   = 0;
         bat_extra_tgt  = 0;
+        objects[OBJ_BAT_1].bonus_applied = 0xFF;
+        objects[OBJ_BAT_2].bonus_applied = 0xFF;
         for (k = 0; k < LVL_CELLS; k++) {
             live_level[k] = levels[(int)i * LVL_CELLS + k];
         }
