@@ -107,6 +107,59 @@ Now that every renderer writes into scr_buff via the original
 - Future ports can write 1-bit pixel data and per-cell attrs and
   trust the single `buff_to_vga` pass to handle the rest.
 
+## Frame ornament in scr_buff (compose order)
+
+After porting `render_frame` to a buffer-pipeline variant
+(`paint_frame_to_buff` + `paint_strip_to_buff`), the per-frame
+compose order is:
+
+```
+paint_bg_to_buff      -> bg tile + bg_attr fill
+render_brick_band     -> brick body pixels + per-cell attrs
+                         (destroyed bricks reset their cell attrs
+                          to bg_attr so they actually disappear)
+paint_frame_to_buff   -> frame top + side strips (must run AFTER
+                         render_brick_band so frame attrs override
+                         the brick body attrs at the leftmost /
+                         rightmost cell, and BEFORE sprites so
+                         they OR-blit over the frame pixels)
+render_bat / render_lives
+render_ball_to_buff
+render_bomb / render_400pts / render_alien   (all to scr_buff)
+render_bonus_to_buff
+buff_to_vga
+render_hud_score / render_hud_powerups       (direct-VGA text)
+```
+
+Bat + enemy cells force `bg_attr` in attr_buff (via
+`blit_sprite_attrs_to_buff`) so they stay bg-coloured even when
+their bbox overlaps frame-strip cells or brick cells whose attrs
+would otherwise tint the sprite.
+
+## Brick types (1-hit / multi-hit / undestructible)
+
+Cell encoding in the level data:
+
+| bit | meaning                                        |
+|-----|------------------------------------------------|
+| 7   | no brick at this cell (skip, or already gone) |
+| 5   | undestructible — bounce, never destroy        |
+| 4   | "this hit destroys" (1-hit OR multi-hit's     |
+|     |  final hit, already registered)               |
+| 0–3 | low nibble = colour index into briks_colors[] |
+
+Collision flow (`brick_collision` in src/main.c):
+
+- bit 7 set: pass through.
+- bit 5 set: bounce, no destruction.
+- bit 4 set: destroy (score + sound + set bit 7).
+- otherwise (multi-hit fresh): SET bit 4, bounce — next hit will
+  match the bit-4 branch and destroy.
+
+L1 cells like `$13` / `$14` (bit 4 set, bit 5 clear) are 1-hit
+destructible; L1 row 0's `$07` cells (both bits clear) are 2-hit
+multi-hit; L4 `$2C` (bit 5 set) is undestructible decoration.
+
 ## Key files
 
 - `src/main.c::blit_masked_to_scr_buff_ptr` — the OR-blit primitive
