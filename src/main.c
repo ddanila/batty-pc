@@ -424,6 +424,26 @@ static unsigned char bat_l1[BAT_CYCLES * BAT_SIZE];
 static int bat_x      = BAT_X_INIT;
 static int bat_x_prev = BAT_X_INIT;
 
+/* Ball state. The original keeps this in object_ball_1 (descriptor at
+ * $9AD0); we use a simpler 4x4 placeholder until we port the proper
+ * obj table + masked sprite blitter. ball_stuck = ball sits on the
+ * bat (moves with it); SPACE releases. */
+#define BALL_W_PX   4
+#define BALL_H_PX   4
+#define BALL_SPEED  2
+#define BALL_X_OFFSET_ON_BAT 18  /* relative to bat_x: roughly centred
+                                  * on the 40-px bat. */
+#define BALL_Y_TOP    24         /* just below the 24-px HUD */
+#define BALL_X_MIN     8
+#define BALL_X_MAX   244         /* 256 - 8 - BALL_W_PX */
+static int ball_x      = BAT_X_INIT + BALL_X_OFFSET_ON_BAT;
+static int ball_y      = BAT_Y_PX - BALL_H_PX;
+static int ball_dx     = +BALL_SPEED;
+static int ball_dy     = -BALL_SPEED;
+static unsigned char ball_stuck   = 1;
+static unsigned char ball_visible = 0;  /* drawn only after first SPACE
+                                         * (keeps state4 capture clean). */
+
 /* Second life indicator (the right-hand of the pair at bottom-left).
  * The first one is captured by the 3-col-wide left frame strip; this
  * is the part that falls outside the frame. 2 bytes wide x 8 rows. */
@@ -1037,6 +1057,58 @@ static void paint_bg_strip(unsigned char attr, unsigned char cycle,
 #define KEY_RIGHT 77
 #define KEY_ENTER 13
 #define KEY_ESC   27
+#define KEY_SPACE 32
+
+/* Paint a 4x4 ball at (x, y) playfield-relative in `colour`. */
+static void render_ball(int x, int y, unsigned char colour) {
+    int r, c;
+    int x0 = BORDER_X + x;
+    int y0 = BORDER_Y + y;
+    for (r = 0; r < BALL_H_PX; r++) {
+        for (c = 0; c < BALL_W_PX; c++) {
+            vga[(long)(y0 + r) * SCREEN_W + x0 + c] = colour;
+        }
+    }
+}
+
+/* Step the ball one frame: handle wall + bat collisions. If the ball
+ * exits the bottom of the playfield it respawns stuck on the bat. */
+static void step_ball(void) {
+    int next_x, next_y;
+    int bat_left  = bat_x;
+    int bat_right = bat_x + BAT_W_BYTES * 8;     /* 40 px */
+    int bat_top   = BAT_Y_PX;
+    if (ball_stuck) {
+        ball_x = bat_x + BALL_X_OFFSET_ON_BAT;
+        ball_y = BAT_Y_PX - BALL_H_PX;
+        return;
+    }
+    next_x = ball_x + ball_dx;
+    next_y = ball_y + ball_dy;
+    if (next_x < BALL_X_MIN) { next_x = BALL_X_MIN; ball_dx = +BALL_SPEED; }
+    else if (next_x > BALL_X_MAX) { next_x = BALL_X_MAX; ball_dx = -BALL_SPEED; }
+    if (next_y < BALL_Y_TOP) { next_y = BALL_Y_TOP; ball_dy = +BALL_SPEED; }
+    /* Bat top: ball moving down and ball overlaps bat in X. */
+    if (ball_dy > 0
+        && next_y + BALL_H_PX >= bat_top
+        && next_y < bat_top
+        && next_x + BALL_W_PX > bat_left
+        && next_x < bat_right) {
+        next_y = bat_top - BALL_H_PX;
+        ball_dy = -BALL_SPEED;
+    }
+    /* Past the bat (= lost ball). Respawn on bat. */
+    if (next_y > BAT_Y_PX + BAT_H_PX) {
+        ball_stuck = 1;
+        ball_x = bat_x + BALL_X_OFFSET_ON_BAT;
+        ball_y = BAT_Y_PX - BALL_H_PX;
+        ball_dx = +BALL_SPEED;
+        ball_dy = -BALL_SPEED;
+        return;
+    }
+    ball_x = next_x;
+    ball_y = next_y;
+}
 
 /* M3 minimal play loop. For each level: full render once, then poll
  * arrows for bat motion (LEFT/RIGHT = +-4 px, matching the original's
@@ -1046,20 +1118,47 @@ static void paint_bg_strip(unsigned char attr, unsigned char cycle,
  * timeout still trips, so the cycle keeps moving even with no input.
  * Under BATTYALL=1 (test floppy) auto-advance is off and the test
  * orchestrator drives every transition via sendkey. */
+/* Redraw the bat band only (y=167..185). Independent of bricks. */
+static void redraw_bat(unsigned char cycle, unsigned char bg_attr) {
+    paint_bg_strip(bg_attr, cycle, BAT_Y_PX, BAT_H_PX);
+    render_bat(cycle, bg_attr);
+    render_lives(cycle, bg_attr);
+}
+
+/* Redraw the whole level (frame, bg, bricks, bat, lives) and paint the
+ * ball on top. Used when the ball is in motion - the cheapest correct
+ * way to handle ball-over-brick passage without per-pixel bookkeeping. */
+static void redraw_full_with_ball(unsigned char level_idx) {
+    render_level_screen(level_idx);
+    if (ball_visible) render_ball(ball_x, ball_y, 15);
+}
+
 static state_t run_level(void) {
     unsigned char i;
     unsigned long start;
+    unsigned long last_tick;
     unsigned char cycle;
     unsigned char bg_attr;
     for (i = 0; i < N_LEVELS; i++) {
-        bat_x = BAT_X_INIT;
-        bat_x_prev = BAT_X_INIT;
+        bat_x         = BAT_X_INIT;
+        bat_x_prev    = BAT_X_INIT;
+        ball_stuck    = 1;
+        ball_visible  = 0;
+        ball_x        = BAT_X_INIT + BALL_X_OFFSET_ON_BAT;
+        ball_y        = BAT_Y_PX - BALL_H_PX;
+        ball_dx       = +BALL_SPEED;
+        ball_dy       = -BALL_SPEED;
         render_level_screen(i);
         cycle = (unsigned char)(i & 3);
         bg_attr = level_attrs[(int)i * ATTR_BAND_SIZE
                               + BRICK_ATTR_ROW_BASE * ATTR_COLS + 14];
-        start = bios_ticks();
+        start     = bios_ticks();
+        last_tick = start;
         for (;;) {
+            unsigned long now;
+            int ball_moved = 0;
+            int bat_moved  = 0;
+
             if (kbhit()) {
                 int k = getch();
                 if (k == KEY_ESC) return ST_QUIT;
@@ -1070,21 +1169,44 @@ static state_t run_level(void) {
                     } else if (ext == KEY_RIGHT) {
                         if (bat_x < BAT_X_MAX) bat_x += 4;
                     }
-                    /* Reset timeout so motion keeps the level shown. */
                     start = bios_ticks();
-                } else {
-                    /* Any other key (ENTER, space, ...) advances. */
+                } else if (k == KEY_SPACE) {
+                    ball_visible = 1;
+                    ball_stuck   = 0;
+                    start = bios_ticks();
+                } else if (k == KEY_ENTER) {
                     break;
                 }
             }
+
+            /* Frame tick at ~18.2 Hz (BIOS) - M4 will swap to 50 Hz. */
+            now = bios_ticks();
+            if (now != last_tick) {
+                last_tick = now;
+                if (ball_visible && !ball_stuck) {
+                    step_ball();
+                    ball_moved = 1;
+                }
+            }
+
             if (bat_x != bat_x_prev) {
-                /* Erase bat strip then repaint at new X. */
-                paint_bg_strip(bg_attr, cycle, BAT_Y_PX, BAT_H_PX);
-                render_bat(cycle, bg_attr);
-                /* Lives indicator sits in the same Y band; redraw it. */
-                render_lives(cycle, bg_attr);
+                bat_moved = 1;
                 bat_x_prev = bat_x;
             }
+
+            if (ball_moved) {
+                /* Ball might pass over bricks - cheapest correct path
+                 * is a full level rerender each tick. */
+                redraw_full_with_ball(i);
+            } else if (bat_moved) {
+                redraw_bat(cycle, bg_attr);
+                /* Ball follows bat while stuck. */
+                if (ball_visible && ball_stuck) {
+                    ball_x = bat_x + BALL_X_OFFSET_ON_BAT;
+                    render_ball(ball_x, ball_y, 15);
+                }
+            }
+
             if (auto_advance && TIMED_OUT(start, LEVEL_TIMEOUT_TICKS)) break;
         }
     }
