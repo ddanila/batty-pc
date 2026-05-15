@@ -508,11 +508,57 @@ static void save_high_score(void) {
 #define BONUS_SPAWN_EVERY 3    /* every Nth brick drops a bonus.
                                 * Capped at 1 active at a time so rapid
                                 * row-bursts often drop fewer in practice. */
-#define BONUS_TYPE_LIFE     0     /* +1 life on catch */
-#define BONUS_TYPE_SLOW     1     /* halves ball speed */
-#define BONUS_TYPE_BIG_BAT  2     /* bat 8 px wider on each side */
-#define BONUS_TYPE_BIG_BALL 3     /* ball is 8x8 instead of 4x4 */
+/* Original game bonus codes from set_bonus / bonus_table_* at $9E4A:
+ *   $01 gun        (deferred - needs bullet system)
+ *   $02 triple_ball (deferred - needs multi-ball)
+ *   $03 ?
+ *   $04 slow_ball  -> our SLOW
+ *   $05 extra_life -> our LIFE
+ *   $06 rocket     (deferred - needs handling_rocket)
+ *   $07 smash      -> our BIG_BALL
+ *   $08 ?          -> mapped to BIG_BAT (placeholder)
+ *   $09 kill_aliens (deferred)
+ * map_orig_to_our_bonus translates a table draw to one of our 4
+ * supported effects; unsupported codes get rolled away in pick. */
+#define BONUS_TYPE_LIFE     0
+#define BONUS_TYPE_SLOW     1
+#define BONUS_TYPE_BIG_BAT  2
+#define BONUS_TYPE_BIG_BALL 3
 #define BONUS_TYPE_COUNT    4
+#define BONUS_TYPE_UNSUPPORTED  0xFF
+
+/* bonus_table_first / bonus_table_second - byte-exact copies of the
+ * 32-byte tables at $9E5A / $9E6A. The lower 4 bits of random_number
+ * index the active table; the original walks rows 0..15 and rows
+ * 16..31 are an extension (the original code only ANDs $0F so it
+ * picks from 0..15 - the duplicate 16..31 region appears to be
+ * vestigial in the disasm but we keep it for byte-fidelity). */
+static const unsigned char bonus_table_first[32] = {
+    0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+    0x08, 0x09, 0x00, 0x04, 0x00, 0x03, 0x01, 0x02,
+    0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x02,
+    0x01, 0x03, 0x00, 0x04, 0x00, 0x03, 0x01, 0x02
+};
+static const unsigned char bonus_table_second[32] = {
+    0x00, 0x01, 0x02, 0x03, 0x02, 0x00, 0x06, 0x07,
+    0x08, 0x09, 0x00, 0x03, 0x00, 0x02, 0x01, 0x03,
+    0x00, 0x01, 0x02, 0x03, 0x02, 0x00, 0x06, 0x02,
+    0x01, 0x03, 0x00, 0x03, 0x00, 0x02, 0x01, 0x03
+};
+
+static unsigned char map_orig_to_our_bonus(unsigned char code) {
+    switch (code) {
+        case 0x04: return BONUS_TYPE_SLOW;
+        case 0x05: return BONUS_TYPE_LIFE;
+        case 0x07: return BONUS_TYPE_BIG_BALL;
+        case 0x08: return BONUS_TYPE_BIG_BAT;
+        default:   return BONUS_TYPE_UNSUPPORTED;
+    }
+}
+
+/* Forward decls - defined below in the enemy section. */
+static unsigned int next_random(void);
+extern unsigned char round_number;
 #define SLOW_DURATION     250     /* ~5 sec at 50 Hz */
 #define BIG_BAT_DURATION  500     /* ~10 sec */
 #define BIG_BALL_DURATION 500
@@ -1826,15 +1872,27 @@ static int brick_collision(int prev_x, int prev_y, int new_x, int new_y) {
     *cell |= 0x80;
     score += POINTS_PER_BRICK;
     snd_q_push(SND_NORMAL_BRIK);            /* brick-break click */
-    /* Maybe drop a bonus. Only one falling at a time - skip if one is
-     * already in flight. 1-in-BONUS_SPAWN_MOD bricks roll a bonus. */
+    /* Maybe drop a bonus. Port of set_bonus's selection logic at
+     * $9D5A: random index into bonus_table_current (= _first for
+     * rounds 0..5, _second for 6+), retry if the picked code maps
+     * to an unsupported effect in our port. */
     bricks_destroyed++;
     if (!bonus_active && (bricks_destroyed % BONUS_SPAWN_EVERY) == 0) {
-        bonus_active = 1;
-        bonus_x = 8 + col * 16 + (16 - BONUS_W_PX) / 2;   /* brick centre x */
-        bonus_y = 32 + row * 8;                            /* brick top y */
-        /* Cycle types 0..3 so a run shows all four. */
-        bonus_type = (unsigned char)((bricks_destroyed / BONUS_SPAWN_EVERY) % BONUS_TYPE_COUNT);
+        const unsigned char *tbl = (round_number >= 6)
+                                 ? bonus_table_second : bonus_table_first;
+        int tries;
+        for (tries = 0; tries < 16; tries++) {
+            unsigned char idx = (unsigned char)(next_random() & 0x0F);
+            unsigned char code = tbl[idx];
+            unsigned char mapped = map_orig_to_our_bonus(code);
+            if (mapped != BONUS_TYPE_UNSUPPORTED) {
+                bonus_active = 1;
+                bonus_x = 8 + col * 16 + (16 - BONUS_W_PX) / 2;
+                bonus_y = 32 + row * 8;
+                bonus_type = mapped;
+                break;
+            }
+        }
     }
     brick_top = 32 + row * 8;
     brick_bot = brick_top + 8;
@@ -1882,7 +1940,7 @@ static const unsigned char prop_uneven[6] = { 0x09, 0xF0, 0x70, 0x18, 0x0C, 0x01
 static const unsigned char prop_even[6]   = { 0x08, 0x70, 0xF0, 0x18, 0x0E, 0x02 };
 static const unsigned char prop_x_coord[4]= { 0x40, 0xA8, 0x40, 0xA8 };
 
-static unsigned char round_number = 0;       /* current round counter */
+unsigned char round_number = 0;              /* current round counter */
 static unsigned char current_level_idx_var;  /* set by run_level so
                                               * enemy_prepare can read it */
 static void enemy_prepare(void) {
