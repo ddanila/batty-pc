@@ -459,8 +459,40 @@ static unsigned char ball_visible = 0;  /* drawn only after first SPACE
                                     * per-colour values via brik_value
                                     * at $B2BD - port deferred. */
 #define LIVES_INIT          3
-static unsigned long score = 0;
-static int           lives = LIVES_INIT;
+static unsigned long score      = 0;
+static int           lives      = LIVES_INIT;
+static unsigned long high_score = 0;
+static unsigned char high_score_beaten_this_game = 0;
+
+/* Persist the best score across runs by reading / writing 4 little-
+ * endian bytes to A:\HISCORE.DAT (the floppy image). DOS floppy is
+ * read/write under QEMU's if=floppy mode, so writes survive a reboot
+ * as long as the disk image isn't rebuilt by `make floppy`. */
+#define HIGH_SCORE_FILE "HISCORE.DAT"
+static void load_high_score(void) {
+    FILE *f = fopen(HIGH_SCORE_FILE, "rb");
+    unsigned char buf[4];
+    high_score = 0;
+    if (!f) return;
+    if (fread(buf, 1, 4, f) == 4) {
+        high_score =  (unsigned long)buf[0]
+                   | ((unsigned long)buf[1] <<  8)
+                   | ((unsigned long)buf[2] << 16)
+                   | ((unsigned long)buf[3] << 24);
+    }
+    fclose(f);
+}
+static void save_high_score(void) {
+    FILE *f = fopen(HIGH_SCORE_FILE, "wb");
+    unsigned char buf[4];
+    if (!f) return;
+    buf[0] = (unsigned char)(high_score & 0xFF);
+    buf[1] = (unsigned char)((high_score >> 8) & 0xFF);
+    buf[2] = (unsigned char)((high_score >> 16) & 0xFF);
+    buf[3] = (unsigned char)((high_score >> 24) & 0xFF);
+    fwrite(buf, 1, 4, f);
+    fclose(f);
+}
 
 /* Power-up state: a single falling bonus on screen at a time. The
  * original (notes/plan-gameplay.md Phase H) drives this via
@@ -1544,25 +1576,29 @@ static void render_hud_score(void) {
     draw_text(HUD_SCORE_X, HUD_SCORE_Y, 15, digits, 6);
 }
 
-/* Show a "GAME OVER" screen with the final score, hold ~3 seconds. */
+/* Show a "GAME OVER" screen with the final score + high score, hold
+ * ~3 seconds. When the player just beat the high score, a "NEW HIGH
+ * SCORE!" banner appears between the labels. */
 static void render_game_over(void) {
-    /* "GAME OVER" = G A M E (space) O V E R, glyph codes via
-     * (letter - 'A' + 0x0A). Space is 0x26 per notes/encoding.md. */
-    static const unsigned char go[]    = { 0x10, 0x0A, 0x16, 0x0E, 0x26,
-                                           0x18, 0x1F, 0x0E, 0x1B };
-    static const unsigned char sc_lbl[]= { 0x1C, 0x0C, 0x18, 0x1B, 0x0E,
-                                           0x26 /* space */ };
+    static const unsigned char go[]      = { 0x10, 0x0A, 0x16, 0x0E, 0x26,
+                                             0x18, 0x1F, 0x0E, 0x1B };  /* GAME OVER */
+    static const unsigned char sc_lbl[]  = { 0x1C, 0x0C, 0x18, 0x1B, 0x0E, 0x26 }; /* SCORE_ */
+    static const unsigned char hi_lbl[]  = { 0x11, 0x12, 0x10, 0x11, 0x26, 0x26 }; /* HIGH__ */
+    static const unsigned char new_lbl[] = { 0x17, 0x0E, 0x21, 0x26, 0x11, 0x12,
+                                             0x10, 0x11 }; /* NEW HIGH */
     unsigned char digits[6];
     fill(0, 0, SCREEN_W, SCREEN_H, 0);
-    /* "GAME OVER" - 9 chars at (12, 80) (= centred-ish at 320x200). */
-    draw_text(BORDER_X + 4 * 8 + 4, BORDER_Y + 80, 15,
-              go, (int)sizeof(go));
-    /* "SCORE " followed by 6 digits. */
+    draw_text(BORDER_X + 4 * 8 + 4, BORDER_Y + 70, 15, go, (int)sizeof(go));
     score_to_codes(score, digits);
-    draw_text(BORDER_X + 3 * 8, BORDER_Y + 100, 15,
-              sc_lbl, (int)sizeof(sc_lbl));
-    draw_text(BORDER_X + 3 * 8 + 6 * 8, BORDER_Y + 100, 15,
-              digits, 6);
+    draw_text(BORDER_X + 3 * 8,        BORDER_Y +  95, 15, sc_lbl, (int)sizeof(sc_lbl));
+    draw_text(BORDER_X + 3 * 8 + 6*8,  BORDER_Y +  95, 15, digits, 6);
+    score_to_codes(high_score, digits);
+    draw_text(BORDER_X + 3 * 8,        BORDER_Y + 110, 15, hi_lbl, (int)sizeof(hi_lbl));
+    draw_text(BORDER_X + 3 * 8 + 6*8,  BORDER_Y + 110, 15, digits, 6);
+    if (high_score_beaten_this_game) {
+        draw_text(BORDER_X + 5 * 8,    BORDER_Y + 130, 14 /* yellow */,
+                  new_lbl, (int)sizeof(new_lbl));
+    }
 }
 
 static state_t run_level(void) {
@@ -1583,6 +1619,7 @@ static state_t run_level(void) {
     big_bat_ticks = 0;
     big_ball_ticks = 0;
     paused = 0;
+    high_score_beaten_this_game = 0;
 
     for (i = 0; i < N_LEVELS; i++) {
         int k;
@@ -1691,7 +1728,12 @@ static state_t run_level(void) {
 
             /* End-of-life conditions. */
             if (lives == 0) {
-                sound_play(100, 30);                 /* low game-over tone */
+                if (score > high_score) {
+                    high_score = score;
+                    high_score_beaten_this_game = 1;
+                    save_high_score();
+                }
+                sound_play(100, 30);
                 render_game_over();
                 start = bios_ticks();
                 while (!TIMED_OUT(start, 54UL)) {
@@ -1701,12 +1743,17 @@ static state_t run_level(void) {
                 sound_silence();
                 return ST_TITLE;
             }
-            if (live_bricks_remaining() == 0) break;  /* next level */
+            if (live_bricks_remaining() == 0) break;
 
             if (auto_advance && TIMED_OUT(start, LEVEL_TIMEOUT_TICKS)) break;
         }
     }
-    /* Cleared all 15 levels - show GAME OVER with final score then home. */
+    /* Cleared all 15 levels - update high score, then show GAME OVER. */
+    if (score > high_score) {
+        high_score = score;
+        high_score_beaten_this_game = 1;
+        save_high_score();
+    }
     sound_play(100, 30);
     render_game_over();
     {
@@ -1741,6 +1788,7 @@ int main(void) {
         fill(0, 0, SCREEN_W, SCREEN_H, 10 /* bright red */);
     }
 
+    load_high_score();
     timer_install();
 
     while (state != ST_QUIT) {
