@@ -1041,6 +1041,8 @@ static void timer_install(void) {
 static void timer_restore(void) {
     if (!prev_int8) return;
     _disable();
+    /* Silence the speaker so DOS doesn't return to a buzzing prompt. */
+    outp(0x61, (unsigned char)(inp(0x61) & 0xFC));
     /* Restore default 18.2 Hz (divisor 0 = 65536). */
     outp(0x43, 0x36);
     outp(0x40, 0);
@@ -1057,6 +1059,46 @@ static unsigned long pit_ticks(void) {
     v = pit_frame_counter;
     _enable();
     return v;
+}
+
+/* --- PC speaker sound (PIT channel 2 + port 0x61) ---------------------
+ *
+ * sound_play programs PIT counter 2 (input 1.193 MHz) to (freq) Hz and
+ * gates the speaker via port 0x61 bits 0 (PIT2 gate) and 1 (speaker
+ * enable). The 50 Hz PIT-0 IRQ we install earlier is on counter 0, so
+ * we never collide.
+ *
+ * Tones are non-blocking: each call sets sound_end_tick = pit_frame_counter
+ * + duration_ticks; sound_tick() (called from the per-frame body)
+ * silences when due. A new sound_play before the previous tone expires
+ * overrides it - the latest event wins, which matches how a fast
+ * action game's audio normally feels. */
+static unsigned long sound_end_tick = 0;
+
+static void sound_silence(void) {
+    _disable();
+    outp(0x61, (unsigned char)(inp(0x61) & 0xFC));
+    _enable();
+    sound_end_tick = 0;
+}
+
+static void sound_play(unsigned int freq_hz, unsigned int duration_ticks) {
+    unsigned int divisor;
+    if (freq_hz < 20) return;             /* below audible / divisor too big */
+    divisor = (unsigned int)(1193180UL / freq_hz);
+    _disable();
+    outp(0x43, 0xB6);                     /* counter 2, lo+hi, mode 3 */
+    outp(0x42, (unsigned char)(divisor & 0xFF));
+    outp(0x42, (unsigned char)((divisor >> 8) & 0xFF));
+    outp(0x61, (unsigned char)(inp(0x61) | 0x03));
+    _enable();
+    sound_end_tick = pit_frame_counter + duration_ticks;
+}
+
+static void sound_tick(void) {
+    if (sound_end_tick != 0 && pit_frame_counter >= sound_end_tick) {
+        sound_silence();
+    }
 }
 
 /* Attract-mode state machine — same shape as the original game:
@@ -1301,6 +1343,7 @@ static void step_bonus(void) {
         && bonus_x < bat_right) {
         bonus_apply(bonus_type);
         bonus_active = 0;
+        sound_play(2000, 5);                 /* bonus catch */
         return;
     }
     if (bonus_y > PLAYFIELD_H) bonus_active = 0;
@@ -1329,6 +1372,7 @@ static int brick_collision(int prev_x, int prev_y, int new_x, int new_y) {
     if (*cell & 0x90) return 0;
     *cell |= 0x80;
     score += POINTS_PER_BRICK;
+    sound_play(1200, 2);                    /* brick-break click */
     /* Maybe drop a bonus. Only one falling at a time - skip if one is
      * already in flight. 1-in-BONUS_SPAWN_MOD bricks roll a bonus. */
     bricks_destroyed++;
@@ -1398,6 +1442,7 @@ static void step_ball(void) {
         else if (hit_x * 5 < span * 3) ball_dx = (ball_dx >= 0) ? +1 : -1;
         else if (hit_x * 5 < span * 4) ball_dx = +1;
         else                           ball_dx = +2;
+        sound_play(800, 3);                  /* ball-on-bat thump */
     }
     /* Past the bat (= lost ball). Decrement lives and respawn stuck
      * on the bat. The outer loop checks lives==0 to trigger game over. */
@@ -1409,6 +1454,7 @@ static void step_ball(void) {
         ball_y = BAT_Y_PX - ball_sz;
         ball_dx = +BALL_SPEED;
         ball_dy = -BALL_SPEED;
+        sound_play(150, 15);                 /* descending miss tone */
         return;
     }
     /* Brick collision: side-aware. brick_collision tells us which axis
@@ -1579,6 +1625,7 @@ static state_t run_level(void) {
                     }
                 }
                 step_bonus();
+                sound_tick();
                 if (bonus_active) ball_moved = 1;   /* force redraw to show falling bonus */
             }
 
@@ -1599,11 +1646,14 @@ static state_t run_level(void) {
 
             /* End-of-life conditions. */
             if (lives == 0) {
+                sound_play(100, 30);                 /* low game-over tone */
                 render_game_over();
                 start = bios_ticks();
-                while (!TIMED_OUT(start, 54UL))  /* ~3 sec at 18 Hz */ {
+                while (!TIMED_OUT(start, 54UL)) {
+                    sound_tick();
                     if (kbhit()) { getch(); break; }
                 }
+                sound_silence();
                 return ST_TITLE;
             }
             if (live_bricks_remaining() == 0) break;  /* next level */
@@ -1612,13 +1662,16 @@ static state_t run_level(void) {
         }
     }
     /* Cleared all 15 levels - show GAME OVER with final score then home. */
+    sound_play(100, 30);
     render_game_over();
     {
         unsigned long t = bios_ticks();
         while (!TIMED_OUT(t, 54UL)) {
+            sound_tick();
             if (kbhit()) { getch(); break; }
         }
     }
+    sound_silence();
     return ST_TITLE;
 }
 
