@@ -590,6 +590,15 @@ static unsigned int  slow_ticks      = 0;
 static unsigned int  big_bat_ticks   = 0;
 static unsigned int  big_ball_ticks  = 0;
 
+/* "+400" floating-marker state spawned on bonus catch (port of
+ * sprite_set $0B transition at $A6BA + handling_400pts at $A58D).
+ * The original puts the marker in the same slot the bonus occupied;
+ * we use side state for now since the bonus state is also side. */
+#define PTS_400_DURATION  30          /* ~0.6 sec at 50 Hz */
+static int           pts_400_x = 0;
+static int           pts_400_y = 0;
+static unsigned char pts_400_ticks = 0;
+
 /* Bonus colours indexed by type (ZX VGA palette indices). Picked so
  * they don't collide with the per-level bg cycle colours (yellow /
  * green / cyan / white). */
@@ -638,6 +647,7 @@ static unsigned char sprites_blob[SPRITES_BLOB_SIZE];
 static const unsigned int spr_bird_frames[3] = { SPR_BIRD_1, SPR_BIRD_2, SPR_BIRD_3 };
 static const unsigned int spr_ufo_frames[3]  = { SPR_UFO_1,  SPR_UFO_2,  SPR_UFO_3  };
 
+#define SPR_400_POINTS   (0x7ABE - 0x7A8C)   /* = 0x032 */
 #define SPR_BLAST_1      (0x87E6 - 0x7A8C)   /* = 0xd5a */
 #define SPR_BLAST_2      (0x881C - 0x7A8C)   /* = 0xd90 */
 #define SPR_BLAST_3      (0x8852 - 0x7A8C)   /* = 0xdc6 */
@@ -1898,12 +1908,26 @@ static void step_bonus(void) {
         && bonus_x < bat_right) {
         bonus_apply(bonus_type);
         bonus_active = 0;
-        snd_q_push(SND_LIVE_ADD);            /* bonus catch */
+        score += 400;                         /* matches LD BC,$0400 / add_points_to_score at $A67D */
+        snd_q_push(SND_LIVE_ADD);
+        /* Spawn the "+400" floating marker at the bonus's last
+         * position (port of sprite_set $0B transition at $A6BA). */
+        pts_400_x = bonus_x;
+        pts_400_y = bonus_y;
+        pts_400_ticks = PTS_400_DURATION;
         return;
     }
     if (bonus_y > PLAYFIELD_H) bonus_active = 0;
 }
 
+/* Advance the +400 floating marker each tick. Mirrors handling_400pts
+ * at $A58D, which floats Y upward via LA55A_0's shared advance until
+ * a bound and then deactivates. */
+static void step_pts_400(void) {
+    if (pts_400_ticks == 0) return;
+    if ((pts_400_ticks & 1) == 0) pts_400_y--;     /* float up every 2 ticks */
+    pts_400_ticks--;
+}
 
 /* Brick band geometry: 12 rows * 8 px starting at y=32, 15 cols * 16 px
  * starting at x=8. Determines whether the ball's new center overlaps a
@@ -2173,6 +2197,11 @@ static void redraw_full_with_ball(unsigned char level_idx) {
     render_hud_score();
     render_hud_powerups();
     if (bonus_active) render_bonus();
+    if (pts_400_ticks > 0) {
+        unsigned char ink = ink_pal(bg_attr);
+        unsigned char paper = paper_pal(bg_attr);
+        blit_masked_sprite(SPR_400_POINTS, pts_400_x, pts_400_y, ink, paper);
+    }
     bg_attr = bg_attr_per_cycle[level_idx & 3];
     if (BALL_VISIBLE) render_ball(BALL_X, BALL_Y, bg_attr);
     if ((enemy->sprite_set & 0x7F) != 0 && !(enemy->sprite_set & 0x80)) {
@@ -2301,6 +2330,7 @@ static state_t run_level(void) {
         ball_dx       = +BALL_SPEED;
         ball_dy       = -BALL_SPEED;
         bonus_active   = 0;
+        pts_400_ticks  = 0;
         slow_ticks     = 0;
         big_bat_ticks  = 0;
         big_ball_ticks = 0;
@@ -2395,6 +2425,7 @@ static state_t run_level(void) {
                     }
                 }
                 step_bonus();
+                step_pts_400();
                 /* Mirror of LB9E8_2..LB9E8_3 ($BA83..$BAD9):
                  *   enemy_prepare    -- maybe spawn alien
                  *   handling_bat     -- bat motion (here via key_state)
@@ -2410,6 +2441,7 @@ static state_t run_level(void) {
                 snd_q_tick();
                 sound_tick();
                 if (bonus_active) ball_moved = 1;
+                if (pts_400_ticks > 0) ball_moved = 1;
                 if (objects[OBJ_ENEMY].sprite_set != 0) ball_moved = 1;
             }
 
