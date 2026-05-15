@@ -486,6 +486,12 @@ static unsigned char bg_tile[BG_TILE_CYCLES * BG_TILE_SIZE];
 static int ball_dx     = +BALL_SPEED;
 static int ball_dy     = -BALL_SPEED;
 static unsigned char ball_stuck   = 1;
+/* Offset from BAT_X where the ball sits while stuck. Defaults to
+ * BALL_X_OFFSET_ON_BAT for the standard "ball respawns at bat
+ * centre" cases (level entry, life lost). The CATCH bonus rewrites
+ * this when the ball hits the bat so the ball sticks at the
+ * actual catch position and rides the bat from there until SPACE. */
+static int stuck_offset_x = BALL_X_OFFSET_ON_BAT;
 /* Stuck-on-bat dwell counter. While ball_stuck, the ball rides the
  * bat; SPACE detaches immediately; after STUCK_TIMEOUT ticks the ball
  * auto-launches. ~5 sec at 50 Hz. */
@@ -2483,6 +2489,7 @@ static void step_bomb(void) {
         if (lives > 0) lives--;
         ball_stuck = 1;
         stuck_ticks = 0;
+        stuck_offset_x = BALL_X_OFFSET_ON_BAT;
         BALL_SHOW();
         BALL_X = BAT_X + BALL_X_OFFSET_ON_BAT;
         BALL_Y = BAT_Y_PX - eff_ball_size();
@@ -2503,7 +2510,7 @@ static void step_ball(void) {
     int bat_top   = BAT_Y_PX;
     int ball_sz   = eff_ball_size();
     if (ball_stuck) {
-        BALL_X = BAT_X + BALL_X_OFFSET_ON_BAT;
+        BALL_X = BAT_X + stuck_offset_x;
         BALL_Y = BAT_Y_PX - ball_sz;
         return;
     }
@@ -2532,13 +2539,14 @@ static void step_ball(void) {
          * BAT+$14 = $03), the ball sticks on contact and waits for SPACE
          * to release. Otherwise bounce with 5-zone deflection. */
         if (objects[OBJ_BAT_1].bonus_applied == 0x03) {
-            ball_stuck  = 1;
-            stuck_ticks = 0;
-            ball_dy = -BALL_SPEED;
-            /* Snap BALL_X to the offset the launch handler expects so
-             * the auto-launch trajectory matches the catch position. */
-            BALL_X = next_x;
-            BALL_Y = next_y;
+            ball_stuck      = 1;
+            stuck_ticks     = 0;
+            ball_dy         = -BALL_SPEED;
+            /* Record the offset where the ball hit so the stuck-ball
+             * tracker keeps it at the catch position as the bat slides. */
+            stuck_offset_x  = next_x - BAT_X;
+            BALL_X          = next_x;
+            BALL_Y          = next_y;
             snd_q_push(SND_BAT_BEAT);
             return;
         }
@@ -2557,6 +2565,7 @@ static void step_ball(void) {
         if (lives > 0) lives--;
         ball_stuck = 1;
         stuck_ticks = 0;
+        stuck_offset_x = BALL_X_OFFSET_ON_BAT;
         BALL_SHOW();                     /* sits on bat again, ready to relaunch */
         BALL_X = BAT_X + BALL_X_OFFSET_ON_BAT;
         BALL_Y = BAT_Y_PX - ball_sz;
@@ -2801,6 +2810,7 @@ static state_t run_level(void) {
         BAT_X         = BAT_X_INIT;
         BAT_PREV_X    = BAT_X_INIT;
         ball_stuck    = 1;
+        stuck_offset_x = BALL_X_OFFSET_ON_BAT;
         BALL_SHOW();                      /* visible from level entry; sits on the bat */
         BALL_X        = BAT_X_INIT + BALL_X_OFFSET_ON_BAT;
         BALL_Y        = BAT_Y_PX - BALL_H_PX;
@@ -2901,8 +2911,11 @@ static state_t run_level(void) {
                     if (BAT_X < BAT_X_MAX) BAT_X += 4;
                 }
                 if (ball_stuck) {
-                    /* Ball rides the bat until SPACE or timeout. */
-                    BALL_X = BAT_X + BALL_X_OFFSET_ON_BAT;
+                    /* Ball rides the bat at the catch offset (= where it
+                     * hit, when the CATCH bonus stuck it; otherwise the
+                     * default BALL_X_OFFSET_ON_BAT) until SPACE or
+                     * timeout. */
+                    BALL_X = BAT_X + stuck_offset_x;
                     BALL_Y = BAT_Y_PX - eff_ball_size();
                     ball_moved = 1;
                     stuck_ticks++;
