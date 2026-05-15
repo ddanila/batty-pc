@@ -1296,6 +1296,54 @@ static unsigned long pit_ticks(void) {
     return v;
 }
 
+/* --- Keyboard polling (INT 9 hook) -------------------------------------
+ *
+ * The original game polls keyboard state every frame
+ * (get_left_player_ctrl_state at $A161 / get_right_player_ctrl_state
+ * at $A19E). The Z80 reads the keyboard half-rows via IN A,($FE) and
+ * builds the ctrl_btns_pressed byte.
+ *
+ * On a PC we install a __interrupt handler on INT 9 (= IRQ 1) that
+ * latches each scan code into key_state[] before chaining to BIOS,
+ * so BIOS's standard keyboard buffer still works for getch (= our
+ * menu navigation) while gameplay can read the live held state at
+ * 50 Hz.
+ *
+ * Scan codes follow the PC AT set 1 (= XT-compatible). Extended
+ * keys (gray arrows) send an 0xE0 prefix before the regular code -
+ * we ignore the prefix and just track the resulting code so the
+ * keypad arrows and the gray arrows both work. */
+static void (__interrupt __far *prev_int9)(void) = NULL;
+static volatile unsigned char key_state[128];
+
+#define SC_ESC      0x01
+#define SC_P        0x19
+#define SC_ENTER    0x1C
+#define SC_SPACE    0x39
+#define SC_LEFT     0x4B    /* arrow / keypad 4 */
+#define SC_RIGHT    0x4D    /* arrow / keypad 6 */
+
+static void __interrupt __far new_int9(void) {
+    unsigned char sc = inp(0x60);
+    if (sc != 0xE0) {                       /* skip the extended-key prefix */
+        if (sc & 0x80) key_state[sc & 0x7F] = 0;
+        else           key_state[sc & 0x7F] = 1;
+    }
+    _chain_intr(prev_int9);                 /* BIOS reads 0x60 again + EOIs */
+}
+
+static void kbd_install(void) {
+    if (prev_int9) return;
+    prev_int9 = _dos_getvect(0x09);
+    _dos_setvect(0x09, new_int9);
+}
+
+static void kbd_restore(void) {
+    if (!prev_int9) return;
+    _dos_setvect(0x09, prev_int9);
+    prev_int9 = NULL;
+}
+
 /* --- PC speaker sound (PIT channel 2 + port 0x61) ---------------------
  *
  * sound_play programs PIT counter 2 (input 1.193 MHz) to (freq) Hz and
@@ -2024,12 +2072,10 @@ static state_t run_level(void) {
                     continue;                          /* swallow other input */
                 }
                 if (k == KEY_EXT_PREFIX) {
-                    int ext = getch();
-                    if (ext == KEY_LEFT) {
-                        if (BAT_X > BAT_X_MIN) BAT_X -= 4;
-                    } else if (ext == KEY_RIGHT) {
-                        if (BAT_X < BAT_X_MAX) BAT_X += 4;
-                    }
+                    /* Discard the scancode following 0 - arrows are
+                     * handled by the per-frame key_state[] polling
+                     * below; this just keeps the buffer drained. */
+                    getch();
                     start = bios_ticks();
                 } else if (k == KEY_SPACE) {
                     ball_visible = 1;
@@ -2058,6 +2104,18 @@ static state_t run_level(void) {
             }
             if (now != last_tick) {
                 last_tick = now;
+                /* Per-frame keyboard polling - mirrors
+                 * get_left_player_ctrl_state ($A161) which reads the
+                 * keyboard half-row IN A,($FE) and updates
+                 * ctrl_btns_pressed.x bits 0/1, then handling_bat at
+                 * $9F64 SUB/ADD $04 on (IX+$02). Step is 4 px / 50 Hz
+                 * tick = 200 px/sec, matching the original. */
+                if (key_state[SC_LEFT]) {
+                    if (BAT_X > BAT_X_MIN) BAT_X -= 4;
+                }
+                if (key_state[SC_RIGHT]) {
+                    if (BAT_X < BAT_X_MAX) BAT_X += 4;
+                }
                 if (ball_visible && !ball_stuck) {
                     /* slow_ticks > 0: step on odd ticks only -> 25 Hz */
                     int slow_skip = (slow_ticks > 0) && ((now & 1) == 0);
@@ -2159,6 +2217,7 @@ int main(void) {
 
     load_high_score();
     timer_install();
+    kbd_install();
 
     while (state != ST_QUIT) {
         switch (state) {
@@ -2170,6 +2229,7 @@ int main(void) {
         }
     }
 
+    kbd_restore();
     timer_restore();
     set_mode(0x03);
     return 0;
