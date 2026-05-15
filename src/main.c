@@ -398,6 +398,17 @@ static const unsigned char briks_colors[10] = {
     0x47, 0x57, 0x5F, 0x4F         /* metal bricks */
 };
 
+/* Per-cycle bg attribute. The original game's game_screen_draw_to_buffer
+ * ($BE6B) fills the playfield via spr_level_textures - 4 sprites whose
+ * trailing color byte gives the cycle's attr. Values copied from
+ * spr_level_texture_1..4 at $C015 / $8EE8 / $8F10 / $8F38. */
+static const unsigned char bg_attr_per_cycle[4] = {
+    0x46,    /* texture_1: bright yellow ink, black paper (L1/L5/L9/L13) */
+    0x44,    /* texture_2: bright green                  (L2/L6/L10/L14) */
+    0x45,    /* texture_3: bright cyan                   (L3/L7/L11/L15) */
+    0x47     /* texture_4: bright white                  (L4/L8/L12)     */
+};
+
 /* 16x16-pixel hex pattern tile, one per colour cycle. Cycle index:
  *   0  yellow  (L1, L5, L9, L13)
  *   1  green   (L2, L6, L10, L14)
@@ -1207,8 +1218,7 @@ static void render_level_screen(unsigned char level_idx) {
      * stripes; the bulk bg starts at col 2. Sample the brick-zone
      * top row (= attr-row 2) at col 14 — deep inside the brick band,
      * where the attr is reliably the level's bg colour. */
-    unsigned char bg_attr = level_attrs[(int)level_idx * ATTR_BAND_SIZE
-                                        + BRICK_ATTR_ROW_BASE * ATTR_COLS + 14];
+    unsigned char bg_attr = bg_attr_per_cycle[level_idx & 3];
     unsigned char cycle   = (unsigned char)(level_idx & 3);
     fill(0, 0, SCREEN_W, SCREEN_H, COL_BORDER);
     draw_frame(10);              /* bright red — placeholder */
@@ -2076,8 +2086,7 @@ static void redraw_full_with_ball(unsigned char level_idx) {
     render_hud_score();
     render_hud_powerups();
     if (bonus_active) render_bonus();
-    bg_attr = level_attrs[(int)level_idx * ATTR_BAND_SIZE
-                          + BRICK_ATTR_ROW_BASE * ATTR_COLS + 14];
+    bg_attr = bg_attr_per_cycle[level_idx & 3];
     if (BALL_VISIBLE) render_ball(BALL_X, BALL_Y, bg_attr);
     if ((enemy->sprite_set & 0x7F) != 0 && !(enemy->sprite_set & 0x80)) {
         unsigned int spr = (enemy->sprite_set == 0x09) ? SPR_BIRD_1 : SPR_UFO_1;
@@ -2203,8 +2212,7 @@ static state_t run_level(void) {
         }
         render_level_screen(i);
         cycle = (unsigned char)(i & 3);
-        bg_attr = level_attrs[(int)i * ATTR_BAND_SIZE
-                              + BRICK_ATTR_ROW_BASE * ATTR_COLS + 14];
+        bg_attr = bg_attr_per_cycle[i & 3];
         start     = bios_ticks();
         last_tick = pit_ticks();
         for (;;) {
