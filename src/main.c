@@ -1287,30 +1287,19 @@ static void print_briks_c(const unsigned char *cells) {
 #define BRICK_BAND_Y_TOP 31
 #define BRICK_BAND_Y_BOT 128
 
-/* Pre-fill scr_buff with the hex tile and attr_buff with per-level
- * bg attrs across the brick band, run the brick compositor, then blit
- * the band from scr_buff/attr_buff to VGA. Replaces the prior
- * render_brick_field path. */
+/* Brick compositor stage. Writes brick bricks/edges into scr_buff and
+ * per-cell attrs (brick + shadow) into attr_buff for char rows 3..16.
+ * Does NOT touch VGA — buff_to_vga handles the final pass. Assumes
+ * paint_bg_to_buff already pre-filled the rest of the buffers. */
 static void render_brick_band(unsigned char level_idx) {
-    int char_row, char_col, y, byte_col, bit;
-    unsigned char cycle = (unsigned char)(level_idx & 3);
-    const unsigned char *tile  = bg_tile + (int)cycle * BG_TILE_SIZE;
+    int char_row, char_col;
     const unsigned char *cells = live_level;
     const unsigned char *lattr = &level_attrs[(int)level_idx * ATTR_BAND_SIZE];
 
     if (level_idx >= N_LEVELS) return;
 
-    /* (1) Background: fill scr_buff brick band (pixel y 24..135) with
-     * the hex tile bits — covers char rows 3..16 so the brick edge
-     * writes at y=31 and y=128 land on a defined bg. */
-    for (y = 24; y < 136; y++) {
-        int ty = y & 15;
-        for (byte_col = 0; byte_col < 32; byte_col++) {
-            scr_buff[y * 32 + byte_col] = tile[ty * 2 + (byte_col & 1)];
-        }
-    }
-
-    /* (2) Attrs: copy per-level attrs for char rows 3..16. */
+    /* Per-level attrs override the bg_attr in char rows 3..16, so
+     * brick colours and shadow attrs land at their cells. */
     for (char_row = 3; char_row < 17; char_row++) {
         for (char_col = 0; char_col < 32; char_col++) {
             attr_buff[char_row * 32 + char_col] =
@@ -1318,12 +1307,37 @@ static void render_brick_band(unsigned char level_idx) {
         }
     }
 
-    /* (3) Brick compositor — overwrites brick bodies, edges, and the
-     * brick + shadow attrs. */
     print_briks_c(cells);
+}
 
-    /* (4) Blit pixel y 31..128 from scr_buff/attr_buff to VGA. */
-    for (y = BRICK_BAND_Y_TOP; y <= BRICK_BAND_Y_BOT; y++) {
+/* Pre-fill scr_buff with the hex tile and attr_buff uniformly with
+ * the level's bg_attr, across the WHOLE 256x192 playfield. This
+ * replaces the prior direct-to-VGA paint_hex_bg path. buff_to_vga
+ * does the final pixel expansion using the (possibly overwritten)
+ * attr_buff. */
+static void paint_bg_to_buff(unsigned char attr, unsigned char cycle) {
+    const unsigned char *tile = bg_tile + (int)cycle * BG_TILE_SIZE;
+    int y, byte_col, char_row, char_col;
+    for (y = 0; y < PLAYFIELD_H; y++) {
+        int ty = y & 15;
+        for (byte_col = 0; byte_col < 32; byte_col++) {
+            scr_buff[y * 32 + byte_col] = tile[ty * 2 + (byte_col & 1)];
+        }
+    }
+    for (char_row = 0; char_row < ATTR_ROWS; char_row++) {
+        for (char_col = 0; char_col < ATTR_COLS; char_col++) {
+            attr_buff[char_row * 32 + char_col] = attr;
+        }
+    }
+}
+
+/* Single-pass buffer-to-VGA conversion: walk scr_buff bits and emit
+ * each pixel via the surrounding char cell's attr_buff entry. Mirrors
+ * the original game's final-frame paint (game_screen_draw_to_buffer
+ * at $BE6B followed by buffer-to-screen copy). */
+static void buff_to_vga(void) {
+    int y, byte_col, bit;
+    for (y = 0; y < PLAYFIELD_H; y++) {
         for (byte_col = 0; byte_col < 32; byte_col++) {
             unsigned char b = scr_buff[y * 32 + byte_col];
             unsigned char attr = attr_buff[(y / 8) * 32 + byte_col];
@@ -1337,42 +1351,14 @@ static void render_brick_band(unsigned char level_idx) {
     }
 }
 
-/* Tile the 16x16 hex pattern across the full 256x192 playfield,
- * using `attr`'s ink for set bits and paper for clear bits. Tile
- * pattern picked from `cycle` (0..3 = yellow/green/cyan/white).
- * Painted BEFORE the bricks so the bricks overwrite the pattern in
- * their 16x8 cells. */
-static void paint_hex_bg(unsigned char attr, unsigned char cycle) {
-    unsigned char ink   = ink_pal(attr);
-    unsigned char paper = paper_pal(attr);
-    const unsigned char *tile = bg_tile + (int)cycle * BG_TILE_SIZE;
-    int x, y, tx, ty, byte_col, bit;
-    unsigned char b;
-    for (y = 0; y < PLAYFIELD_H; y++) {
-        ty = y & 15;
-        for (byte_col = 0; byte_col < PLAYFIELD_W / 8; byte_col++) {
-            b = tile[ty * 2 + (byte_col & 1)];
-            tx = byte_col * 8;
-            for (bit = 0; bit < 8; bit++) {
-                x = tx + bit;
-                vga[(long)(BORDER_Y + y) * SCREEN_W + BORDER_X + x] =
-                    (b & (0x80 >> bit)) ? ink : paper;
-            }
-        }
-    }
-}
-
 static void render_level_screen(unsigned char level_idx) {
-    /* Per-level background attribute: cols 0 / 1 carry side-edge
-     * stripes; the bulk bg starts at col 2. Sample the brick-zone
-     * top row (= attr-row 2) at col 14 — deep inside the brick band,
-     * where the attr is reliably the level's bg colour. */
     unsigned char bg_attr = bg_attr_per_cycle[level_idx & 3];
     unsigned char cycle   = (unsigned char)(level_idx & 3);
     fill(0, 0, SCREEN_W, SCREEN_H, COL_BORDER);
     draw_frame(10);              /* bright red — placeholder */
-    paint_hex_bg(bg_attr, cycle);
+    paint_bg_to_buff(bg_attr, cycle);
     render_brick_band(level_idx);
+    buff_to_vga();
     render_bat(cycle, bg_attr);
     render_lives(cycle, bg_attr);
     render_frame(cycle, level_idx);
