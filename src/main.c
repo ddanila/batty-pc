@@ -2143,11 +2143,16 @@ static void render_bonus_to_buff(unsigned char bg) {
 /* Apply the effect that comes with `type`. Catching the same type
  * while already active extends the duration. */
 static void bonus_apply(unsigned char type) {
+    /* Every bonus catch plays the ascending "live add" jingle in the
+     * original (sounds_queue id $07); KILL_ALIENS overrides with its
+     * own SND_SHOT inside the case body below. */
+    snd_q_push(SND_LIVE_ADD);
     switch (type) {
         case BONUS_TYPE_LIFE:     lives++; break;
         case BONUS_TYPE_SLOW:     slow_ticks     = SLOW_DURATION; break;
         case BONUS_TYPE_BIG_BAT:  big_bat_ticks  = BIG_BAT_DURATION;
                                   bat_extra_tgt  = BAT_BIG_EXTRA_PX;
+                                  snd_q_push(SND_BAT_RESIZE_1);
                                   break;
         case BONUS_TYPE_BIG_BALL: big_ball_ticks = BIG_BALL_DURATION; break;
         case BONUS_TYPE_KILL_ALIENS:
@@ -2691,7 +2696,10 @@ static void render_hud_score(void) {
 }
 /* Letter chips for the active power-up effects, painted in the bonus
  * colour so the player can see at a glance what's running. Encoded
- * letter codes: B=0x0B, G=0x10, S=0x1C per notes/encoding.md. */
+ * letter codes (notes/encoding.md): B=0x0B, C=0x0C, G=0x10, K=0x14,
+ * S=0x1C. KILL_ALIENS + CATCH are lasting bat-attached effects keyed
+ * off OBJ_BAT_1.bonus_applied (matches the original's BAT+$14 = $09
+ * / $03). */
 static void render_hud_powerups(void) {
     int x = HUD_POWERUP_X;
     if (slow_ticks > 0) {
@@ -2704,6 +2712,14 @@ static void render_hud_powerups(void) {
     }
     if (big_ball_ticks > 0) {
         draw_glyph(x, HUD_POWERUP_Y, bonus_colours[BONUS_TYPE_BIG_BALL], 0x10);
+        x += 10;
+    }
+    if (objects[OBJ_BAT_1].bonus_applied == 0x09) {
+        draw_glyph(x, HUD_POWERUP_Y, bonus_colours[BONUS_TYPE_KILL_ALIENS], 0x14);
+        x += 10;
+    }
+    if (objects[OBJ_BAT_1].bonus_applied == 0x03) {
+        draw_glyph(x, HUD_POWERUP_Y, bonus_colours[BONUS_TYPE_CATCH], 0x0C);
     }
 }
 
