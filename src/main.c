@@ -433,8 +433,12 @@ static unsigned char bg_tile[BG_TILE_CYCLES * BG_TILE_SIZE];
 #define BAT_W_BYTES 4
 #define BAT_H_PX    13
 #define BAT_Y_PX    0xAD            /* = 173, matches object_bat_1.y_coord */
-#define BAT_X_MIN     8
-#define BAT_X_MAX   216
+/* The original uses x_min=$08, x_max=$F8-w_body. Our shipped
+ * frame_l1.bin strip is wider (3 cols = 24 px) than the original's
+ * ornament (~8 px), so we clamp inside our wider frame until the
+ * proper frame painter lands (drops frame_l1.bin). */
+#define BAT_X_MIN    24
+#define BAT_X_MAX   200
 #define BAT_X_INIT  0x74             /* = 116, matches object_bat_1.x_coord */
 /* The bat's authoritative state lives in objects[OBJ_BAT_1] - macros
  * defined after the object table below. */
@@ -1078,24 +1082,29 @@ static void ix_buf_addr_calc(object_t *obj) {
     obj->buf_addr_lo = (unsigned char)(off & 0xFF);
 }
 static void render_bat(unsigned char cycle, unsigned char attr) {
+    /* Bat sprite layout (both spr_bat_normal and spr_bat_big):
+     *   rows 0..9  - body (mask=1 = bat colour, pixel=1 = paper for
+     *                internal texture).
+     *   rows 10..12 - shadow drop (sparse mask=1 dots forming a
+     *                  checkerboard - the pixel pattern IS the shadow,
+     *                  same attr as the body so it just adds a dotted
+     *                  band below the bat).
+     * One blit covers the whole sprite. */
     unsigned int spr;
     int x;
     (void)cycle;
     if (bat_extra_px >= BAT_BIG_EXTRA_PX) {
-        /* Fully expanded: use the original spr_bat_big sprite. */
         spr = SPR_BAT_BIG;
         x   = BAT_X - BAT_BIG_EXTRA_PX;
     } else {
-        /* Normal or mid-transition: render the small sprite and paint
-         * ink flanks for whatever bat_extra_px has reached. */
         spr = SPR_BAT_NORMAL;
         x   = BAT_X;
         if (bat_extra_px > 0) {
             unsigned char ink = ink_pal(attr);
             int y_top = BORDER_Y + BAT_Y_PX;
-            fill(BORDER_X + BAT_X - bat_extra_px,             y_top + 1,
+            fill(BORDER_X + BAT_X - bat_extra_px, y_top + 1,
                  bat_extra_px, 8, ink);
-            fill(BORDER_X + BAT_X + BAT_W_BYTES * 8,          y_top + 1,
+            fill(BORDER_X + BAT_X + BAT_W_BYTES * 8, y_top + 1,
                  bat_extra_px, 8, ink);
         }
     }
@@ -1955,7 +1964,18 @@ static int brick_collision(int prev_x, int prev_y, int new_x, int new_y) {
     col = (cx - 8) / 16;
     row = (cy - 32) / 8;
     cell = &live_level[row * LVL_COLS + col];
-    if (*cell & 0x90) return 0;
+    /* BIT 7 = already destroyed -> ball passes through. */
+    if (*cell & 0x80) return 0;
+    /* BIT 4 = frame piece (decoration). The original's brick blitter
+     * skips these (= no destruction) but the ball still BOUNCES off
+     * them. Return the appropriate axis flip without destroying. */
+    if (*cell & 0x10) {
+        brick_top = 32 + row * 8;
+        brick_bot = brick_top + 8;
+        prev_cy   = prev_y + sz / 2;
+        (void)prev_x;
+        return (prev_cy < brick_top || prev_cy >= brick_bot) ? 1 : 2;
+    }
     {
         /* Snapshot the cell value before we mark it destroyed - need the
          * low nibble to tell normal from metal for the 2x point modifier
