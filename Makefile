@@ -153,7 +153,7 @@ assets/frame_l1.bin: build/level_gt/level_01.scr scripts/extract_frame.py
 # drawn via blit_masked_sprite.
 assets/sprites.bin: original/blocks/03_DATA_headless.dat.bin
 	@python3 -c "import sys; b=open('$<','rb').read(); \
-		open('$@','wb').write(b[0x128c:0x2120])"
+		open('$@','wb').write(b[0x128c:0x2500])"
 	@echo "wrote $@ ($$(wc -c < $@) bytes)"
 
 # Bottom decorative sprite + arrow combined: 32x13 each (4 bytes

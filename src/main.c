@@ -626,7 +626,7 @@ static unsigned int bricks_destroyed = 0;
  *   then h rows of w (mask, pixel) pairs - blit semantics described
  *   in blit_masked_sprite below.
  * The constants below are offsets WITHIN sprites_blob. */
-#define SPRITES_BLOB_SIZE 0xE94
+#define SPRITES_BLOB_SIZE 0x1274
 static unsigned char sprites_blob[SPRITES_BLOB_SIZE];
 #define SPR_BIG_BALL     (0x7A8C - 0x7A8C)   /* = 0x000 */
 #define SPR_LIVES        (0x7AFC - 0x7A8C)   /* = 0x070 */
@@ -653,6 +653,15 @@ static const unsigned int spr_ufo_frames[3]  = { SPR_UFO_1,  SPR_UFO_2,  SPR_UFO
 #define SPR_BLAST_3      (0x8852 - 0x7A8C)   /* = 0xdc6 */
 #define SPR_BLAST_4      (0x888C - 0x7A8C)   /* = 0xe00 */
 #define SPR_BLAST_5      (0x88CE - 0x7A8C)   /* = 0xe42 */
+
+/* Bonus sprites. Offsets from $7A8C. */
+#define SPR_BONUS_SMASH       (0x8A6A - 0x7A8C)   /* big-ball power-up icon */
+#define SPR_BONUS_KILL_ALIENS (0x8AC6 - 0x7A8C)
+#define SPR_BONUS_HAND        (0x8B22 - 0x7A8C)
+#define SPR_BONUS_SIZE        (0x8B6C - 0x7A8C)   /* big-bat icon */
+#define SPR_BONUS_SLOW        (0x8BB0 - 0x7A8C)
+#define SPR_BONUS_GUN         (0x8C0C - 0x7A8C)
+#define SPR_BONUS_EXTRA_LIFE  (0x8C44 - 0x7A8C)
 static const unsigned int spr_blast_frames[5] = {
     SPR_BLAST_1, SPR_BLAST_2, SPR_BLAST_3, SPR_BLAST_4, SPR_BLAST_5
 };
@@ -1811,60 +1820,25 @@ static void render_ball(int x, int y, unsigned char attr) {
     blit_masked_sprite(spr, x, y, ink_pal(attr), paper_pal(attr));
 }
 
-/* Paint the 8x6 bonus sprite, with a simple "L" / "S" letter overlay
- * so the player can distinguish the two types at a glance. */
+/* Map our BONUS_TYPE_* enum to the original spr_bonus_* sprite offset. */
+static unsigned int spr_for_bonus(unsigned char t) {
+    switch (t) {
+        case BONUS_TYPE_LIFE:     return SPR_BONUS_EXTRA_LIFE;
+        case BONUS_TYPE_SLOW:     return SPR_BONUS_SLOW;
+        case BONUS_TYPE_BIG_BAT:  return SPR_BONUS_SIZE;
+        case BONUS_TYPE_BIG_BALL: return SPR_BONUS_SMASH;
+        default:                  return SPR_BONUS_SIZE;
+    }
+}
+
+/* Paint the bonus using the original spr_bonus_* sprite (mask + pix
+ * format). Colors come from the falling-bonus per-type palette so
+ * each type stays visually distinct even when sprites share shape
+ * details. */
 static void render_bonus(void) {
-    int r, c;
-    int x0 = BORDER_X + bonus_x;
-    int y0 = BORDER_Y + bonus_y;
-    unsigned char col = bonus_colours[bonus_type & 1];
-    /* Solid rectangle background. */
-    for (r = 0; r < BONUS_H_PX; r++) {
-        for (c = 0; c < BONUS_W_PX; c++) {
-            vga[(long)(y0 + r) * SCREEN_W + x0 + c] = col;
-        }
-    }
-    /* Punch a coarse letter shape in black pixels so the player can
-     * tell the four bonus types apart. L / S / B / G in 4x6 cells. */
-    {
-        int x;
-        switch (bonus_type) {
-            case BONUS_TYPE_LIFE:   /* L: vertical bar + bottom row */
-                for (r = 0; r < BONUS_H_PX; r++) vga[(long)(y0+r)*SCREEN_W + x0+2] = 0;
-                for (x = 2; x < 6; x++) vga[(long)(y0+5)*SCREEN_W + x0+x] = 0;
-                break;
-            case BONUS_TYPE_SLOW:   /* S: three horizontal bars */
-                for (x = 2; x < 6; x++) {
-                    vga[(long)(y0+1)*SCREEN_W + x0+x] = 0;
-                    vga[(long)(y0+3)*SCREEN_W + x0+x] = 0;
-                    vga[(long)(y0+5)*SCREEN_W + x0+x] = 0;
-                }
-                vga[(long)(y0+2)*SCREEN_W + x0+2] = 0;
-                vga[(long)(y0+4)*SCREEN_W + x0+5] = 0;
-                break;
-            case BONUS_TYPE_BIG_BAT: /* B: vert bar + 2 stubs */
-                for (r = 0; r < BONUS_H_PX; r++) vga[(long)(y0+r)*SCREEN_W + x0+2] = 0;
-                for (x = 2; x < 6; x++) {
-                    vga[(long)(y0+0)*SCREEN_W + x0+x] = 0;
-                    vga[(long)(y0+2)*SCREEN_W + x0+x] = 0;
-                    vga[(long)(y0+5)*SCREEN_W + x0+x] = 0;
-                }
-                vga[(long)(y0+1)*SCREEN_W + x0+5] = 0;
-                vga[(long)(y0+3)*SCREEN_W + x0+5] = 0;
-                vga[(long)(y0+4)*SCREEN_W + x0+5] = 0;
-                break;
-            case BONUS_TYPE_BIG_BALL: /* G: C-shape with a tab */
-                for (r = 1; r < 5; r++) vga[(long)(y0+r)*SCREEN_W + x0+2] = 0;
-                for (x = 2; x < 6; x++) {
-                    vga[(long)(y0+0)*SCREEN_W + x0+x] = 0;
-                    vga[(long)(y0+5)*SCREEN_W + x0+x] = 0;
-                }
-                vga[(long)(y0+3)*SCREEN_W + x0+4] = 0;
-                vga[(long)(y0+3)*SCREEN_W + x0+5] = 0;
-                vga[(long)(y0+4)*SCREEN_W + x0+5] = 0;
-                break;
-        }
-    }
+    unsigned int spr = spr_for_bonus(bonus_type);
+    unsigned char col = bonus_colours[bonus_type & 3];
+    blit_masked_sprite(spr, bonus_x, bonus_y, col, 0);
 }
 
 /* Apply the effect that comes with `type`. Catching the same type
