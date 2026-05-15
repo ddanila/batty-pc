@@ -347,24 +347,12 @@ static void draw_bottom_sprites(void) {
 #define LVL_COLS   15
 #define LVL_CELLS  (LVL_ROWS * LVL_COLS)
 #define LVL_SIZE   (N_LEVELS * LVL_CELLS)
-#define BRICK_W_PX 16
-#define BRICK_H_PX  8
-#define BRICK_FIELD_X  8     /* relative to playfield top-left */
-#define BRICK_FIELD_Y 24     /* the original draws 12 brick rows at
-                              * y=24..119 (NOT y=16..111 as the disasm
-                              * suggests at first glance - sub_ad8fh
-                              * blits to VRAM 0x4081 = pixel (8, 16)
-                              * but each brick is composited from
-                              * multiple passes starting one row down).
-                              * Verified by lining up GT pixels with
-                              * level data row 0 of each level. */
-
 /* Per-level attribute band: FULL 24 char-rows x 32 cols of ZX
  * attribute bytes captured from each level's GT .scr.
  * Lookup: attr = level_attrs[lvl*ATTR_BAND_SIZE + r*32 + col]
  * where r is the char-row index (0..23):
  *    0..1   top HUD
- *    2..13  brick zone (rendered by render_brick_field)
+ *    2..13  brick zone (rendered by render_brick_band)
  *   14..21  side-frame interior
  *   22..23  bottom (bat / lives) */
 #define ATTR_ROWS       24
@@ -377,13 +365,31 @@ static void draw_bottom_sprites(void) {
 static unsigned char levels[LVL_SIZE];
 static unsigned char level_attrs[ATTR_TOTAL_SIZE];
 
-/* Per-cell 16x8-pixel bitmap, one slot per (level, row, col). Lookup:
- *   bitmap_off = (level * LVL_CELLS + r * LVL_COLS + c) * 16
- * 43200 B - dwarfs the rest of our data and busts the small-model
- * 64 KB DGROUP, so we put it in its own far segment. Access goes
- * via the __far pointer; small-model code path everywhere else. */
-#define BRICK_BMP_SIZE 43200u
-static unsigned char __far brick_bitmaps[BRICK_BMP_SIZE];
+/* Ported brick compositor (was: shortcut #1 in notes/shortcuts.md).
+ *
+ * `scr_buff` and `attr_buff` mirror the original's offscreen buffers
+ * at $DA00 / $D700. Layout: scr_buff is row-major, 32 bytes/row * 192
+ * rows; attr_buff is 32 cols * 24 rows of ZX attribute bytes. Pixel
+ * (x, y) lives at scr_buff[y*32 + x/8] bit (7 - x%8); attribute at
+ * attr_buff[(y/8)*32 + x/8].
+ *
+ * `spr_brik_1` and `briks_colors` are pulled verbatim from
+ * original/disasm/gfx/briks.asm and original/disasm/batty.asm (label
+ * `briks_colors`, 1-indexed by the brick code's low nibble). */
+static unsigned char scr_buff[6144];
+static unsigned char attr_buff[768];
+
+static const unsigned char spr_brik_1[16] = {
+    0xFF, 0xFE, 0x80, 0x00, 0x80, 0x00, 0x80, 0x00,
+    0x80, 0x00, 0x80, 0x00, 0x80, 0x00, 0x00, 0x00
+};
+
+static const unsigned char briks_colors[10] = {
+    0x00,                          /* [0] never indexed (low nibble == 0
+                                    * means "skip" per the cell format). */
+    0x57, 0x4F, 0x5F, 0x20, 0x70,  /* normal bricks */
+    0x47, 0x57, 0x5F, 0x4F         /* metal bricks */
+};
 
 /* 16x16-pixel hex pattern tile, one per colour cycle. Cycle index:
  *   0  yellow  (L1, L5, L9, L13)
@@ -463,25 +469,6 @@ static int load_level_attrs(const char *path) {
     }
     fclose(f);
     return 0;
-}
-
-static int load_brick_bitmaps(const char *path) {
-    FILE *f = fopen(path, "rb");
-    /* Far destination: small-model fread expects a near buffer, so
-     * read into a near chunk and _fmemcpy into the far segment. */
-    unsigned char buf[512];
-    size_t n, total = 0;
-    if (!f) return -1;
-    while (total < BRICK_BMP_SIZE) {
-        size_t want = BRICK_BMP_SIZE - total;
-        if (want > sizeof(buf)) want = sizeof(buf);
-        n = fread(buf, 1, want, f);
-        if (n == 0) break;
-        _fmemcpy(brick_bitmaps + total, buf, n);
-        total += n;
-    }
-    fclose(f);
-    return (total == BRICK_BMP_SIZE) ? 0 : -2;
 }
 
 static int load_bg_tile(const char *path) {
@@ -621,54 +608,159 @@ static void render_lives(unsigned char cycle, unsigned char attr) {
                 LIVES_X_PX, LIVES_Y_PX, attr);
 }
 
-/* Blit one 16-byte (16x8) brick bitmap to VGA at (x, y). Each 8-pixel
- * half uses its own (ink, paper) since the ZX attribute area maps
- * one attr per 8-px char cell and a brick spans TWO of them. The
- * bitmap pointer is __far because brick_bitmaps lives in its own
- * far segment (it's 43 KB - too big for our DGROUP). */
-static void draw_brick_bitmap(int x, int y, const unsigned char __far *bm,
-                              unsigned char ink_l, unsigned char paper_l,
-                              unsigned char ink_r, unsigned char paper_r) {
-    int row, bit;
-    unsigned char b, ink, paper;
-    int byte_col;
-    for (row = 0; row < BRICK_H_PX; row++) {
-        for (byte_col = 0; byte_col < 2; byte_col++) {
-            b = bm[row * 2 + byte_col];
-            ink   = byte_col ? ink_r   : ink_l;
-            paper = byte_col ? paper_r : paper_l;
-            for (bit = 0; bit < 8; bit++) {
-                vga[(long)(y + row) * SCREEN_W + x + byte_col * 8 + bit] =
-                    (b & (0x80 >> bit)) ? ink : paper;
-            }
+/* --- Brick compositor (port of $ADE1..$AEEC) -------------------------- */
+
+/* Cursor offsets within scr_buff / attr_buff, walked by print_briks_c.
+ * Mirror the original brik_addr_buf and brik_attr_buf. */
+static unsigned int brik_addr_buf;
+static unsigned int brik_attr_buf;
+
+/* Port of print_one_brik_buf ($AE82). Paints one brick into scr_buff at
+ * `hl` (the top-left byte of the brick's 2-byte body), plus decoration:
+ *   - 2 zero bytes one pixel-row above the brick (top edge)
+ *   - bit 0 cleared in the 8 bytes left of the brick (left edge),
+ *     unless the brick sits in the leftmost column
+ *   - 2 zero bytes one pixel-row below (bottom edge)
+ *   - bit 7 cleared in the 8 bytes right of the brick (right edge),
+ *     unless the brick sits in the rightmost column
+ * Finally the brick's two char cells in attr_buff are set to the colour
+ * from briks_colors keyed by the descriptor's low nibble. */
+static void print_one_brik_buf_c(unsigned int hl, unsigned char iy_byte) {
+    unsigned int h;
+    int col_byte = (int)(hl & 0x1F);
+    int i;
+    unsigned int brick_top_y_px = hl >> 5;
+    unsigned int attr_off       = (brick_top_y_px >> 3) * 32u + (unsigned int)col_byte;
+    unsigned char attr;
+
+    /* Top edge: 2 zero bytes one pixel-row above the brick. */
+    scr_buff[hl - 32] = 0;
+    scr_buff[hl - 31] = 0;
+
+    /* Left edge: only if not the leftmost brick column (col_byte == 1). */
+    if (col_byte != 1) {
+        h = hl - 1;
+        for (i = 0; i < 8; i++) { scr_buff[h] &= 0xFE; h += 32; }
+    }
+
+    /* Body: 8 rows * 2 bytes from spr_brik_1. */
+    h = hl;
+    for (i = 0; i < 8; i++) {
+        scr_buff[h]     = spr_brik_1[i * 2];
+        scr_buff[h + 1] = spr_brik_1[i * 2 + 1];
+        h += 32;
+    }
+    /* h == hl + 256 now (= byte at col 0 of the row one below the brick). */
+
+    /* Bottom edge: 2 zero bytes one pixel-row below the brick. */
+    scr_buff[h]     = 0;
+    scr_buff[h + 1] = 0;
+
+    /* Right edge: only if not the rightmost brick column. The original
+     * tests `(L+1) AND $1F == $1E`, which is `col_byte == 29`. */
+    if (col_byte != 29) {
+        h = hl + 2;
+        for (i = 0; i < 8; i++) { scr_buff[h] &= 0x7F; h += 32; }
+    }
+
+    /* Color attr: 1-indexed lookup, write to both char cells the brick
+     * spans. */
+    attr = briks_colors[iy_byte & 0x0F];
+    attr_buff[attr_off]     = attr;
+    attr_buff[attr_off + 1] = attr;
+}
+
+/* Port of brik_shadow ($AE2A). Clears the bright bit (bit 6) on the 2
+ * attr cells one char-row below each non-skip brick, dimming them so
+ * they read as a drop shadow. Skips the second cell when it would
+ * wrap past the rightmost attr column. */
+static void brik_shadow_c(unsigned int hl_attr, const unsigned char *cell_row) {
+    unsigned int h = hl_attr;
+    int col;
+    for (col = 0; col < 15; col++) {
+        unsigned char cell = cell_row[col];
+        if (!(cell & 0x80)) {
+            attr_buff[h] &= 0xBF;
+            if (((h + 1) & 0x1F) != 31) attr_buff[h + 1] &= 0xBF;
         }
+        h += 2;
     }
 }
 
-static void render_brick_field(unsigned char level_idx) {
-    int r, c, attr_base, x, y;
-    unsigned int bm_base, bm_off;
-    unsigned char attr_l, attr_r;
+/* Port of print_briks ($ADE1). Walks the 12x15 level cell grid and
+ * compositess each non-skip cell into scr_buff/attr_buff via
+ * print_one_brik_buf_c + brik_shadow_c. */
+static void print_briks_c(const unsigned char *cells) {
+    int row, col;
+    brik_addr_buf = 0x401;   /* scr_buff + $401 = pixel (8, 32). */
+    brik_attr_buf = 0xA2;    /* attr_buff + $A2 = char (2, 5). */
+    for (row = 0; row < LVL_ROWS; row++) {
+        unsigned int hl = brik_addr_buf;
+        const unsigned char *cell_row = &cells[row * LVL_COLS];
+        for (col = 0; col < LVL_COLS; col++) {
+            if (!(cell_row[col] & 0x80)) {
+                print_one_brik_buf_c(hl, cell_row[col]);
+            }
+            hl += 2;
+        }
+        brik_shadow_c(brik_attr_buf, cell_row);
+        brik_addr_buf += 0x100;   /* +8 pixel rows (next brick row). */
+        brik_attr_buf += 0x20;    /* +1 char row. */
+    }
+}
+
+/* Brick-band y range. print_briks_c writes to pixel rows 31..128 (the
+ * 1-row top edge above the first brick row, 12 brick rows, and the
+ * 1-row bottom edge below the last). */
+#define BRICK_BAND_Y_TOP 31
+#define BRICK_BAND_Y_BOT 128
+
+/* Pre-fill scr_buff with the hex tile and attr_buff with per-level
+ * bg attrs across the brick band, run the brick compositor, then blit
+ * the band from scr_buff/attr_buff to VGA. Replaces the prior
+ * render_brick_field path. */
+static void render_brick_band(unsigned char level_idx) {
+    int char_row, char_col, y, byte_col, bit;
+    unsigned char cycle = (unsigned char)(level_idx & 3);
+    const unsigned char *tile  = bg_tile + (int)cycle * BG_TILE_SIZE;
+    const unsigned char *cells = &levels[level_idx * LVL_CELLS];
+    const unsigned char *lattr = &level_attrs[(int)level_idx * ATTR_BAND_SIZE];
+
     if (level_idx >= N_LEVELS) return;
-    attr_base = (int)level_idx * ATTR_BAND_SIZE;
-    /* 14 * (180*16) = 40320 — needs unsigned to avoid 16-bit signed-int
-     * overflow at high level indices. */
-    bm_base   = (unsigned int)level_idx * (LVL_CELLS * 16);
-    for (r = 0; r < LVL_ROWS; r++) {
-        for (c = 0; c < LVL_COLS; c++) {
-            /* Two attrs per brick — the 8-pixel halves can have
-             * different ink/paper (especially at letters/colour
-             * boundaries like L15's "ELITE"). */
-            attr_l = level_attrs[attr_base + (r + BRICK_ATTR_ROW_BASE) * ATTR_COLS
-                                 + 1 + c * 2];
-            attr_r = level_attrs[attr_base + (r + BRICK_ATTR_ROW_BASE) * ATTR_COLS
-                                 + 1 + c * 2 + 1];
-            x = BORDER_X + BRICK_FIELD_X + c * BRICK_W_PX;
-            y = BORDER_Y + BRICK_FIELD_Y + r * BRICK_H_PX;
-            bm_off = bm_base + (unsigned int)(r * LVL_COLS + c) * 16u;
-            draw_brick_bitmap(x, y, brick_bitmaps + bm_off,
-                              ink_pal(attr_l), paper_pal(attr_l),
-                              ink_pal(attr_r), paper_pal(attr_r));
+
+    /* (1) Background: fill scr_buff brick band (pixel y 24..135) with
+     * the hex tile bits — covers char rows 3..16 so the brick edge
+     * writes at y=31 and y=128 land on a defined bg. */
+    for (y = 24; y < 136; y++) {
+        int ty = y & 15;
+        for (byte_col = 0; byte_col < 32; byte_col++) {
+            scr_buff[y * 32 + byte_col] = tile[ty * 2 + (byte_col & 1)];
+        }
+    }
+
+    /* (2) Attrs: copy per-level attrs for char rows 3..16. */
+    for (char_row = 3; char_row < 17; char_row++) {
+        for (char_col = 0; char_col < 32; char_col++) {
+            attr_buff[char_row * 32 + char_col] =
+                lattr[char_row * ATTR_COLS + char_col];
+        }
+    }
+
+    /* (3) Brick compositor — overwrites brick bodies, edges, and the
+     * brick + shadow attrs. */
+    print_briks_c(cells);
+
+    /* (4) Blit pixel y 31..128 from scr_buff/attr_buff to VGA. */
+    for (y = BRICK_BAND_Y_TOP; y <= BRICK_BAND_Y_BOT; y++) {
+        for (byte_col = 0; byte_col < 32; byte_col++) {
+            unsigned char b = scr_buff[y * 32 + byte_col];
+            unsigned char attr = attr_buff[(y / 8) * 32 + byte_col];
+            unsigned char ink = ink_pal(attr);
+            unsigned char paper = paper_pal(attr);
+            for (bit = 0; bit < 8; bit++) {
+                vga[(long)(BORDER_Y + y) * SCREEN_W + BORDER_X + byte_col * 8 + bit] =
+                    (b & (0x80 >> bit)) ? ink : paper;
+            }
         }
     }
 }
@@ -709,7 +801,7 @@ static void render_level_screen(unsigned char level_idx) {
     fill(0, 0, SCREEN_W, SCREEN_H, COL_BORDER);
     draw_frame(10);              /* bright red — placeholder */
     paint_hex_bg(bg_attr, cycle);
-    render_brick_field(level_idx);
+    render_brick_band(level_idx);
     render_bat(cycle, bg_attr);
     render_lives(cycle, bg_attr);
     render_frame(cycle, level_idx);
@@ -946,7 +1038,6 @@ int main(void) {
         load_bg_tile("BGTILE.BIN") != 0 ||
         load_bat("BATL1.BIN") != 0 ||
         load_frame("FRAMEL1.BIN") != 0 ||
-        load_brick_bitmaps("BRICKBMS.BIN") != 0 ||
         load_lives("LIVESL1.BIN") != 0) {
         fill(0, 0, SCREEN_W, SCREEN_H, 10 /* bright red */);
     }

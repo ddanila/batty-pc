@@ -10,47 +10,61 @@ Rule of thumb: each shortcut here MUST be repaid before its area
 becomes dynamic. Static scenes tolerate "ship the pixels"; gameplay
 requires real rendering.
 
-## 1. Brick rendering bypassed (biggest cheat)
+## 1. Brick rendering bypassed (biggest cheat)  ✅ RESOLVED
 
-**What we ship**: `assets/brick_bitmaps.bin` — 43 200 B = 15 levels ×
-180 cells × 16 bytes/cell. The **final composited per-cell bitmap**
-extracted from each level's GT capture (via
-`scripts/extract_brick_bitmaps.py`).
+**Status**: paid back in M1. The pre-RE narrative (multi-pass
+compositor + SMC side pipeline + neighbour-aware sprite picking)
+turned out to be wrong — that narrative was extrapolated from a
+ZEsarUX VRAM-watchpoint trap on `sub_ad8fh` at `0xAD8F`, which is
+actually `all_metal_briks_frame` (the metal-brick shimmer
+animation), not the main brick paint path. See `notes/lessons.md`.
 
-**What the original does**: `sub_b765h` runs a multi-pass
-neighbour-aware compositor:
+The real paint is `print_briks` at `0xADE1` → `print_one_brik_buf`
+at `0xAE82`: one `spr_brik_1` (16 B) blitted per non-skip cell into
+`scr_buff`, plus simple top/bottom/left/right edge decoration
+(zero rows + bit-clear). `brik_shadow` AND-masks the bright bit
+on the attr row below each brick.
 
-- `IX` walks a list at `0xAF6F` of 16-bit source-pointer values:
-  `0xAF0F`, `0xAF4F`, `0xAF1F`, `0xAF5F`, `0xAF2F`, `0xAF3F`,
-  `0xAF3F`, `0xAEFF`. Each entry's value is a pointer to a 16-byte
-  sprite.
-- Per IX entry: `sub_ad8fh` paints all 180 cells with that one
-  sprite (via `sub_adach` / `sub_adbch`), skipping cells where
-  `(IY+0) & 0x90 != 0`.
-- When the IX value equals the sentinel `0xAF3F`, a side pipeline
-  runs: `lb73fh` walks the cell list at `(0x9789)` looking for the
-  first un-skipped cell, then calls `sub_c101h` with `IX = 0xC0B8`
-  to paint via a different mechanism (SMC-toggled).
-- The eight passes compose into the final brick shape; cells with
-  bit-4 set get their pixels only from the sentinel pipeline.
+Ported in `src/main.c` as `print_one_brik_buf_c` /
+`brik_shadow_c` / `print_briks_c`, called via `render_brick_band`.
+The shipped `assets/brick_bitmaps.bin` (43 KB) and
+`scripts/extract_brick_bitmaps.py` are gone.
 
-**Why we cheated**: the multi-pass compositor + SMC + the `0xC0B8`
-side pipeline is days of Z80 reverse-engineering. Pixel-perfect
-rendering was achievable in one session by extracting the
-composited result.
+**Residual diff sweep** (after M1, vs prior shipped-pixel
+approach):
 
-**When to repay**: BEFORE Phase E (motion / gameplay). The same
-compositor runs per-frame during play to redraw destroyed bricks,
-spawn power-ups, etc. We can't fake bricks once they're changing.
+| Level | After M1 | Before M1 |
+|------:|---------:|----------:|
+| L 1   |  0.00 %  |  2.13 %   |
+| L 2   |  0.77 %  |  2.66 %   |
+| L 3   | 11.46 %  |  3.86 %   |
+| L 4   |  2.01 %  |  5.44 %   |
+| L 5   | 25.60 %  |  2.76 %   |
+| L 6   |  5.96 %  |  4.70 %   |
+| L 7   |  5.59 %  |  2.85 %   |
+| L 8   |  3.50 %  |  3.98 %   |
+| L 9   |  8.02 %  |  1.77 %   |
+| L10   |  4.66 %  |  3.00 %   |
+| L11   |  4.81 %  |  2.94 %   |
+| L12   |  4.36 %  |  3.84 %   |
+| L13   |  3.86 %  |  2.28 %   |
+| L14   |  5.22 %  |  4.81 %   |
+| L15   |  5.51 %  |  4.09 %   |
 
-**Proper port**:
-1. Map every cache slot the IX list points into; identify each
-   16-byte sprite.
-2. Port `sub_adbch` — the 16x8 blitter that consumes (IX) source
-   pointer and IY skip flags.
-3. Port `sub_ad8fh` / `sub_adach` — the 12×15 grid walker.
-4. Port `sub_b765h` — the multi-pass driver with sentinel handling.
-5. Port `sub_c101h` + IX=0xC0B8 — the bit-4 cell side pipeline.
+L1/L2/L4/L8 strictly improved (L1 to zero). L3/L5/L9 regressed
+because the shipped-pixel `brick_bitmaps.bin` baked in each
+level's *actual brick colour pattern* from the GT, while our port
+hard-codes the `briks_colors` 1-indexed table — but the original
+also pulls extra brick-styling state we haven't traced yet
+(probably from inside `game_screen_draw_to_buffer`'s chain, where
+some levels override the default colour with a per-level palette
+table). Triage candidates: `current_bonus`, `briks_colors+9`,
+the per-level field at `lb7e6h+...`.
+
+We accept the regression in exchange for a *real* per-cell paint
+path that supports brick destruction. M5 (gameplay / collisions)
+needs that path; pixel-perfect L5 colours come from finishing the
+level-colour-palette trace, which is independent work.
 
 ## 2. Frame / bat / lives are L1-specific raw-pixel composites
 
@@ -172,15 +186,15 @@ asset rather than computed.
 
 | Shortcut                                  | Effort  | Blocking what?                  |
 |-------------------------------------------|---------|---------------------------------|
-| 1. Brick compositor                       | Days    | Phase E (gameplay) brick hits    |
+| 1. Brick compositor  ✅                   | done    | -                                |
 | 2a. Per-level frame (attrs ✅, pixels ❌)  | Hours   | L2..L15 visual correctness       |
 | 2b. Bat sprite + position byte            | Hours   | Phase E (motion)                 |
 | 2c. Lives counter wiring                  | Hours   | Lives changing during play       |
-| 3. Attribute source                       | Hours   | Bundled with #1 cleanup          |
+| 3. Attribute source                       | Hours   | Bundled with #2a cleanup         |
 | 4. Dynamic scores                         | Hour    | First brick hit during play      |
 | 5. Bat position runtime                   | Bundled with 2b                            |
 | 6. Drop sprite_cache  ✅                  | done    | -                                |
-| 7. Frame / brick shadow theory            | Bundled with 1 + 2a                        |
+| 7. Frame / brick shadow                   | partial | shadow ported; brick bg drop-shadow lines still pixel-baked in border strips |
 
 ## L2..L15 sweep status
 

@@ -38,7 +38,7 @@ ASSETS  = assets/loading.bin assets/hi_score.bin assets/main_menu.bin \
           assets/indicator.bin assets/bottom_sprites.bin \
           assets/levels.bin assets/level_attrs.bin \
           assets/bg_tile.bin assets/bat_l1.bin assets/frame_l1.bin \
-          assets/brick_bitmaps.bin assets/lives_l1.bin
+          assets/lives_l1.bin
 HISCORE_SNAP      ?= build/snapshots/20260513T202038Z/screen.scr
 MAINMENU_SNAP     ?= build/snapshots/20260513T202041Z/screen.scr
 MAINMENU_SNAP_RAM ?= build/snapshots/20260513T202041Z/ram_4000_FFFF.bin
@@ -149,15 +149,6 @@ assets/frame_l1.bin: build/level_gt/level_01.scr scripts/extract_frame.py
 	python3 scripts/extract_frame.py $@
 	@echo "wrote $@ ($$(wc -c < $@) bytes)"
 
-# Per-cell 16x8 brick bitmaps extracted from the 15 GT captures.
-# Bypasses the original's multi-pass neighbour-aware compositor
-# (sub_b765h + sub_c101h) until we port that pipeline; for now we
-# ship the final composited bitmap per (level, row, col).
-# 15 * 180 * 16 = 43200 B.
-assets/brick_bitmaps.bin: build/level_gt/level_01.scr scripts/extract_brick_bitmaps.py
-	python3 scripts/extract_brick_bitmaps.py $@
-	@echo "wrote $@ ($$(wc -c < $@) bytes)"
-
 # Second life indicator at bottom-left (the first one is captured by
 # the wide frame strip). 2 bytes wide x 8 rows = 16 B.
 assets/lives_l1.bin: build/level_gt/level_01.scr scripts/extract_lives.py
@@ -198,7 +189,6 @@ $(FLOPPY_OUT): $(EXE) $(ASSETS) $(FLOPPY_SRC)
 	mcopy -i $@ -o assets/bg_tile.bin ::BGTILE.BIN
 	mcopy -i $@ -o assets/bat_l1.bin ::BATL1.BIN
 	mcopy -i $@ -o assets/frame_l1.bin ::FRAMEL1.BIN
-	mcopy -i $@ -o assets/brick_bitmaps.bin ::BRICKBMS.BIN
 	mcopy -i $@ -o assets/lives_l1.bin ::LIVESL1.BIN
 	@printf '@ECHO OFF\r\nBATTY\r\n' > build/AUTOEXEC.BAT
 	mcopy -i $@ -o build/AUTOEXEC.BAT ::AUTOEXEC.BAT
@@ -220,7 +210,6 @@ $(TEST_FLOPPY_OUT): $(EXE) $(ASSETS) $(FLOPPY_SRC)
 	mcopy -i $@ -o assets/bg_tile.bin ::BGTILE.BIN
 	mcopy -i $@ -o assets/bat_l1.bin ::BATL1.BIN
 	mcopy -i $@ -o assets/frame_l1.bin ::FRAMEL1.BIN
-	mcopy -i $@ -o assets/brick_bitmaps.bin ::BRICKBMS.BIN
 	mcopy -i $@ -o assets/lives_l1.bin ::LIVESL1.BIN
 	@printf '@ECHO OFF\r\nSET BATTYALL=1\r\nBATTY\r\n' > build/AUTOEXEC-T.BAT
 	mcopy -i $@ -o build/AUTOEXEC-T.BAT ::AUTOEXEC.BAT

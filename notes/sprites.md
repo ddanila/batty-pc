@@ -132,6 +132,20 @@ between-level transitions or pause? TBD.
 
 ## Phase A1 milestone — the screen sprite blitter
 
+**Correction (post-disasm)**: the routine at `0xAD8F` we trapped is
+`all_metal_briks_frame` — the metal-brick *shimmer animation*, not
+the level-paint blitter. The real level paint is `print_briks` at
+`0xADE1`, which writes into the offscreen `scr_buff` at `$DA00`,
+LDIR'd to VRAM by `buff_to_screen_pixs` at `$BDCF`. The same
+8-row × 2-byte inner blit (`sub_adbch` here = `print_frame_metal_brik`)
+is used by both, which is why the trap landed on it during the
+animation pass.
+
+The original analysis below is preserved for reference but the
+sub_ad8fh / sub_adach naming should be read as the metal-brick
+animation's wrappers, not the brick paint. See M1 in
+`notes/shortcuts.md` for the actual port.
+
 Live trace via `scripts/trace_blitter.py` (loads snap3 as a `.sna`,
 sets `MRA=E800H` watchpoint, resumes the CPU) trapped at PC 0xB775 —
 the `di` ending a double-`halt` frame-sync immediately followed by
