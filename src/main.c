@@ -450,6 +450,17 @@ static unsigned char ball_stuck   = 1;
 static unsigned char ball_visible = 0;  /* drawn only after first SPACE
                                          * (keeps state4 capture clean). */
 
+/* Game-loop state. score is a plain integer; the original uses a
+ * 3-byte BCD-ish representation across current_score_1up + the in-game
+ * digits at score_1up_in_game. lives starts at 3 per original
+ * game_restart at $B9A0 (LD A,$03 / LD (lives_1up),A). */
+#define POINTS_PER_BRICK   50      /* placeholder; the original picks
+                                    * per-colour values via brik_value
+                                    * at $B2BD - port deferred. */
+#define LIVES_INIT          3
+static unsigned long score = 0;
+static int           lives = LIVES_INIT;
+
 /* Second life indicator (the right-hand of the pair at bottom-left).
  * The first one is captured by the 3-col-wide left frame strip; this
  * is the part that falls outside the frame. 2 bytes wide x 8 rows. */
@@ -1092,8 +1103,19 @@ static int brick_collision(int bx, int by) {
         unsigned char *cell = &live_level[row * LVL_COLS + col];
         if (*cell & 0x90) return 0;       /* already empty / frame piece */
         *cell |= 0x80;                    /* mark destroyed */
+        score += POINTS_PER_BRICK;
         return 1;
     }
+}
+
+/* Count remaining destructible bricks (bit 7 clear, bit 4 clear).
+ * Used to detect level-complete. */
+static int live_bricks_remaining(void) {
+    int i, n = 0;
+    for (i = 0; i < LVL_CELLS; i++) {
+        if (!(live_level[i] & 0x90)) n++;
+    }
+    return n;
 }
 
 /* Step the ball one frame: handle wall + bat collisions. If the ball
@@ -1122,9 +1144,12 @@ static void step_ball(void) {
         next_y = bat_top - BALL_H_PX;
         ball_dy = -BALL_SPEED;
     }
-    /* Past the bat (= lost ball). Respawn on bat. */
+    /* Past the bat (= lost ball). Decrement lives and respawn stuck
+     * on the bat. The outer loop checks lives==0 to trigger game over. */
     if (next_y > BAT_Y_PX + BAT_H_PX) {
+        if (lives > 0) lives--;
         ball_stuck = 1;
+        ball_visible = 0;            /* hide ball until next SPACE */
         ball_x = bat_x + BALL_X_OFFSET_ON_BAT;
         ball_y = BAT_Y_PX - BALL_H_PX;
         ball_dx = +BALL_SPEED;
@@ -1165,12 +1190,58 @@ static void redraw_full_with_ball(unsigned char level_idx) {
     if (ball_visible) render_ball(ball_x, ball_y, 15);
 }
 
+/* Render a short string of N character codes via draw_glyph, anchored
+ * top-left at screen (x, y). `codes` follow the markup encoding:
+ * 0..9 = digits, 0x0A..0x23 = A..Z (see notes/encoding.md). */
+static void draw_text(int x, int y, unsigned char colour,
+                      const unsigned char *codes, int n) {
+    int i;
+    for (i = 0; i < n; i++) draw_glyph(x + i * 8, y, colour, codes[i]);
+}
+
+/* Encode an unsigned long as 6 digit-codes (most significant first). */
+static void score_to_codes(unsigned long s, unsigned char out[6]) {
+    int i;
+    for (i = 5; i >= 0; i--) {
+        out[i] = (unsigned char)(s % 10);
+        s /= 10;
+    }
+}
+
+/* Show a "GAME OVER" screen with the final score, hold ~3 seconds. */
+static void render_game_over(void) {
+    /* "GAME OVER" = G A M E (space) O V E R, glyph codes via
+     * (letter - 'A' + 0x0A). Space is 0x26 per notes/encoding.md. */
+    static const unsigned char go[]    = { 0x10, 0x0A, 0x16, 0x0E, 0x26,
+                                           0x18, 0x1F, 0x0E, 0x1B };
+    static const unsigned char sc_lbl[]= { 0x1C, 0x0C, 0x18, 0x1B, 0x0E,
+                                           0x26 /* space */ };
+    unsigned char digits[6];
+    fill(0, 0, SCREEN_W, SCREEN_H, 0);
+    /* "GAME OVER" - 9 chars at (12, 80) (= centred-ish at 320x200). */
+    draw_text(BORDER_X + 4 * 8 + 4, BORDER_Y + 80, 15,
+              go, (int)sizeof(go));
+    /* "SCORE " followed by 6 digits. */
+    score_to_codes(score, digits);
+    draw_text(BORDER_X + 3 * 8, BORDER_Y + 100, 15,
+              sc_lbl, (int)sizeof(sc_lbl));
+    draw_text(BORDER_X + 3 * 8 + 6 * 8, BORDER_Y + 100, 15,
+              digits, 6);
+}
+
 static state_t run_level(void) {
     unsigned char i;
     unsigned long start;
     unsigned long last_tick;
     unsigned char cycle;
     unsigned char bg_attr;
+
+    /* New game: reset score + lives. The score/lives carry across
+     * levels within one game; they reset only when re-entering
+     * run_level from ST_HISCORE. */
+    score = 0;
+    lives = LIVES_INIT;
+
     for (i = 0; i < N_LEVELS; i++) {
         int k;
         bat_x         = BAT_X_INIT;
@@ -1181,7 +1252,6 @@ static state_t run_level(void) {
         ball_y        = BAT_Y_PX - BALL_H_PX;
         ball_dx       = +BALL_SPEED;
         ball_dy       = -BALL_SPEED;
-        /* Seed mutable brick state from the read-only level data. */
         for (k = 0; k < LVL_CELLS; k++) {
             live_level[k] = levels[(int)i * LVL_CELLS + k];
         }
@@ -1232,19 +1302,35 @@ static state_t run_level(void) {
             }
 
             if (ball_moved) {
-                /* Ball might pass over bricks - cheapest correct path
-                 * is a full level rerender each tick. */
                 redraw_full_with_ball(i);
             } else if (bat_moved) {
                 redraw_bat(cycle, bg_attr);
-                /* Ball follows bat while stuck. */
                 if (ball_visible && ball_stuck) {
                     ball_x = bat_x + BALL_X_OFFSET_ON_BAT;
                     render_ball(ball_x, ball_y, 15);
                 }
             }
 
+            /* End-of-life conditions. */
+            if (lives == 0) {
+                render_game_over();
+                start = bios_ticks();
+                while (!TIMED_OUT(start, 54UL))  /* ~3 sec at 18 Hz */ {
+                    if (kbhit()) { getch(); break; }
+                }
+                return ST_TITLE;
+            }
+            if (live_bricks_remaining() == 0) break;  /* next level */
+
             if (auto_advance && TIMED_OUT(start, LEVEL_TIMEOUT_TICKS)) break;
+        }
+    }
+    /* Cleared all 15 levels - show GAME OVER with final score then home. */
+    render_game_over();
+    {
+        unsigned long t = bios_ticks();
+        while (!TIMED_OUT(t, 54UL)) {
+            if (kbhit()) { getch(); break; }
         }
     }
     return ST_TITLE;
