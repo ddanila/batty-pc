@@ -552,13 +552,15 @@ static unsigned int bricks_destroyed = 0;
  *   then h rows of w (mask, pixel) pairs - blit semantics described
  *   in blit_masked_sprite below.
  * The constants below are offsets WITHIN sprites_blob. */
-#define SPRITES_BLOB_SIZE 0x554
+#define SPRITES_BLOB_SIZE 0xCB4
 static unsigned char sprites_blob[SPRITES_BLOB_SIZE];
 #define SPR_BIG_BALL     (0x7A8C - 0x7A8C)   /* = 0x000 */
 #define SPR_LIVES        (0x7AFC - 0x7A8C)   /* = 0x070 */
 #define SPR_BALL_NORMAL  (0x7B16 - 0x7A8C)   /* = 0x08a */
 #define SPR_BAT_NORMAL   (0x7E38 - 0x7A8C)   /* = 0x3ac */
 #define SPR_BAT_BIG      (0x7F42 - 0x7A8C)   /* = 0x4b6 */
+#define SPR_UFO_1        (0x83B0 - 0x7A8C)   /* = 0x924 */
+#define SPR_BIRD_1       (0x860E - 0x7A8C)   /* = 0xb82 */
 
 /* Perimeter frame (top + left + right, no bottom). Each side strip is
  * 3 cols wide -- the third col (col 2 left, col 29 right) is the
@@ -877,10 +879,26 @@ static void handling_bonus_obj(object_t *o) { (void)o; }
 static void handling_bullet_obj(object_t *o){ (void)o; }
 static void handling_rocket_obj(object_t *o){ (void)o; }
 static void handling_spark_obj(object_t *o) { (void)o; }
-static void handling_ufo_obj(object_t *o)   { (void)o; }
-static void handling_bird_obj(object_t *o)  { (void)o; }
 static void handling_blast_obj(object_t *o) { (void)o; }
 static void handling_400pts_obj(object_t *o){ (void)o; }
+
+/* Birds/UFOs cross the playfield horizontally. Original handlers
+ * ($A9BC handling_bird, $A958 handling_ufo) do flap animation +
+ * bomb-drop subprocess; we simplify to straight-line motion that
+ * leaves the descriptor's IX+$06 = dir byte intact for collision
+ * checks the rest of the code can probe. */
+static void handling_bird_obj(object_t *o) {
+    /* Advance per IX+$07 = speed; cross from left edge to right when
+     * dir LSB = 0, else right-to-left. */
+    int dx = (o->dir & 1) ? -(int)o->speed : (int)o->speed;
+    int nx = (int)o->x_coord + dx;
+    if (nx < 8 || nx >= PLAYFIELD_W - 8 - (int)o->w_body_px) {
+        o->sprite_set |= 0x80;       /* off-screen: BIT 7 = inactive */
+        return;
+    }
+    o->x_coord = (unsigned char)nx;
+}
+static void handling_ufo_obj(object_t *o) { handling_bird_obj(o); }
 
 /* Indexed by sprite_set (the original's table starts at index 1; we
  * leave slot 0 NULL since sprite_set=0 means "inactive"). */
@@ -1836,6 +1854,76 @@ static int live_bricks_remaining(void) {
     return n;
 }
 
+/* --- Enemy preparation (port of enemy_prepare @ $9EAA) -----------------
+ *
+ * Activates object_enemy at the playfield edge under the original's
+ * spawn conditions:
+ *   - current_level_number_1up != 4 (= no aliens on L5 in original)
+ *   - applied bonus on bat_1 / bat_2 != $09 (kill-aliens bonus)
+ *   - briks_quantity_1up < 44 (=  enough bricks down for late-level alien)
+ *   - object_enemy currently empty
+ * Picks bird (sprite_set $09) on odd rounds, UFO ($08) on even. X
+ * coord from prop_x_coord[random & 3] = {$40, $A8, $40, $A8}. Speed
+ * from per-round prop table. */
+static unsigned int rng_state = 0xACE1u;
+static unsigned int next_random(void) {
+    rng_state = (unsigned int)(rng_state * 25173u + 13849u);
+    return rng_state;
+}
+
+/* prop_uneven / prop_even / prop_x_coord from $9F27. Fields:
+ *   +0 type ($09=bird, $08=UFO)
+ *   +1 misc_12
+ *   +2 misc_13
+ *   +3 width body
+ *   +4 height body
+ *   +5 speed */
+static const unsigned char prop_uneven[6] = { 0x09, 0xF0, 0x70, 0x18, 0x0C, 0x01 };
+static const unsigned char prop_even[6]   = { 0x08, 0x70, 0xF0, 0x18, 0x0E, 0x02 };
+static const unsigned char prop_x_coord[4]= { 0x40, 0xA8, 0x40, 0xA8 };
+
+static unsigned char round_number = 0;       /* current round counter */
+static unsigned char current_level_idx_var;  /* set by run_level so
+                                              * enemy_prepare can read it */
+static void enemy_prepare(void) {
+    object_t *e = &objects[OBJ_ENEMY];
+    const unsigned char *prop;
+    unsigned char r;
+    /* Skip on the level where the original disables aliens. */
+    if (current_level_idx_var == 4) return;
+    /* Skip if bat carries the kill-aliens bonus. */
+    if (objects[OBJ_BAT_1].bonus_applied == 0x09) return;
+    if (objects[OBJ_BAT_2].bonus_applied == 0x09) return;
+    /* Skip while bricks remaining >= 44. */
+    if (live_bricks_remaining() >= 0x2C) return;
+    /* Skip if alien already active. */
+    if (e->sprite_set != 0) return;
+    /* clear_hl_buff16 equivalent. */
+    {
+        unsigned int i;
+        unsigned char *p = (unsigned char *)e;
+        for (i = 0; i < sizeof(*e); i++) p[i] = 0;
+    }
+    prop = (round_number & 1) ? prop_even : prop_uneven;
+    e->sprite_set = prop[0];
+    e->prev_h_shadow = 0;
+    e->misc_12 = prop[1];
+    e->misc_13 = prop[2];
+    e->w_body_px = prop[3];
+    e->h_body_px = prop[4];
+    e->speed = prop[5];
+    e->sprite_num = 0;
+    e->y_coord = 0;
+    r = (unsigned char)(next_random() & 3);
+    e->x_coord = prop_x_coord[r];
+    /* If x starts on the right, set dir BIT 0 so handling_bird_obj
+     * moves left. The original uses dir=$10 as initial; we encode the
+     * direction in BIT 0 directly to keep our simplified handler
+     * trivial. */
+    e->dir = (r & 1) ? 0x11 : 0x10;
+    e->bonus_applied = 0x10;
+}
+
 /* Step the ball one frame: handle wall + bat collisions. If the ball
  * exits the bottom of the playfield it respawns stuck on the bat. */
 static void step_ball(void) {
@@ -1921,18 +2009,22 @@ static void redraw_bat(unsigned char cycle, unsigned char bg_attr) {
 static void render_hud_score(void);
 static void render_hud_powerups(void);
 
-/* Redraw the whole level (frame, bg, bricks, bat, lives) and paint the
- * ball + any falling bonus + power-up letter chips on top. */
+/* Redraw the whole level (frame, bg, bricks, bat, lives) and paint
+ * the ball + any falling bonus + alien + power-up letter chips on top. */
 static void redraw_full_with_ball(unsigned char level_idx) {
     unsigned char bg_attr;
+    object_t *enemy = &objects[OBJ_ENEMY];
     render_level_screen(level_idx);
     render_hud_score();
     render_hud_powerups();
     if (bonus_active) render_bonus();
-    if (BALL_VISIBLE) {
-        bg_attr = level_attrs[(int)level_idx * ATTR_BAND_SIZE
-                              + BRICK_ATTR_ROW_BASE * ATTR_COLS + 14];
-        render_ball(BALL_X, BALL_Y, bg_attr);
+    bg_attr = level_attrs[(int)level_idx * ATTR_BAND_SIZE
+                          + BRICK_ATTR_ROW_BASE * ATTR_COLS + 14];
+    if (BALL_VISIBLE) render_ball(BALL_X, BALL_Y, bg_attr);
+    if ((enemy->sprite_set & 0x7F) != 0 && !(enemy->sprite_set & 0x80)) {
+        unsigned int spr = (enemy->sprite_set == 0x09) ? SPR_BIRD_1 : SPR_UFO_1;
+        blit_masked_sprite(spr, enemy->x_coord, enemy->y_coord,
+                           ink_pal(bg_attr), paper_pal(bg_attr));
     }
 }
 
@@ -2033,6 +2125,9 @@ static state_t run_level(void) {
 
     for (i = 0; i < N_LEVELS; i++) {
         int k;
+        current_level_idx_var = i;
+        round_number = i;
+        objects[OBJ_ENEMY].sprite_set = 0;     /* alien cleared on level entry */
         BAT_X         = BAT_X_INIT;
         BAT_PREV_X    = BAT_X_INIT;
         ball_stuck    = 1;
@@ -2137,16 +2232,18 @@ static state_t run_level(void) {
                     }
                 }
                 step_bonus();
-                /* Mirror of LB9E8_3 ($BAD9):
-                 *   call_hl_for_all_obj(handling_object)
-                 *   call_hl_for_all_obj(ix_buf_addr_calc)
-                 * All handlers are stubs at this milestone; iteration
-                 * is benign. */
+                /* Mirror of LB9E8_2..LB9E8_3 ($BA83..$BAD9):
+                 *   enemy_prepare    -- maybe spawn alien
+                 *   handling_bat     -- bat motion (here via key_state)
+                 *   call_for_all_obj(handling_object)
+                 *   call_for_all_obj(ix_buf_addr_calc) */
+                enemy_prepare();
                 call_for_all_obj(handling_object);
                 call_for_all_obj(ix_buf_addr_calc);
                 snd_q_tick();
                 sound_tick();
-                if (bonus_active) ball_moved = 1;   /* force redraw to show falling bonus */
+                if (bonus_active) ball_moved = 1;
+                if (objects[OBJ_ENEMY].sprite_set != 0) ball_moved = 1;
             }
 
             if (BAT_X != BAT_PREV_X) {
