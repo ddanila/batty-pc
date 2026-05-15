@@ -61,20 +61,10 @@ For bat-only redraws (`redraw_bat`), the same pipeline runs on a
 y-strip only: `paint_bg_strip_to_buff` + `render_bat` +
 `render_lives` + `buff_to_vga_strip`.
 
-## What's still on direct-VGA
+## Migration status
 
-Migration is incremental. Still painting straight to VGA:
-
-- `render_bonus` (per-type colour, not bg_attr — needs an attr_buff
-  port: original writes specific attr values into the bonus's two
-  char cells via `print_sprite_attrib` @ $B656)
-- `render_hud_score` / `render_hud_powerups` (white text — fine on
-  top of `buff_to_vga`)
-- `render_frame` (per-cell attrs from level_attrs.bin — also fine
-  on top of `buff_to_vga`; the frame's 286 -> ~194 px residual diff
-  vs GT is the next parity target, separate concern)
-
-Already migrated to scr_buff:
+All gameplay renderers now go through the scr_buff + attr_buff
+pipeline. Direct-VGA only for the final overlay layer:
 
 - bg tile + per-cell attrs (`paint_bg_to_buff`)
 - bricks (via `print_briks_c`)
@@ -82,10 +72,40 @@ Already migrated to scr_buff:
 - ball (`render_ball_to_buff`)
 - bomb, 400pts, alien (inline `blit_masked_to_scr_buff` calls in
   `redraw_full_with_ball`)
+- bonus (`render_bonus_to_buff` + `blit_sprite_attrs_to_buff` for
+  the per-type ink)
 
-Next parity targets: (a) port `print_sprite_attrib` so the bonus and
-brick attrs can land in attr_buff with their proper per-cell values;
-(b) investigate the residual frame-ornament side-strip diff.
+Direct-VGA on top of `buff_to_vga`:
+
+- `render_hud_score` / `render_hud_powerups` (white text)
+- `render_frame` (per-level attrs from level_attrs.bin)
+
+## state4_level1 residual diff
+
+After all the migrations, state4 vs the captured ZX GT sits at
+194 px (down from 38645 pre-pipeline). The residual is entirely in
+the bat+ball overlap region (y=160..191, x=112..151). Confirmed by
+inspecting the GT snapshot: it was captured at a frame where neither
+the bat nor the ball was drawn — pure bg pattern at the bat zone.
+
+This means the test has reached the limit of comparability under the
+current GT; lowering it further would require recapturing the GT
+with the bat / ball / lives drawn in matching positions, separate
+from the rendering-pipeline parity work.
+
+## What this enables
+
+Now that every renderer writes into scr_buff via the original
+`(mask | screen) ^ pixel` blit:
+
+- The XOR shadow case (mask=0, pix=1) works uniformly — visible on
+  the bat shadow rows.
+- Per-cell bg-attr inheritance is automatic for every sprite — no
+  more passing `bg_attr` to renderers.
+- Colour-clash artefacts (bonus tinting bg in its char cells) match
+  the original.
+- Future ports can write 1-bit pixel data and per-cell attrs and
+  trust the single `buff_to_vga` pass to handle the rest.
 
 ## Key files
 
