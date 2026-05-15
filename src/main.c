@@ -462,6 +462,39 @@ static unsigned char ball_visible = 0;  /* drawn only after first SPACE
 static unsigned long score = 0;
 static int           lives = LIVES_INIT;
 
+/* Power-up state: a single falling bonus on screen at a time. The
+ * original (notes/plan-gameplay.md Phase H) drives this via
+ * bonus_table_first/second + generate_new_bonus + set_bonus at $9866;
+ * we hold a simpler 1-slot version until the object descriptor port
+ * (M3 proper) lands. The slow-ball effect uses a tick countdown that
+ * runs at the PIT frame rate (50 Hz). */
+#define BONUS_W_PX        8
+#define BONUS_H_PX        6
+#define BONUS_FALL_SPEED  1
+#define BONUS_SPAWN_EVERY 3    /* every Nth brick drops a bonus.
+                                * Capped at 1 active at a time so rapid
+                                * row-bursts often drop fewer in practice. */
+#define BONUS_TYPE_LIFE   0     /* +1 life on catch */
+#define BONUS_TYPE_SLOW   1     /* halves ball speed for SLOW_DURATION ticks */
+#define SLOW_DURATION   250     /* ~5 sec at 50 Hz */
+static int           bonus_x = 0;
+static int           bonus_y = 0;
+static unsigned char bonus_type   = 0;
+static unsigned char bonus_active = 0;
+static unsigned int  slow_ticks   = 0;   /* >0 = ball is in slow mode */
+
+/* Bonus colours indexed by type (ZX VGA palette indices). Picked so
+ * they don't collide with the per-level bg cycle colours (yellow /
+ * green / cyan / white). */
+static const unsigned char bonus_colours[2] = {
+    10,   /* bright red     -> life */
+    11    /* bright magenta -> slow */
+};
+
+/* Counter of bricks destroyed since start of game; drives the simple
+ * deterministic bonus-drop cadence. */
+static unsigned int bricks_destroyed = 0;
+
 /* Second life indicator (the right-hand of the pair at bottom-left).
  * The first one is captured by the 3-col-wide left frame strip; this
  * is the part that falls outside the frame. 2 bytes wide x 8 rows. */
@@ -1151,6 +1184,76 @@ static void render_ball(int x, int y, unsigned char colour) {
     }
 }
 
+/* Paint the 8x6 bonus sprite, with a simple "L" / "S" letter overlay
+ * so the player can distinguish the two types at a glance. */
+static void render_bonus(void) {
+    int r, c;
+    int x0 = BORDER_X + bonus_x;
+    int y0 = BORDER_Y + bonus_y;
+    unsigned char col = bonus_colours[bonus_type & 1];
+    /* Solid rectangle background. */
+    for (r = 0; r < BONUS_H_PX; r++) {
+        for (c = 0; c < BONUS_W_PX; c++) {
+            vga[(long)(y0 + r) * SCREEN_W + x0 + c] = col;
+        }
+    }
+    /* Punch a single black pixel column at byte_col=2..5 to suggest a
+     * letter shape - L on the life bonus, S on slow. Coarse but cheap. */
+    {
+        int x;
+        if (bonus_type == BONUS_TYPE_LIFE) {
+            /* L: vertical bar at x=2 + horizontal bar at y=4..5 */
+            for (r = 0; r < BONUS_H_PX; r++) vga[(long)(y0+r)*SCREEN_W + x0+2] = 0;
+            for (x = 2; x < 6; x++) vga[(long)(y0+5)*SCREEN_W + x0+x] = 0;
+        } else {
+            /* S: three horizontal bars and alternating vertical pixels */
+            for (x = 2; x < 6; x++) {
+                vga[(long)(y0+1)*SCREEN_W + x0+x] = 0;
+                vga[(long)(y0+3)*SCREEN_W + x0+x] = 0;
+                vga[(long)(y0+5)*SCREEN_W + x0+x] = 0;
+            }
+            vga[(long)(y0+2)*SCREEN_W + x0+2] = 0;
+            vga[(long)(y0+4)*SCREEN_W + x0+5] = 0;
+        }
+    }
+}
+
+/* Apply the effect that comes with `type`. Centralised so test +
+ * runtime invocations stay consistent. */
+static void bonus_apply(unsigned char type) {
+    switch (type) {
+        case BONUS_TYPE_LIFE: lives++; break;
+        case BONUS_TYPE_SLOW: slow_ticks = SLOW_DURATION; break;
+        default: break;
+    }
+}
+
+/* Advance the falling bonus + check for catch on the bat. Called from
+ * the per-frame tick alongside step_ball. */
+static void step_bonus(void) {
+    int bat_left, bat_right;
+    if (!bonus_active) {
+        if (slow_ticks > 0) slow_ticks--;
+        return;
+    }
+    bonus_y += BONUS_FALL_SPEED;
+    bat_left  = bat_x;
+    bat_right = bat_x + BAT_W_BYTES * 8;
+    /* Catch: bonus rect overlaps bat top row. */
+    if (bonus_y + BONUS_H_PX >= BAT_Y_PX
+        && bonus_y < BAT_Y_PX + BAT_H_PX
+        && bonus_x + BONUS_W_PX > bat_left
+        && bonus_x < bat_right) {
+        bonus_apply(bonus_type);
+        bonus_active = 0;
+        return;
+    }
+    /* Off the bottom of the playfield. */
+    if (bonus_y > PLAYFIELD_H) bonus_active = 0;
+    if (slow_ticks > 0) slow_ticks--;
+}
+
+
 /* Brick band geometry: 12 rows * 8 px starting at y=32, 15 cols * 16 px
  * starting at x=8. Determines whether the ball's new center overlaps a
  * live brick and, if so, marks the brick destroyed and returns which
@@ -1172,6 +1275,16 @@ static int brick_collision(int prev_x, int prev_y, int new_x, int new_y) {
     if (*cell & 0x90) return 0;
     *cell |= 0x80;
     score += POINTS_PER_BRICK;
+    /* Maybe drop a bonus. Only one falling at a time - skip if one is
+     * already in flight. 1-in-BONUS_SPAWN_MOD bricks roll a bonus. */
+    bricks_destroyed++;
+    if (!bonus_active && (bricks_destroyed % BONUS_SPAWN_EVERY) == 0) {
+        bonus_active = 1;
+        bonus_x = 8 + col * 16 + (16 - BONUS_W_PX) / 2;   /* brick centre x */
+        bonus_y = 32 + row * 8;                            /* brick top y */
+        /* Alternate life / slow based on the counter so a run shows both. */
+        bonus_type = (unsigned char)(((bricks_destroyed / BONUS_SPAWN_EVERY) & 1));
+    }
     brick_top = 32 + row * 8;
     brick_bot = brick_top + 8;
     prev_cy   = prev_y + BALL_H_PX / 2;
@@ -1267,11 +1380,11 @@ static void redraw_bat(unsigned char cycle, unsigned char bg_attr) {
 static void render_hud_score(void);
 
 /* Redraw the whole level (frame, bg, bricks, bat, lives) and paint the
- * ball on top. Used when the ball is in motion - the cheapest correct
- * way to handle ball-over-brick passage without per-pixel bookkeeping. */
+ * ball + any falling bonus on top. */
 static void redraw_full_with_ball(unsigned char level_idx) {
     render_level_screen(level_idx);
     render_hud_score();
+    if (bonus_active) render_bonus();
     if (ball_visible) render_ball(ball_x, ball_y, 15);
 }
 
@@ -1334,11 +1447,14 @@ static state_t run_level(void) {
     unsigned char cycle;
     unsigned char bg_attr;
 
-    /* New game: reset score + lives. The score/lives carry across
-     * levels within one game; they reset only when re-entering
+    /* New game: reset score + lives + bonus state. Score/lives carry
+     * across levels within one game; they reset only when re-entering
      * run_level from ST_HISCORE. */
     score = 0;
     lives = LIVES_INIT;
+    bricks_destroyed = 0;
+    bonus_active = 0;
+    slow_ticks = 0;
 
     for (i = 0; i < N_LEVELS; i++) {
         int k;
@@ -1350,6 +1466,8 @@ static state_t run_level(void) {
         ball_y        = BAT_Y_PX - BALL_H_PX;
         ball_dx       = +BALL_SPEED;
         ball_dy       = -BALL_SPEED;
+        bonus_active  = 0;
+        slow_ticks    = 0;
         for (k = 0; k < LVL_CELLS; k++) {
             live_level[k] = levels[(int)i * LVL_CELLS + k];
         }
@@ -1389,9 +1507,15 @@ static state_t run_level(void) {
             if (now != last_tick) {
                 last_tick = now;
                 if (ball_visible && !ball_stuck) {
-                    step_ball();
-                    ball_moved = 1;
+                    /* slow_ticks > 0: step on odd ticks only -> 25 Hz */
+                    int slow_skip = (slow_ticks > 0) && ((now & 1) == 0);
+                    if (!slow_skip) {
+                        step_ball();
+                        ball_moved = 1;
+                    }
                 }
+                step_bonus();
+                if (bonus_active) ball_moved = 1;   /* force redraw to show falling bonus */
             }
 
             if (bat_x != bat_x_prev) {
