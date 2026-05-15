@@ -703,10 +703,23 @@ static void render_bat(unsigned char cycle, unsigned char attr) {
     }
 }
 
+/* The left life indicator is baked into the frame strip; this function
+ * paints (lives - 2) dynamic right indicators, capped at 4 for layout.
+ * Matches the original's "indicators displayed = lives - 1" semantics
+ * (the bat itself counts as the current life) once the baked-in left
+ * one is factored in. lives=3 -> 1 dynamic indicator (= state4 GT). */
+#define LIVES_DYNAMIC_MAX 4
 static void render_lives(unsigned char cycle, unsigned char attr) {
     const unsigned char *src = lives_l1 + (int)cycle * LIVES_SIZE;
-    paint_block(src, LIVES_W_BYTES, LIVES_H_PX,
-                LIVES_X_PX, LIVES_Y_PX, attr);
+    int show = lives - 2;
+    int i;
+    if (show < 0) show = 0;
+    if (show > LIVES_DYNAMIC_MAX) show = LIVES_DYNAMIC_MAX;
+    for (i = 0; i < show; i++) {
+        paint_block(src, LIVES_W_BYTES, LIVES_H_PX,
+                    LIVES_X_PX + i * (LIVES_W_BYTES * 8),
+                    LIVES_Y_PX, attr);
+    }
 }
 
 /* --- Brick compositor (port of $ADE1..$AEEC) -------------------------- */
