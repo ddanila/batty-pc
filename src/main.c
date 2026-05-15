@@ -762,6 +762,182 @@ static void render_lives(unsigned char cycle, unsigned char attr) {
     }
 }
 
+/* --- Object model (port of the 22-byte descriptor at $9AD0+) ----------
+ *
+ * Mirror of the original's per-object property block. Field names
+ * match the disasm comment at line 1280+. The 11-slot table lives at
+ * $9AD0..$9BC1 in the original game's RAM; here we keep it as a
+ * fixed-order array indexed by symbolic OBJ_* constants. The 3
+ * special slots (lives indicator, score indicator, player separator)
+ * sit after the main 11 and are NOT walked by call_hl_for_all_obj.
+ *
+ * sprite_set value selects the per-object handler via
+ * handling_table_routines ($9F35); BIT7=1 marks the slot inactive
+ * (off-screen / not processed this frame). */
+typedef struct {
+    unsigned char sprite_set;        /* +00  set id; BIT7=1 inactive */
+    unsigned char sprite_num;        /* +01  sprite within set */
+    unsigned char x_coord;           /* +02  X (px) */
+    unsigned char x_coord_hi;        /* +03  X high byte */
+    unsigned char y_coord;           /* +04  Y (px) */
+    unsigned char y_coord_hi;        /* +05  Y high byte */
+    unsigned char dir;               /* +06  ball direction */
+    unsigned char speed;             /* +07  movement speed */
+    unsigned char w_shadow;          /* +08  sprite width in bytes (incl shadow) */
+    unsigned char h_shadow;          /* +09  sprite height in px (incl shadow) */
+    unsigned char buf_addr_hi;       /* +0A  high byte of scr_buff address */
+    unsigned char buf_addr_lo;       /* +0B  low byte */
+    unsigned char w_body_px;         /* +0C  body width in px */
+    unsigned char h_body_px;         /* +0D  body height in px */
+    unsigned char prev_x;            /* +0E */
+    unsigned char prev_y;            /* +0F */
+    unsigned char prev_w_shadow;     /* +10 */
+    unsigned char prev_h_shadow;     /* +11 */
+    unsigned char misc_12;           /* +12  enemy-specific */
+    unsigned char misc_13;           /* +13  enemy / 3-ball slow */
+    unsigned char bonus_applied;     /* +14  $FF = none */
+    unsigned char bat_props;         /* +15  bat-state flags
+                                      *      BIT0 expanded
+                                      *      BIT1 expanding
+                                      *      BIT5 expansion in progress
+                                      *      BIT6 reduction in progress
+                                      *      BIT7 not in transformation */
+} object_t;
+
+/* Slot indices match the original iteration order:
+ *   call_hl_for_all_obj starts at object_ball_1, advances by $16 (22)
+ *   bytes 11 times. */
+#define OBJ_BALL_1     0
+#define OBJ_BALL_2     1
+#define OBJ_BALL_3     2
+#define OBJ_BULLET_1   3
+#define OBJ_BULLET_2   4
+#define OBJ_BAT_2      5
+#define OBJ_BAT_1      6
+#define OBJ_BAT_TEMP   7
+#define OBJ_BONUS      8
+#define OBJ_ENEMY      9
+#define OBJ_ROCKET    10
+#define N_OBJECTS     11
+
+/* Initial values are byte-exact copies of the DEFB blocks at $9AD0+. */
+static object_t objects[N_OBJECTS] = {
+    /* OBJ_BALL_1   @ $9AD0 */
+    { 0x02,0x00, 0x84,0x00, 0xA0,0x00, 0x38, 0x02,
+      0x02, 0x0C, 0x00,0x00, 0x08, 0x07, 0x00,0x00,
+      0x00,0x00, 0x00, 0x00, 0x00, 0x80 },
+    /* OBJ_BALL_2   @ $9AE6 */
+    { 0x00,0x00, 0x84,0x00, 0xA0,0x00, 0x38, 0x02,
+      0x02, 0x0C, 0x00,0x00, 0x08, 0x07, 0x00,0x00,
+      0x00,0x00, 0x00, 0x00, 0x00, 0x80 },
+    /* OBJ_BALL_3   @ $9AFC */
+    { 0x00,0x00, 0x84,0x00, 0xA0,0x00, 0x38, 0x02,
+      0x02, 0x0C, 0x00,0x00, 0x08, 0x07, 0x00,0x00,
+      0x00,0x00, 0x00, 0x00, 0x00, 0x80 },
+    /* OBJ_BULLET_1 @ $9B12 */
+    { 0x00,0x00, 0x84,0x00, 0xA0,0x00, 0x30, 0x01,
+      0x01, 0x08, 0x00,0x00, 0x04, 0x08, 0x00,0x00,
+      0x00,0x00, 0x00, 0x00, 0x00, 0x80 },
+    /* OBJ_BULLET_2 @ $9B28 */
+    { 0x00,0x00, 0x84,0x00, 0xA0,0x00, 0x30, 0x01,
+      0x01, 0x08, 0x00,0x00, 0x04, 0x08, 0x00,0x00,
+      0x00,0x00, 0x00, 0x00, 0x00, 0x80 },
+    /* OBJ_BAT_2    @ $9B3E */
+    { 0x00,0x00, 0x74,0x00, 0xAD,0x00, 0x00, 0x00,
+      0x04, 0x0D, 0x00,0x00, 0x1C, 0x0A, 0x00,0x00,
+      0x00,0x00, 0xF0, 0x00, 0xFF, 0x80 },
+    /* OBJ_BAT_1    @ $9B54 */
+    { 0x01,0x00, 0x74,0x00, 0xAD,0x00, 0x00, 0x00,
+      0x04, 0x0D, 0x00,0x00, 0x1C, 0x0A, 0x00,0x00,
+      0x00,0x00, 0xF0, 0x00, 0x00, 0x80 },
+    /* OBJ_BAT_TEMP @ $9B6A */
+    { 0x00,0x03, 0x84,0x00, 0xAD,0x00, 0x00, 0x00,
+      0x03, 0x0D, 0x00,0x00, 0x1B, 0x0A, 0x00,0x00,
+      0x00,0x00, 0x00, 0x00, 0x00, 0x00 },
+    /* OBJ_BONUS    @ $9B80 */
+    { 0x00,0x00, 0x28,0x00, 0x9F,0x00, 0x00, 0x00,
+      0x00, 0x00, 0x00,0x00, 0x00, 0x00, 0x00,0x00,
+      0x00,0x00, 0xF0, 0x60, 0x00, 0x00 },
+    /* OBJ_ENEMY    @ $9B96 */
+    { 0x00,0x01, 0x78,0x00, 0x88,0x00, 0x00, 0x00,
+      0x03, 0x18, 0x00,0x00, 0x18, 0x18, 0x00,0x00,
+      0x00,0x00, 0x50, 0x44, 0x00, 0x00 },
+    /* OBJ_ROCKET   @ $9BAC */
+    { 0x00,0x00, 0xF8,0x00, 0xA8,0x00, 0x00, 0x00,
+      0x03, 0x1C, 0x00,0x00, 0x00, 0x00, 0x00,0x00,
+      0x00,0x00, 0x00, 0x00, 0x00, 0x00 }
+};
+
+/* The 3 special slots from the original (lives_indicator, score_
+ * indicator, separator at $9BC2, $9BD4, $9BDC) are not part of the
+ * 11-slot iteration. We'll add them when handling_object work makes
+ * them load-bearing - for now they're rendered by the legacy paths. */
+
+/* --- Per-object handler dispatch (handling_object @ $9F54) ------------ */
+
+typedef void (*obj_handler_t)(object_t *obj);
+
+static void handling_bat_stub(object_t *o)  { (void)o; }
+static void handling_ball_obj(object_t *o)  { (void)o; }
+static void handling_bonus_obj(object_t *o) { (void)o; }
+static void handling_bullet_obj(object_t *o){ (void)o; }
+static void handling_rocket_obj(object_t *o){ (void)o; }
+static void handling_spark_obj(object_t *o) { (void)o; }
+static void handling_ufo_obj(object_t *o)   { (void)o; }
+static void handling_bird_obj(object_t *o)  { (void)o; }
+static void handling_blast_obj(object_t *o) { (void)o; }
+static void handling_400pts_obj(object_t *o){ (void)o; }
+
+/* Indexed by sprite_set (the original's table starts at index 1; we
+ * leave slot 0 NULL since sprite_set=0 means "inactive"). */
+static const obj_handler_t handling_table_routines[] = {
+    NULL,                /* 0  - inactive */
+    handling_bat_stub,   /* 1  gfx_bat - real handler dispatched manually */
+    handling_ball_obj,   /* 2  gfx_ball */
+    handling_ball_obj,   /* 3  gfx_screen_elements (shares handler) */
+    handling_bonus_obj,  /* 4  gfx_bonuses */
+    handling_bullet_obj, /* 5  gfx_bullet */
+    handling_rocket_obj, /* 6  anim_rocket */
+    handling_spark_obj,  /* 7  anim_spark */
+    handling_ufo_obj,    /* 8  anim_ufo */
+    handling_bird_obj,   /* 9  anim_bird */
+    handling_blast_obj,  /* A  anim_alien_blast */
+    handling_400pts_obj  /* B  gfx_last_sprite (the 400-points marker) */
+};
+
+/* Port of handling_object at $9F54. Dispatches via sprite_set; skips
+ * inactive slots (sprite_set == 0 or BIT7 set). */
+static void handling_object(object_t *obj) {
+    unsigned char id = obj->sprite_set;
+    if (id == 0 || (id & 0x80)) return;
+    id &= 0x7F;
+    if (id >= sizeof(handling_table_routines) / sizeof(handling_table_routines[0]))
+        return;
+    if (handling_table_routines[id]) handling_table_routines[id](obj);
+}
+
+/* Port of call_hl_for_all_obj at $B66A. Iterates the 11-slot table,
+ * calls fn(slot) for each, skipping slots with sprite_set == 0
+ * (matches the original's ADD A,A / CALL NZ guard). */
+static void call_for_all_obj(obj_handler_t fn) {
+    int i;
+    for (i = 0; i < N_OBJECTS; i++) {
+        if (objects[i].sprite_set != 0) fn(&objects[i]);
+    }
+}
+
+/* Port of ix_buf_addr_calc at $B684. Computes the scr_buff offset
+ * from (x_coord, y_coord) and stores it in the descriptor's +0A/+0B
+ * fields. Our scr_buff is row-major (32 B per row, 192 rows), so the
+ * offset is y*32 + x/8. We pack big-endian into +0A:+0B to match the
+ * original's H:L convention. */
+static void ix_buf_addr_calc(object_t *obj) {
+    unsigned int off = (unsigned int)obj->y_coord * 32u
+                     + (unsigned int)(obj->x_coord >> 3);
+    obj->buf_addr_hi = (unsigned char)((off >> 8) & 0xFF);
+    obj->buf_addr_lo = (unsigned char)(off & 0xFF);
+}
+
 /* --- Brick compositor (port of $ADE1..$AEEC) -------------------------- */
 
 /* Cursor offsets within scr_buff / attr_buff, walked by print_briks_c.
@@ -1885,6 +2061,13 @@ static state_t run_level(void) {
                     }
                 }
                 step_bonus();
+                /* Mirror of LB9E8_3 ($BAD9):
+                 *   call_hl_for_all_obj(handling_object)
+                 *   call_hl_for_all_obj(ix_buf_addr_calc)
+                 * All handlers are stubs at this milestone; iteration
+                 * is benign. */
+                call_for_all_obj(handling_object);
+                call_for_all_obj(ix_buf_addr_calc);
                 snd_q_tick();
                 sound_tick();
                 if (bonus_active) ball_moved = 1;   /* force redraw to show falling bonus */
