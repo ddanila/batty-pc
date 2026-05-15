@@ -1264,11 +1264,14 @@ static void redraw_bat(unsigned char cycle, unsigned char bg_attr) {
     render_lives(cycle, bg_attr);
 }
 
+static void render_hud_score(void);
+
 /* Redraw the whole level (frame, bg, bricks, bat, lives) and paint the
  * ball on top. Used when the ball is in motion - the cheapest correct
  * way to handle ball-over-brick passage without per-pixel bookkeeping. */
 static void redraw_full_with_ball(unsigned char level_idx) {
     render_level_screen(level_idx);
+    render_hud_score();
     if (ball_visible) render_ball(ball_x, ball_y, 15);
 }
 
@@ -1288,6 +1291,19 @@ static void score_to_codes(unsigned long s, unsigned char out[6]) {
         out[i] = (unsigned char)(s % 10);
         s /= 10;
     }
+}
+
+/* Position of the live score in the empty band between the brick zone
+ * (y <= 127) and the bat (y >= 167). 6 digits * 8 px = 48 px wide,
+ * centred at playfield x. Only drawn once score > 0 so state4_level1
+ * (captured at score=0) stays pixel-identical against the GT. */
+#define HUD_SCORE_X (BORDER_X + 104)
+#define HUD_SCORE_Y (BORDER_Y + 140)
+static void render_hud_score(void) {
+    unsigned char digits[6];
+    if (score == 0) return;
+    score_to_codes(score, digits);
+    draw_text(HUD_SCORE_X, HUD_SCORE_Y, 15, digits, 6);
 }
 
 /* Show a "GAME OVER" screen with the final score, hold ~3 seconds. */
