@@ -734,15 +734,15 @@ static void blit_masked_sprite(unsigned int sprite_off, int x_px, int y_px,
     }
 }
 
-/* Bat colour: original uses a per-cycle attr; for now hardcode bright
- * cyan ink on black paper which is the L1 bat appearance and reads as
- * a recognisable "paddle". Replace with the per-level attr table once
- * print_sprite_attrib ($C051) is ported. */
+/* Bat ink + paper come from the BG attr at the bat's position - same
+ * palette as the surrounding hex pattern, as in the original. The bat
+ * texture-detail (mask=1, pixel=1 pixels) renders as paper colour;
+ * body pixels (mask=1, pixel=0) render as ink. */
 static void render_bat(unsigned char cycle, unsigned char attr) {
     unsigned int spr = big_bat_ticks ? SPR_BAT_BIG : SPR_BAT_NORMAL;
     int x = big_bat_ticks ? (bat_x - BAT_BIG_EXTRA_PX) : bat_x;
-    (void)cycle; (void)attr;
-    blit_masked_sprite(spr, x, BAT_Y_PX, 13 /* bright cyan */, 0 /* black */);
+    (void)cycle;
+    blit_masked_sprite(spr, x, BAT_Y_PX, ink_pal(attr), paper_pal(attr));
 }
 
 /* Display (lives - 2) right-side indicators next to the left one
@@ -751,14 +751,14 @@ static void render_bat(unsigned char cycle, unsigned char attr) {
 static void render_lives(unsigned char cycle, unsigned char attr) {
     int show = lives - 2;
     int i;
-    (void)cycle; (void)attr;
+    (void)cycle;
     if (show < 0) show = 0;
     if (show > LIVES_DYNAMIC_MAX) show = LIVES_DYNAMIC_MAX;
     for (i = 0; i < show; i++) {
         blit_masked_sprite(SPR_LIVES,
                            LIVES_X_PX + i * 16,
                            LIVES_Y_PX,
-                           14 /* bright yellow */, 0);
+                           ink_pal(attr), paper_pal(attr));
     }
 }
 
@@ -1297,13 +1297,12 @@ static void paint_bg_strip(unsigned char attr, unsigned char cycle,
 #define KEY_P_UPPER 'P'
 
 /* Paint the ball at (x, y) using the original spr_ball_normal /
- * spr_big_ball sprite data. `colour` is ignored - ball uses bright
- * white ink (= the original's ball colour) with black for the
- * shadow's paper texture. */
-static void render_ball(int x, int y, unsigned char colour) {
+ * spr_big_ball sprite data. Colours come from the passed attr - the
+ * ball uses the same palette as the surrounding bg (per the original
+ * which paints sprites into a buffer with shared per-cell attrs). */
+static void render_ball(int x, int y, unsigned char attr) {
     unsigned int spr = big_ball_ticks ? SPR_BIG_BALL : SPR_BALL_NORMAL;
-    (void)colour;
-    blit_masked_sprite(spr, x, y, 15 /* bright white */, 0 /* black */);
+    blit_masked_sprite(spr, x, y, ink_pal(attr), paper_pal(attr));
 }
 
 /* Paint the 8x6 bonus sprite, with a simple "L" / "S" letter overlay
@@ -1556,11 +1555,16 @@ static void render_hud_powerups(void);
 /* Redraw the whole level (frame, bg, bricks, bat, lives) and paint the
  * ball + any falling bonus + power-up letter chips on top. */
 static void redraw_full_with_ball(unsigned char level_idx) {
+    unsigned char bg_attr;
     render_level_screen(level_idx);
     render_hud_score();
     render_hud_powerups();
     if (bonus_active) render_bonus();
-    if (ball_visible) render_ball(ball_x, ball_y, 15);
+    if (ball_visible) {
+        bg_attr = level_attrs[(int)level_idx * ATTR_BAND_SIZE
+                              + BRICK_ATTR_ROW_BASE * ATTR_COLS + 14];
+        render_ball(ball_x, ball_y, bg_attr);
+    }
 }
 
 /* Render a short string of N character codes via draw_glyph, anchored
@@ -1769,7 +1773,7 @@ static state_t run_level(void) {
                 redraw_bat(cycle, bg_attr);
                 if (ball_visible && ball_stuck) {
                     ball_x = bat_x + BALL_X_OFFSET_ON_BAT;
-                    render_ball(ball_x, ball_y, 15);
+                    render_ball(ball_x, ball_y, bg_attr);
                 }
             }
 
