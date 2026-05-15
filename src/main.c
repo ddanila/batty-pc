@@ -1979,10 +1979,18 @@ static void buff_to_vga_strip(int y0, int h) {
 #define KEY_P_LOWER 'p'
 #define KEY_P_UPPER 'P'
 
-/* Paint the ball at (x, y) using the original spr_ball_normal /
- * spr_big_ball sprite data. Colours come from the passed attr - the
- * ball uses the same palette as the surrounding bg (per the original
- * which paints sprites into a buffer with shared per-cell attrs). */
+/* Paint the ball at (x, y) into scr_buff via the original masked
+ * OR-blit. Colour comes from each char cell's attr_buff entry at
+ * buff_to_vga time — same palette as the surrounding bg (matches
+ * the original, which paints into scr_buff without touching attrs). */
+static void render_ball_to_buff(int x, int y) {
+    unsigned int spr = big_ball_ticks ? SPR_BIG_BALL : SPR_BALL_NORMAL;
+    blit_masked_to_scr_buff(spr, x, y);
+}
+
+/* Direct-VGA fallback kept for the bat-only-move path (redraw_bat
+ * extra slot at line 2697 below), which only refreshes the bat strip
+ * and can't carry over the ball's scr_buff write. */
 static void render_ball(int x, int y, unsigned char attr) {
     unsigned int spr = big_ball_ticks ? SPR_BIG_BALL : SPR_BALL_NORMAL;
     blit_masked_sprite(spr, x, y, ink_pal(attr), paper_pal(attr));
@@ -2397,29 +2405,34 @@ static void redraw_bat(unsigned char cycle, unsigned char bg_attr) {
 static void render_hud_score(void);
 static void render_hud_powerups(void);
 
-/* Redraw the whole level (frame, bg, bricks, bat, lives) and paint
- * the ball + any falling bonus + alien + power-up letter chips on top. */
+/* Full-frame compose. Walks the same scr_buff -> attr_buff -> VGA
+ * path as the original (game_screen_draw_to_buffer @ $BE6B):
+ *   - paint bg + bricks + bat + lives into scr_buff/attr_buff
+ *   - paint ball, bomb, 400pts, alien into scr_buff (each picks up
+ *     its surrounding char cell's bg attr at buff_to_vga time)
+ *   - single buff_to_vga pass converts everything to VGA
+ *   - frame ornament + HUD text painted direct-VGA on top
+ *   - falling bonus painted direct-VGA (uses per-type colour, not
+ *     bg-attr — original game writes specific attrs into attr_buff
+ *     for the bonus's two cells; we approximate with a coloured blit). */
 static void redraw_full_with_ball(unsigned char level_idx) {
-    unsigned char bg_attr;
+    unsigned char bg_attr = bg_attr_per_cycle[level_idx & 3];
+    unsigned char cycle   = (unsigned char)(level_idx & 3);
     object_t *enemy = &objects[OBJ_ENEMY];
-    render_level_screen(level_idx);
-    render_hud_score();
-    render_hud_powerups();
-    if (bonus_active) render_bonus();
+
+    fill(0, 0, SCREEN_W, SCREEN_H, COL_BORDER);
+    draw_frame(10);              /* bright red — placeholder */
+    paint_bg_to_buff(bg_attr, cycle);
+    render_brick_band(level_idx);
+    render_bat(cycle, bg_attr);
+    render_lives(cycle, bg_attr);
+    if (BALL_VISIBLE) render_ball_to_buff(BALL_X, BALL_Y);
     if (bomb_active) {
-        /* Bomb inherits the bg's attr - the original paints sprites
-         * into scr_buff and the surrounding char cell's attr in
-         * attr_buff drives the colour. */
-        blit_masked_sprite_ptr(spr_bomb_data, bomb_x, bomb_y,
-                               ink_pal(bg_attr), paper_pal(bg_attr));
+        blit_masked_to_scr_buff_ptr(spr_bomb_data, bomb_x, bomb_y);
     }
     if (pts_400_ticks > 0) {
-        unsigned char ink = ink_pal(bg_attr);
-        unsigned char paper = paper_pal(bg_attr);
-        blit_masked_sprite(SPR_400_POINTS, pts_400_x, pts_400_y, ink, paper);
+        blit_masked_to_scr_buff(SPR_400_POINTS, pts_400_x, pts_400_y);
     }
-    bg_attr = bg_attr_per_cycle[level_idx & 3];
-    if (BALL_VISIBLE) render_ball(BALL_X, BALL_Y, bg_attr);
     if ((enemy->sprite_set & 0x7F) != 0 && !(enemy->sprite_set & 0x80)) {
         unsigned int spr;
         if ((enemy->sprite_set & 0x7F) == 0x0A) {
@@ -2432,9 +2445,13 @@ static void redraw_full_with_ball(unsigned char level_idx) {
                 ? spr_bird_frames[frame]
                 : spr_ufo_frames[frame];
         }
-        blit_masked_sprite(spr, enemy->x_coord, enemy->y_coord,
-                           ink_pal(bg_attr), paper_pal(bg_attr));
+        blit_masked_to_scr_buff(spr, enemy->x_coord, enemy->y_coord);
     }
+    buff_to_vga();
+    render_frame(cycle, level_idx);
+    render_hud_score();
+    render_hud_powerups();
+    if (bonus_active) render_bonus();  /* per-type colour, direct-VGA */
 }
 
 /* Render a short string of N character codes via draw_glyph, anchored
