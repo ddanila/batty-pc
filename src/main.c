@@ -416,33 +416,30 @@ static unsigned char bg_tile[BG_TILE_CYCLES * BG_TILE_SIZE];
  * base; we include the wider edge col so the shadow's right-most
  * pixels are covered (the wider area painted with bg attr just
  * reproduces the hex tile underneath, no harm). */
-#define BAT_W_BYTES 5
-#define BAT_H_PX    19
-#define BAT_SIZE    (BAT_W_BYTES * BAT_H_PX)
+/* Bat geometry now matches the original spr_bat_normal ($7E38):
+ * 4 bytes wide (32 px) * 13 rows. Top 8 rows are the body, last 3 are
+ * the dithered shadow drop. */
+#define BAT_W_BYTES 4
+#define BAT_H_PX    13
 #define BAT_Y_PX    167
-#define BAT_CYCLES  4
-/* X clamp: bat is 40 px wide. Left frame edge ~= pixel 16, right
- * ~= 240 in playfield coords. Per the original, handling_bat
- * advances X by +/-4 per frame so we stick to multiples of 4. */
 #define BAT_X_MIN     8
 #define BAT_X_MAX   216
 #define BAT_X_INIT  112
-static unsigned char bat_l1[BAT_CYCLES * BAT_SIZE];
 static int bat_x      = BAT_X_INIT;
 static int bat_x_prev = BAT_X_INIT;
 
-/* Ball state. The original keeps this in object_ball_1 (descriptor at
- * $9AD0); we use a simpler 4x4 placeholder until we port the proper
- * obj table + masked sprite blitter. ball_stuck = ball sits on the
- * bat (moves with it); SPACE releases. */
-#define BALL_W_PX   4
-#define BALL_H_PX   4
+/* Ball geometry from the original spr_ball_normal ($7B16): 2-byte-wide
+ * sprite (16 px) with body in left byte (8 px) and shadow in right
+ * byte at lower rows. For collisions we use the BODY size 8x7; the
+ * shadow is purely visual. */
+#define BALL_W_PX   8          /* body width for collision */
+#define BALL_H_PX   7          /* body height */
 #define BALL_SPEED  2
-#define BALL_X_OFFSET_ON_BAT 18  /* relative to bat_x: roughly centred
-                                  * on the 40-px bat. */
-#define BALL_Y_TOP    24         /* just below the 24-px HUD */
+#define BALL_X_OFFSET_ON_BAT 12 /* roughly centres ball body (8 px) on
+                                 * the 32-px bat body */
+#define BALL_Y_TOP    24
 #define BALL_X_MIN     8
-#define BALL_X_MAX   244         /* 256 - 8 - BALL_W_PX */
+#define BALL_X_MAX   240        /* 256 - 8 - body 8 */
 static int ball_x      = BAT_X_INIT + BALL_X_OFFSET_ON_BAT;
 static int ball_y      = BAT_Y_PX - BALL_H_PX;
 static int ball_dx     = +BALL_SPEED;
@@ -537,16 +534,26 @@ static const unsigned char bonus_colours[BONUS_TYPE_COUNT] = {
  * deterministic bonus-drop cadence. */
 static unsigned int bricks_destroyed = 0;
 
-/* Second life indicator (the right-hand of the pair at bottom-left).
- * The first one is captured by the 3-col-wide left frame strip; this
- * is the part that falls outside the frame. 2 bytes wide x 8 rows. */
-#define LIVES_W_BYTES 2
-#define LIVES_H_PX    8
-#define LIVES_SIZE    (LIVES_W_BYTES * LIVES_H_PX)
-#define LIVES_X_PX    24     /* byte_x 3 = pixel x 24 */
-#define LIVES_Y_PX    183
-#define LIVES_CYCLES  4
-static unsigned char lives_l1[LIVES_CYCLES * LIVES_SIZE];
+/* Position of the rightmost dynamic life indicator; we paint
+ * spr_lives_indicator (16x6 px sprite at $7AFC) here. */
+#define LIVES_X_PX    24
+#define LIVES_Y_PX    184
+
+/* The original game's sprite block, extracted verbatim from the
+ * program at $7A8C..$17E0 (offset 0x128c..0x17e0 within
+ * 03_DATA_headless.dat.bin). Format per sprite:
+ *   byte 0  -- width in bytes
+ *   byte 1  -- height in rows
+ *   then h rows of w (mask, pixel) pairs - blit semantics described
+ *   in blit_masked_sprite below.
+ * The constants below are offsets WITHIN sprites_blob. */
+#define SPRITES_BLOB_SIZE 0x554
+static unsigned char sprites_blob[SPRITES_BLOB_SIZE];
+#define SPR_BIG_BALL     (0x7A8C - 0x7A8C)   /* = 0x000 */
+#define SPR_LIVES        (0x7AFC - 0x7A8C)   /* = 0x070 */
+#define SPR_BALL_NORMAL  (0x7B16 - 0x7A8C)   /* = 0x08a */
+#define SPR_BAT_NORMAL   (0x7E38 - 0x7A8C)   /* = 0x3ac */
+#define SPR_BAT_BIG      (0x7F42 - 0x7A8C)   /* = 0x4b6 */
 
 /* Perimeter frame (top + left + right, no bottom). Each side strip is
  * 3 cols wide -- the third col (col 2 left, col 29 right) is the
@@ -601,20 +608,10 @@ static int load_bg_tile(const char *path) {
     return 0;
 }
 
-static int load_bat(const char *path) {
+static int load_sprites(const char *path) {
     FILE *f = fopen(path, "rb");
     if (!f) return -1;
-    if (fread(bat_l1, 1, sizeof(bat_l1), f) != sizeof(bat_l1)) {
-        fclose(f); return -2;
-    }
-    fclose(f);
-    return 0;
-}
-
-static int load_lives(const char *path) {
-    FILE *f = fopen(path, "rb");
-    if (!f) return -1;
-    if (fread(lives_l1, 1, sizeof(lives_l1), f) != sizeof(lives_l1)) {
+    if (fread(sprites_blob, 1, sizeof(sprites_blob), f) != sizeof(sprites_blob)) {
         fclose(f); return -2;
     }
     fclose(f);
@@ -695,85 +692,73 @@ static void render_frame(unsigned char cycle, unsigned char level_idx) {
                 right_col * 8, FRAME_TOP_H_PX);
 }
 
-/* Paint a width-bytes x height-px raw-pixel block at (x_px, y_px)
- * playfield-relative, using ink/paper from `attr`. Used for all
- * paint-it-verbatim composites (bat, lives, etc.). */
-static void paint_block(const unsigned char *src, int w_bytes, int h_px,
-                        int x_px, int y_px, unsigned char attr) {
-    unsigned char ink   = ink_pal(attr);
-    unsigned char paper = paper_pal(attr);
-    int r, c, bit;
-    unsigned char b;
-    int x0 = BORDER_X + x_px;
-    int y0 = BORDER_Y + y_px;
-    for (r = 0; r < h_px; r++) {
-        for (c = 0; c < w_bytes; c++) {
-            b = src[r * w_bytes + c];
+/* Blit an original-format masked sprite at playfield (x_px, y_px).
+ *
+ * Sprite layout (verbatim from the program at $7A8C+):
+ *   byte 0     = width in bytes
+ *   byte 1     = height in rows
+ *   then h * w pairs of (mask_byte, pixel_byte) per byte-column.
+ *
+ * Original blit (sub_94BC's inner loop at byte_put_width_*):
+ *   screen' = (mask | screen) ^ pixel
+ *   per 8-pixel chunk. For VGA we walk each bit individually:
+ *     mask=1, pixel=0  ->  ink     (the sprite's solid body)
+ *     mask=1, pixel=1  ->  paper   (the sprite's internal texture)
+ *     mask=0           ->  preserve background (sprite transparent)
+ *   The XOR-on-mask=0 case (shadow effect) collapses to "preserve"
+ *   here because we don't track screen as 1-bit; visually the bat
+ *   shadow rows pick up mask=1 bits on their own. */
+static void blit_masked_sprite(unsigned int sprite_off, int x_px, int y_px,
+                               unsigned char ink, unsigned char paper) {
+    const unsigned char *src = sprites_blob + sprite_off;
+    int w = src[0];
+    int h = src[1];
+    const unsigned char *p = src + 2;
+    int row, col_byte, bit;
+    for (row = 0; row < h; row++) {
+        int y = y_px + row;
+        for (col_byte = 0; col_byte < w; col_byte++) {
+            unsigned char mask = *p++;
+            unsigned char pix  = *p++;
+            int base_x = x_px + col_byte * 8;
             for (bit = 0; bit < 8; bit++) {
-                vga[(long)(y0 + r) * SCREEN_W + x0 + c * 8 + bit] =
-                    (b & (0x80 >> bit)) ? ink : paper;
+                if (mask & (0x80 >> bit)) {
+                    int x = base_x + bit;
+                    if (x < 0 || x >= PLAYFIELD_W) continue;
+                    if (y < 0 || y >= PLAYFIELD_H) continue;
+                    vga[(long)(BORDER_Y + y) * SCREEN_W + BORDER_X + x] =
+                        (pix & (0x80 >> bit)) ? paper : ink;
+                }
             }
         }
     }
 }
 
-/* Draw a visible bat at (bat_x, BAT_Y_PX). The previously-shipped
- * bat_l1.bin turned out to be the hex bg pattern at the bat position
- * in the modded-batty GT capture (the gameplay loop was patched to
- * spin so the bat is never actually drawn into VRAM); it's effectively
- * invisible against the bg. This hand-drawn placeholder is bright
- * white with a darker shadow row so the player can see it. The real
- * port through spr_bat_normal lands alongside the masked-sprite
- * blitter (obj_processing) work.
- *
- * Layout (40 px wide, 10 px tall):
- *   rows 0..7  -- bright white body (palette 15)
- *   rows 8..9  -- dark shadow band (palette 1 = blue, looks dim) */
+/* Bat colour: original uses a per-cycle attr; for now hardcode bright
+ * cyan ink on black paper which is the L1 bat appearance and reads as
+ * a recognisable "paddle". Replace with the per-level attr table once
+ * print_sprite_attrib ($C051) is ported. */
 static void render_bat(unsigned char cycle, unsigned char attr) {
-    int x0 = BORDER_X + bat_x;
-    int y0 = BORDER_Y + BAT_Y_PX;
-    int w  = BAT_W_BYTES * 8;        /* 40 px */
-    int r, c;
+    unsigned int spr = big_bat_ticks ? SPR_BAT_BIG : SPR_BAT_NORMAL;
+    int x = big_bat_ticks ? (bat_x - BAT_BIG_EXTRA_PX) : bat_x;
     (void)cycle; (void)attr;
-    /* Body */
-    for (r = 0; r < 8; r++) {
-        for (c = 0; c < w; c++) {
-            vga[(long)(y0 + r) * SCREEN_W + x0 + c] = 15;
-        }
-    }
-    /* Shadow band */
-    for (r = 8; r < 10; r++) {
-        for (c = 0; c < w; c++) {
-            vga[(long)(y0 + r) * SCREEN_W + x0 + c] = 1;
-        }
-    }
-    /* BIG_BAT power-up: flank the bat with 8-px wide strips. */
-    if (big_bat_ticks) {
-        int xL = x0 - BAT_BIG_EXTRA_PX;
-        int xR = x0 + w;
-        fill(xL, y0,     BAT_BIG_EXTRA_PX, 8, 15);
-        fill(xR, y0,     BAT_BIG_EXTRA_PX, 8, 15);
-        fill(xL, y0 + 8, BAT_BIG_EXTRA_PX, 2,  1);
-        fill(xR, y0 + 8, BAT_BIG_EXTRA_PX, 2,  1);
-    }
+    blit_masked_sprite(spr, x, BAT_Y_PX, 13 /* bright cyan */, 0 /* black */);
 }
 
-/* The left life indicator is baked into the frame strip; this function
- * paints (lives - 2) dynamic right indicators, capped at 4 for layout.
- * Matches the original's "indicators displayed = lives - 1" semantics
- * (the bat itself counts as the current life) once the baked-in left
- * one is factored in. lives=3 -> 1 dynamic indicator (= state4 GT). */
+/* Display (lives - 2) right-side indicators next to the left one
+ * baked into the frame strip. Cap at 4 to fit. */
 #define LIVES_DYNAMIC_MAX 4
 static void render_lives(unsigned char cycle, unsigned char attr) {
-    const unsigned char *src = lives_l1 + (int)cycle * LIVES_SIZE;
     int show = lives - 2;
     int i;
+    (void)cycle; (void)attr;
     if (show < 0) show = 0;
     if (show > LIVES_DYNAMIC_MAX) show = LIVES_DYNAMIC_MAX;
     for (i = 0; i < show; i++) {
-        paint_block(src, LIVES_W_BYTES, LIVES_H_PX,
-                    LIVES_X_PX + i * (LIVES_W_BYTES * 8),
-                    LIVES_Y_PX, attr);
+        blit_masked_sprite(SPR_LIVES,
+                           LIVES_X_PX + i * 16,
+                           LIVES_Y_PX,
+                           14 /* bright yellow */, 0);
     }
 }
 
@@ -1311,49 +1296,14 @@ static void paint_bg_strip(unsigned char attr, unsigned char cycle,
 #define KEY_P_LOWER 'p'
 #define KEY_P_UPPER 'P'
 
-/* Paint the ball at (x, y) playfield-relative in `colour`. Uses
- * round-cornered disc shapes that approximate the original
- * spr_ball_normal silhouette ($7B16). Small (4x4) by default, big
- * (8x8) while the BIG_BALL power-up is active. */
-static const unsigned char ball_small[4] = {
-    0x6,  /* .##. */
-    0xF,  /* #### */
-    0xF,  /* #### */
-    0x6   /* .##. */
-};
-static const unsigned char ball_big[8] = {
-    0x3C,  /* ..####.. */
-    0x7E,  /* .######. */
-    0xFF,  /* ######## */
-    0xFF,  /* ######## */
-    0xFF,  /* ######## */
-    0xFF,  /* ######## */
-    0x7E,  /* .######. */
-    0x3C   /* ..####.. */
-};
+/* Paint the ball at (x, y) using the original spr_ball_normal /
+ * spr_big_ball sprite data. `colour` is ignored - ball uses bright
+ * white ink (= the original's ball colour) with black for the
+ * shadow's paper texture. */
 static void render_ball(int x, int y, unsigned char colour) {
-    int x0 = BORDER_X + x;
-    int y0 = BORDER_Y + y;
-    int r, c;
-    if (big_ball_ticks) {
-        for (r = 0; r < 8; r++) {
-            unsigned char bits = ball_big[r];
-            for (c = 0; c < 8; c++) {
-                if (bits & (0x80 >> c)) {
-                    vga[(long)(y0 + r) * SCREEN_W + x0 + c] = colour;
-                }
-            }
-        }
-    } else {
-        for (r = 0; r < 4; r++) {
-            unsigned char bits = ball_small[r];
-            for (c = 0; c < 4; c++) {
-                if (bits & (0x8 >> c)) {
-                    vga[(long)(y0 + r) * SCREEN_W + x0 + c] = colour;
-                }
-            }
-        }
-    }
+    unsigned int spr = big_ball_ticks ? SPR_BIG_BALL : SPR_BALL_NORMAL;
+    (void)colour;
+    blit_masked_sprite(spr, x, y, 15 /* bright white */, 0 /* black */);
 }
 
 /* Paint the 8x6 bonus sprite, with a simple "L" / "S" letter overlay
@@ -1425,11 +1375,16 @@ static void bonus_apply(unsigned char type) {
 }
 
 /* Current effective bat geometry (varies with big_bat_ticks). */
+/* spr_bat_big is 48 px wide (6 bytes) vs spr_bat_normal's 32 px (4
+ * bytes). Keep the bat visually centred on bat_x by rendering big
+ * bat 8 px further left; hitbox widens correspondingly. */
 static int eff_bat_left(void)  { return bat_x - (big_bat_ticks ? BAT_BIG_EXTRA_PX : 0); }
 static int eff_bat_right(void) { return bat_x + BAT_W_BYTES * 8 + (big_bat_ticks ? BAT_BIG_EXTRA_PX : 0); }
 
-/* Current effective ball geometry (varies with big_ball_ticks). */
-static int eff_ball_size(void) { return big_ball_ticks ? 8 : BALL_W_PX; }
+/* Current effective ball body size. spr_ball_normal body is 8x7;
+ * spr_big_ball body fills the full 2-byte * 12 row sprite at its
+ * widest = ~12 px in the middle rows. We approximate as 12. */
+static int eff_ball_size(void) { return big_ball_ticks ? 12 : BALL_W_PX; }
 
 /* Advance the falling bonus, check for catch on the bat, and tick down
  * any active effect timers. */
@@ -1874,9 +1829,8 @@ int main(void) {
         load_levels("LEVELS.BIN") != 0 ||
         load_level_attrs("LVLATTR.BIN") != 0 ||
         load_bg_tile("BGTILE.BIN") != 0 ||
-        load_bat("BATL1.BIN") != 0 ||
         load_frame("FRAMEL1.BIN") != 0 ||
-        load_lives("LIVESL1.BIN") != 0) {
+        load_sprites("SPRITES.BIN") != 0) {
         fill(0, 0, SCREEN_W, SCREEN_H, 10 /* bright red */);
     }
 

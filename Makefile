@@ -37,8 +37,8 @@ ASSETS  = assets/loading.bin assets/hi_score.bin assets/main_menu.bin \
           assets/font.bin assets/markup.bin assets/main_menu_markup.bin \
           assets/indicator.bin assets/bottom_sprites.bin \
           assets/levels.bin assets/level_attrs.bin \
-          assets/bg_tile.bin assets/bat_l1.bin assets/frame_l1.bin \
-          assets/lives_l1.bin
+          assets/bg_tile.bin assets/frame_l1.bin \
+          assets/sprites.bin
 HISCORE_SNAP      ?= build/snapshots/20260513T202038Z/screen.scr
 MAINMENU_SNAP     ?= build/snapshots/20260513T202041Z/screen.scr
 MAINMENU_SNAP_RAM ?= build/snapshots/20260513T202041Z/ram_4000_FFFF.bin
@@ -135,13 +135,6 @@ assets/bg_tile.bin: build/level_gt/level_01.scr scripts/extract_bg_tile.py
 	@echo "wrote $@ ($$(wc -c < $@) bytes)"
 
 # Bat + on-bat ball composite at level-1 start: 4 bytes x 16 rows
-# (= 32 x 16 px) at L1 pixel (112, 167). Includes the ball resting
-# on the bat. Static L1 snapshot; will be replaced by per-frame bat
-# render once Phase E (motion) lands.
-assets/bat_l1.bin: build/level_gt/level_01.scr scripts/extract_bat.py
-	python3 scripts/extract_bat.py $@
-	@echo "wrote $@ ($$(wc -c < $@) bytes)"
-
 # Perimeter frame (top HUD + left + right cyan strips). 3 strips
 # painted as raw pixels + per-char attrs; bottom edge has no frame
 # ornament, so we skip it. ~1.3 KB total.
@@ -149,10 +142,16 @@ assets/frame_l1.bin: build/level_gt/level_01.scr scripts/extract_frame.py
 	python3 scripts/extract_frame.py $@
 	@echo "wrote $@ ($$(wc -c < $@) bytes)"
 
-# Second life indicator at bottom-left (the first one is captured by
-# the wide frame strip). 2 bytes wide x 8 rows = 16 B.
-assets/lives_l1.bin: build/level_gt/level_01.scr scripts/extract_lives.py
-	python3 scripts/extract_lives.py $@
+# Sprite block extracted verbatim from the original game's program at
+# $7A8C..$17E0 (offset $128C..$17E0 within 03_DATA_headless.dat.bin,
+# which loads at $6800). Contains all masked sprites we need:
+#   spr_big_ball, spr_lives_indicator, spr_ball_normal,
+#   spr_bat_normal, spr_bat_big  (offsets recorded in main.c).
+# Format per sprite: (width_bytes, height_rows) + rows of (mask, pixel)
+# pairs per byte-column, drawn via blit_masked_sprite.
+assets/sprites.bin: original/blocks/03_DATA_headless.dat.bin
+	@python3 -c "import sys; b=open('$<','rb').read(); \
+		open('$@','wb').write(b[0x128c:0x17e0])"
 	@echo "wrote $@ ($$(wc -c < $@) bytes)"
 
 # Bottom decorative sprite + arrow combined: 32x13 each (4 bytes
@@ -187,9 +186,8 @@ $(FLOPPY_OUT): $(EXE) $(ASSETS) $(FLOPPY_SRC)
 	mcopy -i $@ -o assets/levels.bin ::LEVELS.BIN
 	mcopy -i $@ -o assets/level_attrs.bin ::LVLATTR.BIN
 	mcopy -i $@ -o assets/bg_tile.bin ::BGTILE.BIN
-	mcopy -i $@ -o assets/bat_l1.bin ::BATL1.BIN
 	mcopy -i $@ -o assets/frame_l1.bin ::FRAMEL1.BIN
-	mcopy -i $@ -o assets/lives_l1.bin ::LIVESL1.BIN
+	mcopy -i $@ -o assets/sprites.bin ::SPRITES.BIN
 	@printf '@ECHO OFF\r\nBATTY\r\n' > build/AUTOEXEC.BAT
 	mcopy -i $@ -o build/AUTOEXEC.BAT ::AUTOEXEC.BAT
 	@echo "Floppy ready: $@  (menu-only cycle)"
@@ -208,9 +206,8 @@ $(TEST_FLOPPY_OUT): $(EXE) $(ASSETS) $(FLOPPY_SRC)
 	mcopy -i $@ -o assets/levels.bin ::LEVELS.BIN
 	mcopy -i $@ -o assets/level_attrs.bin ::LVLATTR.BIN
 	mcopy -i $@ -o assets/bg_tile.bin ::BGTILE.BIN
-	mcopy -i $@ -o assets/bat_l1.bin ::BATL1.BIN
 	mcopy -i $@ -o assets/frame_l1.bin ::FRAMEL1.BIN
-	mcopy -i $@ -o assets/lives_l1.bin ::LIVESL1.BIN
+	mcopy -i $@ -o assets/sprites.bin ::SPRITES.BIN
 	@printf '@ECHO OFF\r\nSET BATTYALL=1\r\nBATTY\r\n' > build/AUTOEXEC-T.BAT
 	mcopy -i $@ -o build/AUTOEXEC-T.BAT ::AUTOEXEC.BAT
 	@echo "Test floppy ready: $@  (full 4-state cycle)"
