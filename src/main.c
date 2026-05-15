@@ -2099,14 +2099,21 @@ static unsigned int spr_for_bonus(unsigned char t) {
     }
 }
 
-/* Paint the bonus into scr_buff + attr_buff. The original game shows
- * the bonus on a solid-black backdrop inside its char cells (the bg
- * pattern is wiped under the bonus), so the surrounding bg-pattern
- * yellow bits don't recolour-clash into the bonus's ink. We clear
- * scr_buff at the bonus's char cells before the masked blit, then
- * set attr to (bright | bonus_ink | bg_paper) so the cell's PAPER
- * matches the surrounding bg paper (typically black) and only the
- * bonus body shows in the per-type ink colour. */
+/* Paint the bonus into scr_buff + attr_buff. The bonus sprite is
+ * actually 24 px wide x 13 rows tall (3 bytes x 13 rows) including
+ * a trailing drop-shadow band — earlier code used BONUS_W_PX=8 /
+ * BONUS_H_PX=6 for the attr override which only covered ~1/3 of the
+ * sprite, leaving the outer body pixels rendering with bg_attr (=
+ * invisible yellow on yellow). Read the actual sprite header for
+ * the attr-write extent.
+ *
+ * Don't clear scr_buff under the bonus: that produced a solid-black
+ * 16x16 backdrop that was MORE jarring than the natural ZX colour
+ * clash. With the bg pattern preserved and the cell attr set to
+ * (bright | bonus_ink | bg_paper), bg-pattern clear bits stay in the
+ * bg's paper colour (matches surrounding cells) and only the set
+ * bits + bonus body recolour to bonus_ink — exactly the artefact
+ * the original game produces. */
 static void render_bonus_to_buff(unsigned char bg) {
     unsigned int spr = spr_for_bonus(bonus_type);
     unsigned char idx = (bonus_type < BONUS_TYPE_COUNT)
@@ -2115,24 +2122,10 @@ static void render_bonus_to_buff(unsigned char bg) {
     unsigned char attr = (unsigned char)(0x40
                                          | (col & 7)
                                          | (bg & 0x38));
-    int col_lo = bonus_x / 8;
-    int col_hi = (bonus_x + BONUS_W_PX - 1) / 8;
-    int row_lo = bonus_y / 8;
-    int row_hi = (bonus_y + BONUS_H_PX - 1) / 8;
-    int r, c, y;
-    if (col_lo < 0) col_lo = 0;
-    if (row_lo < 0) row_lo = 0;
-    if (col_hi >= 32) col_hi = 31;
-    if (row_hi >= ATTR_ROWS) row_hi = ATTR_ROWS - 1;
-    for (r = row_lo; r <= row_hi; r++) {
-        for (y = r * 8; y < (r + 1) * 8 && y < PLAYFIELD_H; y++) {
-            for (c = col_lo; c <= col_hi; c++) {
-                scr_buff[y * 32 + c] = 0;
-            }
-        }
-    }
+    int spr_w_px = sprites_blob[spr]     * 8;
+    int spr_h_px = sprites_blob[spr + 1];
+    blit_sprite_attrs_to_buff(bonus_x, bonus_y, spr_w_px, spr_h_px, attr);
     blit_masked_to_scr_buff(spr, bonus_x, bonus_y);
-    blit_sprite_attrs_to_buff(bonus_x, bonus_y, BONUS_W_PX, BONUS_H_PX, attr);
 }
 
 /* Apply the effect that comes with `type`. Catching the same type
