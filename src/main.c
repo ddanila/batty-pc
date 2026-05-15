@@ -391,6 +391,28 @@ static const unsigned char spr_brik_1[16] = {
     0x80, 0x00, 0x80, 0x00, 0x80, 0x00, 0x00, 0x00
 };
 
+/* spr_bomb at $786A. Lives outside our SPRITES.BIN range ($7A8C+), so
+ * embed it directly. 2-byte-wide x 16-row sprite, 66 bytes total. */
+static const unsigned char spr_bomb_data[66] = {
+    0x02, 0x10,
+    0x7C, 0x00, 0x00, 0x00,
+    0xFE, 0x5C, 0x00, 0x00,
+    0x7C, 0x38, 0x00, 0x00,
+    0x38, 0x00, 0x00, 0x00,
+    0x7C, 0x38, 0x00, 0x00,
+    0xFE, 0x5C, 0x00, 0x00,
+    0xFE, 0x5C, 0x00, 0x00,
+    0xFE, 0x5C, 0xF8, 0x00,
+    0xFE, 0x5C, 0x70, 0x00,
+    0x7C, 0x38, 0x00, 0x00,
+    0x38, 0x00, 0x70, 0x00,
+    0x00, 0x00, 0xF8, 0x00,
+    0x00, 0x00, 0xF8, 0x00,
+    0x00, 0x00, 0xF8, 0x00,
+    0x00, 0x00, 0xF8, 0x00,
+    0x00, 0x00, 0x70, 0x00
+};
+
 static const unsigned char briks_colors[10] = {
     0x00,                          /* [0] never indexed (low nibble == 0
                                     * means "skip" per the cell format). */
@@ -468,6 +490,18 @@ static unsigned char ball_stuck   = 1;
  * auto-launches. ~5 sec at 50 Hz. */
 #define STUCK_TIMEOUT 250
 static unsigned int stuck_ticks = 0;
+
+/* Bomb state - port of bomb_appear at $A977. UFOs (and birds) drop a
+ * single bomb that falls toward the bat. Mutually exclusive with a
+ * regular bonus in the original since they share object_bonus; here
+ * we keep separate side state. Bat collision = lose life like a
+ * ball drop. */
+static unsigned char bomb_active = 0;
+static int           bomb_x = 0;
+static int           bomb_y = 0;
+#define BOMB_FALL_SPEED 1
+#define BOMB_W_PX       8
+#define BOMB_H_PX       12
 /* ball_visible is encoded in objects[OBJ_BALL_1].sprite_set bit 7:
  *   sprite_set == 0x02  -> active, drawn
  *   sprite_set == 0x82  -> inactive, not drawn (BIT 7 set per
@@ -836,9 +870,18 @@ static void render_frame(unsigned char cycle, unsigned char level_idx) {
  *   The XOR-on-mask=0 case (shadow effect) collapses to "preserve"
  *   here because we don't track screen as 1-bit; visually the bat
  *   shadow rows pick up mask=1 bits on their own. */
+static void blit_masked_sprite_ptr(const unsigned char *src,
+                                    int x_px, int y_px,
+                                    unsigned char ink, unsigned char paper);
+
 static void blit_masked_sprite(unsigned int sprite_off, int x_px, int y_px,
                                unsigned char ink, unsigned char paper) {
-    const unsigned char *src = sprites_blob + sprite_off;
+    blit_masked_sprite_ptr(sprites_blob + sprite_off, x_px, y_px, ink, paper);
+}
+
+static void blit_masked_sprite_ptr(const unsigned char *src,
+                                    int x_px, int y_px,
+                                    unsigned char ink, unsigned char paper) {
     int w = src[0];
     int h = src[1];
     const unsigned char *p = src + 2;
@@ -1019,6 +1062,7 @@ static void handling_400pts_obj(object_t *o){ (void)o; }
  * bomb-drop subprocess; we simplify to straight-line motion that
  * leaves the descriptor's IX+$06 = dir byte intact for collision
  * checks the rest of the code can probe. */
+static void bomb_appear(object_t *o);     /* forward decl */
 static void handling_bird_obj(object_t *o) {
     /* Advance per IX+$07 = speed; cross from left edge to right when
      * dir LSB = 0, else right-to-left. misc_12 doubles as the frame
@@ -1029,6 +1073,7 @@ static void handling_bird_obj(object_t *o) {
     int nx = (int)o->x_coord + dx;
     o->misc_12++;
     o->sprite_num = (unsigned char)((o->misc_12 >> 2) % 3);
+    bomb_appear(o);
     if (nx < 8 || nx >= PLAYFIELD_W - 8 - (int)o->w_body_px) {
         o->sprite_set |= 0x80;       /* off-screen: BIT 7 = inactive */
         return;
@@ -2135,6 +2180,49 @@ static void kill_enemy_by_bat(void) {
     snd_q_push(SND_SHOT);                           /* descending zip ~= blast */
 }
 
+/* Port of bomb_appear at $A977 - called per alien tick. Probability
+ * (random + random+1) & $3F == 0 = ~1/64 chance per call. Bomb
+ * shares the bonus slot in the original; we keep separate state. */
+static void bomb_appear(object_t *o) {
+    unsigned int r;
+    if (bomb_active) return;
+    if (bonus_active) return;
+    r = next_random();
+    if ((((r >> 8) ^ (r & 0xFF)) & 0x3F) != 0) return;
+    /* Only spawn while alien still in upper half (y < $C0 = 192). */
+    if (o->y_coord + 8 >= 0xC0) return;
+    bomb_active = 1;
+    bomb_x = (int)o->x_coord + 8;
+    bomb_y = (int)o->y_coord + 8;
+}
+
+/* Step the bomb each frame: fall, check bat collision, deactivate
+ * past the bottom. Bat hit costs a life and respawns the ball. */
+static void step_bomb(void) {
+    int bx_l, bx_r, by_t, by_b;
+    if (!bomb_active) return;
+    bomb_y += BOMB_FALL_SPEED;
+    /* Check bat collision (8 x 12 bomb rect vs bat top 8-px band). */
+    bx_l = bomb_x; bx_r = bomb_x + BOMB_W_PX;
+    by_t = bomb_y + BOMB_H_PX - 4; by_b = bomb_y + BOMB_H_PX;
+    if (by_b >= BAT_Y_PX && by_t < BAT_Y_PX + 8
+        && bx_r > eff_bat_left() && bx_l < eff_bat_right()) {
+        /* Bomb hit the bat - lose a life, ball respawns stuck. */
+        bomb_active = 0;
+        if (lives > 0) lives--;
+        ball_stuck = 1;
+        stuck_ticks = 0;
+        BALL_SHOW();
+        BALL_X = BAT_X + BALL_X_OFFSET_ON_BAT;
+        BALL_Y = BAT_Y_PX - eff_ball_size();
+        ball_dx = +BALL_SPEED;
+        ball_dy = -BALL_SPEED;
+        snd_q_push(SND_BALL_START);
+        return;
+    }
+    if (bomb_y > PLAYFIELD_H) bomb_active = 0;
+}
+
 /* Step the ball one frame: handle wall + bat collisions. If the ball
  * exits the bottom of the playfield it respawns stuck on the bat. */
 static void step_ball(void) {
@@ -2230,6 +2318,10 @@ static void redraw_full_with_ball(unsigned char level_idx) {
     render_hud_score();
     render_hud_powerups();
     if (bonus_active) render_bonus();
+    if (bomb_active) {
+        blit_masked_sprite_ptr(spr_bomb_data, bomb_x, bomb_y,
+                               10 /* bright red */, 0);
+    }
     if (pts_400_ticks > 0) {
         unsigned char ink = ink_pal(bg_attr);
         unsigned char paper = paper_pal(bg_attr);
@@ -2366,6 +2458,7 @@ static state_t run_level(void) {
         ball_dx       = +BALL_SPEED;
         ball_dy       = -BALL_SPEED;
         bonus_active   = 0;
+        bomb_active    = 0;
         pts_400_ticks  = 0;
         slow_ticks     = 0;
         big_bat_ticks  = 0;
@@ -2477,6 +2570,7 @@ static state_t run_level(void) {
                 }
                 step_bonus();
                 step_pts_400();
+                step_bomb();
                 /* Mirror of LB9E8_2..LB9E8_3 ($BA83..$BAD9):
                  *   enemy_prepare    -- maybe spawn alien
                  *   handling_bat     -- bat motion (here via key_state)
@@ -2495,6 +2589,7 @@ static state_t run_level(void) {
                 if (pts_400_ticks > 0) ball_moved = 1;
                 if (bat_extra_px != bat_extra_tgt) bat_moved = 1;
                 if (objects[OBJ_ENEMY].sprite_set != 0) ball_moved = 1;
+                if (bomb_active) ball_moved = 1;
             }
 
             if (BAT_X != BAT_PREV_X) {
