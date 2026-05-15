@@ -2707,12 +2707,15 @@ static void score_to_codes(unsigned long s, unsigned char out[6]) {
 static void render_hud_score(void) {
     unsigned char digits[6];
     score_to_codes(score, digits);
-    draw_text(HUD_SCORE_X, HUD_SCORE_Y, 15, digits, 6);
+    /* Match the GT's frame-baked digit colour (palette idx 6 =
+     * non-bright yellow). The "HI" / "1UP" labels around it stay
+     * in white per the frame ornament. */
+    draw_text(HUD_SCORE_X, HUD_SCORE_Y, 6, digits, 6);
 }
 static void render_hud_high_score(void) {
     unsigned char digits[6];
     score_to_codes(high_score, digits);
-    draw_text(HUD_HISCORE_X, HUD_HISCORE_Y, 15, digits, 6);
+    draw_text(HUD_HISCORE_X, HUD_HISCORE_Y, 6, digits, 6);
 }
 /* Letter chips for the active power-up effects, painted in the bonus
  * colour so the player can see at a glance what's running. Encoded
