@@ -421,12 +421,12 @@ static unsigned char bg_tile[BG_TILE_CYCLES * BG_TILE_SIZE];
  * the dithered shadow drop. */
 #define BAT_W_BYTES 4
 #define BAT_H_PX    13
-#define BAT_Y_PX    167
+#define BAT_Y_PX    0xAD            /* = 173, matches object_bat_1.y_coord */
 #define BAT_X_MIN     8
 #define BAT_X_MAX   216
-#define BAT_X_INIT  112
-static int bat_x      = BAT_X_INIT;
-static int bat_x_prev = BAT_X_INIT;
+#define BAT_X_INIT  0x74             /* = 116, matches object_bat_1.x_coord */
+/* The bat's authoritative state lives in objects[OBJ_BAT_1] - macros
+ * defined after the object table below. */
 
 /* Ball geometry from the original spr_ball_normal ($7B16): 2-byte-wide
  * sprite (16 px) with body in left byte (8 px) and shadow in right
@@ -435,8 +435,8 @@ static int bat_x_prev = BAT_X_INIT;
 #define BALL_W_PX   8          /* body width for collision */
 #define BALL_H_PX   7          /* body height */
 #define BALL_SPEED  2
-#define BALL_X_OFFSET_ON_BAT 12 /* roughly centres ball body (8 px) on
-                                 * the 32-px bat body */
+#define BALL_X_OFFSET_ON_BAT 16  /* = $84 - $74, matches the original's
+                                  * object_ball_1.x_coord - object_bat_1.x_coord */
 #define BALL_Y_TOP    24
 #define BALL_X_MIN     8
 #define BALL_X_MAX   240        /* 256 - 8 - body 8 */
@@ -738,30 +738,6 @@ static void blit_masked_sprite(unsigned int sprite_off, int x_px, int y_px,
  * palette as the surrounding hex pattern, as in the original. The bat
  * texture-detail (mask=1, pixel=1 pixels) renders as paper colour;
  * body pixels (mask=1, pixel=0) render as ink. */
-static void render_bat(unsigned char cycle, unsigned char attr) {
-    unsigned int spr = big_bat_ticks ? SPR_BAT_BIG : SPR_BAT_NORMAL;
-    int x = big_bat_ticks ? (bat_x - BAT_BIG_EXTRA_PX) : bat_x;
-    (void)cycle;
-    blit_masked_sprite(spr, x, BAT_Y_PX, ink_pal(attr), paper_pal(attr));
-}
-
-/* Display (lives - 2) right-side indicators next to the left one
- * baked into the frame strip. Cap at 4 to fit. */
-#define LIVES_DYNAMIC_MAX 4
-static void render_lives(unsigned char cycle, unsigned char attr) {
-    int show = lives - 2;
-    int i;
-    (void)cycle;
-    if (show < 0) show = 0;
-    if (show > LIVES_DYNAMIC_MAX) show = LIVES_DYNAMIC_MAX;
-    for (i = 0; i < show; i++) {
-        blit_masked_sprite(SPR_LIVES,
-                           LIVES_X_PX + i * 16,
-                           LIVES_Y_PX,
-                           ink_pal(attr), paper_pal(attr));
-    }
-}
-
 /* --- Object model (port of the 22-byte descriptor at $9AD0+) ----------
  *
  * Mirror of the original's per-object property block. Field names
@@ -873,6 +849,12 @@ static object_t objects[N_OBJECTS] = {
  * 11-slot iteration. We'll add them when handling_object work makes
  * them load-bearing - for now they're rendered by the legacy paths. */
 
+/* Sugar over the bat's descriptor fields so gameplay code reads
+ * naturally. The bat is anchored by object_bat_1 (the original game's
+ * 1P bat); object_bat_2 covers 2P mode. */
+#define BAT_X       (objects[OBJ_BAT_1].x_coord)
+#define BAT_PREV_X  (objects[OBJ_BAT_1].prev_x)
+
 /* --- Per-object handler dispatch (handling_object @ $9F54) ------------ */
 
 typedef void (*obj_handler_t)(object_t *obj);
@@ -937,6 +919,30 @@ static void ix_buf_addr_calc(object_t *obj) {
     obj->buf_addr_hi = (unsigned char)((off >> 8) & 0xFF);
     obj->buf_addr_lo = (unsigned char)(off & 0xFF);
 }
+static void render_bat(unsigned char cycle, unsigned char attr) {
+    unsigned int spr = big_bat_ticks ? SPR_BAT_BIG : SPR_BAT_NORMAL;
+    int x = big_bat_ticks ? (BAT_X - BAT_BIG_EXTRA_PX) : BAT_X;
+    (void)cycle;
+    blit_masked_sprite(spr, x, BAT_Y_PX, ink_pal(attr), paper_pal(attr));
+}
+
+/* Display (lives - 2) right-side indicators next to the left one
+ * baked into the frame strip. Cap at 4 to fit. */
+#define LIVES_DYNAMIC_MAX 4
+static void render_lives(unsigned char cycle, unsigned char attr) {
+    int show = lives - 2;
+    int i;
+    (void)cycle;
+    if (show < 0) show = 0;
+    if (show > LIVES_DYNAMIC_MAX) show = LIVES_DYNAMIC_MAX;
+    for (i = 0; i < show; i++) {
+        blit_masked_sprite(SPR_LIVES,
+                           LIVES_X_PX + i * 16,
+                           LIVES_Y_PX,
+                           ink_pal(attr), paper_pal(attr));
+    }
+}
+
 
 /* --- Brick compositor (port of $ADE1..$AEEC) -------------------------- */
 
@@ -1685,10 +1691,10 @@ static void bonus_apply(unsigned char type) {
 
 /* Current effective bat geometry (varies with big_bat_ticks). */
 /* spr_bat_big is 48 px wide (6 bytes) vs spr_bat_normal's 32 px (4
- * bytes). Keep the bat visually centred on bat_x by rendering big
+ * bytes). Keep the bat visually centred on BAT_X by rendering big
  * bat 8 px further left; hitbox widens correspondingly. */
-static int eff_bat_left(void)  { return bat_x - (big_bat_ticks ? BAT_BIG_EXTRA_PX : 0); }
-static int eff_bat_right(void) { return bat_x + BAT_W_BYTES * 8 + (big_bat_ticks ? BAT_BIG_EXTRA_PX : 0); }
+static int eff_bat_left(void)  { return BAT_X - (big_bat_ticks ? BAT_BIG_EXTRA_PX : 0); }
+static int eff_bat_right(void) { return BAT_X + BAT_W_BYTES * 8 + (big_bat_ticks ? BAT_BIG_EXTRA_PX : 0); }
 
 /* Current effective ball body size. spr_ball_normal body is 8x7;
  * spr_big_ball body fills the full 2-byte * 12 row sprite at its
@@ -1779,7 +1785,7 @@ static void step_ball(void) {
     int bat_top   = BAT_Y_PX;
     int ball_sz   = eff_ball_size();
     if (ball_stuck) {
-        ball_x = bat_x + BALL_X_OFFSET_ON_BAT;
+        ball_x = BAT_X + BALL_X_OFFSET_ON_BAT;
         ball_y = BAT_Y_PX - ball_sz;
         return;
     }
@@ -1819,7 +1825,7 @@ static void step_ball(void) {
         if (lives > 0) lives--;
         ball_stuck = 1;
         ball_visible = 0;
-        ball_x = bat_x + BALL_X_OFFSET_ON_BAT;
+        ball_x = BAT_X + BALL_X_OFFSET_ON_BAT;
         ball_y = BAT_Y_PX - ball_sz;
         ball_dx = +BALL_SPEED;
         ball_dy = -BALL_SPEED;
@@ -1967,8 +1973,8 @@ static state_t run_level(void) {
 
     for (i = 0; i < N_LEVELS; i++) {
         int k;
-        bat_x         = BAT_X_INIT;
-        bat_x_prev    = BAT_X_INIT;
+        BAT_X         = BAT_X_INIT;
+        BAT_PREV_X    = BAT_X_INIT;
         ball_stuck    = 1;
         ball_visible  = 0;
         ball_x        = BAT_X_INIT + BALL_X_OFFSET_ON_BAT;
@@ -2020,9 +2026,9 @@ static state_t run_level(void) {
                 if (k == KEY_EXT_PREFIX) {
                     int ext = getch();
                     if (ext == KEY_LEFT) {
-                        if (bat_x > BAT_X_MIN) bat_x -= 4;
+                        if (BAT_X > BAT_X_MIN) BAT_X -= 4;
                     } else if (ext == KEY_RIGHT) {
-                        if (bat_x < BAT_X_MAX) bat_x += 4;
+                        if (BAT_X < BAT_X_MAX) BAT_X += 4;
                     }
                     start = bios_ticks();
                 } else if (k == KEY_SPACE) {
@@ -2034,7 +2040,7 @@ static state_t run_level(void) {
                      * by a 45-deg deterministic launch from the bat's
                      * default x. Aimed AWAY from the nearest wall. */
                     {
-                        int bat_centre = bat_x + (BAT_W_BYTES * 8) / 2;
+                        int bat_centre = BAT_X + (BAT_W_BYTES * 8) / 2;
                         ball_dx = (bat_centre < PLAYFIELD_W / 2) ? +1 : -1;
                         ball_dy = -BALL_SPEED;
                     }
@@ -2073,9 +2079,9 @@ static state_t run_level(void) {
                 if (bonus_active) ball_moved = 1;   /* force redraw to show falling bonus */
             }
 
-            if (bat_x != bat_x_prev) {
+            if (BAT_X != BAT_PREV_X) {
                 bat_moved = 1;
-                bat_x_prev = bat_x;
+                BAT_PREV_X = BAT_X;
             }
 
             if (ball_moved) {
@@ -2083,7 +2089,7 @@ static state_t run_level(void) {
             } else if (bat_moved) {
                 redraw_bat(cycle, bg_attr);
                 if (ball_visible && ball_stuck) {
-                    ball_x = bat_x + BALL_X_OFFSET_ON_BAT;
+                    ball_x = BAT_X + BALL_X_OFFSET_ON_BAT;
                     render_ball(ball_x, ball_y, bg_attr);
                 }
             }
