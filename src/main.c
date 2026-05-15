@@ -440,13 +440,18 @@ static unsigned char bg_tile[BG_TILE_CYCLES * BG_TILE_SIZE];
 #define BALL_Y_TOP    24
 #define BALL_X_MIN     8
 #define BALL_X_MAX   240        /* 256 - 8 - body 8 */
-static int ball_x      = BAT_X_INIT + BALL_X_OFFSET_ON_BAT;
-static int ball_y      = BAT_Y_PX - BALL_H_PX;
+/* Ball state - x/y now live in objects[OBJ_BALL_1].x_coord/y_coord
+ * (the descriptor is the source of truth, mirroring the original's
+ * IX-relative access). Sub-pixel motion (dx, dy) and the
+ * stuck/visible flags stay as side state for now; full direction-
+ * byte port from handling_ball is deferred. */
 static int ball_dx     = +BALL_SPEED;
 static int ball_dy     = -BALL_SPEED;
 static unsigned char ball_stuck   = 1;
-static unsigned char ball_visible = 0;  /* drawn only after first SPACE
-                                         * (keeps state4 capture clean). */
+/* ball_visible is encoded in objects[OBJ_BALL_1].sprite_set bit 7:
+ *   sprite_set == 0x02  -> active, drawn
+ *   sprite_set == 0x82  -> inactive, not drawn (BIT 7 set per
+ *                          original obj_processing convention) */
 
 /* Game-loop state. score is a plain integer; the original uses a
  * 3-byte BCD-ish representation across current_score_1up + the in-game
@@ -854,6 +859,13 @@ static object_t objects[N_OBJECTS] = {
  * 1P bat); object_bat_2 covers 2P mode. */
 #define BAT_X       (objects[OBJ_BAT_1].x_coord)
 #define BAT_PREV_X  (objects[OBJ_BAT_1].prev_x)
+#define BALL_X      (objects[OBJ_BALL_1].x_coord)
+#define BALL_Y      (objects[OBJ_BALL_1].y_coord)
+/* BIT 7 of sprite_set marks the object inactive in the original. We
+ * use the same convention for "ball not yet released / hidden". */
+#define BALL_VISIBLE     ((objects[OBJ_BALL_1].sprite_set & 0x80) == 0)
+#define BALL_SHOW()      (objects[OBJ_BALL_1].sprite_set = 0x02)
+#define BALL_HIDE()      (objects[OBJ_BALL_1].sprite_set = 0x82)
 
 /* --- Per-object handler dispatch (handling_object @ $9F54) ------------ */
 
@@ -1833,12 +1845,12 @@ static void step_ball(void) {
     int bat_top   = BAT_Y_PX;
     int ball_sz   = eff_ball_size();
     if (ball_stuck) {
-        ball_x = BAT_X + BALL_X_OFFSET_ON_BAT;
-        ball_y = BAT_Y_PX - ball_sz;
+        BALL_X = BAT_X + BALL_X_OFFSET_ON_BAT;
+        BALL_Y = BAT_Y_PX - ball_sz;
         return;
     }
-    next_x = ball_x + ball_dx;
-    next_y = ball_y + ball_dy;
+    next_x = BALL_X + ball_dx;
+    next_y = BALL_Y + ball_dy;
     /* Side walls: flip dx, preserving the magnitude the bat-deflection
      * may have set (so a sharp angle survives wall bounces). */
     {
@@ -1872,9 +1884,9 @@ static void step_ball(void) {
     if (next_y > BAT_Y_PX + BAT_H_PX) {
         if (lives > 0) lives--;
         ball_stuck = 1;
-        ball_visible = 0;
-        ball_x = BAT_X + BALL_X_OFFSET_ON_BAT;
-        ball_y = BAT_Y_PX - ball_sz;
+        BALL_HIDE();
+        BALL_X = BAT_X + BALL_X_OFFSET_ON_BAT;
+        BALL_Y = BAT_Y_PX - ball_sz;
         ball_dx = +BALL_SPEED;
         ball_dy = -BALL_SPEED;
         snd_q_push(SND_BALL_START);          /* miss - reuse ball-launch descent */
@@ -1883,12 +1895,12 @@ static void step_ball(void) {
     /* Brick collision: side-aware. brick_collision tells us which axis
      * the ball entered through; we reverse + unwind that axis. */
     {
-        int hit = brick_collision(ball_x, ball_y, next_x, next_y);
-        if (hit == 1)        { ball_dy = -ball_dy; next_y = ball_y; }
-        else if (hit == 2)   { ball_dx = -ball_dx; next_x = ball_x; }
+        int hit = brick_collision(BALL_X, BALL_Y, next_x, next_y);
+        if (hit == 1)        { ball_dy = -ball_dy; next_y = BALL_Y; }
+        else if (hit == 2)   { ball_dx = -ball_dx; next_x = BALL_X; }
     }
-    ball_x = next_x;
-    ball_y = next_y;
+    BALL_X = next_x;
+    BALL_Y = next_y;
 }
 
 /* M3 minimal play loop. For each level: full render once, then poll
@@ -1917,10 +1929,10 @@ static void redraw_full_with_ball(unsigned char level_idx) {
     render_hud_score();
     render_hud_powerups();
     if (bonus_active) render_bonus();
-    if (ball_visible) {
+    if (BALL_VISIBLE) {
         bg_attr = level_attrs[(int)level_idx * ATTR_BAND_SIZE
                               + BRICK_ATTR_ROW_BASE * ATTR_COLS + 14];
-        render_ball(ball_x, ball_y, bg_attr);
+        render_ball(BALL_X, BALL_Y, bg_attr);
     }
 }
 
@@ -2024,9 +2036,9 @@ static state_t run_level(void) {
         BAT_X         = BAT_X_INIT;
         BAT_PREV_X    = BAT_X_INIT;
         ball_stuck    = 1;
-        ball_visible  = 0;
-        ball_x        = BAT_X_INIT + BALL_X_OFFSET_ON_BAT;
-        ball_y        = BAT_Y_PX - BALL_H_PX;
+        BALL_HIDE();
+        BALL_X        = BAT_X_INIT + BALL_X_OFFSET_ON_BAT;
+        BALL_Y        = BAT_Y_PX - BALL_H_PX;
         ball_dx       = +BALL_SPEED;
         ball_dy       = -BALL_SPEED;
         bonus_active   = 0;
@@ -2078,7 +2090,7 @@ static state_t run_level(void) {
                     getch();
                     start = bios_ticks();
                 } else if (k == KEY_SPACE) {
-                    ball_visible = 1;
+                    BALL_SHOW();
                     ball_stuck   = 0;
                     /* Shallow launch angle (|dx| < |dy|) so the ball
                      * traverses each brick row across multiple cols
@@ -2116,7 +2128,7 @@ static state_t run_level(void) {
                 if (key_state[SC_RIGHT]) {
                     if (BAT_X < BAT_X_MAX) BAT_X += 4;
                 }
-                if (ball_visible && !ball_stuck) {
+                if (BALL_VISIBLE && !ball_stuck) {
                     /* slow_ticks > 0: step on odd ticks only -> 25 Hz */
                     int slow_skip = (slow_ticks > 0) && ((now & 1) == 0);
                     if (!slow_skip) {
@@ -2146,9 +2158,9 @@ static state_t run_level(void) {
                 redraw_full_with_ball(i);
             } else if (bat_moved) {
                 redraw_bat(cycle, bg_attr);
-                if (ball_visible && ball_stuck) {
-                    ball_x = BAT_X + BALL_X_OFFSET_ON_BAT;
-                    render_ball(ball_x, ball_y, bg_attr);
+                if (BALL_VISIBLE && ball_stuck) {
+                    BALL_X = BAT_X + BALL_X_OFFSET_ON_BAT;
+                    render_ball(BALL_X, BALL_Y, bg_attr);
                 }
             }
 
