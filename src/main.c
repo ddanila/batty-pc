@@ -2225,7 +2225,10 @@ static void step_bonus(void) {
     if (slow_ticks    > 0) slow_ticks--;
     if (big_bat_ticks > 0) {
         big_bat_ticks--;
-        if (big_bat_ticks == 0) bat_extra_tgt = 0;     /* shrink */
+        if (big_bat_ticks == 0) {
+            bat_extra_tgt = 0;                        /* shrink */
+            snd_q_push(SND_BAT_RESIZE_2);             /* descending resize cue */
+        }
     }
     if (big_ball_ticks > 0) big_ball_ticks--;
     /* Animate bat width toward target. 1 px / tick = ~8 ticks for the
@@ -2299,9 +2302,16 @@ static int brick_collision(int prev_x, int prev_y, int new_x, int new_y) {
      * Otherwise (bit 4 + bit 5 both clear) = multi-hit brick: this is
      *          the FIRST collision, so SET BIT 4 and bounce; the next
      *          hit will hit the BIT 4 branch above and destroy. */
-    if (*cell & 0x20) return axis;
+    if (*cell & 0x20) {
+        /* Undestructible: bounce off with the same brick-tick sound
+         * as a destruction (the original plays SND_NORMAL_BRIK on
+         * every brick collision regardless of survival). */
+        snd_q_push(SND_NORMAL_BRIK);
+        return axis;
+    }
     if (!(*cell & 0x10)) {
         *cell |= 0x10;
+        snd_q_push(SND_NORMAL_BRIK);
         return axis;
     }
 
