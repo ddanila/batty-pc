@@ -588,7 +588,10 @@ static void save_high_score(void) {
 #define BONUS_TYPE_BIG_BAT      2
 #define BONUS_TYPE_BIG_BALL     3
 #define BONUS_TYPE_KILL_ALIENS  4
-#define BONUS_TYPE_COUNT        5
+#define BONUS_TYPE_CATCH        5
+#define BONUS_TYPE_ROCKET       6
+#define BONUS_TYPE_SCORE_5K     7
+#define BONUS_TYPE_COUNT        8
 #define BONUS_TYPE_UNSUPPORTED  0xFF
 
 /* bonus_table_first / bonus_table_second - byte-exact copies of the
@@ -612,10 +615,13 @@ static const unsigned char bonus_table_second[32] = {
 
 static unsigned char map_orig_to_our_bonus(unsigned char code) {
     switch (code) {
+        case 0x00: return BONUS_TYPE_BIG_BAT;       /* spr_bonus_size */
+        case 0x03: return BONUS_TYPE_CATCH;         /* spr_bonus_hand */
         case 0x04: return BONUS_TYPE_SLOW;
         case 0x05: return BONUS_TYPE_LIFE;
+        case 0x06: return BONUS_TYPE_ROCKET;        /* spr_bonus_rocket_1 */
         case 0x07: return BONUS_TYPE_BIG_BALL;
-        case 0x08: return BONUS_TYPE_BIG_BAT;
+        case 0x08: return BONUS_TYPE_SCORE_5K;      /* spr_bonus_5000_points */
         case 0x09: return BONUS_TYPE_KILL_ALIENS;
         default:   return BONUS_TYPE_UNSUPPORTED;
     }
@@ -659,7 +665,10 @@ static const unsigned char bonus_colours[BONUS_TYPE_COUNT] = {
     11,   /* S (slow)        - bright magenta */
      9,   /* B (big bat)     - bright blue    */
     14,   /* G (big ball)    - bright yellow  */
-    13    /* K (kill aliens) - bright cyan    */
+    13,   /* K (kill aliens) - bright cyan    */
+    12,   /* C (catch)       - bright green   */
+    10,   /* R (rocket)      - bright red     */
+    15    /* $ (5000 points) - bright white   */
 };
 
 /* Counter of bricks destroyed since start of game; drives the simple
@@ -708,13 +717,16 @@ static const unsigned int spr_ufo_frames[3]  = { SPR_UFO_1,  SPR_UFO_2,  SPR_UFO
 #define SPR_BLAST_5      (0x88CE - 0x7A8C)   /* = 0xe42 */
 
 /* Bonus sprites. Offsets from $7A8C. */
-#define SPR_BONUS_SMASH       (0x8A6A - 0x7A8C)   /* big-ball power-up icon */
-#define SPR_BONUS_KILL_ALIENS (0x8AC6 - 0x7A8C)
-#define SPR_BONUS_HAND        (0x8B22 - 0x7A8C)
-#define SPR_BONUS_SIZE        (0x8B6C - 0x7A8C)   /* big-bat icon */
-#define SPR_BONUS_SLOW        (0x8BB0 - 0x7A8C)
-#define SPR_BONUS_GUN         (0x8C0C - 0x7A8C)
-#define SPR_BONUS_EXTRA_LIFE  (0x8C44 - 0x7A8C)
+#define SPR_BONUS_ROCKET_1    (0x891C - 0x7A8C)   /* code $06 — rocket */
+#define SPR_BONUS_SMASH       (0x8A6A - 0x7A8C)   /* code $07 — big-ball */
+#define SPR_BONUS_KILL_ALIENS (0x8AC6 - 0x7A8C)   /* code $09 */
+#define SPR_BONUS_HAND        (0x8B22 - 0x7A8C)   /* code $03 — catch */
+#define SPR_BONUS_SIZE        (0x8B6C - 0x7A8C)   /* code $00 — big-bat */
+#define SPR_BONUS_SLOW        (0x8BB0 - 0x7A8C)   /* code $04 */
+#define SPR_BONUS_GUN         (0x8C0C - 0x7A8C)   /* code $01 — laser */
+#define SPR_BONUS_EXTRA_LIFE  (0x8C44 - 0x7A8C)   /* code $05 */
+#define SPR_BONUS_5000_POINTS (0x8C94 - 0x7A8C)   /* code $08 */
+#define SPR_BONUS_TRIPLE_BALL (0x8CEA - 0x7A8C)   /* code $02 */
 static const unsigned int spr_blast_frames[5] = {
     SPR_BLAST_1, SPR_BLAST_2, SPR_BLAST_3, SPR_BLAST_4, SPR_BLAST_5
 };
@@ -2085,6 +2097,9 @@ static unsigned int spr_for_bonus(unsigned char t) {
         case BONUS_TYPE_BIG_BAT:     return SPR_BONUS_SIZE;
         case BONUS_TYPE_BIG_BALL:    return SPR_BONUS_SMASH;
         case BONUS_TYPE_KILL_ALIENS: return SPR_BONUS_KILL_ALIENS;
+        case BONUS_TYPE_CATCH:       return SPR_BONUS_HAND;
+        case BONUS_TYPE_ROCKET:      return SPR_BONUS_ROCKET_1;
+        case BONUS_TYPE_SCORE_5K:    return SPR_BONUS_5000_POINTS;
         default:                     return SPR_BONUS_SIZE;
     }
 }
@@ -2156,6 +2171,31 @@ static void bonus_apply(unsigned char type) {
                     snd_q_push(SND_SHOT);
                 }
             }
+            break;
+        case BONUS_TYPE_CATCH:
+            /* Bat catches the ball on next contact; player must press
+             * SPACE to release (matches the original's $03 effect on
+             * BAT+$14). step_ball reads bonus_applied to decide. */
+            objects[OBJ_BAT_1].bonus_applied = 0x03;
+            objects[OBJ_BAT_2].bonus_applied = 0x03;
+            break;
+        case BONUS_TYPE_ROCKET:
+            /* Insta-win the level: mark every destructible cell as
+             * destroyed (bit 7 set). live_bricks_remaining will
+             * return 0 next tick and run_level breaks. Undestructible
+             * cells (bit 5) and skip cells (bit 7 already set) are
+             * preserved. */
+            {
+                int k;
+                for (k = 0; k < LVL_CELLS; k++) {
+                    unsigned char *c = &live_level[k];
+                    if (!(*c & 0xA0)) *c |= 0x80;
+                }
+            }
+            break;
+        case BONUS_TYPE_SCORE_5K:
+            /* Pure score bonus. 5000 in BCD-equivalent decimal. */
+            score += 5000;
             break;
         default: break;
     }
@@ -2485,6 +2525,20 @@ static void step_ball(void) {
         int hit_x = (next_x + ball_sz / 2) - bat_left;
         int span  = bat_right - bat_left;
         next_y  = bat_top - ball_sz;
+        /* If the bat is carrying the CATCH bonus (matches the original's
+         * BAT+$14 = $03), the ball sticks on contact and waits for SPACE
+         * to release. Otherwise bounce with 5-zone deflection. */
+        if (objects[OBJ_BAT_1].bonus_applied == 0x03) {
+            ball_stuck  = 1;
+            stuck_ticks = 0;
+            ball_dy = -BALL_SPEED;
+            /* Snap BALL_X to the offset the launch handler expects so
+             * the auto-launch trajectory matches the catch position. */
+            BALL_X = next_x;
+            BALL_Y = next_y;
+            snd_q_push(SND_BAT_BEAT);
+            return;
+        }
         ball_dy = -BALL_SPEED;
         /* Same 5-zone split, normalised to the (possibly-bigger) bat span. */
         if      (hit_x * 5 < span * 1) ball_dx = -2;
