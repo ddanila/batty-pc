@@ -1158,6 +1158,140 @@ static void sound_tick(void) {
     }
 }
 
+/* --- Sound queue (port of sounds_queue at $C0B8 + play_sounds_queue) ---
+ *
+ * 4 slots, each tracks a sound id + per-sound state byte. snd_q_push
+ * adds an event; snd_q_tick is called from the 50 Hz frame body and
+ * dispatches each active slot to its play_sound_<id> handler.
+ * Single-shot sounds clear their slot on first tick; multi-frame
+ * sounds (live-add ascending sweep, ball-launch / shot descending
+ * sweep) advance state per frame and clear when exhausted.
+ *
+ * Frequencies derive from the original sound_beep's period:
+ *   period = 26 * E T-states; freq = 3500000 / period = 134615 / E.
+ * Each handler matches the E parameter ranges of the original's
+ * play_sound_<event> routine (sound.asm at $C0F3+). */
+#define SQ_SLOTS 4
+typedef struct { unsigned char id; unsigned char state; } sound_slot_t;
+
+/* Sound IDs match the original play_sounds_list at $C0BC. */
+#define SND_NORMAL_BRIK   1
+#define SND_BAT_BEAT      3
+#define SND_BALL_START    4
+#define SND_LIVE_ADD      7
+#define SND_BAT_RESIZE_1  9
+#define SND_TRIPLE_BALL   0x0A
+#define SND_SHOT          0x0B
+#define SND_BAT_RESIZE_2  0x0C
+
+static sound_slot_t snd_q[SQ_SLOTS];
+
+static void snd_q_push(unsigned char id) {
+    int i;
+    for (i = 0; i < SQ_SLOTS; i++) {
+        if (snd_q[i].id == 0) {
+            snd_q[i].id = id;
+            switch (id) {
+                case SND_LIVE_ADD:    snd_q[i].state = 0x20; break;
+                case SND_BALL_START:  snd_q[i].state = 0x00; break;
+                case SND_SHOT:        snd_q[i].state = 0x00; break;
+                case SND_BAT_RESIZE_1:snd_q[i].state = 0x60; break;
+                case SND_TRIPLE_BALL: snd_q[i].state = 0x40; break;
+                default:              snd_q[i].state = 0; break;
+            }
+            return;
+        }
+    }
+}
+
+/* Returns 1 when the slot should be cleared (sound done). */
+static int snd_tick_one(sound_slot_t *s) {
+    switch (s->id) {
+        case SND_NORMAL_BRIK:
+            /* $C0F3: E=$44 -> ~1976 Hz, single 4 ms click. */
+            sound_play(1976, 1);
+            return 1;
+
+        case SND_BAT_BEAT:
+            /* $C16F: E=$66 -> ~1320 Hz. */
+            sound_play(1320, 1);
+            return 1;
+
+        case SND_LIVE_ADD: {
+            /* $C1CF: state starts $20, every 4th frame plays a beep
+             * at E = state + $14 (ascending pitch as state shrinks).
+             * state -= 2 per frame; cleared when 0. */
+            if ((s->state & 3) == 0) {
+                unsigned int e = (unsigned int)s->state + 0x14;
+                if (e == 0) e = 1;
+                sound_play(134615U / e, 1);
+            }
+            if (s->state == 0) return 1;
+            s->state -= 2;
+            return 0;
+        }
+
+        case SND_BALL_START: {
+            /* $C116: C=9 cycles, E=$14 initially - play_sound_LC122
+             * descends through the (C, E) pairs producing a quick
+             * down-chirp. 9 frames at E rising 4 each frame. */
+            unsigned int e = 0x14 + s->state * 4;
+            sound_play(134615U / e, 1);
+            if (s->state >= 8) return 1;
+            s->state++;
+            return 0;
+        }
+
+        case SND_SHOT: {
+            /* $C235: C=4, E=$0F starting. 4-frame zip. */
+            unsigned int e = 0x0F + s->state * 4;
+            sound_play(134615U / e, 1);
+            if (s->state >= 3) return 1;
+            s->state++;
+            return 0;
+        }
+
+        case SND_BAT_RESIZE_1: {
+            /* $C200: state starts $60, decrements by $0B per frame
+             * until below $10. */
+            unsigned int e = (unsigned int)s->state;
+            if (e == 0) e = 1;
+            sound_play(134615U / e, 1);
+            if (s->state < 0x10 + 0x0B) return 1;
+            s->state -= 0x0B;
+            return 0;
+        }
+
+        case SND_TRIPLE_BALL: {
+            /* $C21D: state starts $40, increments by $0B per frame
+             * until past $C0. */
+            unsigned int e = (unsigned int)s->state;
+            if (e == 0) e = 1;
+            sound_play(134615U / e, 1);
+            if (s->state >= 0xC1 - 0x0B) return 1;
+            s->state += 0x0B;
+            return 0;
+        }
+
+        default:
+            return 1;
+    }
+}
+
+static void snd_q_tick(void) {
+    int i;
+    for (i = 0; i < SQ_SLOTS; i++) {
+        if (snd_q[i].id == 0) continue;
+        if (snd_tick_one(&snd_q[i])) snd_q[i].id = 0;
+    }
+}
+
+static void snd_q_silence_all(void) {
+    int i;
+    for (i = 0; i < SQ_SLOTS; i++) snd_q[i].id = 0;
+    sound_silence();
+}
+
 /* Attract-mode state machine — same shape as the original game:
  *   TITLE   one-shot loading screen on boot, timeout -> MENU
  *   MENU    interactive (A/B cycle device, any other key advances),
@@ -1402,7 +1536,7 @@ static void step_bonus(void) {
         && bonus_x < bat_right) {
         bonus_apply(bonus_type);
         bonus_active = 0;
-        sound_play(660, 4);                  /* bonus catch (≈ live_add) */
+        snd_q_push(SND_LIVE_ADD);            /* bonus catch */
         return;
     }
     if (bonus_y > PLAYFIELD_H) bonus_active = 0;
@@ -1431,9 +1565,7 @@ static int brick_collision(int prev_x, int prev_y, int new_x, int new_y) {
     if (*cell & 0x90) return 0;
     *cell |= 0x80;
     score += POINTS_PER_BRICK;
-    /* play_sound_normall_brik at $C0F3 uses sound_beep with E=$44 (=68).
-     * ZX sound_beep period = 26*E T-states / 3.5 MHz -> ~1976 Hz. */
-    sound_play(1976, 1);                    /* brick-break click */
+    snd_q_push(SND_NORMAL_BRIK);            /* brick-break click */
     /* Maybe drop a bonus. Only one falling at a time - skip if one is
      * already in flight. 1-in-BONUS_SPAWN_MOD bricks roll a bonus. */
     bricks_destroyed++;
@@ -1503,9 +1635,7 @@ static void step_ball(void) {
         else if (hit_x * 5 < span * 3) ball_dx = (ball_dx >= 0) ? +1 : -1;
         else if (hit_x * 5 < span * 4) ball_dx = +1;
         else                           ball_dx = +2;
-        /* play_sound_bat_beat at $C16F uses E=$66 (=102). 26*102 = 2652
-         * T-states / 3.5 MHz -> ~1320 Hz. */
-        sound_play(1320, 2);                 /* ball-on-bat thump */
+        snd_q_push(SND_BAT_BEAT);            /* ball-on-bat */
     }
     /* Past the bat (= lost ball). Decrement lives and respawn stuck
      * on the bat. The outer loop checks lives==0 to trigger game over. */
@@ -1517,10 +1647,7 @@ static void step_ball(void) {
         ball_y = BAT_Y_PX - ball_sz;
         ball_dx = +BALL_SPEED;
         ball_dy = -BALL_SPEED;
-        /* The original cycles down through play_sound_LC122. PC speaker
-         * single-tone approximation: a low 350 Hz that the player reads
-         * as "miss". */
-        sound_play(350, 10);                 /* ball lost */
+        snd_q_push(SND_BALL_START);          /* miss - reuse ball-launch descent */
         return;
     }
     /* Brick collision: side-aware. brick_collision tells us which axis
@@ -1758,6 +1885,7 @@ static state_t run_level(void) {
                     }
                 }
                 step_bonus();
+                snd_q_tick();
                 sound_tick();
                 if (bonus_active) ball_moved = 1;   /* force redraw to show falling bonus */
             }
@@ -1784,7 +1912,8 @@ static state_t run_level(void) {
                     high_score_beaten_this_game = 1;
                     save_high_score();
                 }
-                sound_play(100, 30);
+                snd_q_silence_all();
+                sound_play(100, 30);          /* low game-over drone */
                 render_game_over();
                 start = bios_ticks();
                 while (!TIMED_OUT(start, 54UL)) {
@@ -1805,6 +1934,7 @@ static state_t run_level(void) {
         high_score_beaten_this_game = 1;
         save_high_score();
     }
+    snd_q_silence_all();
     sound_play(100, 30);
     render_game_over();
     {
