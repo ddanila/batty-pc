@@ -2064,20 +2064,15 @@ static void buff_to_vga_strip(int y0, int h) {
 #define KEY_P_UPPER 'P'
 
 /* Paint the ball at (x, y) into scr_buff via the original masked
- * OR-blit, and apply an attr that swaps ink and paper of bg_attr at
- * the ball's char cells. With bg_attr=$46 (ink=yellow, paper=black)
- * the ball cells get $70 (ink=black, paper=yellow) so the ball's
- * set-bit pixels render as the bg's paper colour (black) instead of
- * blending into the bg ink. Matches the original ZX rendering where
- * the ball + its drop shadow appear black on the yellow bg pattern. */
+ * OR-blit. Cell attrs are left at bg_attr (we don't override), so the
+ * surrounding bg pattern inside the ball's char cells stays identical
+ * to neighbouring cells — no colour-clash halo around the ball. The
+ * ball's solid body bits (mask=1, pix=0) render as bg ink (yellow on
+ * L1) and the texture/shadow bits (mask=1, pix=1) render as bg paper
+ * (black) — the same effect the original ZX game produces. */
 static void render_ball_to_buff(int x, int y, unsigned char bg) {
     unsigned int spr = big_ball_ticks ? SPR_BIG_BALL : SPR_BALL_NORMAL;
-    int w_px = sprites_blob[spr] * 8;
-    int h_px = sprites_blob[spr + 1];
-    unsigned char ball_attr = (unsigned char)((bg & 0xC0)
-                                              | ((bg & 0x07) << 3)
-                                              | ((bg >> 3) & 0x07));
-    blit_sprite_attrs_to_buff(x, y, w_px, h_px, ball_attr);
+    (void)bg;
     blit_masked_to_scr_buff(spr, x, y);
 }
 
@@ -2694,13 +2689,17 @@ static void score_to_codes(unsigned long s, unsigned char out[6]) {
  * (y <= 127) and the bat (y >= 167). 6 digits * 8 px = 48 px wide,
  * centred at playfield x. Only drawn once score > 0 so state4_level1
  * (captured at score=0) stays pixel-identical against the GT. */
-#define HUD_SCORE_X (BORDER_X + 104)
-#define HUD_SCORE_Y (BORDER_Y + 140)
+/* Live score lives in the top HUD strip, overlaying the frame's
+ * baked-in "000000" placeholder for the 1UP score. Char row 1 (y=8),
+ * char col 4 onwards (x=32). 6 digits * 8 px = 48 px wide. */
+#define HUD_SCORE_X (BORDER_X + 32)
+#define HUD_SCORE_Y (BORDER_Y + 8)
+/* Power-up letter chips sit in the empty band between the brick
+ * field (y <= 127) and the bat (y >= 167), away from the top HUD. */
 #define HUD_POWERUP_X (BORDER_X + 192)
-#define HUD_POWERUP_Y HUD_SCORE_Y
+#define HUD_POWERUP_Y (BORDER_Y + 140)
 static void render_hud_score(void) {
     unsigned char digits[6];
-    if (score == 0) return;
     score_to_codes(score, digits);
     draw_text(HUD_SCORE_X, HUD_SCORE_Y, 15, digits, 6);
 }
