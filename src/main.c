@@ -2699,14 +2699,21 @@ static void score_to_codes(unsigned long s, unsigned char out[6]) {
 #define HUD_POWERUP_Y (BORDER_Y + 140)
 static void render_hud_score(void) {
     unsigned char digits[6];
+    /* score=0 leaves the frame ornament's baked-in "000000" visible —
+     * that pattern is part of the captured frame_l1.bin and aligns
+     * with the original. Once the player scores, our digits overlay
+     * with the matching colour (idx 6 = non-bright yellow). */
+    if (score == 0) return;
     score_to_codes(score, digits);
-    /* Match the GT's frame-baked digit colour (palette idx 6 =
-     * non-bright yellow). The "HI" / "1UP" labels around it stay
-     * in white per the frame ornament. */
     draw_text(HUD_SCORE_X, HUD_SCORE_Y, 6, digits, 6);
 }
 static void render_hud_high_score(void) {
     unsigned char digits[6];
+    /* Mirror render_hud_score: leave the frame's baked placeholder
+     * showing when no real high score has been recorded yet. Once
+     * the player beats the placeholder threshold, the dynamic value
+     * overlays. */
+    if (high_score == 0) return;
     score_to_codes(high_score, digits);
     draw_text(HUD_HISCORE_X, HUD_HISCORE_Y, 6, digits, 6);
 }
