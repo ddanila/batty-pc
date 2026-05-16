@@ -604,6 +604,11 @@ static const unsigned long live_add_thresholds[] = {
 };
 #define LIVE_ADD_COUNT (sizeof(live_add_thresholds)/sizeof(live_add_thresholds[0]))
 static unsigned char live_adds_awarded = 0;
+
+/* Mirror of flag_extra_life — set when the player catches a LIFE bonus
+ * in the current round, prevents another LIFE drop until the round
+ * ends. Reset at each new round entry in run_level. */
+static unsigned char life_dropped_this_round = 0;
 static unsigned char high_score_beaten_this_game = 0;
 /* Three-letter initials saved with the high score. Stored as glyph
  * codes (A = 0x0A .. Z = 0x23). Default "AAA" when no save exists. */
@@ -2460,7 +2465,7 @@ static void bonus_apply(unsigned char type) {
      * own SND_SHOT inside the case body below. */
     snd_q_push(SND_LIVE_ADD);
     switch (type) {
-        case BONUS_TYPE_LIFE:     lives++; break;
+        case BONUS_TYPE_LIFE:     lives++; life_dropped_this_round = 1; break;
         case BONUS_TYPE_SLOW:     slow_ticks     = SLOW_DURATION; break;
         case BONUS_TYPE_BIG_BAT:  big_bat_ticks  = BIG_BAT_DURATION;
                                   bat_extra_tgt  = BAT_BIG_EXTRA_PX;
@@ -2652,6 +2657,17 @@ static void try_spawn_bonus(int col, int row) {
          * CATCH / KILL_ALIENS — the ones tracked in bat.bonus_applied).
          * Prevents back-to-back duplicates of the same bat effect. */
         if (code == objects[OBJ_BAT_1].bonus_applied) continue;
+        /* Per-type exclusions from L9D5A_2..L9D5A_9:
+         *   $02 (TRIPLE_BALL): skip if extra balls already in play
+         *   $04 (SLOW): skip if SLOW already active
+         *   $05 (LIFE): skip if already dropped this round
+         *   $06 (ROCKET): skip if rocket in flight
+         * The round-6+ extra-rare-rocket re-roll (random & $C0 != 0)
+         * is dropped here for simplicity. */
+        if (code == 0x02 && (ball2_active || ball3_active)) continue;
+        if (code == 0x04 && slow_ticks > 0) continue;
+        if (code == 0x05 && life_dropped_this_round) continue;
+        if (code == 0x06 && rocket_active) continue;
         mapped = map_orig_to_our_bonus(code);
         if (mapped != BONUS_TYPE_UNSUPPORTED) {
             bonus_active = 1;
@@ -3915,6 +3931,7 @@ static state_t run_level(void) {
         slow_ticks     = 0;
         big_bat_ticks  = 0;
         big_ball_ticks = 0;
+        life_dropped_this_round = 0;       /* mirrors flag_extra_life clear */
         bat_extra_px   = 0;
         bat_extra_tgt  = 0;
         objects[OBJ_BAT_1].bonus_applied = 0xFF;
