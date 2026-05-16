@@ -3493,6 +3493,83 @@ static void input_new_record_name(void) {
     }
 }
 
+/* Level-intro brick "shimmer" animation. Port of
+ * all_metal_briks_animation_snd at $B765 + all_metal_briks_frame at
+ * $AD8F: every live brick gets each of 8 animation frames in the
+ * order (brik_2, 6, 3, 7, 4, 5, 5, 1), with a 2-tick pause between
+ * frames. The sequence ends on frame 1 — same sprite the normal
+ * brick rendering uses — so no post-anim restore is needed.
+ *
+ * Sprite data is brik_1..7 at $AEFF (notes/sprites.md format: raw
+ * 16x8 bitmap, no mask). */
+static const unsigned char brik_anim_sprites[7][16] = {
+    /* spr_brik_1 (default outlined frame, also used by normal render) */
+    { 0xFF,0xFE, 0x80,0x00, 0x80,0x00, 0x80,0x00,
+      0x80,0x00, 0x80,0x00, 0x80,0x00, 0x00,0x00 },
+    /* spr_brik_2 */
+    { 0x00,0x02, 0x00,0x02, 0x00,0x02, 0x00,0x02,
+      0x00,0x02, 0x00,0x06, 0x00,0xFE, 0x00,0x00 },
+    /* spr_brik_3 */
+    { 0x00,0x02, 0x00,0x02, 0x00,0x06, 0x00,0x06,
+      0x00,0x06, 0x00,0x0E, 0x0F,0xFE, 0x00,0x00 },
+    /* spr_brik_4 */
+    { 0x00,0x02, 0x00,0x02, 0x00,0x06, 0x00,0x06,
+      0x00,0x0E, 0x00,0x3E, 0xFF,0xFE, 0x00,0x00 },
+    /* spr_brik_5 (solid) */
+    { 0xFF,0xFE, 0xFF,0xFE, 0xFF,0xFE, 0xFF,0xFE,
+      0xFF,0xFE, 0xFF,0xFE, 0xFF,0xFE, 0x00,0x00 },
+    /* spr_brik_6 */
+    { 0x00,0x02, 0x00,0x02, 0x00,0x02, 0x00,0x06,
+      0x00,0x06, 0x00,0x0E, 0x01,0xFE, 0x00,0x00 },
+    /* spr_brik_7 */
+    { 0x00,0x02, 0x00,0x02, 0x00,0x06, 0x00,0x06,
+      0x00,0x06, 0x00,0x0E, 0xFF,0xFE, 0x00,0x00 }
+};
+
+/* anim_brik order at $AF6F: sprites 2,6,3,7,4,5,5,1 (0-indexed) */
+static const unsigned char brik_anim_order[8] = { 1, 5, 2, 6, 3, 4, 4, 0 };
+
+static void brik_anim_apply_frame(unsigned char frame_idx) {
+    const unsigned char *spr = brik_anim_sprites[frame_idx];
+    int row, col, r;
+    unsigned int hl;
+    for (row = 0; row < LVL_ROWS; row++) {
+        unsigned int row_base = 0x401 + (unsigned int)row * 0x100;
+        const unsigned char *cell_row = &live_level[row * LVL_COLS];
+        for (col = 0; col < LVL_COLS; col++) {
+            if (cell_row[col] & 0x90) continue;       /* no brick / skip cell */
+            hl = row_base + (unsigned int)col * 2;
+            for (r = 0; r < 8; r++) {
+                scr_buff[hl]     = spr[r * 2];
+                scr_buff[hl + 1] = spr[r * 2 + 1];
+                hl += 32;
+            }
+        }
+    }
+}
+
+/* Run the 8-frame brick-shimmer pass over the current level's bricks.
+ * 2 PIT ticks per frame = 16 ticks = ~0.32 s total. ESC quits, any
+ * other key short-circuits the rest of the sequence. */
+static int play_brik_anim(void) {
+    int step;
+    for (step = 0; step < 8; step++) {
+        unsigned long t;
+        brik_anim_apply_frame(brik_anim_order[step]);
+        buff_to_vga_strip(32, 96);
+        t = pit_ticks();
+        while (pit_ticks() - t < 2UL) {
+            sound_tick();
+            if (kbhit()) {
+                int k = getch();
+                if (k == 27) return 1;
+                return 0;
+            }
+        }
+    }
+    return 0;
+}
+
 /* "ROUND XX" intro banner — port of show_window_round_number at $8F60
  * + the pause_long B=4 wait at LB9E8_1. Draws an 80x24 black panel
  * centred between the brick zone and the bat, with "ROUND<sp>NN" in
@@ -3747,6 +3824,7 @@ static state_t run_level(void) {
         render_level_screen(i);
         if (show_round_banner((unsigned int)round_number + 1)) return ST_QUIT;
         render_level_screen(i);                /* re-paint to clear the banner */
+        if (play_brik_anim()) return ST_QUIT;
         cycle = (unsigned char)(i & 3);
         bg_attr = bg_attr_per_cycle[i & 3];
         start     = bios_ticks();
