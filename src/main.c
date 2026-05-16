@@ -2981,7 +2981,8 @@ static void step_bomb(void) {
         BALL_Y = BAT_Y_PX - eff_ball_size();
         ball_dx = +BALL_SPEED;
         ball_dy = -BALL_SPEED;
-        snd_q_push(SND_BALL_START);
+        /* No launch chirp here — ball is resetting to stuck, not
+         * launching. The bat-explosion sound already covered the hit. */
         return;
     }
     if (bomb_y > PLAYFIELD_H) bomb_active = 0;
@@ -3286,7 +3287,8 @@ static void step_ball(void) {
         BALL_Y = BAT_Y_PX - ball_sz;
         ball_dx = +BALL_SPEED;
         ball_dy = -BALL_SPEED;
-        snd_q_push(SND_BALL_START);          /* miss - reuse ball-launch descent */
+        /* No launch chirp — ball reset to stuck. The bat-explosion
+         * sound has already covered the loss. */
         return;
     }
     /* Brick collision: side-aware. brick_collision tells us which axis
@@ -4211,7 +4213,8 @@ static state_t run_level(void) {
                     BALL_Y = BAT_Y_PX - eff_ball_size();
                     ball_dx = +BALL_SPEED;
                     ball_dy = -BALL_SPEED;
-                    snd_q_push(SND_BALL_START);
+                    /* No launch chirp — ball reset to stuck after
+                     * the bat-explosion sound already covered it. */
                 }
                 /* Mirror of LB9E8_2..LB9E8_3 ($BA83..$BAD9):
                  *   enemy_prepare    -- maybe spawn alien
