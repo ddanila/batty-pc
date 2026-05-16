@@ -770,6 +770,7 @@ static unsigned int  slow_ticks      = 0;
 static unsigned int  big_bat_ticks   = 0;
 static unsigned int  big_ball_ticks  = 0;
 static int big_ball_active(void);    /* forward — defined below */
+static int big_bat_active(void);     /* forward — defined below */
 /* Bat resize animation - bat_extra_px ramps 0..8 toward bat_extra_tgt
  * (port of bat_resize at $9D2C). Width grows / shrinks 1 px / 50 Hz
  * tick = ~6 px / 100 ms which roughly matches the original's 2-px-
@@ -2624,6 +2625,14 @@ static int big_ball_active(void) {
     return big_ball_ticks > 0
         && objects[OBJ_BAT_1].bonus_applied == 0x07;
 }
+/* BIG_BAT is active iff bat.bonus_applied == \$00 in the original — the
+ * bat-resize state machine in handling_bat_no_transform reads the byte
+ * each frame. Catching another bonus immediately ends the wide-bat
+ * state via the bat_extra_tgt = 0 target below in step_bonus. */
+static int big_bat_active(void) {
+    return big_bat_ticks > 0
+        && objects[OBJ_BAT_1].bonus_applied == 0x00;
+}
 static int eff_ball_size(void) { return big_ball_active() ? 12 : BALL_W_PX; }
 
 /* Advance the falling bonus, check for catch on the bat, and tick down
@@ -2633,9 +2642,14 @@ static void step_bonus(void) {
     if (slow_ticks    > 0) slow_ticks--;
     if (big_bat_ticks > 0) {
         big_bat_ticks--;
-        if (big_bat_ticks == 0) {
-            bat_extra_tgt = 0;                        /* shrink */
-            snd_q_push(SND_BAT_RESIZE_2);             /* descending resize cue */
+        if (big_bat_ticks == 0 || !big_bat_active()) {
+            /* Timer expired OR bat.bonus_applied was changed by
+             * another catch — either way, target the shrink. */
+            if (bat_extra_tgt != 0) {
+                bat_extra_tgt = 0;
+                snd_q_push(SND_BAT_RESIZE_2);
+            }
+            big_bat_ticks = 0;                        /* keep the two in sync */
         }
     }
     if (big_ball_ticks > 0) big_ball_ticks--;
@@ -3593,11 +3607,11 @@ static void render_hud_powerups(void) {
         draw_glyph(x, HUD_POWERUP_Y, bonus_colours[BONUS_TYPE_SLOW], 0x1C);
     }
     if (slow_ticks > 0) x += 10;
-    if (big_bat_ticks > 0
+    if (big_bat_active()
         && !(big_bat_ticks < HUD_CHIP_BLINK_THRESHOLD && blink_off)) {
         draw_glyph(x, HUD_POWERUP_Y, bonus_colours[BONUS_TYPE_BIG_BAT], 0x0B);
     }
-    if (big_bat_ticks > 0) x += 10;
+    if (big_bat_active()) x += 10;
     if (big_ball_active()
         && !(big_ball_ticks < HUD_CHIP_BLINK_THRESHOLD && blink_off)) {
         draw_glyph(x, HUD_POWERUP_Y, bonus_colours[BONUS_TYPE_BIG_BALL], 0x10);
