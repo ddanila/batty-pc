@@ -3858,13 +3858,16 @@ static void dir_to_dxdy(unsigned char dir, unsigned char speed,
 
 #define DEATH_SPARK_COUNT 10
 typedef struct {
-    int           active;        /* nonzero while still on screen */
-    long          x_q88;         /* 24.8 fixed-point X */
-    long          y_q88;         /* 24.8 fixed-point Y */
-    unsigned char dir;           /* 6-bit angle */
-    unsigned char speed;         /* halves at each frame advance */
-    unsigned char sprite_num;    /* 0..4 */
-    unsigned char frame_ticks;   /* down-counter to next frame */
+    int           active;          /* nonzero while still on screen */
+    long          x_q88;           /* 24.8 fixed-point X */
+    long          y_q88;           /* 24.8 fixed-point Y */
+    unsigned char dir;             /* 6-bit angle */
+    unsigned char speed;           /* motion velocity, constant for life */
+    unsigned char sprite_num;      /* 0..4 */
+    unsigned char frame_ticks;     /* down-counter to next frame */
+    unsigned char duration_base;   /* halves at each frame advance —
+                                     * mirror of (IX+\$14) in handling_spark
+                                     * at \$A8BD. Next frame_ticks = base + 1. */
 } death_spark_t;
 static death_spark_t death_sparks[DEATH_SPARK_COUNT];
 
@@ -3926,13 +3929,14 @@ static void play_bat_explosion(unsigned char level_idx) {
     brick_flash_ticks = 0;
     objects[OBJ_ENEMY].sprite_set = 0;
     for (i = 0; i < DEATH_SPARK_COUNT; i++) {
-        death_sparks[i].active      = 1;
-        death_sparks[i].x_q88       = (long)(x_start + i * 3) << 8;
-        death_sparks[i].y_q88       = (long)0xAE << 8;
-        death_sparks[i].dir         = dir;
-        death_sparks[i].speed       = 2;
-        death_sparks[i].sprite_num  = 0;
-        death_sparks[i].frame_ticks = 0x18;
+        death_sparks[i].active        = 1;
+        death_sparks[i].x_q88         = (long)(x_start + i * 3) << 8;
+        death_sparks[i].y_q88         = (long)0xAE << 8;
+        death_sparks[i].dir           = dir;
+        death_sparks[i].speed         = 2;        /* matches (IX+\$07) at spawn */
+        death_sparks[i].sprite_num    = 0;
+        death_sparks[i].frame_ticks   = 0x18;     /* (IX+\$15) at spawn */
+        death_sparks[i].duration_base = 0x18;     /* (IX+\$14) at spawn */
         dir = (unsigned char)((dir + 5) & 0x3F);
     }
     /* Push sound $08 — same beep LBC10's level-cleared branch uses, but
@@ -3979,9 +3983,14 @@ static void play_bat_explosion(unsigned char level_idx) {
                     continue;
                 }
                 death_sparks[i].sprite_num++;
-                death_sparks[i].speed = (unsigned char)(death_sparks[i].speed >> 1);
-                if (death_sparks[i].speed == 0) death_sparks[i].speed = 1;
-                death_sparks[i].frame_ticks = (unsigned char)(death_sparks[i].speed + 1);
+                /* Original handling_spark at $A8BD: SRL (IX+$14);
+                 * INC A; LD (IX+$15),A. Halve the duration base, set
+                 * tick counter to base+1. (IX+$07) = speed stays
+                 * constant for the spark's whole life. */
+                death_sparks[i].duration_base =
+                    (unsigned char)(death_sparks[i].duration_base >> 1);
+                death_sparks[i].frame_ticks =
+                    (unsigned char)(death_sparks[i].duration_base + 1);
             }
             alive = 1;
         }
