@@ -2740,7 +2740,10 @@ static unsigned int next_random(void) {
  *   +4 height body
  *   +5 speed */
 static const unsigned char prop_uneven[6] = { 0x09, 0xF0, 0x70, 0x18, 0x0C, 0x01 };
-static const unsigned char prop_even[6]   = { 0x08, 0x70, 0xF0, 0x18, 0x0E, 0x02 };
+/* prop_even byte-exact per $9F2D — was hand-tuned earlier with extra
+ * speed and a smaller height; the original UFO is 16 px tall and moves
+ * at speed 1, same as the bird. */
+static const unsigned char prop_even[6]   = { 0x08, 0x60, 0x90, 0x18, 0x10, 0x01 };
 static const unsigned char prop_x_coord[4]= { 0x40, 0xA8, 0x40, 0xA8 };
 
 unsigned char round_number = 0;              /* current round counter */
