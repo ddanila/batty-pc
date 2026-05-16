@@ -1441,8 +1441,19 @@ static void print_one_brik_buf_c(unsigned int hl, unsigned char iy_byte) {
     }
 
     /* Color attr: 1-indexed lookup, write to both char cells the brick
-     * spans. */
+     * spans. Multi-hit (metal) bricks have low nibble 6..9; the first
+     * collision SETS bit 4 (= "next hit destroys"). Dim their attr by
+     * clearing the bright bit so the post-first-hit state is visually
+     * distinct from the fresh state. 1-hit normal bricks (low nibble
+     * 1..5) start with bit 4 already set, so this check skips them
+     * and they always render bright. */
     attr = briks_colors[iy_byte & 0x0F];
+    {
+        unsigned char low = (unsigned char)(iy_byte & 0x0F);
+        if ((iy_byte & 0x10) && low >= 6 && low <= 9) {
+            attr &= 0xBF;
+        }
+    }
     attr_buff[attr_off]     = attr;
     attr_buff[attr_off + 1] = attr;
 }
