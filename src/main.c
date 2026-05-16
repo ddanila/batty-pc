@@ -503,6 +503,10 @@ static int stuck_offset_x = BALL_X_OFFSET_ON_BAT;
 static unsigned char bullet_active = 0;
 static int           bullet_x      = 0;
 static int           bullet_y      = 0;
+/* Bat laser-fire animation: ticks down from 8 to 0; while non-zero
+ * render_bat picks spr_bat_gun_1..4 based on the count so the bat's
+ * cannon visibly flashes when SPACE fires a bullet. */
+static unsigned char bat_fire_anim_ticks = 0;
 
 /* Second ball for the MULTI_BALL ($02 = triple_ball) bonus. We only
  * spawn one extra (not three) — the original tripled at catch but a
@@ -762,7 +766,11 @@ static unsigned char sprites_blob[SPRITES_BLOB_SIZE];
 #define SPR_BALL_NORMAL  (0x7B16 - 0x7A8C)   /* = 0x08a */
 #define SPR_BAT_NORMAL   (0x7E38 - 0x7A8C)   /* = 0x3ac */
 #define SPR_BAT_BIG      (0x7F42 - 0x7A8C)   /* = 0x4b6 */
-#define SPR_BAT_GUN      (0x8188 - 0x7A8C)   /* laser-cannon bat (same dims as normal) */
+#define SPR_BAT_GUN      (0x8188 - 0x7A8C)   /* laser-cannon bat (resting) */
+#define SPR_BAT_GUN_1    (0x7FE0 - 0x7A8C)   /* firing anim frame 1 */
+#define SPR_BAT_GUN_2    (0x804A - 0x7A8C)   /* firing anim frame 2 */
+#define SPR_BAT_GUN_3    (0x80B4 - 0x7A8C)   /* firing anim frame 3 */
+#define SPR_BAT_GUN_4    (0x811E - 0x7A8C)   /* firing anim frame 4 */
 #define SPR_UFO_1        (0x83B0 - 0x7A8C)   /* = 0x924 */
 #define SPR_UFO_2        (0x8406 - 0x7A8C)   /* = 0x97a */
 #define SPR_UFO_3        (0x8462 - 0x7A8C)   /* = 0x9d6 */
@@ -1368,10 +1376,19 @@ static void render_bat(unsigned char cycle, unsigned char attr) {
         x   = BAT_X - BAT_BIG_EXTRA_PX;
         sprite_w = BAT_W_BYTES * 8 + 2 * BAT_BIG_EXTRA_PX;
     } else {
-        /* Laser-carrying bat shows the gun-mounted sprite; otherwise
-         * the default. Both share the same 32 x 13 footprint. */
-        spr = (objects[OBJ_BAT_1].bonus_applied == 0x01)
-            ? SPR_BAT_GUN : SPR_BAT_NORMAL;
+        /* Laser-carrying bat shows the gun-mounted sprite. While the
+         * fire-animation counter is non-zero, cycle through the four
+         * spr_bat_gun_1..4 frames (2 ticks per frame, picked off the
+         * countdown). Same 32 x 13 footprint as spr_bat_normal. */
+        if (objects[OBJ_BAT_1].bonus_applied == 0x01) {
+            if (bat_fire_anim_ticks >= 7)      spr = SPR_BAT_GUN_1;
+            else if (bat_fire_anim_ticks >= 5) spr = SPR_BAT_GUN_2;
+            else if (bat_fire_anim_ticks >= 3) spr = SPR_BAT_GUN_3;
+            else if (bat_fire_anim_ticks >= 1) spr = SPR_BAT_GUN_4;
+            else                               spr = SPR_BAT_GUN;
+        } else {
+            spr = SPR_BAT_NORMAL;
+        }
         x   = BAT_X;
         sprite_w = BAT_W_BYTES * 8 + 2 * bat_extra_px;
         if (bat_extra_px > 0) {
@@ -2382,6 +2399,7 @@ static void bonus_apply(unsigned char type) {
                 objects[OBJ_BALL_2].y_coord = BALL_Y;
                 ball2_dx = -ball_dx;       /* opposite horizontal */
                 ball2_dy = -BALL_SPEED;    /* upward */
+                snd_q_push(SND_TRIPLE_BALL);
             }
             break;
         default: break;
@@ -3379,6 +3397,7 @@ static state_t run_level(void) {
                         bullet_active = 1;
                         bullet_x      = BAT_X + (BAT_W_BYTES * 8) / 2 - 1;
                         bullet_y      = BAT_Y_PX - BULLET_H_PX;
+                        bat_fire_anim_ticks = 8;
                         snd_q_push(SND_SHOT);
                     }
                     start = bios_ticks();
@@ -3435,6 +3454,7 @@ static state_t run_level(void) {
                 step_bomb();
                 step_bullet();
                 step_rocket();
+                if (bat_fire_anim_ticks) bat_fire_anim_ticks--;
                 step_ball2();
                 /* Mirror of LB9E8_2..LB9E8_3 ($BA83..$BAD9):
                  *   enemy_prepare    -- maybe spawn alien
