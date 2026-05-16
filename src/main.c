@@ -500,16 +500,21 @@ static int stuck_offset_x = BALL_X_OFFSET_ON_BAT;
 #define BULLET_W_PX     8
 #define BULLET_H_PX     8
 #define BULLET_SPEED    4
-static unsigned char bullet_active = 0;
-static int           bullet_x      = 0;
-static int           bullet_y      = 0;
+/* Two-bullet pool — original at $A0FA tries object_bullet_1 then
+ * object_bullet_2 so the player can have up to 2 in flight. We had
+ * one slot, capping rapid-fire to one bullet per ~30 frames. */
+#define N_BULLETS 2
+static unsigned char bullet_active[N_BULLETS] = {0, 0};
+static int           bullet_x[N_BULLETS]      = {0, 0};
+static int           bullet_y[N_BULLETS]      = {0, 0};
 /* Bullet-impact blast: 4 frames, ~3 ticks each. Spawned wherever
- * step_bullet's collision deactivates the bullet. */
+ * step_bullet's collision deactivates the bullet. Per-slot so two
+ * simultaneous bullets get their own blast on impact. */
 #define BULLET_BLAST_TICKS_PER_FRAME 3
 #define BULLET_BLAST_FRAMES          4
-static unsigned char bullet_blast_ticks = 0;   /* 0 = inactive; counts down */
-static int           bullet_blast_x     = 0;
-static int           bullet_blast_y     = 0;
+static unsigned char bullet_blast_ticks[N_BULLETS] = {0, 0};
+static int           bullet_blast_x[N_BULLETS]     = {0, 0};
+static int           bullet_blast_y[N_BULLETS]     = {0, 0};
 /* Bat laser-fire animation: ticks down from 8 to 0; while non-zero
  * render_bat picks spr_bat_gun_1..4 based on the count so the bat's
  * cannon visibly flashes when SPACE fires a bullet. */
@@ -2375,19 +2380,23 @@ static void render_ball_to_buff(int x, int y, unsigned char bg) {
     blit_masked_to_scr_buff(spr, x, y);
 }
 
-/* Paint the laser bullet as a small 2x6 solid bar at (bullet_x,
- * bullet_y). Apply a bright-magenta attr at the bullet's cells so
- * it stands out against bg pattern + bricks. */
+/* Paint each active laser bullet as a small 2x6 solid bar. Apply a
+ * bright-magenta attr at each bullet's cells so they stand out against
+ * bg pattern + bricks. Two slots = up to two bullets in flight. */
 static void render_bullet_to_buff(void) {
     static unsigned char bullet_anim_tick = 0;
     unsigned int spr;
     unsigned char attr;
-    if (!bullet_active) return;
+    int i;
     bullet_anim_tick++;
     spr = (bullet_anim_tick & 1) ? SPR_BULLET_2 : SPR_BULLET_1;
     attr = (unsigned char)(0x40 | (bonus_colours[BONUS_TYPE_LASER] & 7));
-    blit_sprite_attrs_to_buff(bullet_x, bullet_y, BULLET_W_PX, BULLET_H_PX, attr);
-    blit_masked_to_scr_buff(spr, bullet_x, bullet_y);
+    for (i = 0; i < N_BULLETS; i++) {
+        if (!bullet_active[i]) continue;
+        blit_sprite_attrs_to_buff(bullet_x[i], bullet_y[i],
+                                    BULLET_W_PX, BULLET_H_PX, attr);
+        blit_masked_to_scr_buff(spr, bullet_x[i], bullet_y[i]);
+    }
 }
 
 /* Paint the rocket into scr_buff. Alternates between the two
@@ -2958,20 +2967,20 @@ static void step_bomb(void) {
     if (bomb_y > PLAYFIELD_H) bomb_active = 0;
 }
 
-/* Step the laser bullet one frame: move up; on first brick / alien
- * hit deactivate (and destroy / damage the target). Off the top of
- * the playfield also deactivates. Bullet is treated as a point at
- * (bullet_x, bullet_y); collision uses the same brick grid lookup
- * as the ball but without bounce-axis logic — the bullet stops
- * dead on contact regardless of brick type. */
-static void step_bullet(void) {
+/* Step one laser bullet slot (slot index in `b`). Move up; on first
+ * brick / alien hit deactivate (and destroy / damage the target). Off
+ * the top of the playfield also deactivates. Treats bullet as a point;
+ * collision uses the same brick grid lookup as the ball but without
+ * bounce-axis logic — the bullet stops dead on contact regardless of
+ * brick type. */
+static void step_bullet_one(int b) {
     int col, row;
     unsigned char *cell;
     object_t *enemy;
-    if (!bullet_active) return;
-    bullet_y -= BULLET_SPEED;
-    if (bullet_y < 0) {
-        bullet_active = 0;                       /* fly-off: no blast */
+    if (!bullet_active[b]) return;
+    bullet_y[b] -= BULLET_SPEED;
+    if (bullet_y[b] < 0) {
+        bullet_active[b] = 0;                    /* fly-off: no blast */
         return;
     }
     /* Alien hit (AABB on alien body rect). */
@@ -2983,17 +2992,17 @@ static void step_bullet(void) {
         int ex_r = enemy->x_coord + enemy->w_body_px;
         int ey_t = enemy->y_coord;
         int ey_b = enemy->y_coord + enemy->h_body_px;
-        if (bullet_x + BULLET_W_PX > ex_l && bullet_x < ex_r
-            && bullet_y + BULLET_H_PX > ey_t && bullet_y < ey_b) {
+        if (bullet_x[b] + BULLET_W_PX > ex_l && bullet_x[b] < ex_r
+            && bullet_y[b] + BULLET_H_PX > ey_t && bullet_y[b] < ey_b) {
             enemy->sprite_set = 0x0A;       /* transition to 5-frame blast */
             enemy->sprite_num = 0;
             enemy->misc_12    = 0;
             score += 350;
             snd_q_push(SND_ALIEN_BLAST);
-            bullet_active = 0;
-            bullet_blast_x = bullet_x;
-            bullet_blast_y = bullet_y;
-            bullet_blast_ticks = BULLET_BLAST_FRAMES * BULLET_BLAST_TICKS_PER_FRAME;
+            bullet_active[b] = 0;
+            bullet_blast_x[b] = bullet_x[b];
+            bullet_blast_y[b] = bullet_y[b];
+            bullet_blast_ticks[b] = BULLET_BLAST_FRAMES * BULLET_BLAST_TICKS_PER_FRAME;
             return;
         }
     }
@@ -3002,21 +3011,19 @@ static void step_bullet(void) {
      * destroying; multi-hit bricks set bit 4 (= half-damaged) on
      * first hit; bit-4 bricks destroy on this hit. Every hit spawns
      * the 4-frame impact blast. */
-    if (bullet_y >= 32 && bullet_y < 32 + LVL_ROWS * 8
-        && bullet_x >= 8 && bullet_x < 8 + LVL_COLS * 16) {
-        col = (bullet_x - 8) / 16;
-        row = (bullet_y - 32) / 8;
+    if (bullet_y[b] >= 32 && bullet_y[b] < 32 + LVL_ROWS * 8
+        && bullet_x[b] >= 8 && bullet_x[b] < 8 + LVL_COLS * 16) {
+        col = (bullet_x[b] - 8) / 16;
+        row = (bullet_y[b] - 32) / 8;
         cell = &live_level[row * LVL_COLS + col];
         if (!(*cell & 0x80)) {
             int hit = 0;
             if (*cell & 0x20) {
-                /* undestructible: stop bullet, no destruction */
-                hit = 1;
+                hit = 1;                       /* undestructible: stop, no destroy */
             } else if (!(*cell & 0x10)) {
                 *cell |= 0x10;                 /* multi-hit, set bit 4 */
                 hit = 1;
             } else {
-                /* bit 4 set: destroy. */
                 unsigned int idx = (unsigned int)((row < 12) ? row : 11);
                 unsigned int pts = points_table[idx];
                 if ((*cell & 0x0F) >= 6) pts *= 2;
@@ -3029,41 +3036,64 @@ static void step_bullet(void) {
             }
             if (hit) {
                 snd_q_push(SND_NORMAL_BRIK);
-                bullet_active = 0;
-                bullet_blast_x = bullet_x;
-                bullet_blast_y = bullet_y;
-                bullet_blast_ticks = BULLET_BLAST_FRAMES * BULLET_BLAST_TICKS_PER_FRAME;
+                bullet_active[b] = 0;
+                bullet_blast_x[b] = bullet_x[b];
+                bullet_blast_y[b] = bullet_y[b];
+                bullet_blast_ticks[b] = BULLET_BLAST_FRAMES * BULLET_BLAST_TICKS_PER_FRAME;
                 return;
             }
         }
     }
 }
 
-/* Step the bullet-impact blast one tick. Counts down through the
- * 4 frames at BULLET_BLAST_TICKS_PER_FRAME ticks each; deactivates
- * when the counter hits zero. */
-static void step_bullet_blast(void) {
-    if (bullet_blast_ticks) bullet_blast_ticks--;
+static void step_bullet(void) {
+    int i;
+    for (i = 0; i < N_BULLETS; i++) step_bullet_one(i);
 }
 
-/* Paint the current bullet-blast frame at the recorded impact
- * point. Frame index = (BULLET_BLAST_FRAMES - 1) - (ticks /
- * ticks_per_frame) so the animation plays start -> end as the
- * counter winds down. */
+/* Step the bullet-impact blasts one tick each. Per-slot countdown
+ * matches the per-slot bullet that spawned each blast. */
+static void step_bullet_blast(void) {
+    int i;
+    for (i = 0; i < N_BULLETS; i++) {
+        if (bullet_blast_ticks[i]) bullet_blast_ticks[i]--;
+    }
+}
+
+/* Paint each active bullet-blast frame at its recorded impact point.
+ * Frame index = (BULLET_BLAST_FRAMES - 1) - (ticks / ticks_per_frame)
+ * so the animation plays start -> end as the counter winds down. */
 static void render_bullet_blast_to_buff(void) {
     static const unsigned int frames[BULLET_BLAST_FRAMES] = {
         SPR_BULLET_BLAST_1, SPR_BULLET_BLAST_2,
         SPR_BULLET_BLAST_3, SPR_BULLET_BLAST_4
     };
-    unsigned char frame;
-    unsigned char attr;
-    if (!bullet_blast_ticks) return;
-    frame = (unsigned char)((bullet_blast_ticks - 1) / BULLET_BLAST_TICKS_PER_FRAME);
-    if (frame >= BULLET_BLAST_FRAMES) frame = BULLET_BLAST_FRAMES - 1;
-    frame = (unsigned char)((BULLET_BLAST_FRAMES - 1) - frame);
-    attr = (unsigned char)(0x40 | (bonus_colours[BONUS_TYPE_LASER] & 7));
-    blit_sprite_attrs_to_buff(bullet_blast_x, bullet_blast_y, 8, 8, attr);
-    blit_masked_to_scr_buff(frames[frame], bullet_blast_x, bullet_blast_y);
+    unsigned char attr = (unsigned char)(0x40 | (bonus_colours[BONUS_TYPE_LASER] & 7));
+    int i;
+    for (i = 0; i < N_BULLETS; i++) {
+        unsigned char frame;
+        if (!bullet_blast_ticks[i]) continue;
+        frame = (unsigned char)((bullet_blast_ticks[i] - 1) / BULLET_BLAST_TICKS_PER_FRAME);
+        if (frame >= BULLET_BLAST_FRAMES) frame = BULLET_BLAST_FRAMES - 1;
+        frame = (unsigned char)((BULLET_BLAST_FRAMES - 1) - frame);
+        blit_sprite_attrs_to_buff(bullet_blast_x[i], bullet_blast_y[i], 8, 8, attr);
+        blit_masked_to_scr_buff(frames[frame], bullet_blast_x[i], bullet_blast_y[i]);
+    }
+}
+
+/* True if any bullet-blast slot is still rendering an animation. */
+static int any_bullet_blast(void) {
+    int i;
+    for (i = 0; i < N_BULLETS; i++) if (bullet_blast_ticks[i]) return 1;
+    return 0;
+}
+
+/* True if any bullet slot is in flight — used by the inner loop to
+ * decide whether to redraw and to expose firing capacity to SPACE. */
+static int any_bullet_active(void) {
+    int i;
+    for (i = 0; i < N_BULLETS; i++) if (bullet_active[i]) return 1;
+    return 0;
 }
 
 /* Step the rocket one frame: move up, destroy any destructible
@@ -3384,7 +3414,7 @@ static void redraw_full_with_ball(unsigned char level_idx) {
     }
     if (bonus_active) render_bonus_to_buff(bg_attr);
     render_bullet_to_buff();
-    if (bullet_blast_ticks) render_bullet_blast_to_buff();
+    if (any_bullet_blast()) render_bullet_blast_to_buff();
     if (rocket_active) render_rocket_to_buff();
     if (ball2_active) {
         render_ball_to_buff(objects[OBJ_BALL_2].x_coord,
@@ -3922,8 +3952,10 @@ static state_t run_level(void) {
         ball_dy       = -BALL_SPEED;
         bonus_active   = 0;
         bomb_active        = 0;
-        bullet_active      = 0;
-        bullet_blast_ticks = 0;
+        bullet_active[0]      = 0;
+        bullet_active[1]      = 0;
+        bullet_blast_ticks[0] = 0;
+        bullet_blast_ticks[1] = 0;
         rocket_active      = 0;
         brick_flash_ticks  = 0;
         ball2_active   = 0;
@@ -4009,17 +4041,25 @@ static state_t run_level(void) {
                             ball_dy = -BALL_SPEED;
                         }
                     }
-                    /* If the bat carries the LASER bonus and no
-                     * bullet is in flight, also fire one from the bat
-                     * top centre. Independent of ball state — SPACE
-                     * can refire the laser while the ball is in play. */
-                    if (objects[OBJ_BAT_1].bonus_applied == 0x01
-                        && !bullet_active) {
-                        bullet_active = 1;
-                        bullet_x      = BAT_X + (BAT_W_BYTES * 8) / 2 - BULLET_W_PX / 2;
-                        bullet_y      = BAT_Y_PX - BULLET_H_PX;
-                        bat_fire_anim_ticks = 8;
-                        snd_q_push(SND_SHOT);
+                    /* If the bat carries the LASER bonus and a free
+                     * bullet slot exists, also fire one from the bat
+                     * top centre. Two slots = up to two in flight at
+                     * once (port of object_bullet_1 / _2 at $A0FA).
+                     * Independent of ball state — SPACE can refire
+                     * the laser while the ball is in play. */
+                    if (objects[OBJ_BAT_1].bonus_applied == 0x01) {
+                        int free_slot = -1;
+                        int j;
+                        for (j = 0; j < N_BULLETS; j++) {
+                            if (!bullet_active[j]) { free_slot = j; break; }
+                        }
+                        if (free_slot >= 0) {
+                            bullet_active[free_slot] = 1;
+                            bullet_x[free_slot] = BAT_X + (BAT_W_BYTES * 8) / 2 - BULLET_W_PX / 2;
+                            bullet_y[free_slot] = BAT_Y_PX - BULLET_H_PX;
+                            bat_fire_anim_ticks = 8;
+                            snd_q_push(SND_SHOT);
+                        }
                     }
                     start = bios_ticks();
                 }
@@ -4118,8 +4158,8 @@ static state_t run_level(void) {
                 if (bat_extra_px != bat_extra_tgt) bat_moved = 1;
                 if (objects[OBJ_ENEMY].sprite_set != 0) ball_moved = 1;
                 if (bomb_active) ball_moved = 1;
-                if (bullet_active) ball_moved = 1;
-                if (bullet_blast_ticks) ball_moved = 1;
+                if (any_bullet_active()) ball_moved = 1;
+                if (any_bullet_blast()) ball_moved = 1;
                 if (rocket_active) ball_moved = 1;
                 if (brick_flash_ticks) ball_moved = 1;
                 if (ball2_active) ball_moved = 1;
