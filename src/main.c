@@ -3553,24 +3553,30 @@ static void brik_anim_apply_frame(unsigned char frame_idx) {
 }
 
 /* Run the 8-frame brick-shimmer pass over the current level's bricks.
- * 2 PIT ticks per frame = 16 ticks = ~0.32 s total. ESC quits, any
- * other key short-circuits the rest of the sequence. */
+ * 2 PIT ticks per frame = 16 ticks = ~0.32 s total. The "solid" frame
+ * (spr_brik_5, index 4) emits a quick metallic beep — port of the
+ * play_sound_metal_brik call gated on the "any-metal-brick" check at
+ * $B73F. ESC quits, any other key short-circuits. */
 static int play_brik_anim(void) {
     int step;
     for (step = 0; step < 8; step++) {
         unsigned long t;
-        brik_anim_apply_frame(brik_anim_order[step]);
+        unsigned char frame = brik_anim_order[step];
+        brik_anim_apply_frame(frame);
         buff_to_vga_strip(32, 96);
+        if (frame == 4) sound_play(2600, 2);    /* spr_brik_5 ping */
         t = pit_ticks();
         while (pit_ticks() - t < 2UL) {
             sound_tick();
             if (kbhit()) {
                 int k = getch();
                 if (k == 27) return 1;
+                sound_silence();
                 return 0;
             }
         }
     }
+    sound_silence();
     return 0;
 }
 
@@ -4044,8 +4050,13 @@ static state_t run_level(void) {
             if (live_bricks_remaining() == 0) {
                 /* Original's LBBFB_0 pauses ~0.6 s (pause_long B=2)
                  * before the next level's setup — let the player see
-                 * the cleared brick zone briefly. ESC still quits. */
+                 * the cleared brick zone briefly. Plays one beep of
+                 * sound $08 (param $3D) at the start of the pause —
+                 * approximated here with a fixed-frequency tone since
+                 * our sound mapping doesn't yet implement play_sound_08
+                 * faithfully. ESC still quits. */
                 unsigned long t = pit_ticks();
+                sound_play(700, 25);            /* ~0.5 s 700 Hz beep */
                 while (pit_ticks() - t < 30UL) {
                     sound_tick();
                     if (kbhit()) {
@@ -4054,6 +4065,7 @@ static state_t run_level(void) {
                         break;
                     }
                 }
+                sound_silence();
                 break;
             }
         }
