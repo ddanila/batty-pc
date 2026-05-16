@@ -526,6 +526,18 @@ static unsigned char ball2_active = 0;
 static int           ball2_dx     = +BALL_SPEED;
 static int           ball2_dy     = -BALL_SPEED;
 
+/* Brick destruction flash — a solid bright-white 16x8 rectangle
+ * painted at the destroyed cell for a few ticks before the cell
+ * fully disappears. Makes a brick popping feel less abrupt. We
+ * only track the most-recent destruction; if multiple cells go
+ * down in one tick (rocket sweep), the flash lands on the last
+ * one. */
+#define BRICK_FLASH_TICKS 4
+static unsigned char brick_flash_ticks = 0;
+static int           brick_flash_x     = 0;
+static int           brick_flash_y     = 0;
+static void render_brick_flash_to_buff(void);    /* forward decl — defined alongside brick_collision */
+
 /* Rocket bonus animation — instead of insta-destroying every brick
  * on catch, fly a rocket up from the bat through the playfield and
  * destroy whatever it passes through. Two animation frames cycled
@@ -1685,6 +1697,7 @@ static void render_level_screen(unsigned char level_idx) {
     draw_frame(10);              /* bright red — placeholder */
     paint_bg_to_buff(bg_attr, cycle);
     render_brick_band(level_idx);
+    render_brick_flash_to_buff();
     /* Frame must paint AFTER bricks so its side-strip attrs override
      * the leftmost / rightmost brick's body attrs that print_briks_c
      * lays into the same cells; and BEFORE sprites so the bat / ball
@@ -2494,6 +2507,45 @@ static void step_pts_400(void) {
  *   1 = vertical hit (entered from top or bottom)  -> caller flips dy
  *   2 = horizontal hit (entered from a side)       -> caller flips dx
  * The previous ball position is needed to disambiguate corner cases. */
+
+/* Spawn the brick destruction flash at a level-grid cell. Replaces
+ * a popping brick with a bright-white solid rectangle for
+ * BRICK_FLASH_TICKS ticks. Only one flash visible at a time. */
+static void brick_flash_spawn(int col, int row) {
+    brick_flash_x = 8 + col * 16;
+    brick_flash_y = 32 + row * 8;
+    brick_flash_ticks = BRICK_FLASH_TICKS;
+}
+
+static void step_brick_flash(void) {
+    if (brick_flash_ticks) brick_flash_ticks--;
+}
+
+/* Paint the flash: scr_buff bytes set solid for 7 rows (matching
+ * the original spr_brik_5 pattern: 0xFF/0xFE per row + 1 blank
+ * trailing row); attr_buff at the brick's two char cells overridden
+ * to bright white. Runs after render_brick_band so it sits on top
+ * of the bg pattern that would otherwise show through a destroyed
+ * cell. */
+static void render_brick_flash_to_buff(void) {
+    int col_byte, char_row, r;
+    if (!brick_flash_ticks) return;
+    col_byte = brick_flash_x >> 3;       /* brick spans col_byte and col_byte+1 */
+    char_row = brick_flash_y >> 3;
+    if (col_byte < 0 || col_byte + 1 >= 32) return;
+    if (char_row < 0 || char_row >= ATTR_ROWS) return;
+    for (r = 0; r < 7; r++) {
+        int y = brick_flash_y + r;
+        if (y < 0 || y >= PLAYFIELD_H) continue;
+        scr_buff[y * 32 + col_byte]     = 0xFF;
+        scr_buff[y * 32 + col_byte + 1] = 0xFE;
+    }
+    /* Last row left blank for the inter-brick gap, matching the
+     * destroyed brick's footprint exactly. */
+    attr_buff[char_row * 32 + col_byte]     = 0x47;
+    attr_buff[char_row * 32 + col_byte + 1] = 0x47;
+}
+
 static int brick_collision(int prev_x, int prev_y, int new_x, int new_y) {
     int sz = eff_ball_size();
     int cx = new_x + sz / 2;
@@ -2549,6 +2601,7 @@ static int brick_collision(int prev_x, int prev_y, int new_x, int new_y) {
      * than bouncing — keep the bonus-spawn check below intact but
      * stash the "no bounce" intent. */
     if (big_ball_ticks > 0) axis = 0;
+    brick_flash_spawn(col, row);
     /* Maybe drop a bonus. Port of set_bonus's selection logic at
      * $9D5A: random index into bonus_table_current (= _first for
      * rounds 0..5, _second for 6+), retry if the picked code maps
@@ -2811,6 +2864,7 @@ static void step_bullet(void) {
                 score += pts;
                 *cell |= 0x80;
                 bricks_destroyed++;
+                brick_flash_spawn(col, row);
                 hit = 1;
             }
             if (hit) {
@@ -2897,6 +2951,7 @@ static void step_rocket(void) {
                 }
                 *cell |= 0x80;
                 bricks_destroyed++;
+                brick_flash_spawn(c, r);
                 killed_this_tick = 1;
             }
         }
@@ -3094,6 +3149,7 @@ static void redraw_full_with_ball(unsigned char level_idx) {
     draw_frame(10);              /* bright red — placeholder */
     paint_bg_to_buff(bg_attr, cycle);
     render_brick_band(level_idx);
+    render_brick_flash_to_buff();
     paint_frame_to_buff(cycle, level_idx);
     render_bat(cycle, bg_attr);
     render_lives(cycle, bg_attr);
@@ -3393,6 +3449,7 @@ static state_t run_level(void) {
         bullet_active      = 0;
         bullet_blast_ticks = 0;
         rocket_active      = 0;
+        brick_flash_ticks  = 0;
         ball2_active   = 0;
         objects[OBJ_BALL_2].sprite_set = 0x82;
         pts_400_ticks  = 0;
@@ -3537,6 +3594,7 @@ static state_t run_level(void) {
                 step_bullet();
                 step_bullet_blast();
                 step_rocket();
+                step_brick_flash();
                 if (bat_fire_anim_ticks) bat_fire_anim_ticks--;
                 step_ball2();
                 /* Mirror of LB9E8_2..LB9E8_3 ($BA83..$BAD9):
@@ -3568,6 +3626,7 @@ static state_t run_level(void) {
                 if (bullet_active) ball_moved = 1;
                 if (bullet_blast_ticks) ball_moved = 1;
                 if (rocket_active) ball_moved = 1;
+                if (brick_flash_ticks) ball_moved = 1;
                 if (ball2_active) ball_moved = 1;
             }
 
