@@ -2904,6 +2904,7 @@ static const unsigned char prop_x_coord[4]= { 0x40, 0xA8, 0x40, 0xA8 };
 
 unsigned char round_number = 0;              /* current round counter */
 static void play_bat_explosion(unsigned char level_idx);   /* forward */
+static void respawn_primary_ball(void);                     /* forward */
 static unsigned char current_level_idx_var;  /* set by run_level so
                                               * enemy_prepare can read it */
 static void enemy_prepare(void) {
@@ -3029,27 +3030,7 @@ static void step_bomb(void) {
         objects[OBJ_BALL_3].sprite_set = 0x82;
         play_bat_explosion(current_level_idx_var);
         if (lives > 0) lives--;
-        ball_stuck = 1;
-        stuck_ticks = 0;
-        stuck_offset_x = BALL_X_OFFSET_ON_BAT;
-        BALL_SHOW();
-        BALL_X = BAT_X + BALL_X_OFFSET_ON_BAT;
-        BALL_Y = BAT_Y_PX - eff_ball_size();
-        ball_dx = +BALL_SPEED;
-        ball_dy = -BALL_SPEED;
-        /* Original all_var_init at \$B7F8 (called from LB9E8_1 on each
-         * life-start) resets bat.bonus_applied to \$83 (= level-start
-         * catch state). Any prior bat-side effect (LASER, CATCH,
-         * KILL_ALIENS) doesn't survive a death. We also drop the
-         * timer-based BIG_BAT / BIG_BALL state. */
-        objects[OBJ_BAT_1].bonus_applied = 0xFF;
-        objects[OBJ_BAT_2].bonus_applied = 0xFF;
-        big_bat_ticks  = 0;
-        big_ball_ticks = 0;
-        slow_ticks     = 0;
-        bat_extra_tgt  = 0;
-        /* No launch chirp here — ball is resetting to stuck, not
-         * launching. The bat-explosion sound already covered the hit. */
+        respawn_primary_ball();
         return;
     }
     if (bomb_y > PLAYFIELD_H) bomb_active = 0;
@@ -3351,23 +3332,7 @@ static void step_ball(void) {
         }
         play_bat_explosion(current_level_idx_var);
         if (lives > 0) lives--;
-        ball_stuck = 1;
-        stuck_ticks = 0;
-        stuck_offset_x = BALL_X_OFFSET_ON_BAT;
-        BALL_SHOW();                     /* sits on bat again, ready to relaunch */
-        BALL_X = BAT_X + BALL_X_OFFSET_ON_BAT;
-        BALL_Y = BAT_Y_PX - ball_sz;
-        ball_dx = +BALL_SPEED;
-        ball_dy = -BALL_SPEED;
-        /* Reset bat-side state per all_var_init at \$B7F8. */
-        objects[OBJ_BAT_1].bonus_applied = 0xFF;
-        objects[OBJ_BAT_2].bonus_applied = 0xFF;
-        big_bat_ticks  = 0;
-        big_ball_ticks = 0;
-        slow_ticks     = 0;
-        bat_extra_tgt  = 0;
-        /* No launch chirp — ball reset to stuck. The bat-explosion
-         * sound has already covered the loss. */
+        respawn_primary_ball();
         return;
     }
     /* Brick collision: side-aware. brick_collision tells us which axis
@@ -3978,6 +3943,28 @@ static void redraw_with_death_sparks(unsigned char level_idx) {
  * run_level for the lives-- + respawn step. Mirrors the LBC10_3 spawn
  * loop: 10 sparks, dir = $1B + 5*i (mod 64), speed 2, starting at
  * (bat_center - 12 + 3*i, $AE), 5-frame decay with halving speed. */
+/* Reset the primary ball + bat to fresh-life state. Mirror of
+ * all_var_init at \$B7F8 (called from LB9E8_1 on each life-start in
+ * the original): ball stuck on bat, bat.bonus_applied = \$FF (= no
+ * bonus), all timer-based bat / ball effects cleared. Called from
+ * each of the 3 post-explosion respawn sites. */
+static void respawn_primary_ball(void) {
+    ball_stuck     = 1;
+    stuck_ticks    = 0;
+    stuck_offset_x = BALL_X_OFFSET_ON_BAT;
+    BALL_SHOW();
+    BALL_X = BAT_X + BALL_X_OFFSET_ON_BAT;
+    BALL_Y = BAT_Y_PX - eff_ball_size();
+    ball_dx = +BALL_SPEED;
+    ball_dy = -BALL_SPEED;
+    objects[OBJ_BAT_1].bonus_applied = 0xFF;
+    objects[OBJ_BAT_2].bonus_applied = 0xFF;
+    big_bat_ticks  = 0;
+    big_ball_ticks = 0;
+    slow_ticks     = 0;
+    bat_extra_tgt  = 0;
+}
+
 static void play_bat_explosion(unsigned char level_idx) {
     int bat_center = BAT_X + (BAT_W_BYTES * 8) / 2;
     int x_start = bat_center - 12;
@@ -4312,23 +4299,7 @@ static state_t run_level(void) {
                 if (!BALL_VISIBLE && !ball2_active && !ball3_active) {
                     play_bat_explosion(current_level_idx_var);
                     if (lives > 0) lives--;
-                    ball_stuck     = 1;
-                    stuck_ticks    = 0;
-                    stuck_offset_x = BALL_X_OFFSET_ON_BAT;
-                    BALL_SHOW();
-                    BALL_X = BAT_X + BALL_X_OFFSET_ON_BAT;
-                    BALL_Y = BAT_Y_PX - eff_ball_size();
-                    ball_dx = +BALL_SPEED;
-                    ball_dy = -BALL_SPEED;
-                    /* Reset bat-side state per all_var_init at \$B7F8. */
-                    objects[OBJ_BAT_1].bonus_applied = 0xFF;
-                    objects[OBJ_BAT_2].bonus_applied = 0xFF;
-                    big_bat_ticks  = 0;
-                    big_ball_ticks = 0;
-                    slow_ticks     = 0;
-                    bat_extra_tgt  = 0;
-                    /* No launch chirp — ball reset to stuck after
-                     * the bat-explosion sound already covered it. */
+                    respawn_primary_ball();
                 }
                 /* Mirror of LB9E8_2..LB9E8_3 ($BA83..$BAD9):
                  *   enemy_prepare    -- maybe spawn alien
