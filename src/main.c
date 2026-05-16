@@ -522,6 +522,11 @@ static int           bullet_blast_y[N_BULLETS]     = {0, 0};
  * render_bat picks spr_bat_gun_1..4 based on the count so the bat's
  * cannon visibly flashes when SPACE fires a bullet. */
 static unsigned char bat_fire_anim_ticks = 0;
+/* Laser fire cooldown — port of the `bullet` counter at $A160. Original
+ * sets it to ~\$16 (=22) on each fire, then `SUB \$02` per frame; SPACE
+ * is ignored until the counter underflows. Net effect: ~11 frames
+ * between shots regardless of how fast SPACE is mashed. */
+static unsigned char bullet_cooldown = 0;
 
 /* Second ball for the MULTI_BALL ($02 = triple_ball) bonus. We only
  * spawn TWO extras for a total of three balls — port of the LA67B_8
@@ -4003,6 +4008,7 @@ static state_t run_level(void) {
         bullet_active[1]      = 0;
         bullet_blast_ticks[0] = 0;
         bullet_blast_ticks[1] = 0;
+        bullet_cooldown       = 0;
         rocket_active      = 0;
         brick_flash_ticks  = 0;
         ball2_active   = 0;
@@ -4095,7 +4101,8 @@ static state_t run_level(void) {
                      * once (port of object_bullet_1 / _2 at $A0FA).
                      * Independent of ball state — SPACE can refire
                      * the laser while the ball is in play. */
-                    if (objects[OBJ_BAT_1].bonus_applied == 0x01) {
+                    if (objects[OBJ_BAT_1].bonus_applied == 0x01
+                        && bullet_cooldown == 0) {
                         int free_slot = -1;
                         int j;
                         for (j = 0; j < N_BULLETS; j++) {
@@ -4106,6 +4113,7 @@ static state_t run_level(void) {
                             bullet_x[free_slot] = BAT_X + (BAT_W_BYTES * 8) / 2 - BULLET_W_PX / 2;
                             bullet_y[free_slot] = BAT_Y_PX - BULLET_H_PX;
                             bat_fire_anim_ticks = 8;
+                            bullet_cooldown = 0x16;          /* ~11 frames @ -2 / frame */
                             snd_q_push(SND_SHOT);
                         }
                     }
@@ -4169,6 +4177,8 @@ static state_t run_level(void) {
                 step_rocket();
                 step_brick_flash();
                 if (bat_fire_anim_ticks) bat_fire_anim_ticks--;
+                if (bullet_cooldown >= 2) bullet_cooldown -= 2;     /* SUB \$02 / frame */
+                else bullet_cooldown = 0;
                 /* SLOW affects ALL balls in the original (sets ball_1/2/3
                  * speed bytes simultaneously) — mirror by gating extras
                  * on the same slow_skip half-frame the primary uses. */
