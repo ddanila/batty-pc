@@ -2971,7 +2971,16 @@ static void kill_enemy_by_bat(void) {
     if (ey_b <= by_t || ey_t >= by_b) return;
     /* Hit. Transition to blast state (per $A4C4): sprite_set = $0A
      * so handling_table_routines dispatches to handling_blast_obj
-     * which animates the 5-frame explosion then deactivates. */
+     * which animates the 5-frame explosion then deactivates.
+     *
+     * Centre the blast sprite (16x13) over the alien before swapping
+     * — mirror of the $A4D2 position adjustment which adds
+     * (old_w_shadow - 2) * 4 to X and 4 to Y so the explosion is
+     * roughly where the alien's centre was. */
+    e->x_coord = (unsigned char)(e->x_coord + (int)e->w_body_px / 2 - 8);
+    e->y_coord = (unsigned char)(e->y_coord + 4);
+    e->w_body_px = 16;
+    e->h_body_px = 13;
     e->sprite_set = 0x0A;
     e->sprite_num = 0;
     e->misc_12 = 0;                                 /* reset tick counter */
