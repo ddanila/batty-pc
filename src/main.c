@@ -4164,8 +4164,16 @@ static state_t run_level(void) {
                 step_rocket();
                 step_brick_flash();
                 if (bat_fire_anim_ticks) bat_fire_anim_ticks--;
-                step_ball2();
-                step_ball3();
+                /* SLOW affects ALL balls in the original (sets ball_1/2/3
+                 * speed bytes simultaneously) — mirror by gating extras
+                 * on the same slow_skip half-frame the primary uses. */
+                {
+                    int extras_slow_skip = (slow_ticks > 0) && ((now & 1) == 0);
+                    if (!extras_slow_skip) {
+                        step_ball2();
+                        step_ball3();
+                    }
+                }
                 /* Mirror balls_quantity == 0 → LBC10's bat-explosion
                  * branch. If the primary ball is hidden (= it fell while
                  * extras were in play) and the last extra just fell,
