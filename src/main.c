@@ -3140,11 +3140,13 @@ static void step_ball(void) {
         else                           ball_dx = +2;
         snd_q_push(SND_BAT_BEAT);            /* ball-on-bat */
     }
-    /* Past the bat (= lost ball). Play the bat-explosion sub-loop
-     * (mirrors LBC10's 10-spark fan-out), then decrement lives and
-     * respawn stuck on the bat. The outer loop checks lives==0 to
-     * trigger game over. */
-    if (next_y > BAT_Y_PX + BAT_H_PX) {
+    /* Past the bat (= lost ball). Original at LA27E_25 ($A4xx) checks
+     * Y >= $C0 (= 192 = playfield bottom). Our earlier threshold of
+     * BAT_Y_PX + BAT_H_PX = 186 fired the loss ~6 px too early — the
+     * player saw the ball vanish while still seemingly catchable.
+     * Play the bat-explosion sub-loop, decrement lives, respawn stuck.
+     * The outer loop checks lives==0 to trigger game over. */
+    if (next_y >= PLAYFIELD_H) {
         play_bat_explosion(current_level_idx_var);
         if (lives > 0) lives--;
         ball_stuck = 1;
@@ -3208,8 +3210,9 @@ static void step_ball2(void) {
         snd_q_push(SND_BAT_BEAT);
     }
     /* Off-the-bottom: just deactivate. No life penalty for losing the
-     * bonus ball. */
-    if (next_y > BAT_Y_PX + BAT_H_PX) {
+     * bonus ball. Threshold aligned with the original (Y >= 192 = $C0)
+     * so the player gets the same recovery window as on the primary ball. */
+    if (next_y >= PLAYFIELD_H) {
         ball2_active = 0;
         objects[OBJ_BALL_2].sprite_set = 0x82;
         return;
