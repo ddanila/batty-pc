@@ -687,7 +687,11 @@ static void save_high_score(void) {
  * marginal "shadow touched the bat" doesn't register as a catch. */
 #define BONUS_W_PX        16
 #define BONUS_H_PX        8
-#define BONUS_FALL_SPEED  1
+/* Original handling_bonus drives Y via the LA55A_0 accumulator
+ * (DE=\$0008, B=\$02) — accelerates ~8 frames to a peak of ~2 px/frame.
+ * Constant 2 closely matches the bulk of that motion. Was 1, making
+ * bonuses fall almost half as fast as the original. */
+#define BONUS_FALL_SPEED  2
 /* Original game bonus codes from set_bonus / bonus_table_* at $9E4A:
  *   $01 gun        (deferred - needs bullet system)
  *   $02 triple_ball (deferred - needs multi-ball)
