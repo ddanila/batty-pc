@@ -2916,8 +2916,11 @@ static void kill_enemy_by_bat(void) {
     ex_r = e->x_coord + e->w_body_px;
     ey_t = e->y_coord;
     ey_b = e->y_coord + e->h_body_px;
-    bx_l = BAT_X;
-    bx_r = BAT_X + BAT_W_BYTES * 8;
+    /* Use effective bat extents so BIG_BAT widens the kill zone too —
+     * the original uses obj_compare_2pix with (IY+\$0C) = current bat
+     * body width, which grows with the BIG_BAT bonus. */
+    bx_l = eff_bat_left();
+    bx_r = eff_bat_right();
     by_t = BAT_Y_PX;
     by_b = BAT_Y_PX + 8;                            /* body, not shadow */
     if (ex_r <= bx_l || ex_l >= bx_r) return;
