@@ -2416,7 +2416,11 @@ static void render_rocket_to_buff(void) {
     unsigned char attr;
     if (!rocket_active) return;
     rocket_anim_tick++;
-    spr = (rocket_anim_tick & 2) ? SPR_BONUS_ROCKET_2 : SPR_BONUS_ROCKET_1;
+    /* Original handling_rocket at \$A89A toggles sprite each frame:
+     *   LD A,(counter_misc); AND \$01; LD (IX+\$01),A
+     * Was masking \& 2 which only flipped every 2 ticks — half the
+     * original's flame flicker rate. */
+    spr = (rocket_anim_tick & 1) ? SPR_BONUS_ROCKET_2 : SPR_BONUS_ROCKET_1;
     attr = (unsigned char)(0x40 | (bonus_colours[BONUS_TYPE_ROCKET] & 7));
     blit_sprite_attrs_to_buff(rocket_x, rocket_y, ROCKET_W_PX, ROCKET_H_PX, attr);
     blit_masked_to_scr_buff(spr, rocket_x, rocket_y);
