@@ -514,6 +514,17 @@ static int           bullet_y      = 0;
 static unsigned char ball2_active = 0;
 static int           ball2_dx     = +BALL_SPEED;
 static int           ball2_dy     = -BALL_SPEED;
+
+/* Rocket bonus animation — instead of insta-destroying every brick
+ * on catch, fly a rocket up from the bat through the playfield and
+ * destroy whatever it passes through. Two animation frames cycled
+ * each tick. Deactivates when off the top of the playfield. */
+#define ROCKET_W_PX     16
+#define ROCKET_H_PX     14
+#define ROCKET_SPEED    3
+static unsigned char rocket_active = 0;
+static int           rocket_x      = 0;
+static int           rocket_y      = 0;
 /* Stuck-on-bat dwell counter. While ball_stuck, the ball rides the
  * bat; SPACE detaches immediately; after STUCK_TIMEOUT ticks the ball
  * auto-launches. ~5 sec at 50 Hz. */
@@ -763,7 +774,8 @@ static const unsigned int spr_ufo_frames[3]  = { SPR_UFO_1,  SPR_UFO_2,  SPR_UFO
 #define SPR_SPARK_5      (0x83A6 - 0x7A8C)
 
 /* Bonus sprites. Offsets from $7A8C. */
-#define SPR_BONUS_ROCKET_1    (0x891C - 0x7A8C)   /* code $06 — rocket */
+#define SPR_BONUS_ROCKET_1    (0x891C - 0x7A8C)   /* code $06 — rocket frame 1 */
+#define SPR_BONUS_ROCKET_2    (0x89C0 - 0x7A8C)   /* rocket frame 2 (animation) */
 #define SPR_BONUS_SMASH       (0x8A6A - 0x7A8C)   /* code $07 — big-ball */
 #define SPR_BONUS_KILL_ALIENS (0x8AC6 - 0x7A8C)   /* code $09 */
 #define SPR_BONUS_HAND        (0x8B22 - 0x7A8C)   /* code $03 — catch */
@@ -2198,6 +2210,22 @@ static void render_bullet_to_buff(void) {
     }
 }
 
+/* Paint the rocket into scr_buff. Alternates between the two
+ * spr_bonus_rocket_* frames based on a per-tick counter for a
+ * crude flame-flicker effect. Attr forced to LASER's bright
+ * magenta so the rocket stands out against any bg cell. */
+static void render_rocket_to_buff(void) {
+    static unsigned char rocket_anim_tick = 0;
+    unsigned int spr;
+    unsigned char attr;
+    if (!rocket_active) return;
+    rocket_anim_tick++;
+    spr = (rocket_anim_tick & 2) ? SPR_BONUS_ROCKET_2 : SPR_BONUS_ROCKET_1;
+    attr = (unsigned char)(0x40 | (bonus_colours[BONUS_TYPE_ROCKET] & 7));
+    blit_sprite_attrs_to_buff(rocket_x, rocket_y, ROCKET_W_PX, ROCKET_H_PX, attr);
+    blit_masked_to_scr_buff(spr, rocket_x, rocket_y);
+}
+
 /* Direct-VGA fallback kept for the bat-only-move path (redraw_bat
  * extra slot at line 2697 below), which only refreshes the bat strip
  * and can't carry over the ball's scr_buff write. */
@@ -2297,17 +2325,15 @@ static void bonus_apply(unsigned char type) {
             objects[OBJ_BAT_2].bonus_applied = 0x03;
             break;
         case BONUS_TYPE_ROCKET:
-            /* Insta-win the level: mark every destructible cell as
-             * destroyed (bit 7 set). live_bricks_remaining will
-             * return 0 next tick and run_level breaks. Undestructible
-             * cells (bit 5) and skip cells (bit 7 already set) are
-             * preserved. */
-            {
-                int k;
-                for (k = 0; k < LVL_CELLS; k++) {
-                    unsigned char *c = &live_level[k];
-                    if (!(*c & 0xA0)) *c |= 0x80;
-                }
+            /* Spawn a rocket flying up from the bat. step_rocket
+             * destroys every destructible cell it passes through,
+             * giving the player a visible "rocket cleared the level"
+             * moment instead of the level just dissolving. */
+            if (!rocket_active) {
+                rocket_active = 1;
+                rocket_x = BAT_X + (BAT_W_BYTES * 8) / 2 - ROCKET_W_PX / 2;
+                rocket_y = BAT_Y_PX - ROCKET_H_PX;
+                snd_q_push(SND_SHOT);
             }
             break;
         case BONUS_TYPE_SCORE_5K:
@@ -2730,6 +2756,55 @@ static void step_bullet(void) {
     }
 }
 
+/* Step the rocket one frame: move up, destroy any destructible
+ * brick its bbox overlaps, leave undestructible bricks alone (no
+ * bounce — the rocket just continues past them). Deactivate when
+ * the rocket leaves the top of the playfield. */
+static void step_rocket(void) {
+    int col_lo, col_hi, row_lo, row_hi, r, c;
+    if (!rocket_active) return;
+    rocket_y -= ROCKET_SPEED;
+    if (rocket_y + ROCKET_H_PX < 0) {
+        rocket_active = 0;
+        return;
+    }
+    /* Map the rocket bbox onto level-grid cells (8 + col*16, 32 +
+     * row*8) and destroy every overlapping non-undestructible cell.
+     * Use the body region only so the trailing flame doesn't extend
+     * the destruction zone. */
+    {
+        int rx_l = rocket_x;
+        int rx_r = rocket_x + ROCKET_W_PX;
+        int ry_t = rocket_y;
+        int ry_b = rocket_y + ROCKET_H_PX;
+        if (rx_l < 8) rx_l = 8;
+        if (rx_r > 8 + LVL_COLS * 16) rx_r = 8 + LVL_COLS * 16;
+        if (ry_t < 32) ry_t = 32;
+        if (ry_b > 32 + LVL_ROWS * 8) ry_b = 32 + LVL_ROWS * 8;
+        col_lo = (rx_l - 8) / 16;
+        col_hi = (rx_r - 8 - 1) / 16;
+        row_lo = (ry_t - 32) / 8;
+        row_hi = (ry_b - 32 - 1) / 8;
+        for (r = row_lo; r <= row_hi; r++) {
+            for (c = col_lo; c <= col_hi; c++) {
+                unsigned char *cell;
+                if (r < 0 || r >= LVL_ROWS || c < 0 || c >= LVL_COLS) continue;
+                cell = &live_level[r * LVL_COLS + c];
+                if (*cell & 0x80) continue;          /* already gone */
+                if (*cell & 0x20) continue;          /* undestructible */
+                {
+                    unsigned int idx = (unsigned int)((r < 12) ? r : 11);
+                    unsigned int pts = points_table[idx];
+                    if ((*cell & 0x0F) >= 6) pts *= 2;
+                    score += pts;
+                }
+                *cell |= 0x80;
+                bricks_destroyed++;
+            }
+        }
+    }
+}
+
 /* Step the ball one frame: handle wall + bat collisions. If the ball
  * exits the bottom of the playfield it respawns stuck on the bat. */
 static void step_ball(void) {
@@ -2955,6 +3030,7 @@ static void redraw_full_with_ball(unsigned char level_idx) {
     }
     if (bonus_active) render_bonus_to_buff(bg_attr);
     render_bullet_to_buff();
+    if (rocket_active) render_rocket_to_buff();
     if (ball2_active) {
         render_ball_to_buff(objects[OBJ_BALL_2].x_coord,
                             objects[OBJ_BALL_2].y_coord, bg_attr);
@@ -3124,6 +3200,7 @@ static state_t run_level(void) {
         bonus_active   = 0;
         bomb_active    = 0;
         bullet_active  = 0;
+        rocket_active  = 0;
         ball2_active   = 0;
         objects[OBJ_BALL_2].sprite_set = 0x82;
         pts_400_ticks  = 0;
@@ -3263,6 +3340,7 @@ static state_t run_level(void) {
                 step_pts_400();
                 step_bomb();
                 step_bullet();
+                step_rocket();
                 step_ball2();
                 /* Mirror of LB9E8_2..LB9E8_3 ($BA83..$BAD9):
                  *   enemy_prepare    -- maybe spawn alien
@@ -3291,6 +3369,7 @@ static state_t run_level(void) {
                 if (objects[OBJ_ENEMY].sprite_set != 0) ball_moved = 1;
                 if (bomb_active) ball_moved = 1;
                 if (bullet_active) ball_moved = 1;
+                if (rocket_active) ball_moved = 1;
                 if (ball2_active) ball_moved = 1;
             }
 
