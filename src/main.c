@@ -4310,7 +4310,10 @@ static state_t run_level(void) {
                      * initials together. */
                 }
                 snd_q_silence_all();
-                sound_play(100, 30);          /* low game-over drone */
+                /* Original LBC10_6 plays no game-over sound — the
+                 * preceding pause_clear_screen_attrib just drains the
+                 * sound queue while the screen clears. Dropping our
+                 * 100 Hz drone for byte-exact silence here. */
                 render_game_over();
                 start = bios_ticks();
                 while (!TIMED_OUT(start, 54UL)) {
