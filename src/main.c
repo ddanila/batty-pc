@@ -1456,6 +1456,72 @@ static void render_bat(unsigned char cycle, unsigned char attr) {
     blit_masked_to_scr_buff(spr, x, y);
 }
 
+/* Two pixels that walk back and forth along the bat — the original's
+ * running_dot at $B8E6. Drawn into scr_buff at offset $1660 (row 179,
+ * = 6 rows into the 13-row bat sprite) by ANDing one bit per dot via
+ * running_dot_mask, "punching" a dark pixel through the otherwise
+ * solid bat ink. Frame counter advances by 1 per frame, reverses
+ * direction at the inner edges (9 from the left, 10 from the right).
+ *
+ * Frame counter layout: bit 7 = direction (1 = walking toward smaller
+ * frame values, 0 = larger), bits 6..0 = current frame in [9, w-10]. */
+#define RUN_DOT_ROW_OFF  0x1660     /* scr_buff row 179, col 0 */
+static unsigned char run_dot_frame = 0x0E;   /* matches running_dot_frame_1up DEFB $0E */
+static const unsigned char run_dot_mask[8] = {
+    0x7F, 0xBF, 0xDF, 0xEF, 0xF7, 0xFB, 0xFD, 0xFE
+};
+
+static void run_dot_punch(int abs_x) {
+    int byte_col = (abs_x >> 3) & 0x1F;
+    unsigned int off = RUN_DOT_ROW_OFF + byte_col;
+    scr_buff[off] &= run_dot_mask[abs_x & 7];
+}
+
+static void render_running_dot(void) {
+    int bat_w, bat_left;
+    int frame, dir, span;
+    if (bat_extra_px >= BAT_BIG_EXTRA_PX) {
+        bat_w    = 32 + 2 * BAT_BIG_EXTRA_PX;   /* 48 px */
+        bat_left = BAT_X - BAT_BIG_EXTRA_PX;
+    } else {
+        bat_w    = 32 + 2 * bat_extra_px;
+        bat_left = BAT_X - bat_extra_px;
+    }
+    /* Original's recovery branch: if the bat shrank into the current
+     * frame counter (bat_w - frame < 9), reset frame to bat_w - 11
+     * keeping the direction bit. */
+    frame = run_dot_frame & 0x7F;
+    if (bat_w - frame < 9) {
+        frame = bat_w - 11;
+        if (frame < 9) frame = 9;
+        run_dot_frame = (unsigned char)((run_dot_frame & 0x80) | frame);
+    }
+    /* Punch both dots: one at frame from the left, one mirrored. */
+    run_dot_punch(bat_left + frame);
+    run_dot_punch(bat_left + bat_w - frame - 1);
+    /* Advance the counter. Direction bit set = decreasing; clear =
+     * increasing. Floor at 9, ceiling at bat_w - 10. */
+    dir = run_dot_frame & 0x80;
+    if (dir) {
+        frame--;
+        if (frame <= 9) {
+            frame = 9;
+            run_dot_frame = (unsigned char)frame;     /* flip to increasing */
+        } else {
+            run_dot_frame = (unsigned char)(0x80 | frame);
+        }
+    } else {
+        frame++;
+        span = bat_w - 10;
+        if (frame >= span) {
+            frame = span;
+            run_dot_frame = (unsigned char)(0x80 | frame);   /* flip to decreasing */
+        } else {
+            run_dot_frame = (unsigned char)frame;
+        }
+    }
+}
+
 /* Display (lives - 2) right-side indicators next to the left one
  * baked into the frame strip. Cap at 4 to fit. */
 #define LIVES_DYNAMIC_MAX 4
@@ -3135,6 +3201,7 @@ static void redraw_bat(unsigned char cycle, unsigned char bg_attr) {
     paint_bg_strip_to_buff(bg_attr, cycle, BAT_Y_PX, BAT_H_PX);
     paint_frame_to_buff(cycle, current_level_idx_var);
     render_bat(cycle, bg_attr);
+    render_running_dot();
     render_lives(cycle, bg_attr);
     buff_to_vga_strip(BAT_Y_PX, BAT_H_PX);
 }
@@ -3165,6 +3232,7 @@ static void redraw_full_with_ball(unsigned char level_idx) {
     render_brick_flash_to_buff();
     paint_frame_to_buff(cycle, level_idx);
     render_bat(cycle, bg_attr);
+    render_running_dot();
     render_lives(cycle, bg_attr);
     if (BALL_VISIBLE) render_ball_to_buff(BALL_X, BALL_Y, bg_attr);
     if (bomb_active) {
