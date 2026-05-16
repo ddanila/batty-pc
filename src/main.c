@@ -503,6 +503,13 @@ static int stuck_offset_x = BALL_X_OFFSET_ON_BAT;
 static unsigned char bullet_active = 0;
 static int           bullet_x      = 0;
 static int           bullet_y      = 0;
+/* Bullet-impact blast: 4 frames, ~3 ticks each. Spawned wherever
+ * step_bullet's collision deactivates the bullet. */
+#define BULLET_BLAST_TICKS_PER_FRAME 3
+#define BULLET_BLAST_FRAMES          4
+static unsigned char bullet_blast_ticks = 0;   /* 0 = inactive; counts down */
+static int           bullet_blast_x     = 0;
+static int           bullet_blast_y     = 0;
 /* Bat laser-fire animation: ticks down from 8 to 0; while non-zero
  * render_bat picks spr_bat_gun_1..4 based on the count so the bat's
  * cannon visibly flashes when SPACE fires a bullet. */
@@ -780,6 +787,12 @@ static unsigned char sprites_blob[SPRITES_BLOB_SIZE];
  * frames in the original sprite blob. */
 #define SPR_BULLET_1     (0x7DD2 - 0x7A8C)
 #define SPR_BULLET_2     (0x7DE4 - 0x7A8C)
+/* Bullet-blast 4-frame animation, played at the hit point when the
+ * laser bullet stops against a brick or alien. */
+#define SPR_BULLET_BLAST_1 (0x7DF6 - 0x7A8C)
+#define SPR_BULLET_BLAST_2 (0x7E04 - 0x7A8C)
+#define SPR_BULLET_BLAST_3 (0x7E14 - 0x7A8C)
+#define SPR_BULLET_BLAST_4 (0x7E26 - 0x7A8C)
 #define SPR_UFO_1        (0x83B0 - 0x7A8C)   /* = 0x924 */
 #define SPR_UFO_2        (0x8406 - 0x7A8C)   /* = 0x97a */
 #define SPR_UFO_3        (0x8462 - 0x7A8C)   /* = 0x9d6 */
@@ -2746,7 +2759,7 @@ static void step_bullet(void) {
     if (!bullet_active) return;
     bullet_y -= BULLET_SPEED;
     if (bullet_y < 0) {
-        bullet_active = 0;
+        bullet_active = 0;                       /* fly-off: no blast */
         return;
     }
     /* Alien hit (AABB on alien body rect). */
@@ -2766,45 +2779,77 @@ static void step_bullet(void) {
             score += 350;
             snd_q_push(SND_SHOT);
             bullet_active = 0;
+            bullet_blast_x = bullet_x;
+            bullet_blast_y = bullet_y;
+            bullet_blast_ticks = BULLET_BLAST_FRAMES * BULLET_BLAST_TICKS_PER_FRAME;
             return;
         }
     }
     /* Brick hit (point-vs-grid lookup matching brick_collision's cell
      * arithmetic). Undestructible bricks stop the bullet without
      * destroying; multi-hit bricks set bit 4 (= half-damaged) on
-     * first hit; bit-4 bricks destroy on this hit. */
+     * first hit; bit-4 bricks destroy on this hit. Every hit spawns
+     * the 4-frame impact blast. */
     if (bullet_y >= 32 && bullet_y < 32 + LVL_ROWS * 8
         && bullet_x >= 8 && bullet_x < 8 + LVL_COLS * 16) {
         col = (bullet_x - 8) / 16;
         row = (bullet_y - 32) / 8;
         cell = &live_level[row * LVL_COLS + col];
         if (!(*cell & 0x80)) {
+            int hit = 0;
             if (*cell & 0x20) {
                 /* undestructible: stop bullet, no destruction */
-                snd_q_push(SND_NORMAL_BRIK);
-                bullet_active = 0;
-                return;
-            }
-            if (!(*cell & 0x10)) {
+                hit = 1;
+            } else if (!(*cell & 0x10)) {
                 *cell |= 0x10;                 /* multi-hit, set bit 4 */
-                snd_q_push(SND_NORMAL_BRIK);
-                bullet_active = 0;
-                return;
-            }
-            /* bit 4 set: destroy. */
-            {
+                hit = 1;
+            } else {
+                /* bit 4 set: destroy. */
                 unsigned int idx = (unsigned int)((row < 12) ? row : 11);
                 unsigned int pts = points_table[idx];
                 if ((*cell & 0x0F) >= 6) pts *= 2;
                 score += pts;
+                *cell |= 0x80;
+                bricks_destroyed++;
+                hit = 1;
             }
-            *cell |= 0x80;
-            bricks_destroyed++;
-            snd_q_push(SND_NORMAL_BRIK);
-            bullet_active = 0;
-            return;
+            if (hit) {
+                snd_q_push(SND_NORMAL_BRIK);
+                bullet_active = 0;
+                bullet_blast_x = bullet_x;
+                bullet_blast_y = bullet_y;
+                bullet_blast_ticks = BULLET_BLAST_FRAMES * BULLET_BLAST_TICKS_PER_FRAME;
+                return;
+            }
         }
     }
+}
+
+/* Step the bullet-impact blast one tick. Counts down through the
+ * 4 frames at BULLET_BLAST_TICKS_PER_FRAME ticks each; deactivates
+ * when the counter hits zero. */
+static void step_bullet_blast(void) {
+    if (bullet_blast_ticks) bullet_blast_ticks--;
+}
+
+/* Paint the current bullet-blast frame at the recorded impact
+ * point. Frame index = (BULLET_BLAST_FRAMES - 1) - (ticks /
+ * ticks_per_frame) so the animation plays start -> end as the
+ * counter winds down. */
+static void render_bullet_blast_to_buff(void) {
+    static const unsigned int frames[BULLET_BLAST_FRAMES] = {
+        SPR_BULLET_BLAST_1, SPR_BULLET_BLAST_2,
+        SPR_BULLET_BLAST_3, SPR_BULLET_BLAST_4
+    };
+    unsigned char frame;
+    unsigned char attr;
+    if (!bullet_blast_ticks) return;
+    frame = (unsigned char)((bullet_blast_ticks - 1) / BULLET_BLAST_TICKS_PER_FRAME);
+    if (frame >= BULLET_BLAST_FRAMES) frame = BULLET_BLAST_FRAMES - 1;
+    frame = (unsigned char)((BULLET_BLAST_FRAMES - 1) - frame);
+    attr = (unsigned char)(0x40 | (bonus_colours[BONUS_TYPE_LASER] & 7));
+    blit_sprite_attrs_to_buff(bullet_blast_x, bullet_blast_y, 8, 8, attr);
+    blit_masked_to_scr_buff(frames[frame], bullet_blast_x, bullet_blast_y);
 }
 
 /* Step the rocket one frame: move up, destroy any destructible
@@ -3087,6 +3132,7 @@ static void redraw_full_with_ball(unsigned char level_idx) {
     }
     if (bonus_active) render_bonus_to_buff(bg_attr);
     render_bullet_to_buff();
+    if (bullet_blast_ticks) render_bullet_blast_to_buff();
     if (rocket_active) render_rocket_to_buff();
     if (ball2_active) {
         render_ball_to_buff(objects[OBJ_BALL_2].x_coord,
@@ -3327,9 +3373,10 @@ static state_t run_level(void) {
         ball_dx       = +BALL_SPEED;
         ball_dy       = -BALL_SPEED;
         bonus_active   = 0;
-        bomb_active    = 0;
-        bullet_active  = 0;
-        rocket_active  = 0;
+        bomb_active        = 0;
+        bullet_active      = 0;
+        bullet_blast_ticks = 0;
+        rocket_active      = 0;
         ball2_active   = 0;
         objects[OBJ_BALL_2].sprite_set = 0x82;
         pts_400_ticks  = 0;
@@ -3472,6 +3519,7 @@ static state_t run_level(void) {
                 step_pts_400();
                 step_bomb();
                 step_bullet();
+                step_bullet_blast();
                 step_rocket();
                 if (bat_fire_anim_ticks) bat_fire_anim_ticks--;
                 step_ball2();
@@ -3502,6 +3550,7 @@ static state_t run_level(void) {
                 if (objects[OBJ_ENEMY].sprite_set != 0) ball_moved = 1;
                 if (bomb_active) ball_moved = 1;
                 if (bullet_active) ball_moved = 1;
+                if (bullet_blast_ticks) ball_moved = 1;
                 if (rocket_active) ball_moved = 1;
                 if (ball2_active) ball_moved = 1;
             }
