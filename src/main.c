@@ -2744,6 +2744,7 @@ static const unsigned char prop_even[6]   = { 0x08, 0x70, 0xF0, 0x18, 0x0E, 0x02
 static const unsigned char prop_x_coord[4]= { 0x40, 0xA8, 0x40, 0xA8 };
 
 unsigned char round_number = 0;              /* current round counter */
+static void play_bat_explosion(unsigned char level_idx);   /* forward */
 static unsigned char current_level_idx_var;  /* set by run_level so
                                               * enemy_prepare can read it */
 static void enemy_prepare(void) {
@@ -2861,6 +2862,7 @@ static void step_bomb(void) {
         && bx_r > eff_bat_left() && bx_l < eff_bat_right()) {
         /* Bomb hit the bat - lose a life, ball respawns stuck. */
         bomb_active = 0;
+        play_bat_explosion(current_level_idx_var);
         if (lives > 0) lives--;
         ball_stuck = 1;
         stuck_ticks = 0;
@@ -3099,9 +3101,12 @@ static void step_ball(void) {
         else                           ball_dx = +2;
         snd_q_push(SND_BAT_BEAT);            /* ball-on-bat */
     }
-    /* Past the bat (= lost ball). Decrement lives and respawn stuck
-     * on the bat. The outer loop checks lives==0 to trigger game over. */
+    /* Past the bat (= lost ball). Play the bat-explosion sub-loop
+     * (mirrors LBC10's 10-spark fan-out), then decrement lives and
+     * respawn stuck on the bat. The outer loop checks lives==0 to
+     * trigger game over. */
     if (next_y > BAT_Y_PX + BAT_H_PX) {
+        play_bat_explosion(current_level_idx_var);
         if (lives > 0) lives--;
         ball_stuck = 1;
         stuck_ticks = 0;
@@ -3486,6 +3491,156 @@ static void input_new_record_name(void) {
             }
         }
     }
+}
+
+/* --- "Bat explodes" death animation -----------------------------------
+ *
+ * When the ball is lost the original spawns 10 sparks at the bat
+ * position (LBC10 at $BC10) which fan out for ~46 frames then die. It
+ * runs the per-frame loop until all sparks expire, then decrements
+ * lives and respawns. Our port plays this as a self-contained sub-loop
+ * driven by PIT ticks — the outer run_level enters it from the two
+ * ball-lost sites (bomb-on-bat, ball-past-bat). */
+
+/* Direction LUT at $AD58 — 17 sin values in [0, $FF]. Mirror of
+ * direction_table; used by dir_to_dxdy to decode a 6-bit angle into
+ * (dx, dy) in 8.8 fixed point. */
+static const unsigned char dir_sin_tbl[17] = {
+    0xFF,0xFD,0xFA,0xF4,0xE6,0xE0,0xD4,0xC5,
+    0xB4,0xA1,0x8D,0x78,0x61,0x4A,0x31,0x18,
+    0x00
+};
+
+/* Port of hl_bc_calc_direction at $AD22 + the LAD13 speed multiply.
+ * Returns 16-bit signed 8.8 fixed-point per-tick displacement. */
+static void dir_to_dxdy(unsigned char dir, unsigned char speed,
+                         int *out_dx, int *out_dy) {
+    unsigned char q = dir & 0x30;
+    unsigned char d = dir & 0x0F;
+    int C = dir_sin_tbl[d];
+    int L = dir_sin_tbl[16 - d];
+    int hl, bc;
+    switch (q) {
+        case 0x00: hl = L;          bc = C;          break;   /* +x +y */
+        case 0x10: hl = C;          bc = L - 256;    break;   /* +x -y */
+        case 0x20: hl = L - 256;    bc = C - 256;    break;   /* -x -y */
+        default:   hl = C - 256;    bc = L;          break;   /* -x +y */
+    }
+    *out_dx = hl * (int)speed;
+    *out_dy = bc * (int)speed;
+}
+
+#define DEATH_SPARK_COUNT 10
+typedef struct {
+    int           active;        /* nonzero while still on screen */
+    long          x_q88;         /* 24.8 fixed-point X */
+    long          y_q88;         /* 24.8 fixed-point Y */
+    unsigned char dir;           /* 6-bit angle */
+    unsigned char speed;         /* halves at each frame advance */
+    unsigned char sprite_num;    /* 0..4 */
+    unsigned char frame_ticks;   /* down-counter to next frame */
+} death_spark_t;
+static death_spark_t death_sparks[DEATH_SPARK_COUNT];
+
+/* Single-frame render of the level scene + the active death sparks.
+ * Same compose as redraw_full_with_ball but with the bat / ball / multi-
+ * ball hidden (the sparks ARE the bat at this moment). */
+static void redraw_with_death_sparks(unsigned char level_idx) {
+    unsigned char bg_attr = bg_attr_per_cycle[level_idx & 3];
+    unsigned char cycle   = (unsigned char)(level_idx & 3);
+    int i;
+    fill(0, 0, SCREEN_W, SCREEN_H, COL_BORDER);
+    draw_frame(10);
+    paint_bg_to_buff(bg_attr, cycle);
+    render_brick_band(level_idx);
+    render_brick_flash_to_buff();
+    paint_frame_to_buff(cycle, level_idx);
+    render_lives(cycle, bg_attr);
+    for (i = 0; i < DEATH_SPARK_COUNT; i++) {
+        int xp, yp;
+        if (!death_sparks[i].active) continue;
+        xp = (int)(death_sparks[i].x_q88 >> 8);
+        yp = (int)(death_sparks[i].y_q88 >> 8);
+        if (xp < 0 || xp >= PLAYFIELD_W || yp < 0 || yp >= PLAYFIELD_H) continue;
+        blit_masked_to_scr_buff(spr_spark_frames[death_sparks[i].sprite_num],
+                                 xp, yp);
+    }
+    buff_to_vga();
+    render_hud_score();
+    render_hud_high_score();
+    render_hud_powerups();
+}
+
+/* Block in a self-contained PIT-paced loop while the bat explodes —
+ * the original's per-frame LBAED keeps running through LBC10's spark
+ * lifetime; we play it as a separate phase, then return to the outer
+ * run_level for the lives-- + respawn step. Mirrors the LBC10_3 spawn
+ * loop: 10 sparks, dir = $1B + 5*i (mod 64), speed 2, starting at
+ * (bat_center - 12 + 3*i, $AE), 5-frame decay with halving speed. */
+static void play_bat_explosion(unsigned char level_idx) {
+    int bat_center = BAT_X + (BAT_W_BYTES * 8) / 2;
+    int x_start = bat_center - 12;
+    unsigned char dir = 0x1B;
+    unsigned long last;
+    int alive;
+    int i;
+    for (i = 0; i < DEATH_SPARK_COUNT; i++) {
+        death_sparks[i].active      = 1;
+        death_sparks[i].x_q88       = (long)(x_start + i * 3) << 8;
+        death_sparks[i].y_q88       = (long)0xAE << 8;
+        death_sparks[i].dir         = dir;
+        death_sparks[i].speed       = 2;
+        death_sparks[i].sprite_num  = 0;
+        death_sparks[i].frame_ticks = 0x18;
+        dir = (unsigned char)((dir + 5) & 0x3F);
+    }
+    last = pit_ticks();
+    do {
+        unsigned long now;
+        do {
+            sound_tick();
+            now = pit_ticks();
+        } while (now == last);
+        last = now;
+        alive = 0;
+        for (i = 0; i < DEATH_SPARK_COUNT; i++) {
+            int dx_q88, dy_q88;
+            int xp, yp;
+            if (!death_sparks[i].active) continue;
+            dir_to_dxdy(death_sparks[i].dir, death_sparks[i].speed,
+                         &dx_q88, &dy_q88);
+            death_sparks[i].x_q88 += dx_q88;
+            death_sparks[i].y_q88 += dy_q88;
+            xp = (int)(death_sparks[i].x_q88 >> 8);
+            yp = (int)(death_sparks[i].y_q88 >> 8);
+            /* Off the bottom = dead. Sides clamp the position so the
+             * spark can keep ticking until its frame counter expires. */
+            if (yp >= PLAYFIELD_H) { death_sparks[i].active = 0; continue; }
+            if (xp < 8) {
+                death_sparks[i].x_q88 = 8L << 8;
+                death_sparks[i].dir = (unsigned char)((death_sparks[i].dir ^ 0x20) & 0x3F);
+            } else if (xp >= PLAYFIELD_W - 8) {
+                death_sparks[i].x_q88 = (long)(PLAYFIELD_W - 8) << 8;
+                death_sparks[i].dir = (unsigned char)((death_sparks[i].dir ^ 0x20) & 0x3F);
+            }
+            if (yp < 8) {
+                death_sparks[i].y_q88 = 8L << 8;
+                death_sparks[i].dir = (unsigned char)((death_sparks[i].dir ^ 0x20) & 0x3F);
+            }
+            if (--death_sparks[i].frame_ticks == 0) {
+                if (death_sparks[i].sprite_num >= SPARK_FRAMES - 1) {
+                    death_sparks[i].active = 0;
+                    continue;
+                }
+                death_sparks[i].sprite_num++;
+                death_sparks[i].speed = (unsigned char)(death_sparks[i].speed >> 1);
+                if (death_sparks[i].speed == 0) death_sparks[i].speed = 1;
+                death_sparks[i].frame_ticks = (unsigned char)(death_sparks[i].speed + 1);
+            }
+            alive = 1;
+        }
+        redraw_with_death_sparks(level_idx);
+    } while (alive);
 }
 
 static state_t run_level(void) {
