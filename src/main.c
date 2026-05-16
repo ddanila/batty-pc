@@ -3501,8 +3501,8 @@ static void input_new_record_name(void) {
  *
  * We skip the original's secondary "PLAYER X" line because the port
  * is single-player only for now; once 2-player wiring lands we add it. */
-static int show_round_banner(unsigned char level_idx) {
-    int round_num = (int)level_idx + 1;
+static int show_round_banner(unsigned int round_num_display) {
+    int round_num = (int)round_num_display;
     int banner_x = BORDER_X + 88;
     int banner_y = BORDER_Y + 143;
     int text_x   = BORDER_X + 96;
@@ -3705,10 +3705,15 @@ static state_t run_level(void) {
     paused = 0;
     high_score_beaten_this_game = 0;
 
-    for (i = 0; i < N_LEVELS; i++) {
+    /* The original loops levels forever (increment_round_number at
+     * $BBE0 wraps current_level_number_1up at 15 → 0 while
+     * round_number_1up keeps bumping). Game only ends on lives == 0. */
+    round_number = 0;
+    for (;;) {
         int k;
-        current_level_idx_var = i;
-        round_number = i;
+        unsigned char lvl_idx = (unsigned char)(round_number % N_LEVELS);
+        current_level_idx_var = lvl_idx;
+        i = lvl_idx;                                 /* keep `i` alias for the cycle / bg_attr code below */
         objects[OBJ_ENEMY].sprite_set = 0;     /* alien cleared on level entry */
         BAT_X         = BAT_X_INIT;
         BAT_PREV_X    = BAT_X_INIT;
@@ -3740,7 +3745,7 @@ static state_t run_level(void) {
             live_level[k] = levels[(int)i * LVL_CELLS + k];
         }
         render_level_screen(i);
-        if (show_round_banner(i)) return ST_QUIT;
+        if (show_round_banner((unsigned int)round_number + 1)) return ST_QUIT;
         render_level_screen(i);                /* re-paint to clear the banner */
         cycle = (unsigned char)(i & 3);
         bg_attr = bg_attr_per_cycle[i & 3];
@@ -3954,32 +3959,24 @@ static state_t run_level(void) {
              *   briks_quantity_1up == 0 -> level cleared, advance.
              * No timeout, no key-driven skip — the level holds the
              * player until the bricks are gone. */
-            if (live_bricks_remaining() == 0) break;
+            if (live_bricks_remaining() == 0) {
+                /* Original's LBBFB_0 pauses ~0.6 s (pause_long B=2)
+                 * before the next level's setup — let the player see
+                 * the cleared brick zone briefly. ESC still quits. */
+                unsigned long t = pit_ticks();
+                while (pit_ticks() - t < 30UL) {
+                    sound_tick();
+                    if (kbhit()) {
+                        int k = getch();
+                        if (k == KEY_ESC) return ST_QUIT;
+                        break;
+                    }
+                }
+                break;
+            }
         }
+        round_number++;       /* increment_round_number at $BBE0 */
     }
-    /* Cleared all 15 levels - update high score, then show GAME OVER.
-     * Save deferred until after the post-game-over name-entry screen
-     * (same flow as lives==0 above). */
-    if (score > high_score) {
-        high_score = score;
-        high_score_beaten_this_game = 1;
-    }
-    snd_q_silence_all();
-    sound_play(100, 30);
-    render_game_over();
-    {
-        unsigned long t = bios_ticks();
-        while (!TIMED_OUT(t, 54UL)) {
-            sound_tick();
-            if (kbhit()) { getch(); break; }
-        }
-    }
-    if (high_score_beaten_this_game) {
-        input_new_record_name();
-        save_high_score();
-    }
-    sound_silence();
-    return ST_TITLE;
 }
 
 int main(void) {
