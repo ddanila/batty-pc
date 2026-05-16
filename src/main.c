@@ -3215,18 +3215,26 @@ static void render_hud_high_score(void) {
  * / $03). */
 static void render_hud_powerups(void) {
     int x = HUD_POWERUP_X;
-    if (slow_ticks > 0) {
+    /* Blink the chip in its final second of life (= ticks < 50 at
+     * 50 Hz). On the off-phase we just skip the draw entirely so the
+     * letter flickers — a "your bonus is about to expire" cue. */
+#define HUD_CHIP_BLINK_THRESHOLD 50
+    int blink_off = (blink_phase() == 0);
+    if (slow_ticks > 0
+        && !(slow_ticks < HUD_CHIP_BLINK_THRESHOLD && blink_off)) {
         draw_glyph(x, HUD_POWERUP_Y, bonus_colours[BONUS_TYPE_SLOW], 0x1C);
-        x += 10;
     }
-    if (big_bat_ticks > 0) {
+    if (slow_ticks > 0) x += 10;
+    if (big_bat_ticks > 0
+        && !(big_bat_ticks < HUD_CHIP_BLINK_THRESHOLD && blink_off)) {
         draw_glyph(x, HUD_POWERUP_Y, bonus_colours[BONUS_TYPE_BIG_BAT], 0x0B);
-        x += 10;
     }
-    if (big_ball_ticks > 0) {
+    if (big_bat_ticks > 0) x += 10;
+    if (big_ball_ticks > 0
+        && !(big_ball_ticks < HUD_CHIP_BLINK_THRESHOLD && blink_off)) {
         draw_glyph(x, HUD_POWERUP_Y, bonus_colours[BONUS_TYPE_BIG_BALL], 0x10);
-        x += 10;
     }
+    if (big_ball_ticks > 0) x += 10;
     if (objects[OBJ_BAT_1].bonus_applied == 0x09) {
         draw_glyph(x, HUD_POWERUP_Y, bonus_colours[BONUS_TYPE_KILL_ALIENS], 0x14);
         x += 10;
