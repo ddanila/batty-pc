@@ -3025,6 +3025,17 @@ static void step_bomb(void) {
         BALL_Y = BAT_Y_PX - eff_ball_size();
         ball_dx = +BALL_SPEED;
         ball_dy = -BALL_SPEED;
+        /* Original all_var_init at \$B7F8 (called from LB9E8_1 on each
+         * life-start) resets bat.bonus_applied to \$83 (= level-start
+         * catch state). Any prior bat-side effect (LASER, CATCH,
+         * KILL_ALIENS) doesn't survive a death. We also drop the
+         * timer-based BIG_BAT / BIG_BALL state. */
+        objects[OBJ_BAT_1].bonus_applied = 0xFF;
+        objects[OBJ_BAT_2].bonus_applied = 0xFF;
+        big_bat_ticks  = 0;
+        big_ball_ticks = 0;
+        slow_ticks     = 0;
+        bat_extra_tgt  = 0;
         /* No launch chirp here — ball is resetting to stuck, not
          * launching. The bat-explosion sound already covered the hit. */
         return;
@@ -3331,6 +3342,13 @@ static void step_ball(void) {
         BALL_Y = BAT_Y_PX - ball_sz;
         ball_dx = +BALL_SPEED;
         ball_dy = -BALL_SPEED;
+        /* Reset bat-side state per all_var_init at \$B7F8. */
+        objects[OBJ_BAT_1].bonus_applied = 0xFF;
+        objects[OBJ_BAT_2].bonus_applied = 0xFF;
+        big_bat_ticks  = 0;
+        big_ball_ticks = 0;
+        slow_ticks     = 0;
+        bat_extra_tgt  = 0;
         /* No launch chirp — ball reset to stuck. The bat-explosion
          * sound has already covered the loss. */
         return;
@@ -4285,6 +4303,13 @@ static state_t run_level(void) {
                     BALL_Y = BAT_Y_PX - eff_ball_size();
                     ball_dx = +BALL_SPEED;
                     ball_dy = -BALL_SPEED;
+                    /* Reset bat-side state per all_var_init at \$B7F8. */
+                    objects[OBJ_BAT_1].bonus_applied = 0xFF;
+                    objects[OBJ_BAT_2].bonus_applied = 0xFF;
+                    big_bat_ticks  = 0;
+                    big_ball_ticks = 0;
+                    slow_ticks     = 0;
+                    bat_extra_tgt  = 0;
                     /* No launch chirp — ball reset to stuck after
                      * the bat-explosion sound already covered it. */
                 }
