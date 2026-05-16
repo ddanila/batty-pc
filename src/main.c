@@ -492,6 +492,17 @@ static unsigned char ball_stuck   = 1;
  * this when the ball hits the bat so the ball sticks at the
  * actual catch position and rides the bat from there until SPACE. */
 static int stuck_offset_x = BALL_X_OFFSET_ON_BAT;
+
+/* Laser bullet state — single bullet at a time, fired from the bat
+ * top centre while the LASER bonus is active (BAT+\$14 = \$01).
+ * Moves up each frame, deactivates on first brick / alien hit or
+ * after leaving the playfield top. */
+#define BULLET_W_PX     2
+#define BULLET_H_PX     6
+#define BULLET_SPEED    4
+static unsigned char bullet_active = 0;
+static int           bullet_x      = 0;
+static int           bullet_y      = 0;
 /* Stuck-on-bat dwell counter. While ball_stuck, the ball rides the
  * bat; SPACE detaches immediately; after STUCK_TIMEOUT ticks the ball
  * auto-launches. ~5 sec at 50 Hz. */
@@ -597,7 +608,8 @@ static void save_high_score(void) {
 #define BONUS_TYPE_CATCH        5
 #define BONUS_TYPE_ROCKET       6
 #define BONUS_TYPE_SCORE_5K     7
-#define BONUS_TYPE_COUNT        8
+#define BONUS_TYPE_LASER        8
+#define BONUS_TYPE_COUNT        9
 #define BONUS_TYPE_UNSUPPORTED  0xFF
 
 /* bonus_table_first / bonus_table_second - byte-exact copies of the
@@ -622,6 +634,7 @@ static const unsigned char bonus_table_second[32] = {
 static unsigned char map_orig_to_our_bonus(unsigned char code) {
     switch (code) {
         case 0x00: return BONUS_TYPE_BIG_BAT;       /* spr_bonus_size */
+        case 0x01: return BONUS_TYPE_LASER;         /* spr_bonus_gun */
         case 0x03: return BONUS_TYPE_CATCH;         /* spr_bonus_hand */
         case 0x04: return BONUS_TYPE_SLOW;
         case 0x05: return BONUS_TYPE_LIFE;
@@ -674,7 +687,8 @@ static const unsigned char bonus_colours[BONUS_TYPE_COUNT] = {
     13,   /* K (kill aliens) - bright cyan    */
     12,   /* C (catch)       - bright green   */
     10,   /* R (rocket)      - bright red     */
-    15    /* $ (5000 points) - bright white   */
+    15,   /* $ (5000 points) - bright white   */
+    11    /* L (laser)       - bright magenta */
 };
 
 /* Counter of bricks destroyed since start of game; drives the simple
@@ -2082,6 +2096,28 @@ static void render_ball_to_buff(int x, int y, unsigned char bg) {
     blit_masked_to_scr_buff(spr, x, y);
 }
 
+/* Paint the laser bullet as a small 2x6 solid bar at (bullet_x,
+ * bullet_y). Apply a bright-magenta attr at the bullet's cells so
+ * it stands out against bg pattern + bricks. */
+static void render_bullet_to_buff(void) {
+    int y;
+    unsigned char attr;
+    if (!bullet_active) return;
+    attr = (unsigned char)(0x40 | (bonus_colours[BONUS_TYPE_LASER] & 7));
+    blit_sprite_attrs_to_buff(bullet_x, bullet_y, BULLET_W_PX, BULLET_H_PX, attr);
+    for (y = bullet_y; y < bullet_y + BULLET_H_PX && y < PLAYFIELD_H; y++) {
+        if (y < 0) continue;
+        if (bullet_x >= 0 && bullet_x < PLAYFIELD_W) {
+            unsigned int col = (unsigned int)(bullet_x >> 3);
+            unsigned char bits = (unsigned char)(0xC0 >> (bullet_x & 7));
+            scr_buff[y * 32 + col] |= bits;
+            if ((bullet_x & 7) > 6 && col + 1 < 32) {
+                scr_buff[y * 32 + col + 1] |= (unsigned char)(0x80);
+            }
+        }
+    }
+}
+
 /* Direct-VGA fallback kept for the bat-only-move path (redraw_bat
  * extra slot at line 2697 below), which only refreshes the bat strip
  * and can't carry over the ball's scr_buff write. */
@@ -2101,6 +2137,7 @@ static unsigned int spr_for_bonus(unsigned char t) {
         case BONUS_TYPE_CATCH:       return SPR_BONUS_HAND;
         case BONUS_TYPE_ROCKET:      return SPR_BONUS_ROCKET_1;
         case BONUS_TYPE_SCORE_5K:    return SPR_BONUS_5000_POINTS;
+        case BONUS_TYPE_LASER:       return SPR_BONUS_GUN;
         default:                     return SPR_BONUS_SIZE;
     }
 }
@@ -2195,6 +2232,14 @@ static void bonus_apply(unsigned char type) {
         case BONUS_TYPE_SCORE_5K:
             /* Pure score bonus. 5000 in BCD-equivalent decimal. */
             score += 5000;
+            break;
+        case BONUS_TYPE_LASER:
+            /* Bat carries the laser (matches BAT+$14 = $01); SPACE
+             * fires a single bullet from the bat top while active.
+             * Cleared on level transition with the other bonus
+             * flags. */
+            objects[OBJ_BAT_1].bonus_applied = 0x01;
+            objects[OBJ_BAT_2].bonus_applied = 0x01;
             break;
         default: break;
     }
@@ -2501,6 +2546,80 @@ static void step_bomb(void) {
     if (bomb_y > PLAYFIELD_H) bomb_active = 0;
 }
 
+/* Step the laser bullet one frame: move up; on first brick / alien
+ * hit deactivate (and destroy / damage the target). Off the top of
+ * the playfield also deactivates. Bullet is treated as a point at
+ * (bullet_x, bullet_y); collision uses the same brick grid lookup
+ * as the ball but without bounce-axis logic — the bullet stops
+ * dead on contact regardless of brick type. */
+static void step_bullet(void) {
+    int col, row;
+    unsigned char *cell;
+    object_t *enemy;
+    if (!bullet_active) return;
+    bullet_y -= BULLET_SPEED;
+    if (bullet_y < 0) {
+        bullet_active = 0;
+        return;
+    }
+    /* Alien hit (AABB on alien body rect). */
+    enemy = &objects[OBJ_ENEMY];
+    if ((enemy->sprite_set & 0x7F) != 0
+        && !(enemy->sprite_set & 0x80)
+        && (enemy->sprite_set & 0x7F) != 0x0A) {
+        int ex_l = enemy->x_coord;
+        int ex_r = enemy->x_coord + enemy->w_body_px;
+        int ey_t = enemy->y_coord;
+        int ey_b = enemy->y_coord + enemy->h_body_px;
+        if (bullet_x + BULLET_W_PX > ex_l && bullet_x < ex_r
+            && bullet_y + BULLET_H_PX > ey_t && bullet_y < ey_b) {
+            enemy->sprite_set = 0x0A;       /* transition to 5-frame blast */
+            enemy->sprite_num = 0;
+            enemy->misc_12    = 0;
+            score += 350;
+            snd_q_push(SND_SHOT);
+            bullet_active = 0;
+            return;
+        }
+    }
+    /* Brick hit (point-vs-grid lookup matching brick_collision's cell
+     * arithmetic). Undestructible bricks stop the bullet without
+     * destroying; multi-hit bricks set bit 4 (= half-damaged) on
+     * first hit; bit-4 bricks destroy on this hit. */
+    if (bullet_y >= 32 && bullet_y < 32 + LVL_ROWS * 8
+        && bullet_x >= 8 && bullet_x < 8 + LVL_COLS * 16) {
+        col = (bullet_x - 8) / 16;
+        row = (bullet_y - 32) / 8;
+        cell = &live_level[row * LVL_COLS + col];
+        if (!(*cell & 0x80)) {
+            if (*cell & 0x20) {
+                /* undestructible: stop bullet, no destruction */
+                snd_q_push(SND_NORMAL_BRIK);
+                bullet_active = 0;
+                return;
+            }
+            if (!(*cell & 0x10)) {
+                *cell |= 0x10;                 /* multi-hit, set bit 4 */
+                snd_q_push(SND_NORMAL_BRIK);
+                bullet_active = 0;
+                return;
+            }
+            /* bit 4 set: destroy. */
+            {
+                unsigned int idx = (unsigned int)((row < 12) ? row : 11);
+                unsigned int pts = points_table[idx];
+                if ((*cell & 0x0F) >= 6) pts *= 2;
+                score += pts;
+            }
+            *cell |= 0x80;
+            bricks_destroyed++;
+            snd_q_push(SND_NORMAL_BRIK);
+            bullet_active = 0;
+            return;
+        }
+    }
+}
+
 /* Step the ball one frame: handle wall + bat collisions. If the ball
  * exits the bottom of the playfield it respawns stuck on the bat. */
 static void step_ball(void) {
@@ -2665,6 +2784,7 @@ static void redraw_full_with_ball(unsigned char level_idx) {
         blit_masked_to_scr_buff(spr, enemy->x_coord, enemy->y_coord);
     }
     if (bonus_active) render_bonus_to_buff(bg_attr);
+    render_bullet_to_buff();
     buff_to_vga();
     render_hud_score();
     render_hud_high_score();
@@ -2819,6 +2939,7 @@ static state_t run_level(void) {
         ball_dy       = -BALL_SPEED;
         bonus_active   = 0;
         bomb_active    = 0;
+        bullet_active  = 0;
         pts_400_ticks  = 0;
         slow_ticks     = 0;
         big_bat_ticks  = 0;
@@ -2871,6 +2992,8 @@ static state_t run_level(void) {
                     getch();
                     start = bios_ticks();
                 } else if (k == KEY_SPACE) {
+                    /* Launch the stuck ball (matches the original's
+                     * fire-button-detaches-ball behaviour). */
                     BALL_SHOW();
                     ball_stuck   = 0;
                     stuck_ticks  = 0;
@@ -2883,6 +3006,16 @@ static state_t run_level(void) {
                         int bat_centre = BAT_X + (BAT_W_BYTES * 8) / 2;
                         ball_dx = (bat_centre < PLAYFIELD_W / 2) ? +1 : -1;
                         ball_dy = -BALL_SPEED;
+                    }
+                    /* If the bat carries the LASER bonus and no
+                     * bullet is in flight, also fire one from the bat
+                     * top centre. */
+                    if (objects[OBJ_BAT_1].bonus_applied == 0x01
+                        && !bullet_active) {
+                        bullet_active = 1;
+                        bullet_x      = BAT_X + (BAT_W_BYTES * 8) / 2 - 1;
+                        bullet_y      = BAT_Y_PX - BULLET_H_PX;
+                        snd_q_push(SND_SHOT);
                     }
                     start = bios_ticks();
                 } else if (k == KEY_ENTER) {
@@ -2936,6 +3069,7 @@ static state_t run_level(void) {
                 step_bonus();
                 step_pts_400();
                 step_bomb();
+                step_bullet();
                 /* Mirror of LB9E8_2..LB9E8_3 ($BA83..$BAD9):
                  *   enemy_prepare    -- maybe spawn alien
                  *   handling_bat     -- bat motion (here via key_state)
@@ -2955,6 +3089,7 @@ static state_t run_level(void) {
                 if (bat_extra_px != bat_extra_tgt) bat_moved = 1;
                 if (objects[OBJ_ENEMY].sprite_set != 0) ball_moved = 1;
                 if (bomb_active) ball_moved = 1;
+                if (bullet_active) ball_moved = 1;
             }
 
             if (BAT_X != BAT_PREV_X) {
