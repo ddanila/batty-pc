@@ -3245,13 +3245,21 @@ static void step_ball(void) {
         else                           ball_dx = +2;
         snd_q_push(SND_BAT_BEAT);            /* ball-on-bat */
     }
-    /* Past the bat (= lost ball). Original at LA27E_25 ($A4xx) checks
-     * Y >= $C0 (= 192 = playfield bottom). Our earlier threshold of
-     * BAT_Y_PX + BAT_H_PX = 186 fired the loss ~6 px too early — the
-     * player saw the ball vanish while still seemingly catchable.
-     * Play the bat-explosion sub-loop, decrement lives, respawn stuck.
-     * The outer loop checks lives==0 to trigger game over. */
+    /* Past the bat (= primary ball lost). Original at LA27E_25 ($A4xx)
+     * checks Y >= $C0 (= 192). It deactivates the ball and decrements
+     * balls_quantity; only when balls_quantity reaches 0 next frame
+     * does LBC10 fire the bat-explosion + lives--. Multi-ball thus
+     * lets the player survive the primary ball's fall as long as an
+     * extra is still in flight.
+     *
+     * Mirror: if any extra ball is active, just hide the primary and
+     * keep playing. Otherwise run the death animation, decrement
+     * lives, and respawn primary stuck on the bat. */
     if (next_y >= PLAYFIELD_H) {
+        if (ball2_active || ball3_active) {
+            BALL_HIDE();
+            return;
+        }
         play_bat_explosion(current_level_idx_var);
         if (lives > 0) lives--;
         ball_stuck = 1;
@@ -4158,6 +4166,24 @@ static state_t run_level(void) {
                 if (bat_fire_anim_ticks) bat_fire_anim_ticks--;
                 step_ball2();
                 step_ball3();
+                /* Mirror balls_quantity == 0 → LBC10's bat-explosion
+                 * branch. If the primary ball is hidden (= it fell while
+                 * extras were in play) and the last extra just fell,
+                 * the player has no balls left: run the death animation
+                 * and respawn the primary stuck on the bat. */
+                if (!BALL_VISIBLE && !ball2_active && !ball3_active) {
+                    play_bat_explosion(current_level_idx_var);
+                    if (lives > 0) lives--;
+                    ball_stuck     = 1;
+                    stuck_ticks    = 0;
+                    stuck_offset_x = BALL_X_OFFSET_ON_BAT;
+                    BALL_SHOW();
+                    BALL_X = BAT_X + BALL_X_OFFSET_ON_BAT;
+                    BALL_Y = BAT_Y_PX - eff_ball_size();
+                    ball_dx = +BALL_SPEED;
+                    ball_dy = -BALL_SPEED;
+                    snd_q_push(SND_BALL_START);
+                }
                 /* Mirror of LB9E8_2..LB9E8_3 ($BA83..$BAD9):
                  *   enemy_prepare    -- maybe spawn alien
                  *   handling_bat     -- bat motion (here via key_state)
