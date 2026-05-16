@@ -3121,14 +3121,22 @@ static void redraw_full_with_ball(unsigned char level_idx) {
                 ? spr_bird_frames[frame]
                 : spr_ufo_frames[frame];
         }
-        /* Force bg attr in the enemy's char cells so it shows over
-         * the brick row's attrs (otherwise the enemy would inherit
-         * red / cyan / etc brick colours and visually disappear). */
-        spr_w_px = sprites_blob[spr]     * 8;
-        spr_h_px = sprites_blob[spr + 1];
-        blit_sprite_attrs_to_buff(enemy->x_coord, enemy->y_coord,
-                                   spr_w_px, spr_h_px, bg_attr);
-        blit_masked_to_scr_buff(spr, enemy->x_coord, enemy->y_coord);
+        /* Force a contrast attr in the enemy's char cells so it
+         * shows over the brick row's attrs (otherwise it would
+         * inherit red / cyan / etc brick colours and visually
+         * disappear). L4's spark gets bright magenta — bg_attr on
+         * cycle 3 is bright white, so the default override would
+         * leave the spark invisible against the L4 backdrop. */
+        {
+            unsigned char enemy_attr = ((enemy->sprite_set & 0x7F) == 0x07)
+                ? (unsigned char)0x43  /* bright magenta for the spark */
+                : bg_attr;
+            spr_w_px = sprites_blob[spr]     * 8;
+            spr_h_px = sprites_blob[spr + 1];
+            blit_sprite_attrs_to_buff(enemy->x_coord, enemy->y_coord,
+                                       spr_w_px, spr_h_px, enemy_attr);
+            blit_masked_to_scr_buff(spr, enemy->x_coord, enemy->y_coord);
+        }
     }
     if (bonus_active) render_bonus_to_buff(bg_attr);
     render_bullet_to_buff();
