@@ -2464,10 +2464,12 @@ static void render_bonus_to_buff(unsigned char bg) {
 /* Apply the effect that comes with `type`. Catching the same type
  * while already active extends the duration. */
 static void bonus_apply(unsigned char type) {
-    /* Every bonus catch plays the ascending "live add" jingle in the
-     * original (sounds_queue id $07); KILL_ALIENS overrides with its
-     * own SND_SHOT inside the case body below. */
-    snd_q_push(SND_LIVE_ADD);
+    /* Original get_bonus at $A67B: every catch awards 400 points and
+     * plays a sound — sound_live_add ($07) for the LIFE bonus, the
+     * resize-2 beep ($0C) for everything else (push_resize_sound at
+     * $A645, gated by `CP $05; CALL NZ,push_resize_sound`). Our port
+     * had been routing every catch through SND_LIVE_ADD. */
+    snd_q_push(type == BONUS_TYPE_LIFE ? SND_LIVE_ADD : SND_BAT_RESIZE_2);
     switch (type) {
         case BONUS_TYPE_LIFE:     lives++; life_dropped_this_round = 1; break;
         case BONUS_TYPE_SLOW:     slow_ticks     = SLOW_DURATION; break;
@@ -2594,10 +2596,9 @@ static void step_bonus(void) {
         && bonus_x + BONUS_W_PX > bat_left
         && bonus_x < bat_right) {
         unsigned char caught_type = bonus_type;
-        bonus_apply(bonus_type);
+        bonus_apply(bonus_type);                  /* applies effect + pushes catch sound */
         bonus_active = 0;
         score += 400;                         /* matches LD BC,$0400 / add_points_to_score at $A67D */
-        snd_q_push(SND_LIVE_ADD);
         /* Spawn the floating reward marker at the bonus's last
          * position. SCORE_5K uses the "+5000" sprite (the unusual
          * reward gets its own glyph); everything else uses the
