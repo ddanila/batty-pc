@@ -2949,8 +2949,15 @@ static void step_bomb(void) {
     by_t = bomb_y + BOMB_H_PX - 4; by_b = bomb_y + BOMB_H_PX;
     if (by_b >= BAT_Y_PX && by_t < BAT_Y_PX + 8
         && bx_r > eff_bat_left() && bx_l < eff_bat_right()) {
-        /* Bomb hit the bat - lose a life, ball respawns stuck. */
+        /* Bomb hit the bat. Original at $A69D zeroes balls_quantity
+         * which triggers LBC10's bat-explosion + lives-- branch on
+         * the next frame — i.e. ALL balls die, not just the primary.
+         * Mirror that here so multi-ball play can't soak bomb hits. */
         bomb_active = 0;
+        ball2_active = 0;
+        objects[OBJ_BALL_2].sprite_set = 0x82;
+        ball3_active = 0;
+        objects[OBJ_BALL_3].sprite_set = 0x82;
         play_bat_explosion(current_level_idx_var);
         if (lives > 0) lives--;
         ball_stuck = 1;
