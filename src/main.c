@@ -750,6 +750,14 @@ static const unsigned int spr_ufo_frames[3]  = { SPR_UFO_1,  SPR_UFO_2,  SPR_UFO
 #define SPR_BLAST_4      (0x888C - 0x7A8C)   /* = 0xe00 */
 #define SPR_BLAST_5      (0x88CE - 0x7A8C)   /* = 0xe42 */
 
+/* L4's spark enemy — 5 decaying frames at $8342..$83A6. Same
+ * mask+pix layout as the alien/blast sprites. */
+#define SPR_SPARK_1      (0x8342 - 0x7A8C)
+#define SPR_SPARK_2      (0x8370 - 0x7A8C)
+#define SPR_SPARK_3      (0x8386 - 0x7A8C)
+#define SPR_SPARK_4      (0x8398 - 0x7A8C)
+#define SPR_SPARK_5      (0x83A6 - 0x7A8C)
+
 /* Bonus sprites. Offsets from $7A8C. */
 #define SPR_BONUS_ROCKET_1    (0x891C - 0x7A8C)   /* code $06 — rocket */
 #define SPR_BONUS_SMASH       (0x8A6A - 0x7A8C)   /* code $07 — big-ball */
@@ -764,8 +772,14 @@ static const unsigned int spr_ufo_frames[3]  = { SPR_UFO_1,  SPR_UFO_2,  SPR_UFO
 static const unsigned int spr_blast_frames[5] = {
     SPR_BLAST_1, SPR_BLAST_2, SPR_BLAST_3, SPR_BLAST_4, SPR_BLAST_5
 };
+static const unsigned int spr_spark_frames[5] = {
+    SPR_SPARK_1, SPR_SPARK_2, SPR_SPARK_3, SPR_SPARK_4, SPR_SPARK_5
+};
 #define BLAST_FRAMES 5
 #define BLAST_TICKS_PER_FRAME 3
+/* Spark: each frame decays in duration (rough port of the original's
+ * "halve the timer each frame" mechanic). 8/4/2/1/1 ticks total. */
+#define SPARK_FRAMES 5
 
 /* Perimeter frame (top + left + right, no bottom). Each side strip is
  * 3 cols wide -- the third col (col 2 left, col 29 right) is the
@@ -1173,7 +1187,44 @@ static void handling_ball_obj(object_t *o)  { (void)o; }
 static void handling_bonus_obj(object_t *o) { (void)o; }
 static void handling_bullet_obj(object_t *o){ (void)o; }
 static void handling_rocket_obj(object_t *o){ (void)o; }
-static void handling_spark_obj(object_t *o) { (void)o; }
+/* L4's spark enemy: short-lived bouncing dot that decays through
+ * 5 sprite frames before vanishing. dir bit 0 = X heading (0=right,
+ * 1=left); bit 1 = Y heading (0=down, 1=up). Frame index ramps up
+ * with misc_12 against a decay threshold table — rough port of the
+ * original's halving-timer mechanic, simpler to reason about. */
+static const unsigned char spark_frame_threshold[SPARK_FRAMES] = {
+    16, 24, 28, 30, 31
+};
+static void handling_spark_obj(object_t *o) {
+    int dx = (o->dir & 1) ? -(int)o->speed : (int)o->speed;
+    int dy = (o->dir & 2) ? -(int)o->speed : (int)o->speed;
+    int nx = (int)o->x_coord + dx;
+    int ny = (int)o->y_coord + dy;
+    unsigned char f;
+    o->misc_12++;
+    for (f = 0; f < SPARK_FRAMES; f++) {
+        if (o->misc_12 < spark_frame_threshold[f]) {
+            o->sprite_num = f;
+            break;
+        }
+    }
+    if (f >= SPARK_FRAMES) {
+        o->sprite_set |= 0x80;
+        return;
+    }
+    if (nx < 8) { nx = 8; o->dir &= (unsigned char)~1; }
+    else if (nx >= PLAYFIELD_W - 8 - (int)o->w_body_px) {
+        nx = PLAYFIELD_W - 8 - (int)o->w_body_px - 1;
+        o->dir |= 1;
+    }
+    if (ny < 0) { ny = 0; o->dir &= (unsigned char)~2; }
+    else if (ny >= PLAYFIELD_H - (int)o->h_body_px) {
+        o->sprite_set |= 0x80;
+        return;
+    }
+    o->x_coord = (unsigned char)nx;
+    o->y_coord = (unsigned char)ny;
+}
 /* Port of handling_blast at $AA30. Advances the blast frame counter
  * via misc_12 (tick) and sprite_num (frame index = misc_12 / 3 mod 5).
  * Original deactivates when sprite_num reaches 9; we deactivate when
@@ -2464,8 +2515,6 @@ static void enemy_prepare(void) {
     object_t *e = &objects[OBJ_ENEMY];
     const unsigned char *prop;
     unsigned char r;
-    /* Skip on the level where the original disables aliens. */
-    if (current_level_idx_var == 4) return;
     /* Skip if bat carries the kill-aliens bonus. */
     if (objects[OBJ_BAT_1].bonus_applied == 0x09) return;
     if (objects[OBJ_BAT_2].bonus_applied == 0x09) return;
@@ -2478,6 +2527,23 @@ static void enemy_prepare(void) {
         unsigned int i;
         unsigned char *p = (unsigned char *)e;
         for (i = 0; i < sizeof(*e); i++) p[i] = 0;
+    }
+    /* L4 has its own enemy type: the bouncing spark. It uses a smaller
+     * sprite (~4 px square), starts somewhere in the brick band, and
+     * decays through 5 frames over ~31 ticks. */
+    if (current_level_idx_var == 4) {
+        e->sprite_set = 0x07;            /* anim_spark */
+        e->sprite_num = 0;
+        e->misc_12    = 0;               /* tick counter for frame decay */
+        e->w_body_px  = 8;
+        e->h_body_px  = 8;
+        e->speed      = 1;
+        r = (unsigned char)(next_random() & 3);
+        e->x_coord = prop_x_coord[r];
+        e->y_coord = 32;                 /* top of brick band */
+        e->dir = (unsigned char)(next_random() & 3);   /* random heading */
+        e->bonus_applied = 0x10;
+        return;
     }
     prop = (round_number & 1) ? prop_even : prop_uneven;
     e->sprite_set = prop[0];
@@ -2853,6 +2919,10 @@ static void redraw_full_with_ball(unsigned char level_idx) {
             unsigned char frame = enemy->sprite_num;
             if (frame >= BLAST_FRAMES) frame = BLAST_FRAMES - 1;
             spr = spr_blast_frames[frame];
+        } else if ((enemy->sprite_set & 0x7F) == 0x07) {
+            unsigned char frame = enemy->sprite_num;
+            if (frame >= SPARK_FRAMES) frame = SPARK_FRAMES - 1;
+            spr = spr_spark_frames[frame];
         } else {
             unsigned char frame = enemy->sprite_num % 3;
             spr = (enemy->sprite_set == 0x09)
