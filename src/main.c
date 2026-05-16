@@ -2158,6 +2158,14 @@ static int snd_tick_one(sound_slot_t *s) {
             return 0;
         }
 
+        case SND_BAT_RESIZE_2: {
+            /* $C247: one-shot fixed-pitch beep, D=$0A E=$30 — single
+             * frame in our PIT-paced queue. Mirror of push_resize_sound
+             * at $A645 (sound_bat_resize_2). */
+            sound_play(2800, 2);
+            return 1;
+        }
+
         default:
             return 1;
     }
