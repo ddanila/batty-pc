@@ -3748,6 +3748,11 @@ static void play_bat_explosion(unsigned char level_idx) {
         death_sparks[i].frame_ticks = 0x18;
         dir = (unsigned char)((dir + 5) & 0x3F);
     }
+    /* Push sound $08 — same beep LBC10's level-cleared branch uses, but
+     * here it covers the spark-fanout. Approximated with a longer
+     * fixed-frequency tone until play_sound_08's state-driven envelope
+     * is mapped properly. */
+    sound_play(700, 30);
     last = pit_ticks();
     do {
         unsigned long now;
