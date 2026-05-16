@@ -3263,6 +3263,13 @@ static state_t run_level(void) {
                 call_for_all_obj(ix_buf_addr_calc);
                 snd_q_tick();
                 sound_tick();
+                /* Roll the displayed HI score forward the moment it's
+                 * passed, instead of waiting for game-over. The disk
+                 * save still happens at game-over via save_high_score. */
+                if (score > high_score) {
+                    high_score = score;
+                    high_score_beaten_this_game = 1;
+                }
                 if (bonus_active) ball_moved = 1;
                 if (pts_400_ticks > 0) ball_moved = 1;
                 if (bat_extra_px != bat_extra_tgt) bat_moved = 1;
