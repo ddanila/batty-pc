@@ -652,9 +652,6 @@ static void save_high_score(void) {
 #define BONUS_W_PX        16
 #define BONUS_H_PX        8
 #define BONUS_FALL_SPEED  1
-#define BONUS_SPAWN_EVERY 3    /* every Nth brick drops a bonus.
-                                * Capped at 1 active at a time so rapid
-                                * row-bursts often drop fewer in practice. */
 /* Original game bonus codes from set_bonus / bonus_table_* at $9E4A:
  *   $01 gun        (deferred - needs bullet system)
  *   $02 triple_ball (deferred - needs multi-ball)
@@ -2589,7 +2586,11 @@ static void try_spawn_bonus(int col, int row) {
     int tries;
     const unsigned char *tbl;
     if (bonus_active) return;
-    if ((bricks_destroyed % BONUS_SPAWN_EVERY) != 0) return;
+    /* Mirror the test at $A2CC: drop a bonus iff (random & 0x0F) < 5,
+     * i.e. 5/16 ≈ 31% per destroyed brick. (Earlier port used a
+     * deterministic every-Nth counter — close in average rate but
+     * obvious as a pattern to the player.) */
+    if ((next_random() & 0x0F) >= 5) return;
     tbl = (round_number >= 6) ? bonus_table_second : bonus_table_first;
     for (tries = 0; tries < 16; tries++) {
         unsigned char idx = (unsigned char)(next_random() & 0x0F);
