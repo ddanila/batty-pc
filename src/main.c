@@ -4018,7 +4018,8 @@ static state_t run_level(void) {
             if (kbhit()) {
                 int k = getch();
                 if (k == KEY_ESC) return ST_QUIT;
-                if (k == KEY_P_LOWER || k == KEY_P_UPPER) {
+                if (k == KEY_P_LOWER || k == KEY_P_UPPER
+                    || k == '1' || k == '2' || k == '3' || k == '4') {
                     paused = !paused;
                     sound_silence();
                     if (paused) {
