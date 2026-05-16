@@ -555,7 +555,10 @@ static int           rocket_y      = 0;
 /* Stuck-on-bat dwell counter. While ball_stuck, the ball rides the
  * bat; SPACE detaches immediately; after STUCK_TIMEOUT ticks the ball
  * auto-launches. ~5 sec at 50 Hz. */
-#define STUCK_TIMEOUT 250
+/* Mirror of ball.bonus_applied = $C0 at all_var_init's level entry: the
+ * original counts down from 192 ticks (= 3.84 s at 50 Hz) before auto-
+ * releasing a stuck ball. We were waiting ~25 % longer at 5 s. */
+#define STUCK_TIMEOUT 192
 static unsigned int stuck_ticks = 0;
 
 /* Bomb state - port of bomb_appear at $A977. UFOs (and birds) drop a
@@ -3932,6 +3935,7 @@ static state_t run_level(void) {
         big_bat_ticks  = 0;
         big_ball_ticks = 0;
         life_dropped_this_round = 0;       /* mirrors flag_extra_life clear */
+        run_dot_frame = 0x0E;               /* matches running_dot_frame_1up reset */
         bat_extra_px   = 0;
         bat_extra_tgt  = 0;
         objects[OBJ_BAT_1].bonus_applied = 0xFF;
