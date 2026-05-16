@@ -503,6 +503,17 @@ static int stuck_offset_x = BALL_X_OFFSET_ON_BAT;
 static unsigned char bullet_active = 0;
 static int           bullet_x      = 0;
 static int           bullet_y      = 0;
+
+/* Second ball for the MULTI_BALL ($02 = triple_ball) bonus. We only
+ * spawn one extra (not three) — the original tripled at catch but a
+ * single extra ball captures the spirit. Position lives in
+ * objects[OBJ_BALL_2].x_coord/y_coord; velocity + active flag are
+ * dedicated state. Falling past the bat just deactivates ball2
+ * without decrementing lives (= the lives counter only tracks the
+ * primary ball; multi-ball is a bonus pile of destruction). */
+static unsigned char ball2_active = 0;
+static int           ball2_dx     = +BALL_SPEED;
+static int           ball2_dy     = -BALL_SPEED;
 /* Stuck-on-bat dwell counter. While ball_stuck, the ball rides the
  * bat; SPACE detaches immediately; after STUCK_TIMEOUT ticks the ball
  * auto-launches. ~5 sec at 50 Hz. */
@@ -609,7 +620,8 @@ static void save_high_score(void) {
 #define BONUS_TYPE_ROCKET       6
 #define BONUS_TYPE_SCORE_5K     7
 #define BONUS_TYPE_LASER        8
-#define BONUS_TYPE_COUNT        9
+#define BONUS_TYPE_MULTI_BALL   9
+#define BONUS_TYPE_COUNT        10
 #define BONUS_TYPE_UNSUPPORTED  0xFF
 
 /* bonus_table_first / bonus_table_second - byte-exact copies of the
@@ -635,6 +647,7 @@ static unsigned char map_orig_to_our_bonus(unsigned char code) {
     switch (code) {
         case 0x00: return BONUS_TYPE_BIG_BAT;       /* spr_bonus_size */
         case 0x01: return BONUS_TYPE_LASER;         /* spr_bonus_gun */
+        case 0x02: return BONUS_TYPE_MULTI_BALL;    /* spr_bonus_triple_ball */
         case 0x03: return BONUS_TYPE_CATCH;         /* spr_bonus_hand */
         case 0x04: return BONUS_TYPE_SLOW;
         case 0x05: return BONUS_TYPE_LIFE;
@@ -688,7 +701,8 @@ static const unsigned char bonus_colours[BONUS_TYPE_COUNT] = {
     12,   /* C (catch)       - bright green   */
     10,   /* R (rocket)      - bright red     */
     15,   /* $ (5000 points) - bright white   */
-    11    /* L (laser)       - bright magenta */
+    11,   /* L (laser)       - bright magenta */
+    13    /* 3 (multi-ball)  - bright cyan    */
 };
 
 /* Counter of bricks destroyed since start of game; drives the simple
@@ -2138,6 +2152,7 @@ static unsigned int spr_for_bonus(unsigned char t) {
         case BONUS_TYPE_ROCKET:      return SPR_BONUS_ROCKET_1;
         case BONUS_TYPE_SCORE_5K:    return SPR_BONUS_5000_POINTS;
         case BONUS_TYPE_LASER:       return SPR_BONUS_GUN;
+        case BONUS_TYPE_MULTI_BALL:  return SPR_BONUS_TRIPLE_BALL;
         default:                     return SPR_BONUS_SIZE;
     }
 }
@@ -2240,6 +2255,20 @@ static void bonus_apply(unsigned char type) {
              * flags. */
             objects[OBJ_BAT_1].bonus_applied = 0x01;
             objects[OBJ_BAT_2].bonus_applied = 0x01;
+            break;
+        case BONUS_TYPE_MULTI_BALL:
+            /* Spawn a second ball at the primary's current position
+             * with the mirrored horizontal direction. If a multi-ball
+             * is already in flight, leave it alone (catching the
+             * same bonus twice doesn't multiply). */
+            if (!ball2_active) {
+                ball2_active = 1;
+                objects[OBJ_BALL_2].sprite_set = 0x02;
+                objects[OBJ_BALL_2].x_coord = BALL_X;
+                objects[OBJ_BALL_2].y_coord = BALL_Y;
+                ball2_dx = -ball_dx;       /* opposite horizontal */
+                ball2_dy = -BALL_SPEED;    /* upward */
+            }
             break;
         default: break;
     }
@@ -2704,6 +2733,62 @@ static void step_ball(void) {
     BALL_Y = next_y;
 }
 
+/* Step the secondary (multi-ball) one frame. Simpler than step_ball:
+ * no stuck phase, no life decrement on bottom-exit — the slot just
+ * deactivates. Bat bounce reuses the same 5-zone deflection. Wall +
+ * brick collision shared with step_ball semantics. */
+static void step_ball2(void) {
+    int next_x, next_y;
+    int bat_left  = eff_bat_left();
+    int bat_right = eff_bat_right();
+    int bat_top   = BAT_Y_PX;
+    int ball_sz   = BALL_W_PX;
+    int bx        = objects[OBJ_BALL_2].x_coord;
+    int by        = objects[OBJ_BALL_2].y_coord;
+    if (!ball2_active) return;
+    next_x = bx + ball2_dx;
+    next_y = by + ball2_dy;
+    {
+        int x_max = PLAYFIELD_W - 8 - ball_sz;
+        if (next_x < BALL_X_MIN)        { next_x = BALL_X_MIN; ball2_dx = -ball2_dx; }
+        else if (next_x > x_max)        { next_x = x_max;      ball2_dx = -ball2_dx; }
+    }
+    if (next_y < BALL_Y_TOP) { next_y = BALL_Y_TOP; ball2_dy = +BALL_SPEED; }
+    /* Bat bounce: same 5-zone deflection as the primary ball. */
+    if (ball2_dy > 0
+        && next_y + ball_sz >= bat_top
+        && next_y < bat_top
+        && next_x + ball_sz > bat_left
+        && next_x < bat_right) {
+        int hit_x = (next_x + ball_sz / 2) - bat_left;
+        int span  = bat_right - bat_left;
+        next_y  = bat_top - ball_sz;
+        ball2_dy = -BALL_SPEED;
+        if      (hit_x * 5 < span * 1) ball2_dx = -2;
+        else if (hit_x * 5 < span * 2) ball2_dx = -1;
+        else if (hit_x * 5 < span * 3) ball2_dx = (ball2_dx >= 0) ? +1 : -1;
+        else if (hit_x * 5 < span * 4) ball2_dx = +1;
+        else                           ball2_dx = +2;
+        snd_q_push(SND_BAT_BEAT);
+    }
+    /* Off-the-bottom: just deactivate. No life penalty for losing the
+     * bonus ball. */
+    if (next_y > BAT_Y_PX + BAT_H_PX) {
+        ball2_active = 0;
+        objects[OBJ_BALL_2].sprite_set = 0x82;
+        return;
+    }
+    /* Brick collision identical to ball1 — same brick_collision call,
+     * which handles 1-hit / multi-hit / undestructible internally. */
+    {
+        int hit = brick_collision(bx, by, next_x, next_y);
+        if (hit == 1)        { ball2_dy = -ball2_dy; next_y = by; }
+        else if (hit == 2)   { ball2_dx = -ball2_dx; next_x = bx; }
+    }
+    objects[OBJ_BALL_2].x_coord = (unsigned char)next_x;
+    objects[OBJ_BALL_2].y_coord = (unsigned char)next_y;
+}
+
 /* M3 minimal play loop. For each level: full render once, then poll
  * arrows for bat motion (LEFT/RIGHT = +-4 px, matching the original's
  * handling_bat step). Any non-arrow key advances; ESC quits.
@@ -2785,6 +2870,10 @@ static void redraw_full_with_ball(unsigned char level_idx) {
     }
     if (bonus_active) render_bonus_to_buff(bg_attr);
     render_bullet_to_buff();
+    if (ball2_active) {
+        render_ball_to_buff(objects[OBJ_BALL_2].x_coord,
+                            objects[OBJ_BALL_2].y_coord, bg_attr);
+    }
     buff_to_vga();
     render_hud_score();
     render_hud_high_score();
@@ -2877,6 +2966,11 @@ static void render_hud_powerups(void) {
     if (objects[OBJ_BAT_1].bonus_applied == 0x01) {
         /* L (laser), letter code 0x15 per notes/encoding.md. */
         draw_glyph(x, HUD_POWERUP_Y, bonus_colours[BONUS_TYPE_LASER], 0x15);
+        x += 10;
+    }
+    if (ball2_active) {
+        /* Digit 3 (multi-ball) — digits use code = digit value. */
+        draw_glyph(x, HUD_POWERUP_Y, bonus_colours[BONUS_TYPE_MULTI_BALL], 0x03);
     }
 }
 
@@ -2945,6 +3039,8 @@ static state_t run_level(void) {
         bonus_active   = 0;
         bomb_active    = 0;
         bullet_active  = 0;
+        ball2_active   = 0;
+        objects[OBJ_BALL_2].sprite_set = 0x82;
         pts_400_ticks  = 0;
         slow_ticks     = 0;
         big_bat_ticks  = 0;
@@ -3075,6 +3171,7 @@ static state_t run_level(void) {
                 step_pts_400();
                 step_bomb();
                 step_bullet();
+                step_ball2();
                 /* Mirror of LB9E8_2..LB9E8_3 ($BA83..$BAD9):
                  *   enemy_prepare    -- maybe spawn alien
                  *   handling_bat     -- bat motion (here via key_state)
@@ -3095,6 +3192,7 @@ static state_t run_level(void) {
                 if (objects[OBJ_ENEMY].sprite_set != 0) ball_moved = 1;
                 if (bomb_active) ball_moved = 1;
                 if (bullet_active) ball_moved = 1;
+                if (ball2_active) ball_moved = 1;
             }
 
             if (BAT_X != BAT_PREV_X) {
