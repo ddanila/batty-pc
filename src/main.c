@@ -2480,6 +2480,24 @@ static void render_bonus_to_buff(unsigned char bg) {
     blit_masked_to_scr_buff(spr, bonus_x, bonus_y);
 }
 
+/* Map our BONUS_TYPE_* back to the original $00..$09 code used by
+ * bat.bonus_applied. Inverse of map_orig_to_our_bonus. */
+static unsigned char our_to_orig_bonus(unsigned char type) {
+    switch (type) {
+        case BONUS_TYPE_BIG_BAT:     return 0x00;
+        case BONUS_TYPE_LASER:       return 0x01;
+        case BONUS_TYPE_MULTI_BALL:  return 0x02;
+        case BONUS_TYPE_CATCH:       return 0x03;
+        case BONUS_TYPE_SLOW:        return 0x04;
+        case BONUS_TYPE_LIFE:        return 0x05;
+        case BONUS_TYPE_ROCKET:      return 0x06;
+        case BONUS_TYPE_BIG_BALL:    return 0x07;
+        case BONUS_TYPE_SCORE_5K:    return 0x08;
+        case BONUS_TYPE_KILL_ALIENS: return 0x09;
+        default:                     return 0xFF;
+    }
+}
+
 /* Apply the effect that comes with `type`. Catching the same type
  * while already active extends the duration. */
 static void bonus_apply(unsigned char type) {
@@ -2489,6 +2507,16 @@ static void bonus_apply(unsigned char type) {
      * $A645, gated by `CP $05; CALL NZ,push_resize_sound`). Our port
      * had been routing every catch through SND_LIVE_ADD. */
     snd_q_push(type == BONUS_TYPE_LIFE ? SND_LIVE_ADD : SND_BAT_RESIZE_2);
+    /* Original LA67B_3 at \$A6FC writes the bonus type code into
+     * bat.bonus_applied for every catch except ROCKET (which jumps
+     * out earlier to get_rocket). Catching a new bonus thus REPLACES
+     * any previous bat-side effect — e.g. catching BIG_BAT after
+     * LASER clears the LASER state. */
+    if (type != BONUS_TYPE_ROCKET) {
+        unsigned char orig_code = our_to_orig_bonus(type);
+        objects[OBJ_BAT_1].bonus_applied = orig_code;
+        objects[OBJ_BAT_2].bonus_applied = orig_code;
+    }
     switch (type) {
         case BONUS_TYPE_LIFE:     lives++; life_dropped_this_round = 1; break;
         case BONUS_TYPE_SLOW:     slow_ticks     = SLOW_DURATION; break;
@@ -2498,12 +2526,10 @@ static void bonus_apply(unsigned char type) {
                                   break;
         case BONUS_TYPE_BIG_BALL: big_ball_ticks = BIG_BALL_DURATION; break;
         case BONUS_TYPE_KILL_ALIENS:
-            /* Mark the bat as carrying the kill-aliens bonus (matches
-             * the original's BAT+$14 = $09); enemy_prepare reads this
-             * to skip further alien spawns. Also clear any currently
-             * active alien so the catch has immediate visible effect. */
-            objects[OBJ_BAT_1].bonus_applied = 0x09;
-            objects[OBJ_BAT_2].bonus_applied = 0x09;
+            /* bat.bonus_applied = \$09 has already been set above —
+             * enemy_prepare reads that to skip further alien spawns.
+             * Also clear any currently active alien for immediate
+             * visible effect. */
             {
                 object_t *e = &objects[OBJ_ENEMY];
                 if ((e->sprite_set & 0x7F) != 0
@@ -2520,11 +2546,9 @@ static void bonus_apply(unsigned char type) {
             }
             break;
         case BONUS_TYPE_CATCH:
-            /* Bat catches the ball on next contact; player must press
-             * SPACE to release (matches the original's $03 effect on
-             * BAT+$14). step_ball reads bonus_applied to decide. */
-            objects[OBJ_BAT_1].bonus_applied = 0x03;
-            objects[OBJ_BAT_2].bonus_applied = 0x03;
+            /* bat.bonus_applied = \$03 has already been set above —
+             * step_ball reads it on bat-bounce to decide whether to
+             * stick the ball. */
             break;
         case BONUS_TYPE_ROCKET:
             /* Spawn a rocket flying up from the bat. step_rocket
@@ -2550,12 +2574,10 @@ static void bonus_apply(unsigned char type) {
             score += 5000;
             break;
         case BONUS_TYPE_LASER:
-            /* Bat carries the laser (matches BAT+$14 = $01); SPACE
-             * fires a single bullet from the bat top while active.
-             * Cleared on level transition with the other bonus
-             * flags. */
-            objects[OBJ_BAT_1].bonus_applied = 0x01;
-            objects[OBJ_BAT_2].bonus_applied = 0x01;
+            /* bat.bonus_applied = \$01 has already been set above —
+             * the inner-loop SPACE handler reads it to enable laser
+             * fires. Cleared automatically when another bonus is
+             * caught (since bat.bonus_applied is rewritten). */
             break;
         case BONUS_TYPE_MULTI_BALL:
             /* Spawn two extra balls at the primary's current position
