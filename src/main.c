@@ -2100,9 +2100,12 @@ typedef enum { ST_TITLE, ST_MENU, ST_HISCORE, ST_LEVEL, ST_QUIT } state_t;
 #define HISCORE_TIMEOUT_TICKS 120   /* ~6.6 s */
 #define LEVEL_TIMEOUT_TICKS   40    /* ~2.2 s per level in the cycle */
 
-/* In test mode (BATTYALL=1) we want explicit key control over every
- * transition. Set at startup based on env. */
-static int auto_advance = 1;
+/* Attract-mode auto-cycle through TITLE / MENU / HISCORE states for
+ * the no-input demo loop. Defaults to OFF — matches the original
+ * game, where the player drives transitions. The legacy BATTYALL=1
+ * env-var still forces it OFF for the test floppy (no-op now, but
+ * kept so the autoexec.bat doesn't need editing). */
+static int auto_advance = 0;
 #define TIMED_OUT(start, ticks) (auto_advance && (bios_ticks() - (start) > (ticks)))
 
 /* Blink phase for the selected option's text. Test mode pins it to 0
@@ -3549,9 +3552,11 @@ static state_t run_level(void) {
                         snd_q_push(SND_SHOT);
                     }
                     start = bios_ticks();
-                } else if (k == KEY_ENTER) {
-                    break;
                 }
+                /* Mirror the original: no level-skip key. ENTER while
+                 * playing does nothing (only the pause overlay above
+                 * consumes ENTER to dismiss). The level holds until
+                 * the player clears it or loses all lives. */
             }
 
             /* Frame tick at 50 Hz from our PIT IRQ. */
@@ -3679,9 +3684,12 @@ static state_t run_level(void) {
                 sound_silence();
                 return ST_TITLE;
             }
+            /* Mirror LBAED_0's exit conditions:
+             *   balls_quantity == 0  -> game over (handled above)
+             *   briks_quantity_1up == 0 -> level cleared, advance.
+             * No timeout, no key-driven skip — the level holds the
+             * player until the bricks are gone. */
             if (live_bricks_remaining() == 0) break;
-
-            if (auto_advance && TIMED_OUT(start, LEVEL_TIMEOUT_TICKS)) break;
         }
     }
     /* Cleared all 15 levels - update high score, then show GAME OVER.
