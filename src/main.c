@@ -4133,8 +4133,12 @@ static state_t run_level(void) {
                         }
                         if (free_slot >= 0) {
                             bullet_active[free_slot] = 1;
-                            bullet_x[free_slot] = BAT_X + (BAT_W_BYTES * 8) / 2 - BULLET_W_PX / 2;
-                            bullet_y[free_slot] = BAT_Y_PX - BULLET_H_PX;
+                            /* Original free_bullet_2 at \$A14C:
+                             *   bullet_x = bat_x + \$0C (= +12 px)
+                             *   bullet_y = \$AC (= 172, one px above bat top)
+                             * Bullet emerges from the bat surface, not floating above. */
+                            bullet_x[free_slot] = BAT_X + 12;
+                            bullet_y[free_slot] = BAT_Y_PX - 1;
                             bat_fire_anim_ticks = 8;
                             bullet_cooldown = 0x16;          /* ~11 frames @ -2 / frame */
                             snd_q_push(SND_SHOT);
