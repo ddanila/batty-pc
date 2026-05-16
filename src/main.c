@@ -2525,6 +2525,10 @@ static int brick_collision(int prev_x, int prev_y, int new_x, int new_y) {
     }
     *cell |= 0x80;
     snd_q_push(SND_NORMAL_BRIK);            /* brick-break click */
+    /* BIG_BALL (smash) bonus: ball ploughs through bricks rather
+     * than bouncing — keep the bonus-spawn check below intact but
+     * stash the "no bounce" intent. */
+    if (big_ball_ticks > 0) axis = 0;
     /* Maybe drop a bonus. Port of set_bonus's selection logic at
      * $9D5A: random index into bonus_table_current (= _first for
      * rounds 0..5, _second for 6+), retry if the picked code maps
