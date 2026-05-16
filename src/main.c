@@ -725,6 +725,10 @@ static int           bat_extra_tgt   = 0;
 static int           pts_400_x = 0;
 static int           pts_400_y = 0;
 static unsigned char pts_400_ticks = 0;
+/* Sprite for the floating points marker. Defaults to the universal
+ * "+400" reward; SCORE_5K bonus catches override to the larger
+ * "+5000" sprite so the unusual reward has its own visible cue. */
+static unsigned int  pts_marker_spr = 0;  /* set on catch */
 
 /* Bonus colours indexed by type (ZX VGA palette indices). Picked so
  * they don't collide with the per-level bg cycle colours (yellow /
@@ -2443,12 +2447,17 @@ static void step_bonus(void) {
         && bonus_y < BAT_Y_PX + BAT_H_PX
         && bonus_x + BONUS_W_PX > bat_left
         && bonus_x < bat_right) {
+        unsigned char caught_type = bonus_type;
         bonus_apply(bonus_type);
         bonus_active = 0;
         score += 400;                         /* matches LD BC,$0400 / add_points_to_score at $A67D */
         snd_q_push(SND_LIVE_ADD);
-        /* Spawn the "+400" floating marker at the bonus's last
-         * position (port of sprite_set $0B transition at $A6BA). */
+        /* Spawn the floating reward marker at the bonus's last
+         * position. SCORE_5K uses the "+5000" sprite (the unusual
+         * reward gets its own glyph); everything else uses the
+         * universal "+400" sprite. */
+        pts_marker_spr = (caught_type == BONUS_TYPE_SCORE_5K)
+            ? SPR_BONUS_5000_POINTS : SPR_400_POINTS;
         pts_400_x = bonus_x;
         pts_400_y = bonus_y;
         pts_400_ticks = PTS_400_DURATION;
@@ -3050,7 +3059,7 @@ static void redraw_full_with_ball(unsigned char level_idx) {
         blit_masked_to_scr_buff_ptr(spr_bomb_data, bomb_x, bomb_y);
     }
     if (pts_400_ticks > 0) {
-        blit_masked_to_scr_buff(SPR_400_POINTS, pts_400_x, pts_400_y);
+        blit_masked_to_scr_buff(pts_marker_spr, pts_400_x, pts_400_y);
     }
     if ((enemy->sprite_set & 0x7F) != 0 && !(enemy->sprite_set & 0x80)) {
         unsigned int spr;
