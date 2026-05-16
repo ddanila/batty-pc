@@ -2537,8 +2537,11 @@ static void bonus_apply(unsigned char type) {
                 if ((e->sprite_set & 0x7F) != 0
                     && !(e->sprite_set & 0x80)
                     && (e->sprite_set & 0x7F) != 0x0A) {
-                    /* Transition to blast: 5-frame explosion via
-                     * handling_blast_obj, then auto-clear. */
+                    /* Centre 16x13 blast over alien (mirror of \$A4D2). */
+                    e->x_coord = (unsigned char)(e->x_coord + (int)e->w_body_px / 2 - 8);
+                    e->y_coord = (unsigned char)(e->y_coord + 4);
+                    e->w_body_px = 16;
+                    e->h_body_px = 13;
                     e->sprite_set = 0x0A;
                     e->sprite_num = 0;
                     e->misc_12 = 0;
@@ -3079,6 +3082,11 @@ static void step_bullet_one(int b) {
         int ey_b = enemy->y_coord + enemy->h_body_px;
         if (bullet_x[b] + BULLET_W_PX > ex_l && bullet_x[b] < ex_r
             && bullet_y[b] + BULLET_H_PX > ey_t && bullet_y[b] < ey_b) {
+            /* Centre 16x13 blast over alien (mirror of \$A4D2). */
+            enemy->x_coord = (unsigned char)(enemy->x_coord + (int)enemy->w_body_px / 2 - 8);
+            enemy->y_coord = (unsigned char)(enemy->y_coord + 4);
+            enemy->w_body_px = 16;
+            enemy->h_body_px = 13;
             enemy->sprite_set = 0x0A;       /* transition to 5-frame blast */
             enemy->sprite_num = 0;
             enemy->misc_12    = 0;
