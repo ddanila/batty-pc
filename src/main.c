@@ -589,6 +589,17 @@ static const unsigned int points_table[12] = {
 static unsigned long score      = 0;
 static int           lives      = LIVES_INIT;
 static unsigned long high_score = 0;
+
+/* Score milestones at which an extra life is awarded — port of
+ * live_add_steps at $0395. Original stores BCD high-byte thresholds
+ * ($03, $06, $10, ...), which interpreted as 6-digit scores are
+ * 30000, 60000, 100000, etc. */
+static const unsigned long live_add_thresholds[] = {
+    30000UL, 60000UL, 100000UL, 150000UL,
+    200000UL, 250000UL, 500000UL, 750000UL
+};
+#define LIVE_ADD_COUNT (sizeof(live_add_thresholds)/sizeof(live_add_thresholds[0]))
+static unsigned char live_adds_awarded = 0;
 static unsigned char high_score_beaten_this_game = 0;
 /* Three-letter initials saved with the high score. Stored as glyph
  * codes (A = 0x0A .. Z = 0x23). Default "AAA" when no save exists. */
@@ -3798,6 +3809,7 @@ static state_t run_level(void) {
      * run_level from ST_HISCORE. */
     score = 0;
     lives = LIVES_INIT;
+    live_adds_awarded = 0;
     bricks_destroyed = 0;
     bonus_active = 0;
     slow_ticks = 0;
@@ -4000,6 +4012,15 @@ static state_t run_level(void) {
                 call_for_all_obj(ix_buf_addr_calc);
                 snd_q_tick();
                 sound_tick();
+                /* Score-milestone extra life — port of score_update_3
+                 * at $0395. Each crossed threshold in live_add_thresholds
+                 * awards one extra life and pushes the live-add sound. */
+                while (live_adds_awarded < LIVE_ADD_COUNT
+                       && score >= live_add_thresholds[live_adds_awarded]) {
+                    lives++;
+                    snd_q_push(SND_LIVE_ADD);
+                    live_adds_awarded++;
+                }
                 /* Roll the displayed HI score forward the moment it's
                  * passed, instead of waiting for game-over. The disk
                  * save still happens at game-over via save_high_score. */
