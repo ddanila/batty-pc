@@ -2501,7 +2501,9 @@ static void bonus_apply(unsigned char type) {
                 rocket_active = 1;
                 rocket_x = BAT_X + (BAT_W_BYTES * 8) / 2 - ROCKET_W_PX / 2;
                 rocket_y = BAT_Y_PX - ROCKET_H_PX;
-                snd_q_push(SND_SHOT);
+                /* Original get_rocket at $AA9D pushes no sound — the
+                 * bonus-catch SND_LIVE_ADD already plays. The rocket
+                 * flight itself is silent in the original too. */
             }
             break;
         case BONUS_TYPE_SCORE_5K:
