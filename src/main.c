@@ -2806,6 +2806,7 @@ static void step_bullet(void) {
  * the rocket leaves the top of the playfield. */
 static void step_rocket(void) {
     int col_lo, col_hi, row_lo, row_hi, r, c;
+    int killed_this_tick = 0;
     if (!rocket_active) return;
     rocket_y -= ROCKET_SPEED;
     if (rocket_y + ROCKET_H_PX < 0) {
@@ -2844,9 +2845,14 @@ static void step_rocket(void) {
                 }
                 *cell |= 0x80;
                 bricks_destroyed++;
+                killed_this_tick = 1;
             }
         }
     }
+    /* One brick-click per tick rather than per cell, so the rocket's
+     * flight produces a steady rattle instead of a thousand-snd-q
+     * spam when it lines up with a packed brick row. */
+    if (killed_this_tick) snd_q_push(SND_NORMAL_BRIK);
 }
 
 /* Step the ball one frame: handle wall + bat collisions. If the ball
