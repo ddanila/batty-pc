@@ -3100,6 +3100,29 @@ static int any_bullet_active(void) {
  * brick its bbox overlaps, leave undestructible bricks alone (no
  * bounce — the rocket just continues past them). Deactivate when
  * the rocket leaves the top of the playfield. */
+/* Award bonus points for every still-live destructible brick on the
+ * current level — port of add_points_for_left_briks at $AF81. Called
+ * when the rocket exits the playfield (LBB97 → LBBFB). Iterates the
+ * 12x15 grid, awards points_table[row] (×2 for metal) for each cell
+ * that's neither destroyed (bit 7) nor undestructible (bit 5), then
+ * marks them destroyed so live_bricks_remaining() = 0 ends the level. */
+static void award_left_bricks(void) {
+    int row, col;
+    for (row = 0; row < LVL_ROWS; row++) {
+        for (col = 0; col < LVL_COLS; col++) {
+            unsigned char *cell = &live_level[row * LVL_COLS + col];
+            unsigned int pts, idx;
+            if (*cell & 0xA0) continue;          /* destroyed or undestructible */
+            idx = (unsigned int)((row < 12) ? row : 11);
+            pts = points_table[idx];
+            if ((*cell & 0x0F) >= 6) pts *= 2;
+            score += pts;
+            *cell |= 0x80;
+            bricks_destroyed++;
+        }
+    }
+}
+
 static void step_rocket(void) {
     int col_lo, col_hi, row_lo, row_hi, r, c;
     int killed_this_tick = 0;
@@ -3107,6 +3130,10 @@ static void step_rocket(void) {
     rocket_y -= ROCKET_SPEED;
     if (rocket_y + ROCKET_H_PX < 0) {
         rocket_active = 0;
+        /* Mirror LBB97 → LBBFB: award bonus points for every brick the
+         * rocket didn't reach and end the level. Matches the original's
+         * "rocket clears the round" gameplay loop. */
+        award_left_bricks();
         return;
     }
     /* Map the rocket bbox onto level-grid cells (8 + col*16, 32 +
