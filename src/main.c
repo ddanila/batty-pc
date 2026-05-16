@@ -499,7 +499,10 @@ static int stuck_offset_x = BALL_X_OFFSET_ON_BAT;
  * after leaving the playfield top. */
 #define BULLET_W_PX     8
 #define BULLET_H_PX     8
-#define BULLET_SPEED    4
+/* Original handling_bullet at \$A5A3 advances bullet Y by 6 px/tick
+ * (`LD A,(IX+\$04); SUB \$06`). We had 4 which made bullets visibly
+ * slower than the original's. */
+#define BULLET_SPEED    6
 /* Two-bullet pool — original at $A0FA tries object_bullet_1 then
  * object_bullet_2 so the player can have up to 2 in flight. We had
  * one slot, capping rapid-fire to one bullet per ~30 frames. */
