@@ -3055,7 +3055,10 @@ static void step_bullet_one(int b) {
                 hit = 1;
             }
             if (hit) {
-                snd_q_push(SND_NORMAL_BRIK);
+                /* Original LAFFC checks colliding object's sprite_set
+                 * == \$05 (bullet) and skips sound_normall_brik on
+                 * bullet hits. Visual feedback comes from the 4-frame
+                 * bullet-blast at the impact point instead. */
                 bullet_active[b] = 0;
                 bullet_blast_x[b] = bullet_x[b];
                 bullet_blast_y[b] = bullet_y[b];
