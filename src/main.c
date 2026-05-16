@@ -1621,19 +1621,11 @@ static void print_one_brik_buf_c(unsigned int hl, unsigned char iy_byte) {
     }
 
     /* Color attr: 1-indexed lookup, write to both char cells the brick
-     * spans. Multi-hit (metal) bricks have low nibble 6..9; the first
-     * collision SETS bit 4 (= "next hit destroys"). Dim their attr by
-     * clearing the bright bit so the post-first-hit state is visually
-     * distinct from the fresh state. 1-hit normal bricks (low nibble
-     * 1..5) start with bit 4 already set, so this check skips them
-     * and they always render bright. */
+     * spans. Mirror of LAE82_4 ($AE9C): straight briks_colors lookup
+     * by low nibble, no per-state dimming. Earlier port dimmed
+     * multi-hit bricks after their first hit as a UX cue but the
+     * original draws them with their fresh colour throughout. */
     attr = briks_colors[iy_byte & 0x0F];
-    {
-        unsigned char low = (unsigned char)(iy_byte & 0x0F);
-        if ((iy_byte & 0x10) && low >= 6 && low <= 9) {
-            attr &= 0xBF;
-        }
-    }
     attr_buff[attr_off]     = attr;
     attr_buff[attr_off + 1] = attr;
 }
