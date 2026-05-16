@@ -3055,7 +3055,7 @@ static void step_ball2(void) {
     int bat_left  = eff_bat_left();
     int bat_right = eff_bat_right();
     int bat_top   = BAT_Y_PX;
-    int ball_sz   = BALL_W_PX;
+    int ball_sz   = eff_ball_size();
     int bx        = objects[OBJ_BALL_2].x_coord;
     int by        = objects[OBJ_BALL_2].y_coord;
     if (!ball2_active) return;
