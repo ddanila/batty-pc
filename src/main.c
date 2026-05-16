@@ -3093,24 +3093,31 @@ static state_t run_level(void) {
                     getch();
                     start = bios_ticks();
                 } else if (k == KEY_SPACE) {
-                    /* Launch the stuck ball (matches the original's
-                     * fire-button-detaches-ball behaviour). */
-                    BALL_SHOW();
-                    ball_stuck   = 0;
-                    stuck_ticks  = 0;
-                    /* Shallow launch angle (|dx| < |dy|) so the ball
-                     * traverses each brick row across multiple cols
-                     * - lots of L1's bricks would otherwise be missed
-                     * by a 45-deg deterministic launch from the bat's
-                     * default x. Aimed AWAY from the nearest wall. */
-                    {
-                        int bat_centre = BAT_X + (BAT_W_BYTES * 8) / 2;
-                        ball_dx = (bat_centre < PLAYFIELD_W / 2) ? +1 : -1;
-                        ball_dy = -BALL_SPEED;
+                    /* Launch the stuck ball — only fire the launch
+                     * trajectory if the ball is actually waiting on the
+                     * bat. Without this guard, hammering SPACE while
+                     * the ball is in flight (e.g. trying to fire the
+                     * laser repeatedly) would teleport the ball back to
+                     * its launch dx/dy, breaking the bounce. */
+                    if (ball_stuck) {
+                        BALL_SHOW();
+                        ball_stuck   = 0;
+                        stuck_ticks  = 0;
+                        /* Shallow launch angle (|dx| < |dy|) so the ball
+                         * traverses each brick row across multiple cols
+                         * - lots of L1's bricks would otherwise be missed
+                         * by a 45-deg deterministic launch from the bat's
+                         * default x. Aimed AWAY from the nearest wall. */
+                        {
+                            int bat_centre = BAT_X + (BAT_W_BYTES * 8) / 2;
+                            ball_dx = (bat_centre < PLAYFIELD_W / 2) ? +1 : -1;
+                            ball_dy = -BALL_SPEED;
+                        }
                     }
                     /* If the bat carries the LASER bonus and no
                      * bullet is in flight, also fire one from the bat
-                     * top centre. */
+                     * top centre. Independent of ball state — SPACE
+                     * can refire the laser while the ball is in play. */
                     if (objects[OBJ_BAT_1].bonus_applied == 0x01
                         && !bullet_active) {
                         bullet_active = 1;
