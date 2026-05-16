@@ -593,8 +593,12 @@ static void save_high_score(void) {
  * we hold a simpler 1-slot version until the object descriptor port
  * (M3 proper) lands. The slow-ball effect uses a tick countdown that
  * runs at the PIT frame rate (50 Hz). */
-#define BONUS_W_PX        8
-#define BONUS_H_PX        6
+/* Catch hit-box. The visible bonus sprite is 24 px wide x 13 rows
+ * tall (with a drop-shadow band), but we run the bat-collision
+ * against the central body region only — 16 wide x 8 tall — so a
+ * marginal "shadow touched the bat" doesn't register as a catch. */
+#define BONUS_W_PX        16
+#define BONUS_H_PX        8
 #define BONUS_FALL_SPEED  1
 #define BONUS_SPAWN_EVERY 3    /* every Nth brick drops a bonus.
                                 * Capped at 1 active at a time so rapid
