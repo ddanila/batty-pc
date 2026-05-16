@@ -582,7 +582,10 @@ static unsigned int stuck_ticks = 0;
 static unsigned char bomb_active = 0;
 static int           bomb_x = 0;
 static int           bomb_y = 0;
-#define BOMB_FALL_SPEED 1
+/* Bomb shares handling_bonus's LA55A_0 accumulator in the original
+ * (it's a bonus with sprite_num=\$0A), so it falls at the same ~2
+ * px/frame peak as a regular bonus. */
+#define BOMB_FALL_SPEED 2
 #define BOMB_W_PX       8
 #define BOMB_H_PX       12
 /* ball_visible is encoded in objects[OBJ_BALL_1].sprite_set bit 7:
