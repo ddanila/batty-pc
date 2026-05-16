@@ -3493,6 +3493,46 @@ static void input_new_record_name(void) {
     }
 }
 
+/* "ROUND XX" intro banner — port of show_window_round_number at $8F60
+ * + the pause_long B=4 wait at LB9E8_1. Draws an 80x24 black panel
+ * centred between the brick zone and the bat, with "ROUND<sp>NN" in
+ * bright white. Holds for ~1.2 s (60 PIT ticks) or until a key is
+ * pressed. ESC during the wait returns 1 so the caller can quit.
+ *
+ * We skip the original's secondary "PLAYER X" line because the port
+ * is single-player only for now; once 2-player wiring lands we add it. */
+static int show_round_banner(unsigned char level_idx) {
+    int round_num = (int)level_idx + 1;
+    int banner_x = BORDER_X + 88;
+    int banner_y = BORDER_Y + 143;
+    int text_x   = BORDER_X + 96;
+    int text_y   = BORDER_Y + 151;
+    unsigned long start;
+    unsigned char codes[8];
+    codes[0] = 0x1B;  /* R */
+    codes[1] = 0x18;  /* O */
+    codes[2] = 0x1E;  /* U */
+    codes[3] = 0x17;  /* N */
+    codes[4] = 0x0D;  /* D */
+    codes[5] = 0x26;  /* space */
+    codes[6] = (unsigned char)((round_num / 10) % 10);
+    codes[7] = (unsigned char)(round_num % 10);
+
+    fill(banner_x, banner_y, 80, 24, 0);
+    draw_text(text_x, text_y, 15, codes, 8);
+
+    start = pit_ticks();
+    while (pit_ticks() - start < 60UL) {
+        sound_tick();
+        if (kbhit()) {
+            int k = getch();
+            if (k == 27) return 1;
+            break;
+        }
+    }
+    return 0;
+}
+
 /* --- "Bat explodes" death animation -----------------------------------
  *
  * When the ball is lost the original spawns 10 sparks at the bat
@@ -3700,6 +3740,8 @@ static state_t run_level(void) {
             live_level[k] = levels[(int)i * LVL_CELLS + k];
         }
         render_level_screen(i);
+        if (show_round_banner(i)) return ST_QUIT;
+        render_level_screen(i);                /* re-paint to clear the banner */
         cycle = (unsigned char)(i & 3);
         bg_attr = bg_attr_per_cycle[i & 3];
         start     = bios_ticks();
