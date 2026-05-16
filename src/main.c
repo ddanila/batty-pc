@@ -2508,6 +2508,34 @@ static void step_pts_400(void) {
  *   2 = horizontal hit (entered from a side)       -> caller flips dx
  * The previous ball position is needed to disambiguate corner cases. */
 
+/* Try to drop a bonus at (col, row). Called from every brick-
+ * destruction site (ball collision, laser bullet, rocket sweep)
+ * so the cadence is the same regardless of who destroyed it.
+ * Mirrors set_bonus's selection logic at $9D5A: random index into
+ * bonus_table_current (_first for rounds 0..5, _second for 6+),
+ * retry up to 16 times if the picked code maps to an unsupported
+ * effect. No-op if a bonus is already in flight or the cadence
+ * counter isn't at a spawn-multiple. */
+static void try_spawn_bonus(int col, int row) {
+    int tries;
+    const unsigned char *tbl;
+    if (bonus_active) return;
+    if ((bricks_destroyed % BONUS_SPAWN_EVERY) != 0) return;
+    tbl = (round_number >= 6) ? bonus_table_second : bonus_table_first;
+    for (tries = 0; tries < 16; tries++) {
+        unsigned char idx = (unsigned char)(next_random() & 0x0F);
+        unsigned char code = tbl[idx];
+        unsigned char mapped = map_orig_to_our_bonus(code);
+        if (mapped != BONUS_TYPE_UNSUPPORTED) {
+            bonus_active = 1;
+            bonus_x = 8 + col * 16 + (16 - BONUS_W_PX) / 2;
+            bonus_y = 32 + row * 8;
+            bonus_type = mapped;
+            return;
+        }
+    }
+}
+
 /* Spawn the brick destruction flash at a level-grid cell. Replaces
  * a popping brick with a bright-white solid rectangle for
  * BRICK_FLASH_TICKS ticks. Only one flash visible at a time. */
@@ -2602,28 +2630,8 @@ static int brick_collision(int prev_x, int prev_y, int new_x, int new_y) {
      * stash the "no bounce" intent. */
     if (big_ball_ticks > 0) axis = 0;
     brick_flash_spawn(col, row);
-    /* Maybe drop a bonus. Port of set_bonus's selection logic at
-     * $9D5A: random index into bonus_table_current (= _first for
-     * rounds 0..5, _second for 6+), retry if the picked code maps
-     * to an unsupported effect in our port. */
     bricks_destroyed++;
-    if (!bonus_active && (bricks_destroyed % BONUS_SPAWN_EVERY) == 0) {
-        const unsigned char *tbl = (round_number >= 6)
-                                 ? bonus_table_second : bonus_table_first;
-        int tries;
-        for (tries = 0; tries < 16; tries++) {
-            unsigned char idx = (unsigned char)(next_random() & 0x0F);
-            unsigned char code = tbl[idx];
-            unsigned char mapped = map_orig_to_our_bonus(code);
-            if (mapped != BONUS_TYPE_UNSUPPORTED) {
-                bonus_active = 1;
-                bonus_x = 8 + col * 16 + (16 - BONUS_W_PX) / 2;
-                bonus_y = 32 + row * 8;
-                bonus_type = mapped;
-                break;
-            }
-        }
-    }
+    try_spawn_bonus(col, row);
     return axis;
 }
 
@@ -2865,6 +2873,7 @@ static void step_bullet(void) {
                 *cell |= 0x80;
                 bricks_destroyed++;
                 brick_flash_spawn(col, row);
+                try_spawn_bonus(col, row);
                 hit = 1;
             }
             if (hit) {
@@ -2952,6 +2961,7 @@ static void step_rocket(void) {
                 *cell |= 0x80;
                 bricks_destroyed++;
                 brick_flash_spawn(c, r);
+                try_spawn_bonus(c, r);
                 killed_this_tick = 1;
             }
         }
