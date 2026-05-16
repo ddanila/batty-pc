@@ -497,8 +497,8 @@ static int stuck_offset_x = BALL_X_OFFSET_ON_BAT;
  * top centre while the LASER bonus is active (BAT+\$14 = \$01).
  * Moves up each frame, deactivates on first brick / alien hit or
  * after leaving the playfield top. */
-#define BULLET_W_PX     2
-#define BULLET_H_PX     6
+#define BULLET_W_PX     8
+#define BULLET_H_PX     8
 #define BULLET_SPEED    4
 static unsigned char bullet_active = 0;
 static int           bullet_x      = 0;
@@ -775,6 +775,11 @@ static unsigned char sprites_blob[SPRITES_BLOB_SIZE];
 #define SPR_BAT_GUN_2    (0x804A - 0x7A8C)   /* firing anim frame 2 */
 #define SPR_BAT_GUN_3    (0x80B4 - 0x7A8C)   /* firing anim frame 3 */
 #define SPR_BAT_GUN_4    (0x811E - 0x7A8C)   /* firing anim frame 4 */
+
+/* Laser bullet — 1 byte (8 px) wide x 8 rows tall, two animation
+ * frames in the original sprite blob. */
+#define SPR_BULLET_1     (0x7DD2 - 0x7A8C)
+#define SPR_BULLET_2     (0x7DE4 - 0x7A8C)
 #define SPR_UFO_1        (0x83B0 - 0x7A8C)   /* = 0x924 */
 #define SPR_UFO_2        (0x8406 - 0x7A8C)   /* = 0x97a */
 #define SPR_UFO_3        (0x8462 - 0x7A8C)   /* = 0x9d6 */
@@ -2235,22 +2240,15 @@ static void render_ball_to_buff(int x, int y, unsigned char bg) {
  * bullet_y). Apply a bright-magenta attr at the bullet's cells so
  * it stands out against bg pattern + bricks. */
 static void render_bullet_to_buff(void) {
-    int y;
+    static unsigned char bullet_anim_tick = 0;
+    unsigned int spr;
     unsigned char attr;
     if (!bullet_active) return;
+    bullet_anim_tick++;
+    spr = (bullet_anim_tick & 1) ? SPR_BULLET_2 : SPR_BULLET_1;
     attr = (unsigned char)(0x40 | (bonus_colours[BONUS_TYPE_LASER] & 7));
     blit_sprite_attrs_to_buff(bullet_x, bullet_y, BULLET_W_PX, BULLET_H_PX, attr);
-    for (y = bullet_y; y < bullet_y + BULLET_H_PX && y < PLAYFIELD_H; y++) {
-        if (y < 0) continue;
-        if (bullet_x >= 0 && bullet_x < PLAYFIELD_W) {
-            unsigned int col = (unsigned int)(bullet_x >> 3);
-            unsigned char bits = (unsigned char)(0xC0 >> (bullet_x & 7));
-            scr_buff[y * 32 + col] |= bits;
-            if ((bullet_x & 7) > 6 && col + 1 < 32) {
-                scr_buff[y * 32 + col + 1] |= (unsigned char)(0x80);
-            }
-        }
-    }
+    blit_masked_to_scr_buff(spr, bullet_x, bullet_y);
 }
 
 /* Paint the rocket into scr_buff. Alternates between the two
@@ -3415,7 +3413,7 @@ static state_t run_level(void) {
                     if (objects[OBJ_BAT_1].bonus_applied == 0x01
                         && !bullet_active) {
                         bullet_active = 1;
-                        bullet_x      = BAT_X + (BAT_W_BYTES * 8) / 2 - 1;
+                        bullet_x      = BAT_X + (BAT_W_BYTES * 8) / 2 - BULLET_W_PX / 2;
                         bullet_y      = BAT_Y_PX - BULLET_H_PX;
                         bat_fire_anim_ticks = 8;
                         snd_q_push(SND_SHOT);
