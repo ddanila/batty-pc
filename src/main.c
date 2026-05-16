@@ -2036,6 +2036,7 @@ typedef struct { unsigned char id; unsigned char state; } sound_slot_t;
 #define SND_NORMAL_BRIK   1
 #define SND_BAT_BEAT      3
 #define SND_BALL_START    4
+#define SND_ALIEN_BLAST   6
 #define SND_LIVE_ADD      7
 #define SND_BAT_RESIZE_1  9
 #define SND_TRIPLE_BALL   0x0A
@@ -2055,6 +2056,7 @@ static void snd_q_push(unsigned char id) {
                 case SND_SHOT:        snd_q[i].state = 0x00; break;
                 case SND_BAT_RESIZE_1:snd_q[i].state = 0x60; break;
                 case SND_TRIPLE_BALL: snd_q[i].state = 0x40; break;
+                case SND_ALIEN_BLAST: snd_q[i].state = 0x30; break;
                 default:              snd_q[i].state = 0; break;
             }
             return;
@@ -2128,6 +2130,20 @@ static int snd_tick_one(sound_slot_t *s) {
             sound_play(134615U / e, 1);
             if (s->state >= 0xC1 - 0x0B) return 1;
             s->state += 0x0B;
+            return 0;
+        }
+
+        case SND_ALIEN_BLAST: {
+            /* $C1A8: state starts $30, each frame plays a noisy tone at
+             * E = (random & $3F) + state with D=1; state += 8; wraps
+             * from $60 to $21 once; stops at $A1. ~22 frames of zip-
+             * style noise. */
+            unsigned int e = ((unsigned int)next_random() & 0x3Fu) + (unsigned int)s->state;
+            if (e == 0) e = 1;
+            sound_play(134615U / e, 1);
+            s->state = (unsigned char)(s->state + 8);
+            if (s->state == 0x60) s->state = 0x21;
+            if (s->state == 0xA1) return 1;
             return 0;
         }
 
@@ -2446,7 +2462,7 @@ static void bonus_apply(unsigned char type) {
                     e->sprite_num = 0;
                     e->misc_12 = 0;
                     score += 350;
-                    snd_q_push(SND_SHOT);
+                    snd_q_push(SND_ALIEN_BLAST);
                 }
             }
             break;
@@ -2834,7 +2850,7 @@ static void kill_enemy_by_bat(void) {
     e->sprite_num = 0;
     e->misc_12 = 0;                                 /* reset tick counter */
     score += 350;                                   /* $0350 BCD */
-    snd_q_push(SND_SHOT);                           /* descending zip ~= blast */
+    snd_q_push(SND_ALIEN_BLAST);                    /* port of $C1A8 */
 }
 
 /* Port of bomb_appear at $A977 - called per alien tick. Probability
@@ -2913,7 +2929,7 @@ static void step_bullet(void) {
             enemy->sprite_num = 0;
             enemy->misc_12    = 0;
             score += 350;
-            snd_q_push(SND_SHOT);
+            snd_q_push(SND_ALIEN_BLAST);
             bullet_active = 0;
             bullet_blast_x = bullet_x;
             bullet_blast_y = bullet_y;
