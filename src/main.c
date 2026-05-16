@@ -2633,6 +2633,10 @@ static void try_spawn_bonus(int col, int row) {
     int tries;
     const unsigned char *tbl;
     if (bonus_active) return;
+    /* The original shares object_bonus between falling bonus and bomb,
+     * so a bomb in flight blocks new bonus spawns. We keep separate
+     * state but mirror the mutual exclusion here. */
+    if (bomb_active) return;
     /* Mirror the test at $A2CC: drop a bonus iff (random & 0x0F) < 5,
      * i.e. 5/16 ≈ 31% per destroyed brick. (Earlier port used a
      * deterministic every-Nth counter — close in average rate but
@@ -2642,7 +2646,13 @@ static void try_spawn_bonus(int col, int row) {
     for (tries = 0; tries < 16; tries++) {
         unsigned char idx = (unsigned char)(next_random() & 0x0F);
         unsigned char code = tbl[idx];
-        unsigned char mapped = map_orig_to_our_bonus(code);
+        unsigned char mapped;
+        /* Original generate_new_bonus at $9DFE re-rolls when the picked
+         * bonus matches the bat's currently-applied bonus (= LASER /
+         * CATCH / KILL_ALIENS — the ones tracked in bat.bonus_applied).
+         * Prevents back-to-back duplicates of the same bat effect. */
+        if (code == objects[OBJ_BAT_1].bonus_applied) continue;
+        mapped = map_orig_to_our_bonus(code);
         if (mapped != BONUS_TYPE_UNSUPPORTED) {
             bonus_active = 1;
             bonus_x = 8 + col * 16 + (16 - BONUS_W_PX) / 2;
