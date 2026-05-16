@@ -2857,6 +2857,10 @@ static void enemy_prepare(void) {
     object_t *e = &objects[OBJ_ENEMY];
     const unsigned char *prop;
     unsigned char r;
+    /* Original $9EAA returns immediately when current_level == 4 —
+     * L4 has no enemies at all. Earlier port added a bouncing spark
+     * here as extra challenge; removed for byte-exact parity. */
+    if (current_level_idx_var == 4) return;
     /* Skip if bat carries the kill-aliens bonus. */
     if (objects[OBJ_BAT_1].bonus_applied == 0x09) return;
     if (objects[OBJ_BAT_2].bonus_applied == 0x09) return;
@@ -2869,23 +2873,6 @@ static void enemy_prepare(void) {
         unsigned int i;
         unsigned char *p = (unsigned char *)e;
         for (i = 0; i < sizeof(*e); i++) p[i] = 0;
-    }
-    /* L4 has its own enemy type: the bouncing spark. It uses a smaller
-     * sprite (~4 px square), starts somewhere in the brick band, and
-     * decays through 5 frames over ~31 ticks. */
-    if (current_level_idx_var == 4) {
-        e->sprite_set = 0x07;            /* anim_spark */
-        e->sprite_num = 0;
-        e->misc_12    = 0;               /* tick counter for frame decay */
-        e->w_body_px  = 8;
-        e->h_body_px  = 8;
-        e->speed      = 1;
-        r = (unsigned char)(next_random() & 3);
-        e->x_coord = prop_x_coord[r];
-        e->y_coord = 32;                 /* top of brick band */
-        e->dir = (unsigned char)(next_random() & 3);   /* random heading */
-        e->bonus_applied = 0x10;
-        return;
     }
     prop = (round_number & 1) ? prop_even : prop_uneven;
     e->sprite_set = prop[0];
