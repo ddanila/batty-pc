@@ -762,6 +762,7 @@ static unsigned char sprites_blob[SPRITES_BLOB_SIZE];
 #define SPR_BALL_NORMAL  (0x7B16 - 0x7A8C)   /* = 0x08a */
 #define SPR_BAT_NORMAL   (0x7E38 - 0x7A8C)   /* = 0x3ac */
 #define SPR_BAT_BIG      (0x7F42 - 0x7A8C)   /* = 0x4b6 */
+#define SPR_BAT_GUN      (0x8188 - 0x7A8C)   /* laser-cannon bat (same dims as normal) */
 #define SPR_UFO_1        (0x83B0 - 0x7A8C)   /* = 0x924 */
 #define SPR_UFO_2        (0x8406 - 0x7A8C)   /* = 0x97a */
 #define SPR_UFO_3        (0x8462 - 0x7A8C)   /* = 0x9d6 */
@@ -1367,7 +1368,10 @@ static void render_bat(unsigned char cycle, unsigned char attr) {
         x   = BAT_X - BAT_BIG_EXTRA_PX;
         sprite_w = BAT_W_BYTES * 8 + 2 * BAT_BIG_EXTRA_PX;
     } else {
-        spr = SPR_BAT_NORMAL;
+        /* Laser-carrying bat shows the gun-mounted sprite; otherwise
+         * the default. Both share the same 32 x 13 footprint. */
+        spr = (objects[OBJ_BAT_1].bonus_applied == 0x01)
+            ? SPR_BAT_GUN : SPR_BAT_NORMAL;
         x   = BAT_X;
         sprite_w = BAT_W_BYTES * 8 + 2 * bat_extra_px;
         if (bat_extra_px > 0) {
