@@ -3903,6 +3903,21 @@ static void play_bat_explosion(unsigned char level_idx) {
     unsigned long last;
     int alive;
     int i;
+    /* Mirror LBC10's `SET 7,(IX+\$00)` sweep over all 11 object slots —
+     * deactivates bomb, bonus, rocket, enemy, bullets, etc. before the
+     * spark animation. Without this, a bomb in flight or alien on
+     * screen would persist through the explosion and reappear when
+     * the player respawns. */
+    bomb_active = 0;
+    bonus_active = 0;
+    rocket_active = 0;
+    pts_400_ticks = 0;
+    bullet_active[0] = 0;
+    bullet_active[1] = 0;
+    bullet_blast_ticks[0] = 0;
+    bullet_blast_ticks[1] = 0;
+    brick_flash_ticks = 0;
+    objects[OBJ_ENEMY].sprite_set = 0;
     for (i = 0; i < DEATH_SPARK_COUNT; i++) {
         death_sparks[i].active      = 1;
         death_sparks[i].x_q88       = (long)(x_start + i * 3) << 8;
