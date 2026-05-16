@@ -2872,6 +2872,11 @@ static void render_hud_powerups(void) {
     }
     if (objects[OBJ_BAT_1].bonus_applied == 0x03) {
         draw_glyph(x, HUD_POWERUP_Y, bonus_colours[BONUS_TYPE_CATCH], 0x0C);
+        x += 10;
+    }
+    if (objects[OBJ_BAT_1].bonus_applied == 0x01) {
+        /* L (laser), letter code 0x15 per notes/encoding.md. */
+        draw_glyph(x, HUD_POWERUP_Y, bonus_colours[BONUS_TYPE_LASER], 0x15);
     }
 }
 
