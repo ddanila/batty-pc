@@ -3381,6 +3381,7 @@ static state_t run_level(void) {
                         BALL_SHOW();
                         ball_stuck   = 0;
                         stuck_ticks  = 0;
+                        snd_q_push(SND_BALL_START); /* descending launch blip */
                         /* Shallow launch angle (|dx| < |dy|) so the ball
                          * traverses each brick row across multiple cols
                          * - lots of L1's bricks would otherwise be missed
@@ -3441,6 +3442,7 @@ static state_t run_level(void) {
                     stuck_ticks++;
                     if (stuck_ticks >= STUCK_TIMEOUT) {
                         ball_stuck = 0;          /* auto-launch */
+                        snd_q_push(SND_BALL_START);
                         /* Pick an initial direction toward the centre. */
                         int bat_centre = BAT_X + (BAT_W_BYTES * 8) / 2;
                         ball_dx = (bat_centre < PLAYFIELD_W / 2) ? +1 : -1;
