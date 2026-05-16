@@ -2765,7 +2765,11 @@ static int brick_collision(int prev_x, int prev_y, int new_x, int new_y) {
         snd_q_push(SND_NORMAL_BRIK);
         return axis;
     }
-    if (!(*cell & 0x10)) {
+    /* SMASH (BIG_BALL) bypasses the multi-hit half-state — port of
+     * LAFFC's `CP \$07; JR Z,LAFFC_38` test that jumps directly to
+     * the destroy path. Without this, multi-hit bricks still need
+     * two hits even with SMASH active. */
+    if (big_ball_ticks == 0 && !(*cell & 0x10)) {
         *cell |= 0x10;
         snd_q_push(SND_NORMAL_BRIK);
         return axis;
