@@ -3172,6 +3172,11 @@ static void render_game_over(void) {
     score_to_codes(high_score, digits);
     draw_text(BORDER_X + 3 * 8,        BORDER_Y + 110, 15, hi_lbl, (int)sizeof(hi_lbl));
     draw_text(BORDER_X + 3 * 8 + 6*8,  BORDER_Y + 110, 15, digits, 6);
+    /* Saved initials, painted to the right of the HI score line.
+     * Shows whatever was recorded with the most recent high score
+     * (AAA on first run, the player's choice on subsequent runs). */
+    draw_text(BORDER_X + 3 * 8 + 13*8, BORDER_Y + 110, 14,
+              high_score_name, 3);
     if (high_score_beaten_this_game) {
         draw_text(BORDER_X + 5 * 8,    BORDER_Y + 130, 14 /* yellow */,
                   new_lbl, (int)sizeof(new_lbl));
