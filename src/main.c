@@ -567,6 +567,9 @@ static unsigned long score      = 0;
 static int           lives      = LIVES_INIT;
 static unsigned long high_score = 0;
 static unsigned char high_score_beaten_this_game = 0;
+/* Three-letter initials saved with the high score. Stored as glyph
+ * codes (A = 0x0A .. Z = 0x23). Default "AAA" when no save exists. */
+static unsigned char high_score_name[3] = { 0x0A, 0x0A, 0x0A };
 
 /* Persist the best score across runs by reading / writing 4 little-
  * endian bytes to A:\HISCORE.DAT (the floppy image). DOS floppy is
@@ -575,26 +578,41 @@ static unsigned char high_score_beaten_this_game = 0;
 #define HIGH_SCORE_FILE "HISCORE.DAT"
 static void load_high_score(void) {
     FILE *f = fopen(HIGH_SCORE_FILE, "rb");
-    unsigned char buf[4];
+    unsigned char buf[7];
+    size_t n;
     high_score = 0;
+    high_score_name[0] = 0x0A;
+    high_score_name[1] = 0x0A;
+    high_score_name[2] = 0x0A;
     if (!f) return;
-    if (fread(buf, 1, 4, f) == 4) {
+    n = fread(buf, 1, 7, f);
+    if (n >= 4) {
         high_score =  (unsigned long)buf[0]
                    | ((unsigned long)buf[1] <<  8)
                    | ((unsigned long)buf[2] << 16)
                    | ((unsigned long)buf[3] << 24);
     }
+    if (n >= 7) {
+        /* Three name bytes appended (post-v2 file). Pre-v2 files
+         * stop after 4 bytes; the AAA default above stays. */
+        high_score_name[0] = buf[4];
+        high_score_name[1] = buf[5];
+        high_score_name[2] = buf[6];
+    }
     fclose(f);
 }
 static void save_high_score(void) {
     FILE *f = fopen(HIGH_SCORE_FILE, "wb");
-    unsigned char buf[4];
+    unsigned char buf[7];
     if (!f) return;
     buf[0] = (unsigned char)(high_score & 0xFF);
     buf[1] = (unsigned char)((high_score >> 8) & 0xFF);
     buf[2] = (unsigned char)((high_score >> 16) & 0xFF);
     buf[3] = (unsigned char)((high_score >> 24) & 0xFF);
-    fwrite(buf, 1, 4, f);
+    buf[4] = high_score_name[0];
+    buf[5] = high_score_name[1];
+    buf[6] = high_score_name[2];
+    fwrite(buf, 1, 7, f);
     fclose(f);
 }
 
@@ -3160,6 +3178,73 @@ static void render_game_over(void) {
     }
 }
 
+/* Three-letter initials entry screen — shown after game-over when
+ * the player has beaten the previous high score. LEFT/RIGHT cycle
+ * the current letter through A..Z; ENTER (or SPACE) confirms it
+ * and advances to the next slot; ESC bails (saves whatever's been
+ * entered so far + AAA defaults for the rest).
+ *
+ * The current slot blinks via blink_phase() so the player can see
+ * which one they're editing. */
+static void input_new_record_name(void) {
+    static const unsigned char title[] = {
+        0x17, 0x0E, 0x21, 0x26,                 /* NEW_ */
+        0x11, 0x12, 0x10, 0x11, 0x26,           /* HIGH_ */
+        0x1C, 0x0C, 0x18, 0x1B, 0x0E            /* SCORE */
+    };
+    static const unsigned char prompt[] = {
+        0x0E, 0x17, 0x1D, 0x0E, 0x1B, 0x26,     /* ENTER_ */
+        0x22, 0x18, 0x1E, 0x1B, 0x26,           /* YOUR_ */
+        0x17, 0x0A, 0x16, 0x0E                  /* NAME */
+    };
+    static const unsigned char hint[] = {
+        0x15, 0x26, 0x1B, 0x26,                 /* L_R_ */
+        0x1C, 0x0E, 0x15, 0x0E, 0x0C, 0x1D, 0x26, /* SELECT_ */
+        0x0E, 0x17, 0x1D, 0x0E, 0x1B            /* ENTER */
+    };
+    int pos = 0;
+    int name_x = BORDER_X + 14 * 8;
+    int name_y = BORDER_Y + 90;
+    /* Fresh canvas. */
+    fill(0, 0, SCREEN_W, SCREEN_H, 0);
+    draw_text(BORDER_X + 7 * 8,  BORDER_Y + 50, 14, title,  (int)sizeof(title));
+    draw_text(BORDER_X + 6 * 8,  BORDER_Y + 70, 15, prompt, (int)sizeof(prompt));
+    draw_text(BORDER_X + 4 * 8,  BORDER_Y + 130, 13, hint,  (int)sizeof(hint));
+    high_score_name[0] = 0x0A;
+    high_score_name[1] = 0x0A;
+    high_score_name[2] = 0x0A;
+    for (;;) {
+        /* Repaint the 3-letter row each pass. Current slot blinks. */
+        unsigned char blink = (unsigned char)((blink_phase() == 0) ? 0 : 1);
+        int i;
+        fill(name_x - 2, name_y - 2, 3 * 16 + 4, 12, 0);
+        for (i = 0; i < 3; i++) {
+            unsigned char code = high_score_name[i];
+            unsigned char colour = (i == pos && blink) ? 8 /* dim */ : 15;
+            draw_glyph(name_x + i * 16, name_y, colour, code);
+        }
+        if (kbhit()) {
+            int k = getch();
+            if (k == KEY_ESC) return;
+            if (k == KEY_EXT_PREFIX) {
+                int ext = getch();
+                if (ext == KEY_LEFT) {
+                    high_score_name[pos] = (high_score_name[pos] == 0x0A)
+                                           ? 0x23 : (unsigned char)(high_score_name[pos] - 1);
+                } else if (ext == KEY_RIGHT) {
+                    high_score_name[pos] = (high_score_name[pos] == 0x23)
+                                           ? 0x0A : (unsigned char)(high_score_name[pos] + 1);
+                }
+                continue;
+            }
+            if (k == KEY_ENTER || k == KEY_SPACE) {
+                pos++;
+                if (pos >= 3) return;
+            }
+        }
+    }
+}
+
 static state_t run_level(void) {
     unsigned char i;
     unsigned long start;
@@ -3393,7 +3478,9 @@ static state_t run_level(void) {
                 if (score > high_score) {
                     high_score = score;
                     high_score_beaten_this_game = 1;
-                    save_high_score();
+                    /* Save deferred until after the name-entry screen
+                     * so the file holds the new high + the player's
+                     * initials together. */
                 }
                 snd_q_silence_all();
                 sound_play(100, 30);          /* low game-over drone */
@@ -3403,6 +3490,10 @@ static state_t run_level(void) {
                     sound_tick();
                     if (kbhit()) { getch(); break; }
                 }
+                if (high_score_beaten_this_game) {
+                    input_new_record_name();
+                    save_high_score();
+                }
                 sound_silence();
                 return ST_TITLE;
             }
@@ -3411,11 +3502,12 @@ static state_t run_level(void) {
             if (auto_advance && TIMED_OUT(start, LEVEL_TIMEOUT_TICKS)) break;
         }
     }
-    /* Cleared all 15 levels - update high score, then show GAME OVER. */
+    /* Cleared all 15 levels - update high score, then show GAME OVER.
+     * Save deferred until after the post-game-over name-entry screen
+     * (same flow as lives==0 above). */
     if (score > high_score) {
         high_score = score;
         high_score_beaten_this_game = 1;
-        save_high_score();
     }
     snd_q_silence_all();
     sound_play(100, 30);
@@ -3426,6 +3518,10 @@ static state_t run_level(void) {
             sound_tick();
             if (kbhit()) { getch(); break; }
         }
+    }
+    if (high_score_beaten_this_game) {
+        input_new_record_name();
+        save_high_score();
     }
     sound_silence();
     return ST_TITLE;
