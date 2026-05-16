@@ -769,6 +769,7 @@ static unsigned char bonus_active = 0;
 static unsigned int  slow_ticks      = 0;
 static unsigned int  big_bat_ticks   = 0;
 static unsigned int  big_ball_ticks  = 0;
+static int big_ball_active(void);    /* forward — defined below */
 /* Bat resize animation - bat_extra_px ramps 0..8 toward bat_extra_tgt
  * (port of bat_resize at $9D2C). Width grows / shrinks 1 px / 50 Hz
  * tick = ~6 px / 100 ms which roughly matches the original's 2-px-
@@ -2382,7 +2383,7 @@ static void buff_to_vga_strip(int y0, int h) {
  * L1) and the texture/shadow bits (mask=1, pix=1) render as bg paper
  * (black) — the same effect the original ZX game produces. */
 static void render_ball_to_buff(int x, int y, unsigned char bg) {
-    unsigned int spr = big_ball_ticks ? SPR_BIG_BALL : SPR_BALL_NORMAL;
+    unsigned int spr = big_ball_active() ? SPR_BIG_BALL : SPR_BALL_NORMAL;
     (void)bg;
     blit_masked_to_scr_buff(spr, x, y);
 }
@@ -2430,7 +2431,7 @@ static void render_rocket_to_buff(void) {
  * extra slot at line 2697 below), which only refreshes the bat strip
  * and can't carry over the ball's scr_buff write. */
 static void render_ball(int x, int y, unsigned char attr) {
-    unsigned int spr = big_ball_ticks ? SPR_BIG_BALL : SPR_BALL_NORMAL;
+    unsigned int spr = big_ball_active() ? SPR_BIG_BALL : SPR_BALL_NORMAL;
     blit_masked_sprite(spr, x, y, ink_pal(attr), paper_pal(attr));
 }
 
@@ -2614,7 +2615,16 @@ static int eff_bat_right(void) { return BAT_X + BAT_W_BYTES * 8 + bat_extra_px; 
 /* Current effective ball body size. spr_ball_normal body is 8x7;
  * spr_big_ball body fills the full 2-byte * 12 row sprite at its
  * widest = ~12 px in the middle rows. We approximate as 12. */
-static int eff_ball_size(void) { return big_ball_ticks ? 12 : BALL_W_PX; }
+/* SMASH (BIG_BALL) is active in the original iff bat.bonus_applied == \$07
+ * (see line 919-920 at \$0397: `CP \$07; JR NZ,obj_processing`). Catching
+ * another bonus rewrites bat.bonus_applied and the ball reverts on the
+ * very next frame. We add a timer (~10 s, mirrors smash_counter wrap at
+ * \$F8) as an OR with the bat state so the effect ends either way. */
+static int big_ball_active(void) {
+    return big_ball_ticks > 0
+        && objects[OBJ_BAT_1].bonus_applied == 0x07;
+}
+static int eff_ball_size(void) { return big_ball_active() ? 12 : BALL_W_PX; }
 
 /* Advance the falling bonus, check for catch on the bat, and tick down
  * any active effect timers. */
@@ -2807,7 +2817,7 @@ static int brick_collision(int prev_x, int prev_y, int new_x, int new_y) {
      * LAFFC's `CP \$07; JR Z,LAFFC_38` test that jumps directly to
      * the destroy path. Without this, multi-hit bricks still need
      * two hits even with SMASH active. */
-    if (big_ball_ticks == 0 && !(*cell & 0x10)) {
+    if (!big_ball_active() && !(*cell & 0x10)) {
         *cell |= 0x10;
         snd_q_push(SND_NORMAL_BRIK);
         return axis;
@@ -2826,7 +2836,7 @@ static int brick_collision(int prev_x, int prev_y, int new_x, int new_y) {
     /* BIG_BALL (smash) bonus: ball ploughs through bricks rather
      * than bouncing — keep the bonus-spawn check below intact but
      * stash the "no bounce" intent. */
-    if (big_ball_ticks > 0) axis = 0;
+    if (big_ball_active()) axis = 0;
     brick_flash_spawn(col, row);
     bricks_destroyed++;
     try_spawn_bonus(col, row);
@@ -3588,11 +3598,11 @@ static void render_hud_powerups(void) {
         draw_glyph(x, HUD_POWERUP_Y, bonus_colours[BONUS_TYPE_BIG_BAT], 0x0B);
     }
     if (big_bat_ticks > 0) x += 10;
-    if (big_ball_ticks > 0
+    if (big_ball_active()
         && !(big_ball_ticks < HUD_CHIP_BLINK_THRESHOLD && blink_off)) {
         draw_glyph(x, HUD_POWERUP_Y, bonus_colours[BONUS_TYPE_BIG_BALL], 0x10);
     }
-    if (big_ball_ticks > 0) x += 10;
+    if (big_ball_active()) x += 10;
     if (objects[OBJ_BAT_1].bonus_applied == 0x09) {
         draw_glyph(x, HUD_POWERUP_Y, bonus_colours[BONUS_TYPE_KILL_ALIENS], 0x14);
         x += 10;
