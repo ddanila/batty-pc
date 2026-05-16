@@ -59,14 +59,21 @@ leaves `BATTYALL` unset and the user sees the natural blink.
 
 ## What the test does *not* yet cover
 
-- Anything dynamic (gameplay). For that we'll need a **replay file**:
-  `(tick_N, key)` pairs driving both ZEsarUX (via ZRCP) and QEMU (via
-  `sendkey`) in lockstep, snapshot/compare at fixed checkpoints. The
-  original is deterministic — same RNG state + same inputs = same
-  output — so this approach should work once we wire up
+- Dynamic gameplay. The game itself is implemented (bricks
+  destroying, bonuses applying, balls / bullet / spark moving,
+  HUD updating) — there's just no automated parity test that
+  drives it. Ad-hoc smoke scripts under `scripts/exercise_*.py`
+  cover individual scenarios (brick destruction, pause, bonus
+  drop, physics) but they're heuristic, not pixel-parity.
+  The proper test would be a **replay file**: `(tick_N, key)`
+  pairs driving both ZEsarUX (via ZRCP) and QEMU (via `sendkey`)
+  in lockstep, snapshot/compare at fixed checkpoints. The
+  original is deterministic — same RNG state + same inputs =
+  same output — so this should work once we wire up
   frame-synchronised input.
-- RAM-state diffs. Even more diagnostic than pixel diffs: when our
-  recreation owns named game-state addresses, we can compare flat byte
-  ranges between our DOS run and the ZX run and pinpoint *exactly*
-  which byte diverged. Useful once we get into physics / collision /
-  AI work.
+- RAM-state diffs. Even more diagnostic than pixel diffs: when
+  our recreation owns named game-state addresses, we can compare
+  flat byte ranges between our DOS run and the ZX run and
+  pinpoint *exactly* which byte diverged. Useful for catching
+  physics / collision divergences before they manifest as pixel
+  drift.

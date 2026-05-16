@@ -47,38 +47,19 @@ Four cases per bit:
 x with a per-row shift across two destination bytes. Mirrors the ZX
 pre-shift table at $F200 (`table_shifts`) but computed at runtime.
 
-## Render order (per frame)
+## Compose order — see `redraw_full_with_ball`
 
-```
-paint_bg_to_buff(level_idx)        // bg tile -> scr_buff, bg_attr -> attr_buff
-render_brick_band(level_idx)       // bricks -> scr_buff, brick attrs -> attr_buff
-render_bat / render_lives          // bat + lives -> scr_buff (XOR shadow!)
-buff_to_vga()                      // single pass: scr_buff + attr_buff -> VGA
-render_frame(cycle, level_idx)     // frame ornament direct-VGA on top
-```
+The per-frame sequence is the obvious one: bg → bricks → frame →
+sprites → buff_to_vga → HUD text on top. Read
+`redraw_full_with_ball` directly; the only non-obvious bit is that
+`paint_frame_to_buff` runs AFTER `render_brick_band` so frame
+attrs override the leftmost / rightmost brick's body attrs at the
+side-strip cells, and BEFORE sprites so they OR-blit cleanly over
+the frame.
 
-For bat-only redraws (`redraw_bat`), the same pipeline runs on a
-y-strip only: `paint_bg_strip_to_buff` + `render_bat` +
-`render_lives` + `buff_to_vga_strip`.
-
-## Migration status
-
-All gameplay renderers now go through the scr_buff + attr_buff
-pipeline. Direct-VGA only for the final overlay layer:
-
-- bg tile + per-cell attrs (`paint_bg_to_buff`)
-- bricks (via `print_briks_c`)
-- bat + lives (`render_bat`, `render_lives`)
-- ball (`render_ball_to_buff`)
-- bomb, 400pts, alien (inline `blit_masked_to_scr_buff` calls in
-  `redraw_full_with_ball`)
-- bonus (`render_bonus_to_buff` + `blit_sprite_attrs_to_buff` for
-  the per-type ink)
-
-Direct-VGA on top of `buff_to_vga`:
-
-- `render_hud_score` / `render_hud_powerups` (white text)
-- `render_frame` (per-level attrs from level_attrs.bin)
+Bat + enemy cells force `bg_attr` via `blit_sprite_attrs_to_buff`
+so the sprite stays bg-coloured even when its bbox overlaps frame
+side-strip cells (whose attrs would otherwise tint the sprite).
 
 ## state4_level1 residual diff
 
@@ -106,35 +87,6 @@ Now that every renderer writes into scr_buff via the original
   the original.
 - Future ports can write 1-bit pixel data and per-cell attrs and
   trust the single `buff_to_vga` pass to handle the rest.
-
-## Frame ornament in scr_buff (compose order)
-
-After porting `render_frame` to a buffer-pipeline variant
-(`paint_frame_to_buff` + `paint_strip_to_buff`), the per-frame
-compose order is:
-
-```
-paint_bg_to_buff      -> bg tile + bg_attr fill
-render_brick_band     -> brick body pixels + per-cell attrs
-                         (destroyed bricks reset their cell attrs
-                          to bg_attr so they actually disappear)
-paint_frame_to_buff   -> frame top + side strips (must run AFTER
-                         render_brick_band so frame attrs override
-                         the brick body attrs at the leftmost /
-                         rightmost cell, and BEFORE sprites so
-                         they OR-blit over the frame pixels)
-render_bat / render_lives
-render_ball_to_buff
-render_bomb / render_400pts / render_alien   (all to scr_buff)
-render_bonus_to_buff
-buff_to_vga
-render_hud_score / render_hud_powerups       (direct-VGA text)
-```
-
-Bat + enemy cells force `bg_attr` in attr_buff (via
-`blit_sprite_attrs_to_buff`) so they stay bg-coloured even when
-their bbox overlaps frame-strip cells or brick cells whose attrs
-would otherwise tint the sprite.
 
 ## Brick types (1-hit / multi-hit / undestructible)
 
