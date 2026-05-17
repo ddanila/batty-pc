@@ -2684,10 +2684,23 @@ static void step_bonus(void) {
         }
     }
     if (big_ball_ticks > 0) big_ball_ticks--;
-    /* Animate bat width toward target. 1 px / tick = ~8 ticks for the
-     * 0->8 transition (= ~160 ms at 50 Hz). */
-    if (bat_extra_px < bat_extra_tgt) bat_extra_px++;
-    else if (bat_extra_px > bat_extra_tgt) bat_extra_px--;
+    /* Animate bat width toward target — gated every other tick.
+     * Original bat_resize at \$9DE0 combines counter_misc bit 0 +
+     * bit 1 over a 4-frame cycle to grow body 1 px / frame. Each
+     * step of bat_extra_px in our centred BIG_BAT changes body
+     * width by 2 px, so we ramp every 2 ticks → 1 px / frame body
+     * change = matches original's ~16-frame full grow.
+     *
+     * Was 1 px / tick (= 2 px / tick body), making BIG_BAT grow
+     * twice as fast as the disasm prescribes. */
+    {
+        static unsigned char resize_gate = 0;
+        resize_gate++;
+        if ((resize_gate & 1) == 0) {
+            if (bat_extra_px < bat_extra_tgt) bat_extra_px++;
+            else if (bat_extra_px > bat_extra_tgt) bat_extra_px--;
+        }
+    }
     if (!bonus_active) return;
     bonus_y += BONUS_FALL_SPEED;
     bat_left  = eff_bat_left();
