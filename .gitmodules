@@ -1,3 +1,6 @@
 [submodule "original/disasm"]
 	path = original/disasm
 	url = https://github.com/CityAceE/Batty.git
+[submodule "tools/zesarux"]
+	path = tools/zesarux
+	url = https://github.com/chernandezba/zesarux.git

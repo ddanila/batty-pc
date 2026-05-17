@@ -1,5 +1,5 @@
 # batty — MS-DOS recreation of Batty (Elite, 1987) targeting 8086 + VGA.
-# Mirrors the adlib-rng toolchain layout: Open Watcom v2 + mtools + QEMU.
+# Toolchain: Open Watcom v2 + mtools + QEMU.
 
 WATCOM_DIR ?= vendor/openwatcom-v2/current-build-2026-04-20
 HOST_OS    := $(shell uname -s)
@@ -48,7 +48,7 @@ FLOPPY_SRC      ?= vendor/msdos/floppy-minimal.img
 FLOPPY_OUT       = build/batty.img        # `make run`: 2-state menu loop
 TEST_FLOPPY_OUT  = build/batty-test.img   # `make test`: full 4-state cycle
 
-ZESARUX ?= ../generaly/tools/zesarux/src/zesarux
+ZESARUX ?= tools/zesarux/src/zesarux
 ZRCP_PORT ?= 10000
 
 .PHONY: all clean run floppy assets help run-original run-original-cheat snapshot candidates regions test

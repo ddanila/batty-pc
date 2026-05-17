@@ -20,6 +20,7 @@ Per-level flow:
 Total time should be ~5-10s for all 15 (no tape boot, no banner pause, no metal anim).
 """
 import argparse
+import os
 import subprocess
 import sys
 import time
@@ -30,7 +31,8 @@ from zrcp import launch_emulator
 
 
 ROOT = Path(__file__).resolve().parent.parent
-ZESARUX = ROOT.parent / 'generaly' / 'tools' / 'zesarux' / 'src' / 'zesarux'
+# Default: locally-built submodule binary. Override with ZESARUX=...
+ZESARUX = os.environ.get('ZESARUX', str(ROOT / 'tools/zesarux/src/zesarux'))
 SNA     = ROOT / 'build' / 'modded_batty' / 'batty.sna'
 OUT_DIR = ROOT / 'build' / 'level_gt'
 

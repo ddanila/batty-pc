@@ -1,7 +1,3 @@
-# Vendored toolchain — symlinks into sibling repos, not portable.
-# See README "Toolchain" for how to set them up on a fresh clone.
-vendor/
-
 # Build outputs
 build/batty.exe
 build/batty.img

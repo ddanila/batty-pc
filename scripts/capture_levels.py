@@ -18,6 +18,7 @@ gives plenty of frames for the level-init paint + sub_b765h to
 finish.
 """
 import argparse
+import os
 import subprocess
 import sys
 import time
@@ -27,7 +28,9 @@ sys.path.insert(0, str(Path(__file__).parent))
 from zrcp import launch_emulator
 
 
-ZESARUX  = Path(__file__).resolve().parent.parent / "../generaly/tools/zesarux/src/zesarux"
+# Default: locally-built submodule binary. Override with ZESARUX=...
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+ZESARUX = os.environ.get("ZESARUX", str(_REPO_ROOT / "tools/zesarux/src/zesarux"))
 SNAP_DIR = Path("build/snapshots/20260513T202101Z")
 SNA_PATH = SNAP_DIR.parent / f"{SNAP_DIR.name}.sna"
 OUT_DIR  = Path("build/level_gt")

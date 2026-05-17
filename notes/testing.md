@@ -1,9 +1,7 @@
 # Visual regression test
 
 Once the original screen content is reproducible by *our* renderer, we
-lock it in as a pixel-identical regression test. Same pattern
-[`generaly`](https://github.com/ddanila/generaly) uses for its
-12-checkpoint diff against the original BASIC.
+lock it in as a pixel-identical regression test.
 
 ## How `make test` works
 

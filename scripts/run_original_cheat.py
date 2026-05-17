@@ -42,8 +42,10 @@ sys.path.insert(0, str(Path(__file__).parent))
 from zrcp import ZrcpClient
 
 
-ZESARUX = Path(__file__).resolve().parent.parent / "../generaly/tools/zesarux/src/zesarux"
-TAPE    = Path(__file__).resolve().parent.parent / "original/batty.tap"
+# Default: locally-built submodule binary. Override with ZESARUX=...
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+ZESARUX = os.environ.get("ZESARUX", str(_REPO_ROOT / "tools/zesarux/src/zesarux"))
+TAPE    = _REPO_ROOT / "original/batty.tap"
 ZRCP_PORT = 10000
 
 # Address of the `dec a` byte in the lives-decrement sequence.

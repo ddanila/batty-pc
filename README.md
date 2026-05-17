@@ -5,13 +5,6 @@ ZX Spectrum 48K). VGA mode 13h (320×200×256), 1:1 pixel-faithful inside
 the 256×192 playfield, border around it. Built with Open Watcom v2,
 boots in QEMU.
 
-The toolchain pattern mirrors two sibling projects:
-
-- [`generaly`](https://github.com/ddanila/generaly) — 1:1 Z80 reimpl
-  of a different Speccy game.
-- [`adlib-rng`](https://github.com/ddanila/adlib-rng) — Open Watcom
-  + `mtools` + QEMU + AdLib boilerplate for 16-bit DOS work.
-
 ## Status
 
 The game is playable end-to-end: title → menu → hi-score teaser →
@@ -84,18 +77,40 @@ assets/             Binary assets extracted from the tape and consumed
                     at build time (font, sprites, level data, etc.)
 scripts/            Python tooling — asset extraction + RE + test harness
 build/              Build outputs (gitignored)
-vendor/             Symlinks to sibling repos (openwatcom-v2, msdos
-                    from adlib-rng; zrcp.py from generaly)
+vendor/             Vendored toolchain bits (Open Watcom v2, MS-DOS floppy)
+tools/              Build-from-source dependencies (ZEsarUX submodule)
 ```
 
 ## Toolchain
 
-The build needs **Open Watcom v2** (16-bit, 8086) and an **MS-DOS 4.0
-boot floppy** for QEMU. Both are vendored in
-[`adlib-rng`](https://github.com/ddanila/adlib-rng); this repo's
-`vendor/` is just symlinks into that sibling checkout. ZEsarUX (used
-for the RE targets) is vendored similarly in
-[`generaly`](https://github.com/ddanila/generaly).
+Everything the build needs lives in this repo. Host tools:
+`mtools`, `qemu-system-i386`, `z80dasm`, `srecord`
+(`brew install mtools qemu z80dasm srecord` on macOS).
+
+### Vendored — ready to use
+
+- `vendor/openwatcom-v2/current-build-<date>/` — trimmed Open Watcom v2
+  daily snapshot (`wcc`, `wlink`, `h/`, `lib286/dos/clibs.lib`), per-host
+  binaries for macOS arm64 / x64 and Linux x64. Refresh with
+  `scripts/vendor_openwatcom.sh` (needs `gh`).
+- `vendor/msdos/floppy-minimal.img` — 1.44 MB MS-DOS 4.0 boot floppy.
+  Refresh with `scripts/vendor_msdos.sh` (needs `gh`).
+
+### Submodule — build once
+
+- `tools/zesarux/` — ZEsarUX source (only needed for the RE targets:
+  `make run-original`, `make snapshot`, the `scripts/capture_levels*.py`
+  / `scripts/trace_blitter.py` / `scripts/run_original_cheat.py`
+  tools). Bring it up with:
+
+  ```sh
+  git submodule update --init tools/zesarux
+  cd tools/zesarux/src && ./configure && make    # builds tools/zesarux/src/zesarux
+  ```
+
+  The Makefile and scripts default to `tools/zesarux/src/zesarux`;
+  override with `ZESARUX=/path/to/zesarux` if you have it installed
+  elsewhere.
 
 ## Approach
 
@@ -109,10 +124,8 @@ computed-jump questions the static disasm can't answer.
 ## Original assets
 
 `original/batty.tap`, `original/BATTY.TZX`, `original/Batty.scr`,
-`original/Batty.txt` are © Elite Systems / Hit-Pak, 1987. Vendored for
-personal reverse-engineering reference only — the same pattern
-[`generaly`](https://github.com/ddanila/generaly) uses with its
-`original/generals.trd`.
+`original/Batty.txt` are © Elite Systems / Hit-Pak, 1987. Vendored
+for personal reverse-engineering reference only.
 
 ## License
 

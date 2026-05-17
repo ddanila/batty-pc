@@ -14,6 +14,7 @@ Usage:
 (connect with `nc localhost 10000`).
 """
 import argparse
+import os
 import subprocess
 import sys
 import time
@@ -23,7 +24,9 @@ sys.path.insert(0, str(Path(__file__).parent))
 from zrcp import launch_emulator
 
 
-ZESARUX = Path(__file__).resolve().parent.parent / "../generaly/tools/zesarux/src/zesarux"
+# Default: locally-built submodule binary. Override with ZESARUX=...
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+ZESARUX = os.environ.get("ZESARUX", str(_REPO_ROOT / "tools/zesarux/src/zesarux"))
 DEFAULT_SNAP = "build/snapshots/20260513T202101Z"
 DEFAULT_WP_ADDR = 0xE800   # mid sprite cache; blitter reads each frame
 
