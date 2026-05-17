@@ -1887,7 +1887,13 @@ static void render_brick_band(unsigned char level_idx) {
         for (lvl_row = 0; lvl_row < LVL_ROWS; lvl_row++) {
             for (lvl_col = 0; lvl_col < LVL_COLS; lvl_col++) {
                 unsigned char cell = cells[lvl_row * LVL_COLS + lvl_col];
-                if (cell & 0x80) {
+                /* Only RUNTIME-destroyed cells reset to bg_attr — those
+                 * have bit 7 set and bit 6 clear. The empty-cell sentinel
+                 * $C0 has BOTH bits 7+6 set and must keep its level_attrs
+                 * value (the captured per-level attrs include per-side-
+                 * strip cell colours we want to preserve). */
+                if ((cell & 0xC0) != 0x80) continue;
+                {
                     int cr  = 4 + lvl_row;
                     int cc1 = 1 + 2 * lvl_col;
                     int cc2 = cc1 + 1;
@@ -1895,7 +1901,7 @@ static void render_brick_band(unsigned char level_idx) {
                     attr_buff[cr * 32 + cc2] = bg_attr;
                     if (lvl_row + 1 < LVL_ROWS) {
                         unsigned char below = cells[(lvl_row + 1) * LVL_COLS + lvl_col];
-                        if (below & 0x80) {
+                        if ((below & 0xC0) == 0x80) {
                             attr_buff[(cr + 1) * 32 + cc1] = bg_attr;
                             attr_buff[(cr + 1) * 32 + cc2] = bg_attr;
                         }
