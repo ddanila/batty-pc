@@ -2091,7 +2091,7 @@ static void snd_q_push(unsigned char id) {
                 case SND_LIVE_ADD:    snd_q[i].state = 0x20; break;
                 case SND_BALL_START:  snd_q[i].state = 0x00; break;
                 case SND_SHOT:        snd_q[i].state = 0x00; break;
-                case SND_BAT_RESIZE_1:snd_q[i].state = 0x60; break;
+                case SND_BAT_RESIZE_1:snd_q[i].state = 0xC0; break;  /* matches \$3212 push */
                 case SND_TRIPLE_BALL: snd_q[i].state = 0x40; break;
                 case SND_ALIEN_BLAST: snd_q[i].state = 0x30; break;
                 default:              snd_q[i].state = 0; break;
@@ -2149,8 +2149,8 @@ static int snd_tick_one(sound_slot_t *s) {
         }
 
         case SND_BAT_RESIZE_1: {
-            /* $C200: state starts $60, decrements by $0B per frame
-             * until below $10. */
+            /* $C200: state starts $C0 (from the bonus_resize push at
+             * \$3212), decrements by $0B per frame until below $10. */
             unsigned int e = (unsigned int)s->state;
             if (e == 0) e = 1;
             sound_play(134615U / e, 1);
