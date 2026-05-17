@@ -497,8 +497,15 @@ static int stuck_offset_x = BALL_X_OFFSET_ON_BAT;
  * top centre while the LASER bonus is active (BAT+\$14 = \$01).
  * Moves up each frame, deactivates on first brick / alien hit or
  * after leaving the playfield top. */
-#define BULLET_W_PX     8
+#define BULLET_W_PX     8    /* sprite width incl. transparent column */
 #define BULLET_H_PX     8
+/* Collision body — original object_bullet_1 has (IX+$0C) = $04 and
+ * (IX+$0D) = $08 (= 4x8 hitbox). The sprite is 8 px wide but only
+ * the right 4 are opaque; obj_compare reads the body fields, not the
+ * sprite extents. Earlier port used BULLET_W_PX for AABB which
+ * gave the bullet a wider hitbox than the original. */
+#define BULLET_BODY_W   4
+#define BULLET_BODY_H   8
 /* Original handling_bullet at \$A5A3 advances bullet Y by 6 px/tick
  * (`LD A,(IX+\$04); SUB \$06`). We had 4 which made bullets visibly
  * slower than the original's. */
@@ -3196,8 +3203,8 @@ static void step_bullet_one(int b) {
         int ex_r = enemy->x_coord + enemy->w_body_px;
         int ey_t = enemy->y_coord;
         int ey_b = enemy->y_coord + enemy->h_body_px;
-        if (bullet_x[b] + BULLET_W_PX > ex_l && bullet_x[b] < ex_r
-            && bullet_y[b] + BULLET_H_PX > ey_t && bullet_y[b] < ey_b) {
+        if (bullet_x[b] + BULLET_BODY_W > ex_l && bullet_x[b] < ex_r
+            && bullet_y[b] + BULLET_BODY_H > ey_t && bullet_y[b] < ey_b) {
             /* Centre 16x13 blast over alien (mirror of \$A4D2). */
             enemy->x_coord = (unsigned char)(enemy->x_coord + (int)enemy->w_body_px / 2 - 8);
             enemy->y_coord = (unsigned char)(enemy->y_coord + 4);
