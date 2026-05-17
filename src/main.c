@@ -1395,8 +1395,19 @@ static void handling_bird_obj(object_t *o) {
      * tick counter - the original keeps animation timing in $12/$13;
      * we use misc_12 as a single per-alien counter and pick frame
      * index = (misc_12 >> 2) mod 3 for a ~12 Hz wing flap at 50 Hz. */
-    int dx = (o->dir & 1) ? -(int)o->speed : (int)o->speed;
-    int nx = (int)o->x_coord + dx;
+    int dx, nx;
+    /* Port of the entry slide at $A9BC line 3429-3433:
+     *   LD A,(IX+$04); CP $08; JR NC,LA9BC_0; INC (IX+$04); RET
+     * Alien spawns at Y=0 (= top of playfield) and slides down 8 px
+     * before starting its horizontal traverse. Earlier port skipped
+     * this — alien was visible at Y=0, one char-row above the band
+     * the original places it at. */
+    if (o->y_coord < 8) {
+        o->y_coord++;
+        return;
+    }
+    dx = (o->dir & 1) ? -(int)o->speed : (int)o->speed;
+    nx = (int)o->x_coord + dx;
     o->misc_12++;
     o->sprite_num = (unsigned char)((o->misc_12 >> 2) % 3);
     bomb_appear(o);
