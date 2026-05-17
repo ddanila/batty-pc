@@ -2572,6 +2572,15 @@ static void bonus_apply(unsigned char type) {
                 if (bat_extra_px >= BAT_BIG_EXTRA_PX) rocket_x += 8;
                 rocket_y = BAT_Y_PX + 6;
                 /* No catch sound — get_rocket at $AA9D pushes none. */
+                /* INC (IY+\$14) at $AA9D:\$AA72: ROCKET catch bumps
+                 * bat.bonus_applied by 1, which silently cancels any
+                 * prior bat-side bonus (e.g. CATCH \$03 → \$04 = no
+                 * effect; LASER \$01 → \$02 = no effect). The
+                 * universal bonus_apply set we did at the top of this
+                 * function intentionally skips ROCKET, so we apply
+                 * the INC here instead. */
+                objects[OBJ_BAT_1].bonus_applied++;
+                objects[OBJ_BAT_2].bonus_applied++;
             }
             break;
         case BONUS_TYPE_SCORE_5K:
