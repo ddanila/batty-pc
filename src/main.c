@@ -2466,33 +2466,31 @@ static void render_ball_to_buff(int x, int y, unsigned char bg) {
     blit_masked_to_scr_buff(spr, x, y);
 }
 
-/* Paint each active laser bullet as a small 2x6 solid bar. Apply a
- * bright-magenta attr at each bullet's cells so they stand out against
- * bg pattern + bricks. Two slots = up to two bullets in flight. */
+/* Paint each active laser bullet via the original masked OR-blit, no
+ * per-cell attr override. The original's print_obj_to_buff writes
+ * pixels only — the bullet renders in whichever attr each cell
+ * already has (= bg attr in the empty playfield). User's spec: the
+ * game field is monochrome except blocks. Two slots = up to two
+ * bullets in flight. */
 static void render_bullet_to_buff(void) {
     static unsigned char bullet_anim_tick = 0;
     unsigned int spr;
-    unsigned char attr;
     int i;
     bullet_anim_tick++;
     spr = (bullet_anim_tick & 1) ? SPR_BULLET_2 : SPR_BULLET_1;
-    attr = (unsigned char)(0x40 | (bonus_colours[BONUS_TYPE_LASER] & 7));
     for (i = 0; i < N_BULLETS; i++) {
         if (!bullet_active[i]) continue;
-        blit_sprite_attrs_to_buff(bullet_x[i], bullet_y[i],
-                                    BULLET_W_PX, BULLET_H_PX, attr);
         blit_masked_to_scr_buff(spr, bullet_x[i], bullet_y[i]);
     }
 }
 
 /* Paint the rocket into scr_buff. Alternates between the two
  * spr_bonus_rocket_* frames based on a per-tick counter for a
- * crude flame-flicker effect. Attr forced to LASER's bright
- * magenta so the rocket stands out against any bg cell. */
+ * crude flame-flicker effect. No per-cell attr override — same
+ * "monochrome except blocks" rule as bullets / bonus. */
 static void render_rocket_to_buff(void) {
     static unsigned char rocket_anim_tick = 0;
     unsigned int spr;
-    unsigned char attr;
     if (!rocket_active) return;
     rocket_anim_tick++;
     /* Original handling_rocket at \$A89A toggles sprite each frame:
@@ -2500,8 +2498,6 @@ static void render_rocket_to_buff(void) {
      * Was masking \& 2 which only flipped every 2 ticks — half the
      * original's flame flicker rate. */
     spr = (rocket_anim_tick & 1) ? SPR_BONUS_ROCKET_2 : SPR_BONUS_ROCKET_1;
-    attr = (unsigned char)(0x40 | (bonus_colours[BONUS_TYPE_ROCKET] & 7));
-    blit_sprite_attrs_to_buff(rocket_x, rocket_y, ROCKET_W_PX, ROCKET_H_PX, attr);
     blit_masked_to_scr_buff(spr, rocket_x, rocket_y);
 }
 
@@ -3362,15 +3358,15 @@ static void render_bullet_blast_to_buff(void) {
         SPR_BULLET_BLAST_1, SPR_BULLET_BLAST_2,
         SPR_BULLET_BLAST_3, SPR_BULLET_BLAST_4
     };
-    unsigned char attr = (unsigned char)(0x40 | (bonus_colours[BONUS_TYPE_LASER] & 7));
     int i;
+    /* No per-cell attr override — same "monochrome except blocks"
+     * rule as bullets / bonus / rocket. */
     for (i = 0; i < N_BULLETS; i++) {
         unsigned char frame;
         if (!bullet_blast_ticks[i]) continue;
         frame = (unsigned char)((bullet_blast_ticks[i] - 1) / BULLET_BLAST_TICKS_PER_FRAME);
         if (frame >= BULLET_BLAST_FRAMES) frame = BULLET_BLAST_FRAMES - 1;
         frame = (unsigned char)((BULLET_BLAST_FRAMES - 1) - frame);
-        blit_sprite_attrs_to_buff(bullet_blast_x[i], bullet_blast_y[i], 8, 8, attr);
         blit_masked_to_scr_buff(frames[frame], bullet_blast_x[i], bullet_blast_y[i]);
     }
 }

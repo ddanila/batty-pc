@@ -155,6 +155,50 @@ def make_diff_png(actual_idx: bytes, expected_idx: bytes, out_path: Path):
     img.save(out_path)
 
 
+def lint_moving_object_attrs(src_path: Path) -> int:
+    """Source-code lint: no per-cell attr override in moving-object
+    renderers. The original game's print_obj_to_buff writes pixels
+    only — it never touches attr_buff for moving objects. User's spec:
+    "the game field is monochrome except blocks". So moving sprites
+    (bonus drops, bullets, rockets, blasts) MUST inherit each cell's
+    existing attr; calling blit_sprite_attrs_to_buff from any of them
+    causes a wrong-colour trail visible during gameplay (which
+    state4_level1 can't catch — it's a level-entry checkpoint and
+    none of those objects are active yet).
+
+    Approved callers: render_bat (forces bg_attr to keep the bat
+    bg-coloured when it slides into a side-strip cell), the alien
+    block in redraw_full_with_ball (same idea for UFO/bird).
+    """
+    APPROVED_CALLERS = {'render_bat', 'redraw_full_with_ball'}
+    text = src_path.read_text()
+    lines = text.split('\n')
+    fails = []
+    current_fn = None
+    for ln, line in enumerate(lines, start=1):
+        # Track the enclosing function (static <ret> <name>(...) at col 0).
+        import re
+        m = re.match(r'^static\s+\S+\s+(\w+)\s*\(', line)
+        if m:
+            current_fn = m.group(1)
+        # Match call sites only — skip the function definition and any
+        # forward declaration (lines starting with `static`).
+        stripped = line.lstrip()
+        if stripped.startswith('static '):
+            continue
+        if 'blit_sprite_attrs_to_buff' in line and '(' in line:
+            if current_fn and current_fn not in APPROVED_CALLERS:
+                fails.append((ln, current_fn, line.strip()))
+    if fails:
+        print('  FAIL lint: blit_sprite_attrs_to_buff in non-approved renderer:')
+        for ln, fn, code in fails:
+            print(f'    {src_path}:{ln} in {fn}(): {code}')
+        print(f'    Approved callers: {sorted(APPROVED_CALLERS)}')
+        return len(fails)
+    print('  PASS lint: no stray blit_sprite_attrs_to_buff in moving-object renderers')
+    return 0
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--floppy', default='build/batty.img')
@@ -241,6 +285,10 @@ def main():
             print(f'        diff -> {out}/{label}_diff.png')
             if assert_match:
                 failed += 1
+
+    # Source-code lint: catch this class of regression even when state4
+    # can't (= the buggy code path is only exercised mid-gameplay).
+    failed += lint_moving_object_attrs(Path('src/main.c'))
 
     sys.exit(failed)
 
