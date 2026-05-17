@@ -15,16 +15,14 @@ all 15 levels → game-over → 3-letter initials entry → back to title.
 PASS state1_title       (pixel-identical)
 PASS state2_menu        (pixel-identical)
 PASS state3_hiscore     (pixel-identical)
-INFO state4_level1        3 / 49 152 px differ (~0.01%)
-INFO state5_bat_band      3 /  8 192 px differ (~0.04%)
+PASS state4_level1      (pixel-identical)
+PASS state5_bat_band    (pixel-identical, FAIL-gated)
 ```
 
-The state4 GT now includes the bat / ball / lives indicator (captured
-*after* the first gameplay-loop iter paints them — see
-`notes/modded-batty.md`). The residual is now down to 3 px — and those
-are just the non-deterministic running_dot phase, not a rendering bug.
-Pin run_dot_frame in test mode to take state5_bat_band to 0; once
-there, flip to FAIL-on-regression. See
+All five pixel-identical against the level-1 GT — bat, ball, lives
+indicator, frame, bricks, bg, running dots. state5_bat_band is
+FAIL-gated, so any regression in the bat region fails the build.
+The journey from 507 → 0 px is documented in
 `notes/state4-bat-band-triage.md`.
 
 | Stage                                       | State |

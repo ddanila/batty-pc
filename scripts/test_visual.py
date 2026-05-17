@@ -189,7 +189,7 @@ def main():
         ('state2_menu',     SNAP_MENU,    False, None,                 None),
         ('state3_hiscore',  SNAP_HISCORE, True,  None,                 None),
         ('state4_level1',   GT_LEVEL1,    False, None,                 None),
-        ('state5_bat_band', GT_LEVEL1,    False, (0, 160, 256, 192),  'state4_level1'),
+        ('state5_bat_band', GT_LEVEL1,    True,  (0, 160, 256, 192),  'state4_level1'),
     ]
 
     # Only checkpoints that own their own PPM contribute a screendump +

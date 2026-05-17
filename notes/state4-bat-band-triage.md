@@ -169,18 +169,37 @@ so the ball blits first and the bat overlays it. Secondary balls
 (`ball2`, `ball3`) still render after the bat — they can land
 anywhere, not just sitting on the bat.
 
-## Remaining 3 px
+## Iter 5: pin running_dot phase + fix bat_w (3 → 0 px)
 
-All at y=179 — the running_dot row (`RUN_DOT_ROW_OFF = 0x1660` = row
-179). Our dots and the GT's dots are at different X positions because
-`run_dot_frame` advances every frame in our gameplay loop. The screen-
-dump happens at a non-deterministic phase relative to the GT's
-single-iter capture (PC=0xBB61), so dot positions drift.
+Two fixes, both in `render_running_dot` (`src/main.c:1567+`):
 
-Fix: pin `run_dot_frame` to its initial value (`0x0E`) when `BATTYALL`
-is set, same trick we use for `test_mode_pin_blink`. Should take state5
-to 0; then flip `state5_bat_band.assert_match` to True so the bat
-region is FAIL-gated.
+1. **Phase pin.** Under `BATTYALL`, reset `run_dot_frame = 0x0E` at the
+   top of the function. The GT was captured after one gameplay-loop
+   iter, so the original's running_dot punched once with frame=14.
+   Our test reaches the screendump after many iters, with the frame
+   counter at some non-deterministic phase. Pinning matches the GT's
+   single-iter capture.
+
+2. **Bat logical width.** Object_bat_1+$0C = `$1C` = **28**, not 32.
+   The bat sprite is 32 px wide but the original uses 28 for the
+   mirror dot's position calc (so the dots sit inside the body cap,
+   not at the tapered sprite ends). Our `bat_w = 32 + 2 *
+   bat_extra_px` placed the second dot at `BAT_X + 32 - 14 - 1 = 133`
+   instead of `BAT_X + 28 - 14 - 1 = 129`. Fixed to `bat_w = 28 + 2 *
+   bat_extra_px` (and 28 instead of 32 for big-bat too).
+
+Result: state4 0 px. `state5_bat_band.assert_match` flipped to True
+— the bat band is now FAIL-gated against any future regression.
+
+## Journey from 507 → 0 px
+
+| Iter | Fix                                              | px diff |
+|------|--------------------------------------------------|---------|
+|  0   | Initial (after rev'ing modded-batty for bat GT)  | 507     |
+|  2   | Re-extract clean frame_l1.bin (no baked-in lives)| 507     |
+|  3   | Blit formula: `(~mask & screen) | (mask & pix)`  | 10      |
+|  4   | Render ball BEFORE bat in `redraw_full_with_ball`| 3       |
+|  5   | Pin run_dot_frame + bat_w = 28 (not 32) in dots  | 0       |
 
 ## Plan for the bat-body 347 px
 

@@ -1564,14 +1564,30 @@ static void run_dot_punch(int abs_x) {
     scr_buff[off] &= run_dot_mask[abs_x & 7];
 }
 
+static int test_mode_pin_blink;   /* forward — defined further down */
+
 static void render_running_dot(void) {
     int bat_w, bat_left;
     int frame, dir, span;
+    /* Test-mode determinism: the GT was captured after exactly one
+     * gameplay-loop iter (PC=0xBB61), so the original's running_dot
+     * punched at frame=0x0E. Our test reaches the screendump after many
+     * iters during which run_dot_frame would have advanced and the dots
+     * would land elsewhere. Pin it so the dots stay where the GT has
+     * them. Same trick as test_mode_pin_blink. */
+    if (test_mode_pin_blink) run_dot_frame = 0x0E;
+    /* Bat "logical width" per object_bat_1+$0C = $1C = 28 px (and
+     * object_bat_temp+$0C = $1B = 27 px for big-bat). The bat sprite
+     * is 32 px wide but the running_dot uses this narrower W for the
+     * mirror-position calc, so the dots land inside the body cap
+     * rather than at the tapered sprite edges. Earlier port used the
+     * sprite width (32), which placed the second dot 2 px too far
+     * right against the GT. */
     if (bat_extra_px >= BAT_BIG_EXTRA_PX) {
-        bat_w    = 32 + 2 * BAT_BIG_EXTRA_PX;   /* 48 px */
+        bat_w    = 28 + 2 * BAT_BIG_EXTRA_PX;   /* 44 px in big-bat mode */
         bat_left = BAT_X - BAT_BIG_EXTRA_PX;
     } else {
-        bat_w    = 32 + 2 * bat_extra_px;
+        bat_w    = 28 + 2 * bat_extra_px;
         bat_left = BAT_X - bat_extra_px;
     }
     /* Original's recovery branch: if the bat shrank into the current
