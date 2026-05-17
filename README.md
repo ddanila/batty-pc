@@ -51,7 +51,7 @@ without recapturing the GT mid-render. Everything else matches.
 ## Quick build / run
 
 ```sh
-brew install mtools qemu z80dasm srecord
+brew install mtools qemu
 make floppy   # builds build/batty.exe + assets, packs build/batty.img
 make run      # boots in QEMU
 make test     # headless visual-regression (boots, drives keys, pixel-diffs)
@@ -59,8 +59,10 @@ make test     # headless visual-regression (boots, drives keys, pixel-diffs)
 
 The remaining Makefile targets (`make regions`, `make candidates`,
 `make run-original`, `make snapshot`) drive RE tooling against the
-original tape — only needed when rediscovering something not already
-captured in `original/disasm/` or the `notes/`.
+original tape and additionally need `z80dasm` + `srecord`
+(`brew install z80dasm srecord`). They're only needed when rediscovering
+something not already captured in `original/disasm/` or the `notes/`
+— see the **Approach** section below for when that's worth doing.
 
 ## Repo layout
 
@@ -84,8 +86,9 @@ tools/              Build-from-source dependencies (ZEsarUX submodule)
 ## Toolchain
 
 Everything the build needs lives in this repo. Host tools:
-`mtools`, `qemu-system-i386`, `z80dasm`, `srecord`
-(`brew install mtools qemu z80dasm srecord` on macOS).
+`mtools` and `qemu-system-i386` (`brew install mtools qemu` on
+macOS). `z80dasm` and `srecord` are only needed for the RE-only
+targets — install them on demand.
 
 ### Vendored — ready to use
 
@@ -114,12 +117,34 @@ Everything the build needs lives in this repo. Host tools:
 
 ## Approach
 
-`original/disasm/batty.asm` is the authoritative annotated
-disassembly — every routine that matters has been named and
-documented there. New ports of game behaviour cite their source
-routine in `notes/<topic>.md` and in code comments where helpful.
-ZRCP single-step against ZEsarUX is still the fallback for SMC and
-computed-jump questions the static disasm can't answer.
+**The hard RE is done.** `original/disasm/batty.asm` (from
+[`CityAceE/Batty`](https://github.com/CityAceE/Batty), vendored as
+a submodule at `original/disasm/`) is a complete, named, annotated
+Z80 disassembly — every routine that matters already has a label and
+a comment explaining what it does. Treat it as the source of truth.
+
+Workflow for a new port:
+
+1. Find the routine in `original/disasm/batty.asm` by its named label
+   (`handling_ball`, `print_briks`, `enemy_prepare`, …).
+2. Port it into `src/main.c`, citing the routine name in the code
+   comment so the lineage is searchable.
+3. Add a one-paragraph entry in `notes/<topic>.md` if the routine
+   exposes a non-obvious invariant (encoding, RAM layout, timing
+   quirk). Otherwise skip — the disasm + code comment is enough.
+
+You should not need to disassemble anything from `original/batty.tap`
+yourself. The RE-only tooling (`make regions`, `make candidates`,
+`make run-original`, `make snapshot`, the `scripts/trace_*.py` /
+`scripts/scan_*.py` helpers) only earns its keep when:
+
+- chasing **dynamic / SMC behaviour** the static disasm can't resolve
+  (computed jumps, self-modifying loops) — use ZRCP single-step
+  against ZEsarUX, or
+- **rediscovering a routine** that isn't yet named in
+  `original/disasm/` (rare — flag it back upstream if so).
+
+Otherwise: read the disasm, port the routine, move on.
 
 ## Original assets
 
