@@ -4348,7 +4348,11 @@ static state_t run_level(void) {
         slow_ticks     = 0;
         big_bat_ticks  = 0;
         big_ball_ticks = 0;
-        life_dropped_this_round = 0;       /* mirrors flag_extra_life clear */
+        /* flag_extra_life is NOT cleared at level entry in original —
+         * only LBC10 (death path) clears it. So a LIFE bonus catch
+         * blocks future LIFE drops for the rest of the player's life,
+         * across levels. Earlier port reset on level entry too,
+         * making LIFE bonuses re-available per round. */
         run_dot_frame = 0x0E;               /* matches running_dot_frame_1up reset */
         bat_extra_px   = 0;
         bat_extra_tgt  = 0;
