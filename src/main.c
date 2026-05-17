@@ -3896,12 +3896,19 @@ static void brik_anim_apply_frame(unsigned char frame_idx) {
  * $B73F. ESC quits, any other key short-circuits. */
 static int play_brik_anim(void) {
     int step;
+    int ping_played = 0;    /* SMC trick in original: one_play_sound_metal_brik
+                             * rewrites itself to RET after the first call, so
+                             * the ping fires once even though spr_brik_5 appears
+                             * twice in anim_brik. */
     for (step = 0; step < 8; step++) {
         unsigned long t;
         unsigned char frame = brik_anim_order[step];
         brik_anim_apply_frame(frame);
         buff_to_vga_strip(32, 96);
-        if (frame == 4) sound_play(2600, 2);    /* spr_brik_5 ping */
+        if (frame == 4 && !ping_played) {
+            sound_play(2600, 2);                /* spr_brik_5 ping */
+            ping_played = 1;
+        }
         t = pit_ticks();
         while (pit_ticks() - t < 2UL) {
             sound_tick();
