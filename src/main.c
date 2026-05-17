@@ -2694,11 +2694,12 @@ static void step_bonus(void) {
         big_bat_ticks--;
         if (big_bat_ticks == 0 || !big_bat_active()) {
             /* Timer expired OR bat.bonus_applied was changed by
-             * another catch — either way, target the shrink. */
-            if (bat_extra_tgt != 0) {
-                bat_extra_tgt = 0;
-                snd_q_push(SND_BAT_RESIZE_2);
-            }
+             * another catch — either way, target the shrink. The
+             * original's bat_decrease_size at \$9DE0 runs silently;
+             * the SND_BAT_RESIZE_2 cue plays from push_resize_sound
+             * at the bonus catch that replaced BIG_BAT, not from
+             * the shrink animation itself. */
+            bat_extra_tgt = 0;
             big_bat_ticks = 0;                        /* keep the two in sync */
         }
     }
