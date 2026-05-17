@@ -46,6 +46,13 @@ HALT_PC       = 0xBB61   # `JR $` trap after the first gameplay-loop iter
 N_LEVELS = 15
 INITIAL_BOOT_SECONDS = 2.0    # time for game_start + first level-init -> halt
 PER_LEVEL_SECONDS    = 0.5    # quick settle after re-running BA24
+# When True, restart ZEsarUX from a fresh sna load for EACH level. Slower
+# (~3-4× the runtime) but immune to inter-level state leakage we observed
+# in iter 12: a bulk run gave L11 attr $46 (yellow, cycle 0) where a
+# fresh-boot capture of L11 alone gave $05 (cyan, cycle 2). The state-
+# reuse path (poke level + set PC = $BA24) doesn't fully reset texture
+# selection. See notes/per-level-profile.md.
+FRESH_BOOT_PER_LEVEL = True
 
 
 def wait_for_halt(zc, timeout=5.0):
@@ -79,45 +86,62 @@ def main():
     if not SNA.exists():
         raise SystemExit(f"missing {SNA} — run scripts/build_modded_batty.py first")
 
-    print(f"launching ZEsarUX with modded sna...")
-    proc, zc = launch_emulator(str(ZESARUX), machine='48k',
-                               extra_args=[str(SNA)], port=10000,
-                               headless=not args.visible)
-    try:
-        print(f"  connected: {zc.get_version()}")
-        time.sleep(INITIAL_BOOT_SECONDS)
-        # After the initial boot the CPU has run game_start -> game_restart
-        # -> level-init for L1 and is halted at 0xBA85. Confirm.
-        zc.enter_cpu_step()
-        regs = zc.get_registers()
-        pc = regs.get('PC')
-        print(f"  initial PC after boot: 0x{pc:04X} (expect 0x{HALT_PC:04X})")
+    def capture_one(n_one_based, proc, zc, needs_init):
+        """Save one level's GT. If needs_init=True the CPU is already at
+        L1 spin; only pokes + restart for levels >= 2 are needed."""
+        level_n = n_one_based - 1
+        if level_n > 0 and needs_init:
+            zc.write_memory(LEVEL_COUNTER, bytes([level_n]))
+            zc.set_register('PC', LEVEL_INIT_PC)
+            zc.exit_cpu_step()
+            try:
+                wait_for_halt(zc, timeout=5.0)
+            except TimeoutError as e:
+                print(f"  level {n_one_based:2d}: WARN {e}")
+                zc.enter_cpu_step()
+        scr = OUT_DIR / f"level_{n_one_based:02d}.scr"
+        zc.save_screen(str(scr.resolve()))
+        ok = scr.exists() and scr.stat().st_size == 6912
+        print(f"  level {n_one_based:2d}: {scr.name}  {'OK' if ok else 'FAIL'}")
 
+    if FRESH_BOOT_PER_LEVEL:
+        print(f"launching one ZEsarUX per level (FRESH_BOOT_PER_LEVEL=True)...")
         for n_one_based in targets:
-            level_n = n_one_based - 1
-            if level_n > 0:
-                # Re-run level-init for the requested level. Memory state
-                # from previous level persists but all_var_init resets the
-                # 11-slot object table, briks_calc re-reads the new level,
-                # and game_screen_draw_to_buffer repaints the entire screen.
-                zc.write_memory(LEVEL_COUNTER, bytes([level_n]))
-                zc.set_register('PC', LEVEL_INIT_PC)
-                zc.exit_cpu_step()
-                try:
-                    wait_for_halt(zc, timeout=5.0)
-                except TimeoutError as e:
-                    print(f"  level {n_one_based:2d}: WARN {e}")
-                    zc.enter_cpu_step()  # ensure paused for snap
-            scr = OUT_DIR / f"level_{n_one_based:02d}.scr"
-            zc.save_screen(str(scr.resolve()))
-            ok = scr.exists() and scr.stat().st_size == 6912
-            print(f"  level {n_one_based:2d}: {scr.name}  {'OK' if ok else 'FAIL'}")
-    finally:
-        try: zc.exit_emulator()
-        except Exception: pass
-        try: proc.wait(timeout=3)
-        except Exception:
-            proc.kill()
+            proc, zc = launch_emulator(str(ZESARUX), machine='48k',
+                                       extra_args=[str(SNA)], port=10000,
+                                       headless=not args.visible)
+            try:
+                time.sleep(INITIAL_BOOT_SECONDS)
+                zc.enter_cpu_step()
+                # For L1 (level_n == 0), the post-boot state is already at
+                # the L1 spin trap — no re-init needed.
+                capture_one(n_one_based, proc, zc, needs_init=True)
+            finally:
+                try: zc.exit_emulator()
+                except Exception: pass
+                try: proc.wait(timeout=3)
+                except Exception:
+                    proc.kill()
+    else:
+        print(f"launching ZEsarUX with modded sna (state-reuse mode)...")
+        proc, zc = launch_emulator(str(ZESARUX), machine='48k',
+                                   extra_args=[str(SNA)], port=10000,
+                                   headless=not args.visible)
+        try:
+            print(f"  connected: {zc.get_version()}")
+            time.sleep(INITIAL_BOOT_SECONDS)
+            zc.enter_cpu_step()
+            regs = zc.get_registers()
+            pc = regs.get('PC')
+            print(f"  initial PC after boot: 0x{pc:04X} (expect 0x{HALT_PC:04X})")
+            for n_one_based in targets:
+                capture_one(n_one_based, proc, zc, needs_init=True)
+        finally:
+            try: zc.exit_emulator()
+            except Exception: pass
+            try: proc.wait(timeout=3)
+            except Exception:
+                proc.kill()
 
     print("\nrendering PNGs + grid...")
     sys.path.insert(0, str(Path(__file__).resolve().parent))
