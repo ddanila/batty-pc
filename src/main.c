@@ -2635,8 +2635,14 @@ static void bonus_apply(unsigned char type) {
 /* spr_bat_big is 48 px wide (6 bytes) vs spr_bat_normal's 32 px (4
  * bytes). Keep the bat visually centred on BAT_X by rendering big
  * bat 8 px further left; hitbox widens correspondingly. */
+/* Collision uses the bat BODY (28 px wide per object_bat_1's
+ * w_body_px = \$1C), not the full sprite (32 px = body + shadow).
+ * The sprite's last 4 px (rows 2+ have mask \$F0 in byte 3) are
+ * transparent shadow, not visible bat surface — ball passing through
+ * those pixels shouldn't register a hit. */
+#define BAT_BODY_W 28
 static int eff_bat_left(void)  { return BAT_X - bat_extra_px; }
-static int eff_bat_right(void) { return BAT_X + BAT_W_BYTES * 8 + bat_extra_px; }
+static int eff_bat_right(void) { return BAT_X + BAT_BODY_W + bat_extra_px; }
 
 /* Current effective ball body size. spr_ball_normal body is 8x7;
  * spr_big_ball body fills the full 2-byte * 12 row sprite at its
