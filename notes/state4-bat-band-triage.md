@@ -77,27 +77,64 @@ for eyeball comparison.
 
 ## Lives-indicator: regression now visible (160 px)
 
-Done (loop iter 1): removed the L6853 lives-skip patch from
-`scripts/build_modded_batty.py`. The modded-batty GT now paints the
-lives indicator the same way our `render_lives` does. Test went from
-427 px to 507 px — a +80 net increase because the original's lives
-icons and ours disagree by ~160 px (where before, we were only
-"54 px extra" against an empty GT).
+Done (loop iter 1): removed the L6853 lives-skip patch — modded-batty
+GT now paints lives the same way our `render_lives` does. Test went
+from 427 → 507 px because our `render_lives` output disagrees with
+the original's by ~160 px.
 
-Same shape as the bat-top problem: in both the lives icons and the
-bat body, the top row + bottom row of the sprite render as blank in
-our output, where the GT shows solid ink edges. Middle rows render
-but with the interior ink/paper pattern slightly off. Sprite asset
-bytes (`assets/sprites.bin` at `SPR_LIVES` = `0x070`, `SPR_BAT_NORMAL`
-= `0x3AC`) are byte-identical to the upstream disasm
-(`spr_lives_indicator` at `$7AFC`, `spr_bat_normal` at `$7E38`).
+## Iter 2 finding: `assets/frame_l1.bin` had lives baked in
 
-This is almost certainly a single bug in
-`blit_masked_to_scr_buff_ptr` (`src/main.c:1097`) affecting at least
-sprite row 0 and row h-1 — possibly an off-by-one in `for (row = 0;
-row < h; row++)` or in how the row's first/last byte-pair is OR-merged
-against existing scr_buff bytes. Fix this once and BOTH the lives
-icon and bat-top regressions resolve together.
+The original captured frame asset had the lives icons baked into the
+left side strip (bytes at y=185..190 byte_x=1..2 were the lives-icon
+pixel pattern from whatever GT it was extracted from). So
+`paint_frame_to_buff` painted the lives, then `render_lives` painted
+them again on top, double-blitting.
+
+Re-extracted `frame_l1.bin` from a no-lives GT (temporarily re-apply
+the L6853 patch → re-run `capture_levels_modded.py` → re-run
+`extract_frame.py` → remove L6853 patch → re-run
+`capture_levels_modded.py` to restore the lives-included test GT).
+The clean frame_l1 at y=185..190 byte_x=0..2 is now `$9F $7F $FE`
+(uniform side-strip ornament + hex bg, no lives icon pixels).
+
+Also dropped the Makefile rule that auto-regenerated frame_l1.bin from
+`build/level_gt/level_01.scr` — the asset is checked-in now (those two
+pipelines have contradictory requirements: extraction needs the
+lives-skip patch on, test GT needs it off).
+
+## Iter 2 finding: lives-blit still off (507 px unchanged)
+
+With a clean frame_l1.bin the diff stayed at 507 px. So the residual
+isn't double-blit; it's that `render_lives` itself produces different
+scr_buff bytes than the original's `print_obj_to_buff`.
+
+Empirically derived from the GT:
+
+| sprite pair      | clean bg | original output | our output      |
+|------------------|----------|-----------------|-----------------|
+| (`$1F`, `$00`)   |   `$7F`  |     `$60`       | `$7F` (unchanged) |
+| (`$FE`, `$00`)   |   `$FE`  |     `$00`       | `$FE` (unchanged) |
+| (`$3F`, `$0B`)   |   `$7F`  |     `$4B`       |   ?             |
+| (`$FF`, `$F4`)   |   `$FE`  |     `$F4`       |   ?             |
+
+Formula `(~mask & screen) | (mask & pix)` reproduces every original
+output exactly. That's the standard "where mask=1 take pix, else
+preserve screen" sprite blit. Our `blit_masked_to_scr_buff_ptr` uses
+`(mask | screen) ^ pix` — which is what `notes/blitter-port.md`
+claims, but doesn't match empirically.
+
+Reconcile with the disasm: `byte_put_width_2` at `original/disasm/
+batty.asm:1087` is `LD A,E; OR (HL); XOR D`, i.e. `(E | screen) ^ D`.
+The mapping of E/D back to "mask/pix" needs another look — the
+DEFB ordering vs POP DE little-endian convention may be inverted from
+what we assumed in our blit.
+
+**Next iter:** fix the blit formula. Either swap our `mask`/`pix`
+identifiers (and re-verify against the test) or rewrite the inner
+line of `blit_masked_to_scr_buff_ptr` to `(~mask & *d) | (mask & pix)`.
+Either fix should drop state5_bat_band substantially (bat top row,
+lives icons, and possibly the 347-px bat-zone diff all share this
+formula path).
 
 ## Plan for the bat-body 347 px
 

@@ -138,9 +138,12 @@ assets/bg_tile.bin: build/level_gt/level_01.scr scripts/extract_bg_tile.py
 # Perimeter frame (top HUD + left + right cyan strips). 3 strips
 # painted as raw pixels + per-char attrs; bottom edge has no frame
 # ornament, so we skip it. ~1.3 KB total.
-assets/frame_l1.bin: build/level_gt/level_01.scr scripts/extract_frame.py
-	python3 scripts/extract_frame.py $@
-	@echo "wrote $@ ($$(wc -c < $@) bytes)"
+# assets/frame_l1.bin is a checked-in asset, NOT regenerated from the
+# current build/level_gt/ GT — because frame extraction needs a GT
+# captured with the L6853 lives-skip patch on (no lives in the side
+# strip), while the test GT needs lives present (so render_lives is
+# measured). Two contradictory requirements. The frame is re-extracted
+# manually when needed; see notes/state4-bat-band-triage.md.
 
 # Sprite block extracted verbatim from the original game's program at
 # $7A8C..$8920 (offset $128c..$2120 within 03_DATA_headless.dat.bin,
