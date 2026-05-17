@@ -3126,7 +3126,7 @@ static void step_bomb(void) {
         objects[OBJ_BALL_3].sprite_set = 0x82;
         play_bat_explosion(current_level_idx_var);
         if (lives > 0) lives--;
-        respawn_primary_ball();
+        if (lives > 0) respawn_primary_ball();    /* else game-over fires next frame */
         return;
     }
     if (bomb_y > PLAYFIELD_H) bomb_active = 0;
@@ -3429,7 +3429,7 @@ static void step_ball(void) {
         }
         play_bat_explosion(current_level_idx_var);
         if (lives > 0) lives--;
-        respawn_primary_ball();
+        if (lives > 0) respawn_primary_ball();
         return;
     }
     /* Brick collision: side-aware. brick_collision tells us which axis
@@ -4416,7 +4416,7 @@ static state_t run_level(void) {
                 if (!BALL_VISIBLE && !ball2_active && !ball3_active) {
                     play_bat_explosion(current_level_idx_var);
                     if (lives > 0) lives--;
-                    respawn_primary_ball();
+                    if (lives > 0) respawn_primary_ball();
                 }
                 /* Mirror of LB9E8_2..LB9E8_3 ($BA83..$BAD9):
                  *   enemy_prepare    -- maybe spawn alien
