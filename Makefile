@@ -1,7 +1,7 @@
 # batty — MS-DOS recreation of Batty (Elite, 1987) targeting 8086 + VGA.
 # Toolchain: Open Watcom v2 + mtools + QEMU.
 
-WATCOM_DIR ?= vendor/openwatcom-v2/current-build-2026-04-20
+WATCOM_DIR ?= vendor/openwatcom-v2/current-build-2026-05-16
 HOST_OS    := $(shell uname -s)
 HOST_ARCH  := $(shell uname -m)
 ifeq ($(HOST_OS),Darwin)
@@ -250,5 +250,9 @@ snapshot:
 	@mkdir -p build/snapshots
 	python3 scripts/snapshot_ram.py build/snapshots
 
+# build/ holds both generated outputs AND tracked inputs (snapshots/,
+# level_gt/, gt_history/, the various RE .txt files). `rm -rf build`
+# would clobber the tracked ones. Instead, ask git to remove only
+# what's gitignored — i.e. everything actually generated.
 clean:
-	rm -rf build
+	git clean -fdX build

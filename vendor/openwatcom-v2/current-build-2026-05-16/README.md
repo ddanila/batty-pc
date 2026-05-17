@@ -10,12 +10,12 @@ outside `vendor/`.
 - Release tag: `Current-build`
 - Release page:
   `https://github.com/open-watcom/open-watcom-v2/releases/tag/Current-build`
-- Published at: `2026-04-20T05:14:54Z`
+- Published at: `2026-05-16T05:38:20Z`
 - Snapshot asset:
   `https://github.com/open-watcom/open-watcom-v2/releases/download/Current-build/ow-snapshot.tar.xz`
 - Snapshot asset SHA-256:
-  `76a568c1b803f92eb850287a3774bc18595d3ef08a973d6ff2ae9b693e5d45a7`
-- Snapshot asset size: 149,243,588 bytes
+  `ec0bebd973ee339dc0425db184ab82a20e0fefee8be839ec75a366f47b12c86a`
+- Snapshot asset size: 150,249,056 bytes
 
 ## What's vendored
 
@@ -40,13 +40,13 @@ Shared tree:
 ## File checksums (SHA-256)
 
 ```text
-8e212f64aac2daac4fdfe40a4743913035483cbca799aae95d3e87be3e1fec4f  linux-amd64/wcc
-6c6adb16e7a72f0d654e1a87af0c0d6541009ce150bca3e00d4e0404ef3295d3  linux-amd64/wlink
-6431aa4dd6c4e89d83e49eea327e63c2c5ce44073bb6b25344b9dfba263d9ad8  macos-arm64/wcc
-530340cebbf007bb8d4ae576e382efd20317045de098a115ae4ea09e503b0919  macos-arm64/wlink
-97bb7ce8eb93bbee9d3ea1b5a71a2078ff8a22a01b6888318cb102e9467ce543  macos-x64/wcc
-4001ce9052a4fc78b59fce44fe0a4ebab4632879a31b95d8c8cdc19acd6063a8  macos-x64/wlink
-c7740037d867beb1d7450b072b923e6b6e7b2554c74369949b42f7b4ebfee0eb  lib286/dos/clibs.lib
+6655b9e09900635ff91e44bf58be30a6db247e17444d8bdd6da0c9dfd58d00cb  linux-amd64/wcc
+70e0305e9f3e2fed2ba046f0cf9ce177bc53acf82bb8cb7415ecc6966d87ec0f  linux-amd64/wlink
+2855bc3d41da800f8a1493d61401de427095c6b58f546eba723c0dc6fa8fb118  macos-arm64/wcc
+497d7204cb7a072d62ae017c92c7aee92af05e6a33f329856ac6ddc78919f211  macos-arm64/wlink
+57df5f38273826cfe945568823cd30547f10cfc3b60e0bde0bf3242f6448906a  macos-x64/wcc
+df2611ca7f834b7914bf61a922e7d082e51fa09995c485a23e2315231558e947  macos-x64/wlink
+bd4e17ef14c62396874264c4e2f0f46457396850640fcb3284a92785a57af073  lib286/dos/clibs.lib
 ```
 
 ## How to refresh
