@@ -9,18 +9,22 @@ boots in QEMU.
 
 The game is playable end-to-end: title → menu → hi-score teaser →
 all 15 levels → game-over → 3-letter initials entry → back to title.
-`make test` headlessly diffs four checkpoints against ZX GT snapshots:
+`make test` headlessly diffs five checkpoints against ZX GT snapshots:
 
 ```
 PASS state1_title       (pixel-identical)
 PASS state2_menu        (pixel-identical)
 PASS state3_hiscore     (pixel-identical)
-INFO state4_level1      228 / 49 152 px differ (~0.5%)
+INFO state4_level1      427 / 49 152 px differ (~0.9%)
+INFO state5_bat_band    427 /  8 192 px differ (~5.2%)
 ```
 
-The 228-px residual on state4 is the intentional bat + ball + lives
-indicator overlay over a bat-free GT snapshot — the absolute floor
-without recapturing the GT mid-render. Everything else matches.
+The state4 GT now includes the bat / ball / lives indicator (captured
+*after* the first gameplay-loop iter paints them — see
+`notes/modded-batty.md`). The residual is real rendering drift,
+*entirely* in the bat band (y=160..192) — surfaced as its own metric
+`state5_bat_band` so it can't hide inside the whole-frame number.
+Triage of those 427 pixels is the next visual-parity task.
 
 | Stage                                       | State |
 |---------------------------------------------|-------|
@@ -43,7 +47,7 @@ without recapturing the GT mid-render. Everything else matches.
 | HUD: live score / hi-score / power-up chips  | ✓ chips blink in last second of timed effects |
 | High-score persistence with 3-letter name    | ✓ `HISCORE.DAT` (v2 = 7 bytes; v1 = 4 bytes auto-defaults to `AAA`) |
 | Pause banner (P toggles, ENTER dismisses)    | ✓ |
-| Headless visual regression (4 checkpoints)   | ✓ `make test` (`notes/testing.md`) |
+| Headless visual regression (5 checkpoints)   | ✓ `make test` (`notes/testing.md`) |
 | 2-player mode (`game_mode == 2`)             | open — selectable from menu, not wired into run loop |
 | Real `handling_ball` 64-direction motion     | open — port uses integer dx/dy + 5-zone deflection |
 | Frame ornament from `spr_bord_*` primitives  | open — currently bundles a captured `frame_l1.bin` |

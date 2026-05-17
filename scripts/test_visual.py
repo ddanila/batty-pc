@@ -170,28 +170,38 @@ def main():
     SNAP_MENU    = Path('build/snapshots/20260513T202041Z/screen.scr')
     TITLE_SCR    = Path('original/Batty.scr')
     GT_LEVEL1    = Path('build/level_gt/level_01.scr')
-    # Per checkpoint: (label, expected_scr, assert_match, roi)
+    # Per checkpoint: (label, expected_scr, assert_match, roi, source_label)
     # roi=None  -> diff the full 256x192 playfield
     # roi=(x0, y0, x1, y1) -> diff only that sub-rectangle in playfield coords
+    # source_label=None -> capture and diff this checkpoint's own PPM
+    # source_label='other_state' -> diff against another checkpoint's PPM
+    #   (used by ROI checkpoints that re-examine an already-captured frame).
     # `assert_match=False` => captured, diff-reported, but not failing.
-    # state4_level1 now diffs the full 256x192 playfield: HUD strip
-    # (y=0..15), brick zone (y=16..112), bat region (y=167..182), and
-    # the hex-bg gap rows. Side-edge cells (cols 0..1, 30..31) still
-    # have side-stripe sprites we haven't ported, so the diff won't go
-    # to zero - but the headline number reflects total L1 fidelity.
+    # state4_level1 diffs the full playfield against a modded-batty GT
+    # captured AFTER one gameplay-loop iter has painted bat/ball/lives
+    # to VRAM (see notes/modded-batty.md). The residual is real rendering
+    # drift, not the old bat-overlay artefact.
+    # state5_bat_band is the same captured frame, ROI'd to the bat band
+    # (y=160..192). Separate metric so bat-render regressions are not
+    # buried inside the whole-frame number — fix this before state4.
     checkpoints = [
-        ('state1_title',    TITLE_SCR,    True,  None),
-        ('state2_menu',     SNAP_MENU,    False, None),
-        ('state3_hiscore',  SNAP_HISCORE, True,  None),
-        ('state4_level1',   GT_LEVEL1,    False, None),
+        ('state1_title',    TITLE_SCR,    True,  None,                 None),
+        ('state2_menu',     SNAP_MENU,    False, None,                 None),
+        ('state3_hiscore',  SNAP_HISCORE, True,  None,                 None),
+        ('state4_level1',   GT_LEVEL1,    False, None,                 None),
+        ('state5_bat_band', GT_LEVEL1,    False, (0, 160, 256, 192),  'state4_level1'),
     ]
 
+    # Only checkpoints that own their own PPM contribute a screendump +
+    # ENTER step. ROI/derived checkpoints (source_label set) reuse an
+    # earlier capture and are skipped here.
+    own_captures = [cp for cp in checkpoints if cp[4] is None]
     script = [f'SLEEP {args.boot_wait}']
-    for i, cp in enumerate(checkpoints):
+    for i, cp in enumerate(own_captures):
         label = cp[0]
         script.append(f'screendump {out/label}.ppm')
         script.append('SLEEP 0.3')
-        if i < len(checkpoints) - 1:
+        if i < len(own_captures) - 1:
             script.append('sendkey ret')
             script.append(f'SLEEP {args.state_wait}')
     script.append('sendkey esc')
@@ -200,8 +210,8 @@ def main():
     run_qemu(floppy, script, out / 'qemu.log')
 
     failed = 0
-    for label, expected_scr, assert_match, roi in checkpoints:
-        ppm_path = out / f'{label}.ppm'
+    for label, expected_scr, assert_match, roi, source_label in checkpoints:
+        ppm_path = out / f'{source_label or label}.ppm'
         if not ppm_path.exists():
             print(f'  FAIL {label}: no PPM produced'); failed += 1; continue
         actual   = ppm_inner_to_indices(ppm_path)

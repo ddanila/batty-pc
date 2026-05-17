@@ -46,15 +46,17 @@ so if upstream renumbers, the build fails loudly.
 | 6145  | `CALL show_window_round_number`               → 3-byte NOP      | No "PLAYER N / ROUND NN" banner                                                      |
 | 6147  | `CALL pause_long`                             → 3-byte NOP      | No 1.2s pause that originally let players read the banner                            |
 | 6148  | `CALL all_metal_briks_animation_snd`          → 3-byte NOP      | Metal-brick fade-in skipped (~40 ms/brick saved)                                     |
-| 6163  | first instr of `LB9E8_2`                      → `DEFB $18, $FE, $00` | `JR $` + NOP — gameplay-loop entry becomes an infinite spin                          |
+| 6261  | `CALL restore_objs_and_magnet`                → `DEFB $18, $FE, $00` | `JR $` + NOP — spins AFTER the first gameplay-loop iter has painted bat/ball/lives into scr_buff and flushed to VRAM. The trap fires right before the restore step that would wipe them back. |
 | 6853  | `JR Z,LBE8B_10` (lives-indicator gate)        → `JR LBE8B_10`   | Always skip the lives-indicator draw block                                           |
 | LBE8B_11 region | 3 × `CALL print_obj_to_buff` (spr_1up/2up/hi) + 3 × `CALL print_score_in_game` → 3-byte NOPs | No "1UP HI 2UP" labels, no score digits in HUD |
 
-The `JR $` spin at `LB9E8_2` (= 0xBA83) is critical: it leaves the CPU in
-the "running" state (so `set_register PC=…` can break it out for the next
-level), but with no instructions actually mutating screen RAM. Everything
-the original game paints during the gameplay loop — bat, ball, magnet
-rotation, brick re-colouring, score digits — never happens.
+The `JR $` spin at line 6261 (= **0xBB61**) is critical: it leaves the
+CPU in the "running" state (so `set_register PC=…` can break it out for
+the next level), and runs **exactly one** gameplay-loop iteration before
+catching — long enough for `print_obj_from_buf_to_scr` to flush the bat
++ ball + lives indicator into VRAM, short enough that
+`restore_objs_and_magnet` hasn't wiped them again. The GT therefore
+captures the post-paint frame with all objects drawn.
 
 We picked `JR $` over `DI; HALT` because once a Z80 enters halt state
 with interrupts disabled, only an NMI or reset can resume it; setting PC
@@ -64,14 +66,14 @@ via ZRCP does not. Spin-loop is functionally equivalent for our purposes.
 
 ```
 boot ZEsarUX with build/modded_batty/batty.sna
-sleep 2s                                       # game_start -> game_restart -> L1 init -> spin at BA83
+sleep 2s                                       # game_start -> game_restart -> L1 init -> first paint -> spin at BB61
 snap level_01.scr
 
 for n in 2..15:
   poke $B7EA = n-1                             # current_level_number_1up
   set PC = 0xBA24                              # = CALL briks_calc, restarts the level-init flow
   resume CPU
-  poll get_registers until PC == 0xBA83        # spin reached again
+  poll get_registers until PC == 0xBB61        # spin reached again
   snap level_<n>.scr
 ```
 

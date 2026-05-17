@@ -83,3 +83,37 @@ Symptoms that should trigger this audit:
 - You're inventing multi-pass / SMC / sentinel-pointer machinery to
   explain how this routine produces the observed pixels. The real
   routine probably doesn't.
+
+## Don't let your test exclude the surface you're iterating on
+
+**Rule.** A visual-regression checkpoint that compares against a GT
+captured with the very surface you care about *removed* gives you a
+green light over a blind spot. Catch this whenever a residual diff is
+explained by "the GT can't show this region".
+
+**Why.** state4_level1 sat at ~228 px diff for many iterations of
+bat / ball / lives rendering. The README explained the residual as
+"the bat + ball + lives overlay over a bat-free GT snapshot — the
+absolute floor without recapturing the GT mid-render." That phrasing
+*sounded* principled — and it was technically true — but the practical
+effect was that bat sprite, bat Y position, ball start position, and
+lives indicator drawing were all in a regression-test blind spot.
+After bumping the modded-batty spin trap so the GT *does* contain
+bat / ball / lives (PC 0xBB61, after the first paint+flush), the same
+checkpoint immediately surfaced 427 px of real drift — most of it
+shape / position differences in the bat.
+
+**How to apply.** Whenever you write or accept a residual-diff
+rationalization that mentions a specific shape ("residual is the bat",
+"residual is the HUD strip", "the GT doesn't capture X"), one of two
+things must follow:
+
+- recapture the GT so it does include X, or
+- split that region into its own ROI checkpoint with its own number,
+  so regressions in X don't hide inside the whole-frame metric.
+
+If the answer is "neither, because we can't easily capture X" — that's
+exactly when you have a blind spot, and the test is misleadingly green
+for the surface you're iterating on. Fix the capture pipeline (a few
+lines of patch + re-baseline) before doing more renderer work in that
+region. `INFO` is for accepted drift, not unmeasured surface.

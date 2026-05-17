@@ -59,9 +59,15 @@ PATCHES = [
     (6853,
      'JR Z,LBE8B_10',
      '  JR LBE8B_10           ; MOD: unconditional jump - skip lives indicator'),
-    (6163,
-     'LD A,(random_number+$01)',
-     '  DEFB $18, $FE, $00    ; MOD: JR $ + NOP - infinite spin at LB9E8_2 (CPU stays running, set_register PC can break out)'),
+    # Spin AFTER the first gameplay-loop iteration has painted bat/ball/
+    # lives into scr_buff and flushed them to VRAM (print_obj_from_buf_to_scr
+    # at the start of LBAED_5). We trap on the very next instruction —
+    # `CALL restore_objs_and_magnet` (3 bytes) — which is what would
+    # normally wipe those objects back to bg before the next frame.
+    # Result: GT shows the post-paint frame, bat/ball/lives included.
+    (6261,
+     'CALL restore_objs_and_magnet',
+     '  DEFB $18, $FE, $00    ; MOD: JR $ + NOP - spin AFTER first paint+flush (bat/ball/lives in VRAM)'),
 ]
 
 # 3-byte NOP replacements (each CALL is 3 bytes; we keep the surrounding
@@ -126,7 +132,7 @@ def main():
     apply_patches(asm)
 
     print(f'invoking sjasmplus...')
-    res = subprocess.run([str(SJASMPLUS), ASM_FILE],
+    res = subprocess.run([str(SJASMPLUS), '--lst=batty.lst', ASM_FILE],
                          cwd=BUILD_DIR,
                          capture_output=True, text=True)
     sys.stdout.write(res.stdout)

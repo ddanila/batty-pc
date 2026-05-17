@@ -40,10 +40,39 @@ the C side disables auto-advance — every transition is driven by
 | 1     | `LOADING.BIN` static blit | `original/Batty.scr`              | Title / loading screen, decoded from the tape's screen$ block.              |
 | 2     | Markup + sprites + blink   | `20260513T202041Z` (snap2)        | Main menu rendered from `MENUMARK.BIN` + indicators + bottom sprites.       |
 | 3     | Markup hi-score            | `20260513T202038Z` (snap1)        | Hi-score table rendered from `MARKUP.BIN`.                                  |
-| 4     | Full level-1 gameplay paint | `build/level_gt/level_01.scr` (modded-tape GT) | Bricks + frame + bat + ball + lives. Diff is `INFO` (not pass/fail) — residual ~228 px is the bat/ball overlay over a bat-free GT snapshot. |
+| 4     | Full level-1 gameplay paint | `build/level_gt/level_01.scr` (modded-tape GT, *post-first-paint*) | Bricks + frame + bat + ball + lives. Diff is `INFO` — currently 427 px, all in the bat band. |
+| 5     | Same captured frame, ROI'd to bat band (y=160..192) | same GT | Sub-diff of state4 — surfaces bat-render regressions on their own so they don't hide inside the whole-frame number. |
 
-States 1–3 pass pixel-identical (49 152 px each). State 4 reports the
-diff for tracking but doesn't fail the build.
+States 1–3 pass pixel-identical. State 4 and state 5 report the same
+427-px diff under different denominators — same data, sharper framing
+for state 5 (5.2% of the bat band differs vs 0.9% of the whole frame).
+
+## INFO is for accepted drift, not unmeasured surface
+
+State 4's old GT was captured *before* the gameplay loop drew bat /
+ball / lives — so the renderer's bat sat in a regression-test blind
+spot. Diff stayed at ~228 px (the bat-overlay overhead), and the README
+rationalized it as "the absolute floor without recapturing the GT mid-
+render". A green check on a metric that excluded the surface under
+iteration. Fixed by:
+
+- `scripts/build_modded_batty.py` now patches line 6261 (`CALL
+  restore_objs_and_magnet` → `JR $`) so the spin trap fires *after*
+  the first gameplay-loop iter has painted bat / ball / lives into
+  scr_buff and flushed to VRAM. New trap PC: **0xBB61**.
+- `scripts/test_visual.py` adds `state5_bat_band` — same captured
+  frame, ROI'd to `y=160..192`. ROI-only checkpoints reuse another
+  state's PPM via the `source_label` field.
+
+**Rule of thumb.** A residual diff that's always the same shape (a
+band, a sprite, a strip) is a signal that the metric is excluding the
+surface where you're iterating. Either:
+
+- recapture a GT that covers it, or
+- split it into its own ROI checkpoint with its own number.
+
+`INFO` should mean "we accept this drift while we focus elsewhere",
+not "the test can't see this region". The latter is just an alibi.
 
 ### Determinism for the menu checkpoint
 

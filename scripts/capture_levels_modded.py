@@ -38,7 +38,10 @@ OUT_DIR = ROOT / 'build' / 'level_gt'
 
 LEVEL_COUNTER = 0xB7EA
 LEVEL_INIT_PC = 0xBA24
-HALT_PC       = 0xBA83   # `JR $` infinite loop trap at LB9E8_2 — PC loops back to BA83 each iter
+HALT_PC       = 0xBB61   # `JR $` trap after the first gameplay-loop iter
+                         # has painted bat/ball/lives into scr_buff and
+                         # flushed them to VRAM (right before
+                         # restore_objs_and_magnet would wipe them).
 
 N_LEVELS = 15
 INITIAL_BOOT_SECONDS = 2.0    # time for game_start + first level-init -> halt
