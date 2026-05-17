@@ -4040,6 +4040,12 @@ static void play_bat_explosion(unsigned char level_idx) {
     bullet_blast_ticks[1] = 0;
     brick_flash_ticks = 0;
     objects[OBJ_ENEMY].sprite_set = 0;
+    /* Extras may still be inactive but defensive-clear in case a new
+     * call site is added that forgets to deactivate them upstream. */
+    ball2_active = 0;
+    objects[OBJ_BALL_2].sprite_set = 0x82;
+    ball3_active = 0;
+    objects[OBJ_BALL_3].sprite_set = 0x82;
     for (i = 0; i < DEATH_SPARK_COUNT; i++) {
         death_sparks[i].active        = 1;
         death_sparks[i].x_q88         = (long)(x_start + i * 3) << 8;
