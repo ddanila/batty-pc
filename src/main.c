@@ -4061,6 +4061,10 @@ static void respawn_primary_ball(void) {
     slow_ticks     = 0;
     bat_extra_tgt  = 0;
     bullet_cooldown = 0;       /* fresh life — no stale fire cooldown */
+    /* Original LBC10 clears flag_extra_life on every life-loss (line
+     * \$6411), so another LIFE bonus can drop on the next life within
+     * the same round. Our port was only resetting per-level. */
+    life_dropped_this_round = 0;
 }
 
 static void play_bat_explosion(unsigned char level_idx) {
