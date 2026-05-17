@@ -3115,7 +3115,11 @@ static void bomb_appear(object_t *o) {
     if (bomb_active) return;
     if (bonus_active) return;
     r = next_random();
-    if ((((r >> 8) ^ (r & 0xFF)) & 0x3F) != 0) return;
+    /* Original at $A989: `LD A,(random_number); LD B,A;
+     * LD A,(random_number+$01); ADD A,B; AND $3F; RET NZ`. ADD
+     * not XOR — the byte distributions are subtly different,
+     * even though both gate at $3F = 1/64. */
+    if ((unsigned char)(((r >> 8) + (r & 0xFF)) & 0x3F) != 0) return;
     /* Only spawn while alien still in upper half (y < $C0 = 192). */
     if (o->y_coord + 8 >= 0xC0) return;
     bomb_active = 1;
