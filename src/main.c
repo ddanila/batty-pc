@@ -1986,9 +1986,14 @@ static void render_level_screen(unsigned char level_idx) {
     fill(0, 0, SCREEN_W, SCREEN_H, COL_BORDER);
     draw_frame(10);              /* bright red — placeholder */
     paint_bg_to_buff(bg_attr, cycle);
+    /* Magnets blit BEFORE bricks (original at $BE8B does
+     * CALL print_magnets; CALL print_briks). The brick top row
+     * overwrites the magnet's lower shadow rows where they overlap;
+     * inverting the order leaves the shadow rows punching through
+     * the brick top. */
+    render_magnets(level_idx);
     render_brick_band(level_idx);
     render_brick_flash_to_buff();
-    render_magnets(level_idx);
     /* Frame must paint AFTER bricks so its side-strip attrs override
      * the leftmost / rightmost brick's body attrs that print_briks_c
      * lays into the same cells; and BEFORE sprites so the bat / ball
@@ -3801,9 +3806,14 @@ static void redraw_full_with_ball(unsigned char level_idx) {
     fill(0, 0, SCREEN_W, SCREEN_H, COL_BORDER);
     draw_frame(10);              /* bright red — placeholder */
     paint_bg_to_buff(bg_attr, cycle);
+    /* Magnets blit BEFORE bricks (original at $BE8B does
+     * CALL print_magnets; CALL print_briks). The brick top row
+     * overwrites the magnet's lower shadow rows where they overlap;
+     * inverting the order leaves the shadow rows punching through
+     * the brick top. */
+    render_magnets(level_idx);
     render_brick_band(level_idx);
     render_brick_flash_to_buff();
-    render_magnets(level_idx);
     paint_frame_to_buff(cycle, level_idx);
     /* Ball must blit BEFORE bat so the bat overlays the ball's lower 5
      * rows (rows 7..11 of the 12-row ball sprite). Those rows are the
