@@ -3128,6 +3128,38 @@ static void kill_enemy_by_bat(void) {
     snd_q_push(SND_ALIEN_BLAST);                    /* port of $C1A8 */
 }
 
+/* Mirror of kill_enemy_by_bat for the ball — original
+ * kill_enemy_by_bat at $A4B8 is called from BOTH handling_bat AND
+ * handling_ball (see the cross-reference at line 2745 of the disasm),
+ * so a ball plunking down on an alien destroys it the same way a bat
+ * crashing into one does. AABB between the ball body (8x7) and the
+ * alien body. */
+static void kill_enemy_by_ball_rect(int bx_l, int by_t, int bw, int bh) {
+    object_t *e = &objects[OBJ_ENEMY];
+    int ex_l, ex_r, ey_t, ey_b;
+    int bx_r = bx_l + bw;
+    int by_b = by_t + bh;
+    if ((e->sprite_set & 0x7F) == 0) return;
+    if (e->sprite_set & 0x80)       return;
+    if ((e->sprite_set & 0x7F) == 0x0A) return;
+    ex_l = e->x_coord;
+    ex_r = e->x_coord + e->w_body_px;
+    ey_t = e->y_coord;
+    ey_b = e->y_coord + e->h_body_px;
+    if (ex_r <= bx_l || ex_l >= bx_r) return;
+    if (ey_b <= by_t || ey_t >= by_b) return;
+    /* Same blast transition as kill_enemy_by_bat. */
+    e->x_coord = (unsigned char)(e->x_coord + (int)e->w_body_px / 2 - 8);
+    e->y_coord = (unsigned char)(e->y_coord + 4);
+    e->w_body_px = 16;
+    e->h_body_px = 13;
+    e->sprite_set = 0x0A;
+    e->sprite_num = 0;
+    e->misc_12 = 0;
+    score += 350;
+    snd_q_push(SND_ALIEN_BLAST);
+}
+
 /* Port of bomb_appear at $A977 - called per alien tick. Probability
  * (random + random+1) & $3F == 0 = ~1/64 chance per call. Bomb
  * shares the bonus slot in the original; we keep separate state. */
@@ -4510,6 +4542,20 @@ static state_t run_level(void) {
                                                   * in the original at $98A8;
                                                   * here outside since our
                                                   * bat handler doesn't exist */
+                /* Ball-vs-alien: the original's kill_enemy_by_bat at
+                 * $A4B8 is invoked from BOTH handling_bat and
+                 * handling_ball — any ball plunking down on an alien
+                 * destroys it. Earlier port only checked the bat. */
+                if (BALL_VISIBLE)
+                    kill_enemy_by_ball_rect(BALL_X, BALL_Y, BALL_W_PX, BALL_H_PX);
+                if (ball2_active)
+                    kill_enemy_by_ball_rect((int)objects[OBJ_BALL_2].x_coord,
+                                             (int)objects[OBJ_BALL_2].y_coord,
+                                             BALL_W_PX, BALL_H_PX);
+                if (ball3_active)
+                    kill_enemy_by_ball_rect((int)objects[OBJ_BALL_3].x_coord,
+                                             (int)objects[OBJ_BALL_3].y_coord,
+                                             BALL_W_PX, BALL_H_PX);
                 call_for_all_obj(ix_buf_addr_calc);
                 snd_q_tick();
                 sound_tick();
