@@ -1,3 +1,64 @@
+# Per-level visual-diff profile
+
+## Iter 13 / 14 status (post-magnet-order-fix)
+
+| Level | Cycle | Diff (px) |
+|-------|-------|-----------|
+| L01   | 0     | **0**     |
+| L02   | 1     | **0**     |
+| L03   | 2     | 5861      |
+| L04   | 3     | **0**     |
+| L05   | 0     | 11444     |
+| L06   | 1     | 2005      |
+| L07   | 2     | 1154      |
+| L08   | 3     | 902       |
+| L09   | 0     | 3135      |
+| L10   | 1     | 1527      |
+| L11   | 2     | 556       |
+| L12   | 3     | 1043      |
+| L13   | 0     | (high)    |
+| L14   | 1     | (mid)     |
+| L15   | 2     | (mid)     |
+
+(L13-L15 not re-profiled cleanly; the bulk profile script has timing
+issues that occasionally produce inflated numbers — measure each
+level alone with a fresh `make test` for a stable reading.)
+
+## Iter 14 finding (partial, not yet fixed)
+
+L11 has 556 px residual concentrated in two bands: y=33..63 (~272 px)
+and y=97..127 (~284 px). These coincide with the brick-zone top + bottom.
+
+Drilling in at L11 y=41 (a brick-row mid-row), the diff is in the
+side-strip cells (x=0..31 and x=224..255). GT shows multiple ink
+colours (cyan, magenta, white from per-cycle attrs); OUR shows
+mostly bright black, suggesting `attr_buff` for those cells holds
+`$45` (cycle-2 bg) or `$40` instead of the per-level attrs that
+`level_attrs.bin` has.
+
+The render order is:
+1. `paint_bg_to_buff` writes `bg_attr_per_cycle[2] = $45` everywhere.
+2. `render_brick_band` copies `level_attrs[char_rows 3..16]` —
+   should put `$05` at `attr_buff[5,1]`.
+3. The "reset destroyed cells" loop overwrites `attr_buff[5,1]` back
+   to `bg_attr = $45` because L11 row 1 col 0 = `$C0` (= bit 7 + 6).
+4. `paint_frame_to_buff` should re-write `attr_buff[5,1]` from
+   `level_attrs[L11,5,1] = $05`.
+
+Step 4 *should* fix it but evidently isn't — the rendered pixel
+behaves like the cell still holds `$45`. Either `paint_frame_to_buff`
+isn't writing the attr, the offset math is off-by-N, or something
+runs *after* it that restores `$45`. Needs instrumentation (= add a
+debug printf inside paint_strip_to_buff for the specific cell and
+re-run).
+
+For L1 the same `$C0`-reset loop runs but `paint_frame_to_buff`'s
+overwrite produces a value matching the GT (= `$06`), which is
+why state4_level1 passes despite the same loop firing. Why L11
+diverges and L1 doesn't is the iter-15 question.
+
+---
+
 # Per-level visual-diff profile (iter 11)
 
 After landing magnets (iter 10), I profiled all 15 levels via the
