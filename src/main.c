@@ -2703,7 +2703,17 @@ static void step_bonus(void) {
             big_bat_ticks = 0;                        /* keep the two in sync */
         }
     }
-    if (big_ball_ticks > 0) big_ball_ticks--;
+    if (big_ball_ticks > 0) {
+        big_ball_ticks--;
+        if (big_ball_ticks == 0
+            && objects[OBJ_BAT_1].bonus_applied == 0x07) {
+            /* Port of the smash_counter \$F8 expire at \$03B0: clear
+             * bat.bonus_applied to \$FF so future BIG_BALL bonus drops
+             * aren't blocked by the duplicate-exclusion check. */
+            objects[OBJ_BAT_1].bonus_applied = 0xFF;
+            objects[OBJ_BAT_2].bonus_applied = 0xFF;
+        }
+    }
     /* Animate bat width toward target — gated every other tick.
      * Original bat_resize at \$9DE0 combines counter_misc bit 0 +
      * bit 1 over a 4-frame cycle to grow body 1 px / frame. Each
