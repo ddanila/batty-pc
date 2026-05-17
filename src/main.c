@@ -759,7 +759,12 @@ static unsigned char map_orig_to_our_bonus(unsigned char code) {
 static unsigned int next_random(void);
 extern unsigned char round_number;
 #define SLOW_DURATION     250     /* ~5 sec at 50 Hz */
-#define BIG_BAT_DURATION  500     /* ~10 sec */
+/* BIG_BAT is permanent in the original — handling_bat_no_transform
+ * keys off bat.bonus_applied == \$00, with no auto-expire. The bat
+ * stays wide until another bonus is caught or the ball is lost.
+ * Setting to UINT_MAX-ish so the timer-based expiration never fires;
+ * big_bat_active() AND with bat.bonus_applied does the real gating. */
+#define BIG_BAT_DURATION  0xFFFFu
 #define BIG_BALL_DURATION 500
 #define BAT_BIG_EXTRA_PX    8     /* width added on each side in big mode */
 static int           bonus_x = 0;
