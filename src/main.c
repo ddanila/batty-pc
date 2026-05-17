@@ -4281,11 +4281,21 @@ static state_t run_level(void) {
                  * ctrl_btns_pressed.x bits 0/1, then handling_bat at
                  * $9F64 SUB/ADD $04 on (IX+$02). Step is 4 px / 50 Hz
                  * tick = 200 px/sec, matching the original. */
-                if (key_state[SC_LEFT]) {
-                    if (BAT_X > BAT_X_MIN) BAT_X -= 4;
-                }
-                if (key_state[SC_RIGHT]) {
-                    if (BAT_X < BAT_X_MAX) BAT_X += 4;
+                /* Margins port of check_left_margin (\$ACA2) +
+                 * check_right_margin (\$ACBC). The original BIG_BAT
+                 * grows body to the right only (sprite stays anchored
+                 * at bat_x), so its clamp uses (\$F8 - body_w). Our
+                 * port renders BIG_BAT centred on BAT_X by shifting
+                 * the sprite \$bat_extra_px\$ to the left, so the
+                 * VISIBLE body extends bat_extra_px on each side:
+                 *   visible left  = BAT_X - bat_extra_px
+                 *   visible right = BAT_X + BAT_BODY_W + bat_extra_px
+                 * Clamp those to the playfield [8, 248]. */
+                {
+                    int min_now = 8 + bat_extra_px;
+                    int max_now = 248 - BAT_BODY_W - bat_extra_px;
+                    if (key_state[SC_LEFT]  && BAT_X > min_now) BAT_X -= 4;
+                    if (key_state[SC_RIGHT] && BAT_X < max_now) BAT_X += 4;
                 }
                 if (ball_stuck) {
                     /* Ball rides the bat at the catch offset (= where it
