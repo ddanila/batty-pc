@@ -4500,9 +4500,12 @@ static state_t run_level(void) {
                 render_game_over();
                 /* Hold GAME OVER for ~3.6 s — matches LBC10_6's
                  * `pause_long B=\$0C` (= 12 * 0.3 s). 18.2 Hz BIOS ticks
-                 * × 3.6 s ≈ 65. */
+                 * × 3.6 s ≈ 65. Not gated on auto_advance — the
+                 * original's pause_clear_screen_attrib waits regardless,
+                 * and TIMED_OUT would be a no-op with auto_advance=0,
+                 * leaving the player stuck on the screen. */
                 start = bios_ticks();
-                while (!TIMED_OUT(start, 65UL)) {
+                while (bios_ticks() - start < 65UL) {
                     sound_tick();
                     if (kbhit()) { getch(); break; }
                 }
