@@ -3144,7 +3144,11 @@ static void step_bullet_one(int b) {
             score += 350;
             snd_q_push(SND_ALIEN_BLAST);
             bullet_active[b] = 0;
-            bullet_blast_x[b] = bullet_x[b];
+            /* Align blast x to 8-px boundary — port of LA5A3_0's
+             * `LD A,(IX+\$02); AND \$F8; LD (IX+\$02),A`. The blast
+             * sprite is byte-aligned, so the impact point snaps to
+             * the nearest cell column. */
+            bullet_blast_x[b] = bullet_x[b] & ~7;
             bullet_blast_y[b] = bullet_y[b];
             bullet_blast_ticks[b] = BULLET_BLAST_FRAMES * BULLET_BLAST_TICKS_PER_FRAME;
             return;
