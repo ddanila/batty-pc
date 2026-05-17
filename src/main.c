@@ -1577,7 +1577,12 @@ static void render_running_dot(void) {
 
 /* Display (lives - 2) right-side indicators next to the left one
  * baked into the frame strip. Cap at 4 to fit. */
-#define LIVES_DYNAMIC_MAX 4
+/* Port of LBE8B_8's `ADD A,$10; CP $E9; JR NC` cap: the indicator
+ * stops advancing X once it would land at $E9 (= 233), giving at
+ * most 14 distinct sprite slots between $08 and $D8. Earlier port
+ * capped at 4 — fine for normal play but truncated the meter
+ * for high-life scores. */
+#define LIVES_DYNAMIC_MAX 14
 static void render_lives(unsigned char cycle, unsigned char attr) {
     /* Port of LBE8B_7's `LD A,(lives_1up); DEC A; JR Z,skip`:
      * draw (lives - 1) indicator bats. lives=3 → 2 sprites,
