@@ -758,7 +758,13 @@ static unsigned char map_orig_to_our_bonus(unsigned char code) {
 /* Forward decls - defined below in the enemy section. */
 static unsigned int next_random(void);
 extern unsigned char round_number;
-#define SLOW_DURATION     250     /* ~5 sec at 50 Hz */
+/* SLOW is permanent within a life in the original — ball speed is
+ * set at $A67B_7 and not auto-restored. all_var_init at level/life
+ * entry resets ball speed back to $03 (= our BALL_SPEED). Earlier
+ * port auto-expired SLOW after 5 sec, which made the bonus
+ * pointless. Setting effectively-forever so respawn_primary_ball /
+ * level entry are the only way out, matching the original. */
+#define SLOW_DURATION     0xFFFFu
 /* BIG_BAT is permanent in the original — handling_bat_no_transform
  * keys off bat.bonus_applied == \$00, with no auto-expire. The bat
  * stays wide until another bonus is caught or the ball is lost.
