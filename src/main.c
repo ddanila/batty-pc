@@ -824,9 +824,10 @@ static const unsigned char bonus_colours[BONUS_TYPE_COUNT] = {
 
 /* Position of the leftmost dynamic life indicator; we paint
  * spr_lives_indicator (16x6 px sprite at $7AFC) here. Port of
- * LBE8B_7's `LD A,$08` initial X — bats grow rightwards at +16 px. */
+ * LBE8B_7's `LD A,$08` initial X and object_lives_indicator's
+ * `DEFB ... $B9 ...` y_coord — bats grow rightwards at +16 px. */
 #define LIVES_X_PX    8
-#define LIVES_Y_PX    184
+#define LIVES_Y_PX    0xB9       /* = 185 */
 
 /* The original game's sprite block, extracted verbatim from the
  * program at $7A8C..$17E0 (offset 0x128c..0x17e0 within
