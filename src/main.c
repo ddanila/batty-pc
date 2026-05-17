@@ -816,9 +816,10 @@ static const unsigned char bonus_colours[BONUS_TYPE_COUNT] = {
     13    /* 3 (multi-ball)  - bright cyan    */
 };
 
-/* Position of the rightmost dynamic life indicator; we paint
- * spr_lives_indicator (16x6 px sprite at $7AFC) here. */
-#define LIVES_X_PX    24
+/* Position of the leftmost dynamic life indicator; we paint
+ * spr_lives_indicator (16x6 px sprite at $7AFC) here. Port of
+ * LBE8B_7's `LD A,$08` initial X — bats grow rightwards at +16 px. */
+#define LIVES_X_PX    8
 #define LIVES_Y_PX    184
 
 /* The original game's sprite block, extracted verbatim from the
@@ -1578,7 +1579,11 @@ static void render_running_dot(void) {
  * baked into the frame strip. Cap at 4 to fit. */
 #define LIVES_DYNAMIC_MAX 4
 static void render_lives(unsigned char cycle, unsigned char attr) {
-    int show = lives - 2;
+    /* Port of LBE8B_7's `LD A,(lives_1up); DEC A; JR Z,skip`:
+     * draw (lives - 1) indicator bats. lives=3 → 2 sprites,
+     * lives=2 → 1, lives=1 → 0 (on the player's last life the
+     * meter is empty). Earlier port used (lives - 2) — off by one. */
+    int show = lives - 1;
     int i;
     (void)cycle;
     (void)attr;

@@ -22,12 +22,12 @@ all 15 levels → game-over → 3-letter initials entry → back to title.
 PASS state1_title       (pixel-identical)
 PASS state2_menu        (pixel-identical)
 PASS state3_hiscore     (pixel-identical)
-INFO state4_level1      194 / 49 152 px differ (~0.4%)
+INFO state4_level1      236 / 49 152 px differ (~0.5%)
 ```
 
-The 194-px residual on state4 is the intentional bat + ball overlay
-over a bat-free GT snapshot — the absolute floor without recapturing
-the GT mid-render. Everything else matches.
+The 236-px residual on state4 is the intentional bat + ball + lives
+indicator overlay over a bat-free GT snapshot — the absolute floor
+without recapturing the GT mid-render. Everything else matches.
 
 | Stage                                       | State |
 |---------------------------------------------|-------|
