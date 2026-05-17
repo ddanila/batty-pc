@@ -2246,8 +2246,9 @@ static int auto_advance = 0;
  * pins it to 0 (BLACK / invisible) so the screendump matches snap2's
  * captured BLACK half deterministically. `make run` uses real-time
  * bios_ticks so the user sees the actual blink. */
+static int test_mode_pin_blink = 0;          /* set by BATTYALL env */
 static int blink_phase(void) {
-    if (!auto_advance) return 0;
+    if (test_mode_pin_blink) return 0;
     return (int)((bios_ticks() >> 1) & 1);   /* ~4.5 Hz half-period */
 }
 /* Same cadence but unconditional — used by HUD chips during gameplay
@@ -4545,10 +4546,11 @@ static state_t run_level(void) {
 
 int main(void) {
     state_t state = ST_TITLE;
-    /* BATTYALL=1 (test floppy AUTOEXEC) disables auto-advance so the
-     * test orchestrator's `sendkey` drives every transition. Plain
-     * `make run` floppy leaves it on for the natural attract cycle. */
-    if (getenv("BATTYALL") != NULL) auto_advance = 0;
+    /* BATTYALL=1 (test floppy AUTOEXEC) pins the menu blink phase to
+     * 0 (BLACK half) so the state2_menu screendump is deterministic
+     * against snap2. Plain `make run` floppy leaves it off and the
+     * user sees the natural ~4.5 Hz menu blink. */
+    if (getenv("BATTYALL") != NULL) test_mode_pin_blink = 1;
     set_mode(0x13);
     set_palette(zx_palette, 16);
 
