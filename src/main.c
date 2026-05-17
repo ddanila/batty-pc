@@ -3039,8 +3039,10 @@ static void step_bomb(void) {
     /* Check bat collision (8 x 12 bomb rect vs bat top 8-px band). */
     bx_l = bomb_x; bx_r = bomb_x + BOMB_W_PX;
     by_t = bomb_y + BOMB_H_PX - 4; by_b = bomb_y + BOMB_H_PX;
-    if (by_b >= BAT_Y_PX && by_t < BAT_Y_PX + 8
+    if (by_b >= BAT_Y_PX && by_t < BAT_Y_PX + 10
         && bx_r > eff_bat_left() && bx_l < eff_bat_right()) {
+        /* h = 10 matches object_bat_1.h_body_px = \$0A — same as
+         * kill_enemy_by_bat's body band. */
         /* Bomb hit the bat. Original at $A69D zeroes balls_quantity
          * which triggers LBC10's bat-explosion + lives-- branch on
          * the next frame — i.e. ALL balls die, not just the primary.
