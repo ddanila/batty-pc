@@ -2521,7 +2521,15 @@ static void bonus_apply(unsigned char type) {
     }
     switch (type) {
         case BONUS_TYPE_LIFE:     lives++; life_dropped_this_round = 1; break;
-        case BONUS_TYPE_SLOW:     slow_ticks     = SLOW_DURATION; break;
+        case BONUS_TYPE_SLOW:
+            /* Original at line 3108 (SLOW path): `LD (IY+\$14),\$FF` —
+             * overwrites bat.bonus_applied to \$FF (= no bat-side state)
+             * after the universal assignment. SLOW is ball-side; the
+             * bat doesn't track it. */
+            objects[OBJ_BAT_1].bonus_applied = 0xFF;
+            objects[OBJ_BAT_2].bonus_applied = 0xFF;
+            slow_ticks = SLOW_DURATION;
+            break;
         case BONUS_TYPE_BIG_BAT:  big_bat_ticks  = BIG_BAT_DURATION;
                                   bat_extra_tgt  = BAT_BIG_EXTRA_PX;
                                   snd_q_push(SND_BAT_RESIZE_1);
@@ -2598,6 +2606,11 @@ static void bonus_apply(unsigned char type) {
              * for a 3-ball total (port of LA67B_8 / "triple ball" at
              * $A67B). Directions fan out: ball2 mirrors ball1's dx,
              * ball3 goes straight up with the opposite of that. */
+            /* Original at LA67B_8 (\$3074): `LD (IY+\$14),\$FF` after
+             * setting balls_quantity = 3 — overwrites bat.bonus_applied
+             * to \$FF (TRIPLE_BALL is ball-side, not bat-side). */
+            objects[OBJ_BAT_1].bonus_applied = 0xFF;
+            objects[OBJ_BAT_2].bonus_applied = 0xFF;
             if (!ball2_active && !ball3_active) {
                 ball2_active = 1;
                 objects[OBJ_BALL_2].sprite_set = 0x02;
