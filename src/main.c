@@ -3944,33 +3944,40 @@ static int play_brik_anim(void) {
     return 0;
 }
 
-/* "ROUND XX" intro banner — port of show_window_round_number at $8F60
- * + the pause_long B=4 wait at LB9E8_1. Draws an 80x24 black panel
- * centred between the brick zone and the bat, with "ROUND<sp>NN" in
- * bright white. Holds for ~1.2 s (60 PIT ticks) or until a key is
- * pressed. ESC during the wait returns 1 so the caller can quit.
- *
- * We skip the original's secondary "PLAYER X" line because the port
- * is single-player only for now; once 2-player wiring lands we add it. */
+/* "PLAYER 1" + "ROUND XX" intro banner — port of show_window_round_number
+ * at $8F60 + the pause_long B=4 wait at LB9E8_1. Draws an 80x32 black
+ * panel centred between the brick zone and the bat. Original puts
+ * PLAYER X at Y=$8F (= 143) and ROUND XX at Y=$9E (= 158). Holds for
+ * ~1.2 s (60 PIT ticks) or until a key is pressed. ESC during the
+ * wait returns 1 so the caller can quit. */
 static int show_round_banner(unsigned int round_num_display) {
     int round_num = (int)round_num_display;
     int banner_x = BORDER_X + 88;
-    int banner_y = BORDER_Y + 143;
+    int banner_y = BORDER_Y + 141;
     int text_x   = BORDER_X + 96;
-    int text_y   = BORDER_Y + 151;
     unsigned long start;
-    unsigned char codes[8];
-    codes[0] = 0x1B;  /* R */
-    codes[1] = 0x18;  /* O */
-    codes[2] = 0x1E;  /* U */
-    codes[3] = 0x17;  /* N */
-    codes[4] = 0x0D;  /* D */
-    codes[5] = 0x26;  /* space */
-    codes[6] = (unsigned char)((round_num / 10) % 10);
-    codes[7] = (unsigned char)(round_num % 10);
+    unsigned char round_codes[8];
+    static const unsigned char player_codes[7] = {
+        0x19, 0x15, 0x0A, 0x22, 0x0E, 0x1B, 0x26    /* P L A Y E R _ */
+    };
+    round_codes[0] = 0x1B;  /* R */
+    round_codes[1] = 0x18;  /* O */
+    round_codes[2] = 0x1E;  /* U */
+    round_codes[3] = 0x17;  /* N */
+    round_codes[4] = 0x0D;  /* D */
+    round_codes[5] = 0x26;  /* space */
+    round_codes[6] = (unsigned char)((round_num / 10) % 10);
+    round_codes[7] = (unsigned char)(round_num % 10);
 
-    fill(banner_x, banner_y, 80, 24, 0);
-    draw_text(text_x, text_y, 15, codes, 8);
+    fill(banner_x, banner_y, 80, 32, 0);
+    /* PLAYER 1 — single-player mode hardcodes the digit. Once 2-player
+     * wiring lands, swap the trailing $01 for the active player number. */
+    draw_text(text_x, BORDER_Y + 143, 15, player_codes, 7);
+    {
+        unsigned char one = 0x01;
+        draw_text(text_x + 7 * 8, BORDER_Y + 143, 15, &one, 1);
+    }
+    draw_text(text_x, BORDER_Y + 158, 15, round_codes, 8);
 
     start = pit_ticks();
     while (pit_ticks() - start < 60UL) {
