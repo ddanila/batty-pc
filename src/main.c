@@ -816,10 +816,6 @@ static const unsigned char bonus_colours[BONUS_TYPE_COUNT] = {
     13    /* 3 (multi-ball)  - bright cyan    */
 };
 
-/* Counter of bricks destroyed since start of game; drives the simple
- * deterministic bonus-drop cadence. */
-static unsigned int bricks_destroyed = 0;
-
 /* Position of the rightmost dynamic life indicator; we paint
  * spr_lives_indicator (16x6 px sprite at $7AFC) here. */
 #define LIVES_X_PX    24
@@ -2943,7 +2939,6 @@ static int brick_collision(int prev_x, int prev_y, int new_x, int new_y) {
      * stash the "no bounce" intent. */
     if (big_ball_active()) axis = 0;
     brick_flash_spawn(col, row);
-    bricks_destroyed++;
     try_spawn_bonus(col, row);
     return axis;
 }
@@ -3197,7 +3192,6 @@ static void step_bullet_one(int b) {
                 if ((*cell & 0x0F) >= 6) pts *= 2;
                 score += pts;
                 *cell |= 0x80;
-                bricks_destroyed++;
                 brick_flash_spawn(col, row);
                 try_spawn_bonus(col, row);
                 hit = 1;
@@ -3289,7 +3283,6 @@ static void award_left_bricks(void) {
             if ((*cell & 0x0F) >= 6) pts *= 2;
             score += pts;
             *cell |= 0x80;
-            bricks_destroyed++;
         }
     }
 }
@@ -3338,7 +3331,6 @@ static void step_rocket(void) {
                     score += pts;
                 }
                 *cell |= 0x80;
-                bricks_destroyed++;
                 brick_flash_spawn(c, r);
                 try_spawn_bonus(c, r);
                 killed_this_tick = 1;
@@ -4171,7 +4163,6 @@ static state_t run_level(void) {
     score = 0;
     lives = LIVES_INIT;
     live_adds_awarded = 0;
-    bricks_destroyed = 0;
     bonus_active = 0;
     slow_ticks = 0;
     big_bat_ticks = 0;
