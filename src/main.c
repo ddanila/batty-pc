@@ -2686,8 +2686,12 @@ static void step_bonus(void) {
     bonus_y += BONUS_FALL_SPEED;
     bat_left  = eff_bat_left();
     bat_right = eff_bat_right();
+    /* Catch test uses bat body (10 px) not full sprite (13 px =
+     * body + shadow). obj_compare_2pix at \$94BC reads (IY+\$0C, IY+\$0D)
+     * which are body dimensions on object_bat_1. Shadow rows aren't
+     * a catch surface. */
     if (bonus_y + BONUS_H_PX >= BAT_Y_PX
-        && bonus_y < BAT_Y_PX + BAT_H_PX
+        && bonus_y < BAT_Y_PX + 10
         && bonus_x + BONUS_W_PX > bat_left
         && bonus_x < bat_right) {
         unsigned char caught_type = bonus_type;
