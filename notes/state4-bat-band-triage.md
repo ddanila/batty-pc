@@ -129,12 +129,34 @@ The mapping of E/D back to "mask/pix" needs another look — the
 DEFB ordering vs POP DE little-endian convention may be inverted from
 what we assumed in our blit.
 
-**Next iter:** fix the blit formula. Either swap our `mask`/`pix`
-identifiers (and re-verify against the test) or rewrite the inner
-line of `blit_masked_to_scr_buff_ptr` to `(~mask & *d) | (mask & pix)`.
-Either fix should drop state5_bat_band substantially (bat top row,
-lives icons, and possibly the 347-px bat-zone diff all share this
-formula path).
+## Iter 3: blit formula fixed — diff 507 → 10 px
+
+Replaced the inner-line of `blit_masked_to_scr_buff_ptr`
+(`src/main.c:1126,1130`) from `(mask | screen) ^ pix` to
+`(~mask & screen) | (mask & pix)` — the standard "where mask=1 take
+pix, else preserve screen" sprite blit, matching all four empirical
+GT data points.
+
+state4 went from 507 px → 10 px. state5_bat_band from 6.19% to 0.12%.
+states 1-3 still pixel-identical (no regression in the menu/hiscore
+paths, which also use this blit for the markup text).
+
+Old `blitter-port.md` documented the formula as `(mask | screen) ^
+pix` — that doc was wrong. The disasm's `byte_put_width_2` is
+`LD A,E; OR (HL); XOR D`, but mapping E/D back to "mask"/"pix" via
+POP DE little-endian doesn't reproduce the empirical output either —
+something about the original's SP setup must shift which byte gets
+treated as which role. Empirics > disasm-reading-by-hand in this case.
+
+## Remaining 10 px (state5_bat_band 0.12%)
+
+Concentrated in two spots — a diagonal smudge at (x=139..142,
+y=174..177) and a 3-px disagreement at y=179. Likely a 1-px ball-
+on-bat position offset (the ball sits on top of the bat at level
+entry; ours is shifted ~1 px from the GT). Trivial follow-up.
+
+Once that drops to 0, flip `state5_bat_band.assert_match` to True
+in `scripts/test_visual.py` so the bat region is FAIL-gated.
 
 ## Plan for the bat-body 347 px
 

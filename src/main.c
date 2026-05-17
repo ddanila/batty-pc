@@ -1121,13 +1121,22 @@ static void blit_masked_to_scr_buff_ptr(const unsigned char *src,
                 m_r = (unsigned char)(mask << rshift);
                 p_r = (unsigned char)(pix  << rshift);
             }
+            /* Standard mask & pix sprite blit:
+             *   where mask=1  -> take pix bit (sprite content)
+             *   where mask=0  -> preserve screen bit (transparent)
+             * = (~mask & screen) | (mask & pix). Earlier port used
+             * `(mask | screen) ^ pix` per a misreading of the original
+             * blitter — it left rows whose mask bits coincided with
+             * bg-pattern bits invisible (top + bottom of bat sprite,
+             * lives icons, etc.). Verified empirically against four GT
+             * data points; see state4-bat-band-triage.md. */
             if (dst_l >= 0 && dst_l < 32) {
                 unsigned char *d = &scr_buff[row_base + dst_l];
-                *d = (unsigned char)(((unsigned char)(m_l | *d)) ^ p_l);
+                *d = (unsigned char)(((unsigned char)(~m_l) & *d) | (m_l & p_l));
             }
             if (shift != 0 && dst_r >= 0 && dst_r < 32) {
                 unsigned char *d = &scr_buff[row_base + dst_r];
-                *d = (unsigned char)(((unsigned char)(m_r | *d)) ^ p_r);
+                *d = (unsigned char)(((unsigned char)(~m_r) & *d) | (m_r & p_r));
             }
         }
     }

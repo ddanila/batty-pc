@@ -14,20 +14,25 @@ Going through scr/attr buffers (rather than direct-to-VGA) is what
 makes per-cell bg-attr inheritance automatic and the mask=0/pix=1 XOR
 case (bat shadow band) work uniformly across every renderer.
 
-## The blit primitive (port of sub_94BC)
+## The blit primitive
 
 ```
-scr_buff' = (mask | scr_buff) ^ pixel
+scr_buff' = (~mask & scr_buff) | (mask & pix)
 ```
 
-Four cases per bit:
+Standard "where mask=1 take pix bit, else preserve screen" sprite blit.
 
-| mask | pix | result          | semantic                       |
-|------|-----|-----------------|--------------------------------|
-| 1    | 0   | bit = 1         | solid body (ink in buff_to_vga) |
-| 1    | 1   | bit = 0         | internal texture (paper)        |
-| 0    | 1   | bit toggled     | XOR shadow (flips bg)           |
-| 0    | 0   | bit preserved   | transparent                    |
+| mask | pix | result          | semantic              |
+|------|-----|-----------------|-----------------------|
+| 1    | 0   | bit = 0         | sprite ink (= bit cleared; buff_to_vga renders cleared = ink for default attr ordering) |
+| 1    | 1   | bit = 1         | sprite paper          |
+| 0    | x   | bit = screen    | transparent (preserve)|
+
+An earlier draft of this note (and the corresponding C code) said the
+formula was `(mask | screen) ^ pixel`. That's incorrect — see
+`state4-bat-band-triage.md` for the empirical derivation: the four
+`(mask, pix, screen → output)` triples from the level-1 GT confirm
+the `(~mask & screen) | (mask & pix)` form.
 
 `blit_masked_to_scr_buff_ptr` in src/main.c handles non-byte-aligned
 x with a per-row shift across two destination bytes. Mirrors the ZX
