@@ -2842,12 +2842,16 @@ static void try_spawn_bonus(int col, int row) {
          *   $04 (SLOW): skip if SLOW already active
          *   $05 (LIFE): skip if already dropped this round
          *   $06 (ROCKET): skip if rocket in flight
-         * The round-6+ extra-rare-rocket re-roll (random & $C0 != 0)
-         * is dropped here for simplicity. */
+         * From round 6 onwards, rocket gets an extra (random & $C0)
+         * re-roll: ~3/4 of would-be rockets get rejected, making the
+         * bonus ~4x rarer in late levels (port of $9D6F's CP $06 /
+         * JR C / AND $C0 / JR NZ chain). */
         if (code == 0x02 && (ball2_active || ball3_active)) continue;
         if (code == 0x04 && slow_ticks > 0) continue;
         if (code == 0x05 && life_dropped_this_round) continue;
         if (code == 0x06 && rocket_active) continue;
+        if (code == 0x06 && round_number >= 6
+            && (next_random() & 0xC0) != 0) continue;
         mapped = map_orig_to_our_bonus(code);
         if (mapped != BONUS_TYPE_UNSUPPORTED) {
             bonus_active = 1;
