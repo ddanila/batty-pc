@@ -3672,10 +3672,17 @@ static void redraw_full_with_ball(unsigned char level_idx) {
     render_brick_band(level_idx);
     render_brick_flash_to_buff();
     paint_frame_to_buff(cycle, level_idx);
+    /* Ball must blit BEFORE bat so the bat overlays the ball's lower 5
+     * rows (rows 7..11 of the 12-row ball sprite). Those rows are the
+     * "ball-resting-on-bat" mask: drawn first they paint a few pixels
+     * the bat then covers. Drawn after the bat, they instead punch
+     * holes through the bat top — visible as a 7-px diagonal smudge
+     * (see state4-bat-band-triage.md iter 4). The secondary balls
+     * below render after bat too, since they can land anywhere. */
+    if (BALL_VISIBLE) render_ball_to_buff(BALL_X, BALL_Y, bg_attr);
     render_bat(cycle, bg_attr);
     render_running_dot();
     render_lives(cycle, bg_attr);
-    if (BALL_VISIBLE) render_ball_to_buff(BALL_X, BALL_Y, bg_attr);
     if (bomb_active) {
         blit_masked_to_scr_buff_ptr(spr_bomb_data, bomb_x, bomb_y);
     }

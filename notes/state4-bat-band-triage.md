@@ -148,15 +148,39 @@ POP DE little-endian doesn't reproduce the empirical output either —
 something about the original's SP setup must shift which byte gets
 treated as which role. Empirics > disasm-reading-by-hand in this case.
 
-## Remaining 10 px (state5_bat_band 0.12%)
+## Iter 4: ball/bat blit order swap — diff 10 → 3 px
 
-Concentrated in two spots — a diagonal smudge at (x=139..142,
-y=174..177) and a 3-px disagreement at y=179. Likely a 1-px ball-
-on-bat position offset (the ball sits on top of the bat at level
-entry; ours is shifted ~1 px from the GT). Trivial follow-up.
+The 7-px diagonal smudge at (x=139..142, y=174..177) was the ball
+sprite's lower 5 rows (rows 7..11 of the 12-row sprite) **punching
+holes through the bat top**. Those rows are the "ball-resting-on-bat"
+mask: drawn AFTER the bat, they clear the bat's ink bits via
+`(~mask & screen) | (mask & pix)` where `pix=0` → bits go to 0.
 
-Once that drops to 0, flip `state5_bat_band.assert_match` to True
-in `scripts/test_visual.py` so the bat region is FAIL-gated.
+Empirically verified: blitting ball BEFORE bat reproduces the GT byte
+exactly:
+
+```
+bat then ball: $C0 (our actual before fix)
+ball then bat: $D8 (GT)
+```
+
+Fix: swap the order in `redraw_full_with_ball` (`src/main.c:3675-3678`)
+so the ball blits first and the bat overlays it. Secondary balls
+(`ball2`, `ball3`) still render after the bat — they can land
+anywhere, not just sitting on the bat.
+
+## Remaining 3 px
+
+All at y=179 — the running_dot row (`RUN_DOT_ROW_OFF = 0x1660` = row
+179). Our dots and the GT's dots are at different X positions because
+`run_dot_frame` advances every frame in our gameplay loop. The screen-
+dump happens at a non-deterministic phase relative to the GT's
+single-iter capture (PC=0xBB61), so dot positions drift.
+
+Fix: pin `run_dot_frame` to its initial value (`0x0E`) when `BATTYALL`
+is set, same trick we use for `test_mode_pin_blink`. Should take state5
+to 0; then flip `state5_bat_band.assert_match` to True so the bat
+region is FAIL-gated.
 
 ## Plan for the bat-body 347 px
 

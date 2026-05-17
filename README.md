@@ -15,17 +15,17 @@ all 15 levels → game-over → 3-letter initials entry → back to title.
 PASS state1_title       (pixel-identical)
 PASS state2_menu        (pixel-identical)
 PASS state3_hiscore     (pixel-identical)
-INFO state4_level1       10 / 49 152 px differ (~0.02%)
-INFO state5_bat_band     10 /  8 192 px differ (~0.12%)
+INFO state4_level1        3 / 49 152 px differ (~0.01%)
+INFO state5_bat_band      3 /  8 192 px differ (~0.04%)
 ```
 
 The state4 GT now includes the bat / ball / lives indicator (captured
 *after* the first gameplay-loop iter paints them — see
-`notes/modded-batty.md`). The residual is now down to 10 px after
-fixing the blit-formula bug (see `notes/state4-bat-band-triage.md`);
-those last pixels are a 1-px ball-on-bat position offset, easy follow-
-up. state5_bat_band is INFO for now; once at 0, flip to FAIL-on-
-regression.
+`notes/modded-batty.md`). The residual is now down to 3 px — and those
+are just the non-deterministic running_dot phase, not a rendering bug.
+Pin run_dot_frame in test mode to take state5_bat_band to 0; once
+there, flip to FAIL-on-regression. See
+`notes/state4-bat-band-triage.md`.
 
 | Stage                                       | State |
 |---------------------------------------------|-------|
