@@ -2706,7 +2706,14 @@ static int big_bat_active(void) {
     return big_bat_ticks > 0
         && objects[OBJ_BAT_1].bonus_applied == 0x00;
 }
-static int eff_ball_size(void) { return big_ball_active() ? 12 : BALL_W_PX; }
+/* Collision body stays 8x7 even with BIG_BALL active — original at
+ * $9D5A_1 sets bat.bonus_applied=$07 and swaps the sprite to
+ * spr_big_ball, but never touches the ball's (IX+$0C, IX+$0D) body
+ * dimensions. The bigger sprite is purely cosmetic; the hitbox the
+ * brick / bat / wall collision uses is the same as the normal ball.
+ * Earlier port grew the collision to match the sprite (12 px),
+ * making it artificially easier to catch / hit during SMASH. */
+static int eff_ball_size(void) { return BALL_W_PX; }
 
 /* Advance the falling bonus, check for catch on the bat, and tick down
  * any active effect timers. */
