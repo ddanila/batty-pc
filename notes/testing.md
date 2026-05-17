@@ -42,8 +42,10 @@ the C side disables auto-advance — every transition is driven by
 | 1     | `LOADING.BIN` static blit | `original/Batty.scr`              | Title / loading screen, decoded from the tape's screen$ block.              |
 | 2     | Markup + sprites + blink   | `20260513T202041Z` (snap2)        | Main menu rendered from `MENUMARK.BIN` + indicators + bottom sprites.       |
 | 3     | Markup hi-score            | `20260513T202038Z` (snap1)        | Hi-score table rendered from `MARKUP.BIN`.                                  |
+| 4     | Full level-1 gameplay paint | `build/level_gt/level_01.scr` (modded-tape GT) | Bricks + frame + bat + ball + lives. Diff is `INFO` (not pass/fail) — residual ~228 px is the bat/ball overlay over a bat-free GT snapshot. |
 
-All three currently pass pixel-identical (49 152 px each).
+States 1–3 pass pixel-identical (49 152 px each). State 4 reports the
+diff for tracking but doesn't fail the build.
 
 ### Determinism for the menu checkpoint
 
@@ -59,21 +61,11 @@ leaves `BATTYALL` unset and the user sees the natural blink.
 
 ## What the test does *not* yet cover
 
-- Dynamic gameplay. The game itself is implemented (bricks
-  destroying, bonuses applying, balls / bullet / spark moving,
-  HUD updating) — there's just no automated parity test that
-  drives it. Ad-hoc smoke scripts under `scripts/exercise_*.py`
-  cover individual scenarios (brick destruction, pause, bonus
-  drop, physics) but they're heuristic, not pixel-parity.
-  The proper test would be a **replay file**: `(tick_N, key)`
-  pairs driving both ZEsarUX (via ZRCP) and QEMU (via `sendkey`)
-  in lockstep, snapshot/compare at fixed checkpoints. The
-  original is deterministic — same RNG state + same inputs =
-  same output — so this should work once we wire up
-  frame-synchronised input.
-- RAM-state diffs. Even more diagnostic than pixel diffs: when
-  our recreation owns named game-state addresses, we can compare
-  flat byte ranges between our DOS run and the ZX run and
-  pinpoint *exactly* which byte diverged. Useful for catching
-  physics / collision divergences before they manifest as pixel
-  drift.
+Mid-game frames. State 4 is a single level-init paint; nothing
+exercises ball physics / collisions / bonus drops under parity.
+The natural next step is a **replay file**: `(tick_N, key)` pairs
+driving both ZEsarUX (via ZRCP) and QEMU (via `sendkey`) in lockstep,
+snapshot/compare at fixed checkpoints. The original is deterministic
+(same RNG state + same inputs = same output), so this works once
+frame-synchronised input is wired up. Ad-hoc smoke scripts under
+`scripts/exercise_*.py` cover individual scenarios in the meantime.

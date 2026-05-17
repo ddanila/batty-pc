@@ -1,32 +1,18 @@
 # Blitter architecture port — scr_buff + attr_buff pipeline
 
-We now mirror the original game's frame-paint architecture:
+We mirror the original game's frame-paint architecture:
 
 1. **scr_buff** (6144 B) holds 1-bit pixel data, 32 bytes × 192 rows.
-   Mirror of ZX `0xD A00..0xF1FF` (which the original copies to `0x4000`).
+   Mirror of ZX `0xDA00..0xF1FF` (which the original copies to `0x4000`).
 2. **attr_buff** (768 B) holds per-cell attrs, 32 × 24. Mirror of
    `0xD700..0xD9FF` (copied to `0x5800`).
 3. **buff_to_vga** is the single final pass that walks scr_buff bits
    and emits each pixel via the surrounding char cell's attr_buff
    entry (ink for set bit, paper for clear).
 
-## Why we did this
-
-User asked: *"let's emulate drawing and blitter same as original has,
-that would help us in other cases to make game identical to the
-original"*. The direct-to-VGA approach we had before forced every
-renderer to know its own ink/paper at call time, which:
-
-- Broke bg-attr inheritance (sprites painted with fixed colours, not
-  the surrounding cell's attr).
-- Made the mask=0, pix=1 XOR case (the bat's textured shadow band)
-  invisible, because the direct-VGA blitter collapsed it to "preserve".
-- Diverged from the original wherever per-cell attrs varied in the
-  brick band (the only zone with non-bg attr).
-
-After the port: 38645 -> 286 px diff on state4_level1 vs the ZX GT
-(99.3% closer to original). Remaining 286 px are concentrated at the
-frame ornament side strips and the HUD — separate parity work.
+Going through scr/attr buffers (rather than direct-to-VGA) is what
+makes per-cell bg-attr inheritance automatic and the mask=0/pix=1 XOR
+case (bat shadow band) work uniformly across every renderer.
 
 ## The blit primitive (port of sub_94BC)
 
@@ -63,30 +49,12 @@ side-strip cells (whose attrs would otherwise tint the sprite).
 
 ## state4_level1 residual diff
 
-After all the migrations, state4 vs the captured ZX GT sits at
-194 px (down from 38645 pre-pipeline). The residual is entirely in
-the bat+ball overlap region (y=160..191, x=112..151). Confirmed by
-inspecting the GT snapshot: it was captured at a frame where neither
-the bat nor the ball was drawn — pure bg pattern at the bat zone.
-
-This means the test has reached the limit of comparability under the
-current GT; lowering it further would require recapturing the GT
-with the bat / ball / lives drawn in matching positions, separate
-from the rendering-pipeline parity work.
-
-## What this enables
-
-Now that every renderer writes into scr_buff via the original
-`(mask | screen) ^ pixel` blit:
-
-- The XOR shadow case (mask=0, pix=1) works uniformly — visible on
-  the bat shadow rows.
-- Per-cell bg-attr inheritance is automatic for every sprite — no
-  more passing `bg_attr` to renderers.
-- Colour-clash artefacts (bonus tinting bg in its char cells) match
-  the original.
-- Future ports can write 1-bit pixel data and per-cell attrs and
-  trust the single `buff_to_vga` pass to handle the rest.
+state4 sits at ~228 px against the captured ZX GT, concentrated in
+the bat+ball overlap region (y=160..191, x=112..151). The GT was
+captured at a frame where neither the bat nor the ball was drawn,
+so the residual is the bat/ball/lives indicator our renderer paints
+over an empty bg in the same cells. Floor without recapturing GT
+mid-render.
 
 ## Brick types (1-hit / multi-hit / undestructible)
 
@@ -111,15 +79,6 @@ Collision flow (`brick_collision` in src/main.c):
 L1 cells like `$13` / `$14` (bit 4 set, bit 5 clear) are 1-hit
 destructible; L1 row 0's `$07` cells (both bits clear) are 2-hit
 multi-hit; L4 `$2C` (bit 5 set) is undestructible decoration.
-
-## Key files
-
-- `src/main.c::blit_masked_to_scr_buff_ptr` — the OR-blit primitive
-- `src/main.c::paint_bg_to_buff` / `buff_to_vga` — the pipeline
-- `src/main.c::paint_bg_strip_to_buff` / `buff_to_vga_strip` —
-  partial-strip variants for `redraw_bat`
-- `src/main.c::render_level_screen` / `redraw_bat` — the two
-  callers that drive the buffer pipeline
 
 ## Original source references
 

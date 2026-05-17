@@ -26,12 +26,9 @@ The original builds a 7-shift pre-shifted sprite cache at boot
 (routine at `0x6800`). For each (input_byte, shift_count) pair it
 stores 8 output bytes (= the input shifted by N bits, both halves
 of the carry). This is what lets the blitter render sprites at
-arbitrary X positions cheaply on Z80.
-
-We don't pre-shift; `blit_masked_to_scr_buff_ptr` does the per-row
-shift at runtime in C. The pre-shift table is just historical
-context for understanding why the original blitter is structured
-the way it is.
+arbitrary X positions cheaply on Z80. Our port shifts per-row at
+runtime in C — the table exists only as a ZX-side blitter shape
+reference.
 
 ## Asset addresses
 

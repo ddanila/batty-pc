@@ -172,28 +172,3 @@ Conclusion: nothing in snap2's attribute area contradicts the
 "selected row blinks via `sub_961c`, everything else uses markup
 attr" model. There's no separate "highlight neighbour" path.
 
-## C-side blink implementation
-
-`apply_option_blink` in `src/main.c` mirrors the original:
-
-- Always blacks out 11 cells × `FONT_ROWS` px at cols 14..24 of the
-  selected row (= erases the green pixels `render_markup` just painted).
-- On the WHITE phase, redraws the glyphs from payload index 4+ in
-  palette index 15 (bright white).
-- `blink_phase()` returns `(bios_ticks >> 1) & 1` in `make run` mode
-  (~4.5 Hz half-period) and is **pinned to 0 (BLACK) in test mode**
-  so screendumps deterministically reproduce snap2's BLACK-phase
-  capture (see `notes/testing.md`).
-
-`run_menu`'s polling loop re-renders the menu whenever `blink_phase()`
-flips, so the visible white half actually appears.
-
-## Unresolved
-
-- The hi-score table source (where the "current" entries live before
-  `sub_926bh` composes them into the render buffer at `0x8FD1`). The
-  source pointer is `0xBF00` but the format there hasn't been parsed
-  yet.
-- The 1 unknown branch (`jp (hl)`) at `0xC0B7` from the trace tool —
-  almost certainly a dispatch table somewhere in the menu's choose-option
-  chain.

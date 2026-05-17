@@ -59,8 +59,9 @@ top padding the original renderer inserts comes from the +2 inside an
 glyph at that index. For data rows, count is exactly 14 = 6 score digits
 + 3 spaces + 5 chars of `H _ I _ T` style initials.
 
-Scores are stored MSB-first as 6 byte-digits with literal leading zeros
-preserved (e.g. `00 09 00 00 00 00` displays as `090000`, not `90000`).
+Scores are stored MSB-first as 7 byte-digits with literal leading zeros
+preserved (max 9,999,999). The DOS port's HUD renders 6 digits instead
+— see `score_to_codes` in `src/main.c`.
 
 ## Verified examples (snap1 = hi-score state)
 
@@ -78,8 +79,7 @@ preserved (e.g. `00 09 00 00 00 00` displays as `090000`, not `90000`).
         new row    space attr=white                   3 spaces       (initials, space-separated)
 ```
 The seven digit bytes after `0x0E` encode the score as one decimal digit
-per byte (leading zeros suppressed by the renderer). 7 digits supports
-scores up to 9,999,999.
+per byte (leading zeros painted as glyphs, not suppressed).
 
 ## Record layout in the buffer
 
@@ -118,26 +118,3 @@ sub_926bh:
 `sub_b61ch` composes it into the rendered markup at `0x8FD1`. `sub_b796h`
 walks the rendered buffer and paints the screen.
 
-## Re-implementation sketch (for our DOS port)
-
-Plain Python decoder:
-
-```python
-ALPHA = "0123456789??????????ABCDEFGHIJKLMNOPQRSTUVWXYZ"  # 0..0x23
-def decode(buf, pos):
-    out = []
-    while pos < len(buf):
-        b = buf[pos]; pos += 1
-        if b == 0x58:   out.append('\\n')
-        elif b == 0x38: out.append('[HDR]')
-        elif b == 0x24: out.append('[EOF]')
-        elif b == 0x26: out.append(' ')
-        elif 0x40 <= b <= 0x4F: out.append(f'[c{b:02X}]')
-        elif b < 0x24:  out.append(ALPHA[b])
-        else:           out.append(f'[?{b:02X}]')
-    return ''.join(out)
-```
-
-For the C port: this becomes a tiny switch-statement renderer that emits
-8×8 glyphs (from our extracted font) into the playfield region of mode 13h
-with the right palette index.

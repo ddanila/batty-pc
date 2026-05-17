@@ -37,9 +37,3 @@ body attrs at runtime; destroyed cells reset to bg_attr. The
 non-brick cells (frame strips, shadow rows in between bricks)
 still use the captured values.
 
-## Resolved (kept for cross-reference)
-
-All other historical shortcuts (brick compositor cache, shipped
-brick bitmap, dynamic score wiring, bat/lives wiring, sprite
-cache pre-shift table) have been paid back. See
-`notes/blitter-port.md` for the current rendering architecture.
