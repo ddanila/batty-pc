@@ -4479,8 +4479,11 @@ static state_t run_level(void) {
                  * sound queue while the screen clears. Dropping our
                  * 100 Hz drone for byte-exact silence here. */
                 render_game_over();
+                /* Hold GAME OVER for ~3.6 s — matches LBC10_6's
+                 * `pause_long B=\$0C` (= 12 * 0.3 s). 18.2 Hz BIOS ticks
+                 * × 3.6 s ≈ 65. */
                 start = bios_ticks();
-                while (!TIMED_OUT(start, 54UL)) {
+                while (!TIMED_OUT(start, 65UL)) {
                     sound_tick();
                     if (kbhit()) { getch(); break; }
                 }
