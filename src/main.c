@@ -3154,9 +3154,14 @@ static void step_bomb(void) {
     int bx_l, bx_r, by_t, by_b;
     if (!bomb_active) return;
     bomb_y += BOMB_FALL_SPEED;
-    /* Check bat collision (8 x 12 bomb rect vs bat top 8-px band). */
+    /* Original bomb_appear at $A977 sets (object_bonus+$0C, +$0D) =
+     * $08, $08 — bomb body is 8x8 starting at (bomb_x, bomb_y), not
+     * the full 8x12 sprite extent. Earlier port used only the last
+     * 4 px of the sprite for collision, which triggered slightly
+     * earlier (when bomb-bottom reached bat-top) than the original
+     * (when bomb-body overlapped bat-body). */
     bx_l = bomb_x; bx_r = bomb_x + BOMB_W_PX;
-    by_t = bomb_y + BOMB_H_PX - 4; by_b = bomb_y + BOMB_H_PX;
+    by_t = bomb_y;            by_b = bomb_y + 8;
     if (by_b >= BAT_Y_PX && by_t < BAT_Y_PX + 10
         && bx_r > eff_bat_left() && bx_l < eff_bat_right()) {
         /* h = 10 matches object_bat_1.h_body_px = \$0A — same as
