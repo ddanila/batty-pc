@@ -2546,16 +2546,15 @@ static unsigned int spr_for_bonus(unsigned char t) {
  * bits + bonus body recolour to bonus_ink — exactly the artefact
  * the original game produces. */
 static void render_bonus_to_buff(unsigned char bg) {
+    /* No per-cell attr override: the original's bonus drop renders in
+     * whichever attr each char cell already has (= the level's bg
+     * attr in the empty playfield, the brick's attr if it's passing
+     * through the brick zone). Earlier port set a per-bonus tint
+     * (0x40 | colour_ink | bg_paper) which painted each falling
+     * bonus's cells in a custom colour — visible as a wrong-colour
+     * band trailing the bonus through the otherwise monochrome bg. */
     unsigned int spr = spr_for_bonus(bonus_type);
-    unsigned char idx = (bonus_type < BONUS_TYPE_COUNT)
-                        ? bonus_type : BONUS_TYPE_LIFE;
-    unsigned char col = bonus_colours[idx];
-    unsigned char attr = (unsigned char)(0x40
-                                         | (col & 7)
-                                         | (bg & 0x38));
-    int spr_w_px = sprites_blob[spr]     * 8;
-    int spr_h_px = sprites_blob[spr + 1];
-    blit_sprite_attrs_to_buff(bonus_x, bonus_y, spr_w_px, spr_h_px, attr);
+    (void)bg;
     blit_masked_to_scr_buff(spr, bonus_x, bonus_y);
 }
 
