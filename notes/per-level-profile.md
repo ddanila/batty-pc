@@ -1,5 +1,53 @@
 # Per-level visual-diff profile
 
+## Iter 16 confirmed: attr_buff[5,1] reaches buff_to_vga with $05
+
+Used a debug peek (`attr_buff[0] = attr_buff[5*32+1]` just before
+buff_to_vga in render_level_screen, then sample the top-left cell
+in the PPM). Result: cell (0, 0) renders as non-bright cyan ink on
+non-bright black paper — exactly attr `$05`. So the attr is correct
+at the end of `render_level_screen`.
+
+The L11 diff at (8, 39..47) and similar must come from a later
+render. Possibilities:
+- `redraw_full_with_ball` fires at level entry despite `ball_moved`
+  and `bat_moved` both being 0 (somehow). Need to peek the same
+  cell inside redraw_full_with_ball.
+- `play_brik_anim` modifies attr_buff somewhere we missed.
+- Something between level-init and the screendump runs that drops
+  bit 7 from `scr_buff[39*32+1]` (= reverses paint_frame's $80
+  side-strip pixel).
+
+## Iter 16 attempted fix: `FRAME_SIDE_W = 1`
+
+Reduced from 3 to 1 so paint_frame only writes byte_x=0 and 31 (= the
+actual ornament column per the original's `print_sprite_pix` calls at
+$BE8B). Re-extracted `frame_l1.bin` from no-lives GTs. Result:
+
+- L11: 556 → 506 px (small improvement).
+- L1: 0 → 639 px (REGRESSION). state5_bat_band FAIL.
+
+Reverted. The L1 regression suggests `paint_bg + render_brick_band`
+doesn't reproduce the L1 GT's byte_x=1..2 pixels even though the bg
+pattern bytes match. Something else writes bits there that we'd need
+to also reproduce.
+
+The full bug here is interleaved: `frame_l1.bin` carries L3-specific
+brick edge artifacts (= why FRAME_SIDE_W=3 looks "right" for L1 but
+breaks L11). Reducing to 1 fixes L11 partially but breaks L1 because
+some other code path was relying on the contaminated frame data to
+produce the right bytes.
+
+Two ways forward (iter 17+):
+1. Audit what's drawing the side-strip pixels at byte_x=1..2 in
+   the original (= maybe `brik_shadow` does more than dim, or
+   there's a separate edge-of-bricks routine we're missing).
+2. Or: ship 4 PER-LEVEL frame_l1 captures from non-bricked source
+   cells (= a level that has $C0 at row 0 col 0 AND row 1 col 0
+   for cycles where the current source has bricks there).
+
+---
+
 ## Iter 13 / 14 status (post-magnet-order-fix)
 
 | Level | Cycle | Diff (px) |
