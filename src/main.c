@@ -4659,13 +4659,12 @@ static state_t run_level(void) {
             if (live_bricks_remaining() == 0) {
                 /* Original's LBBFB_0 pauses ~0.6 s (pause_long B=2)
                  * before the next level's setup — let the player see
-                 * the cleared brick zone briefly. Plays one beep of
-                 * sound $08 (param $3D) at the start of the pause —
-                 * approximated here with a fixed-frequency tone since
-                 * our sound mapping doesn't yet implement play_sound_08
-                 * faithfully. ESC still quits. */
+                 * the cleared brick zone briefly. Just `CALL Z,
+                 * play_sounds_queue` to drain any queued sounds (e.g.
+                 * the SND_NORMAL_BRIK click from the last brick) —
+                 * no dedicated level-clear sound. Earlier port added
+                 * a 700 Hz beep that overrode the brick click. */
                 unsigned long t = pit_ticks();
-                sound_play(700, 25);            /* ~0.5 s 700 Hz beep */
                 while (pit_ticks() - t < 30UL) {
                     sound_tick();
                     if (kbhit()) {
