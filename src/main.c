@@ -4162,7 +4162,11 @@ static void respawn_primary_ball(void) {
     stuck_offset_x = BALL_X_OFFSET_ON_BAT;
     BALL_SHOW();
     BALL_X = BAT_X + BALL_X_OFFSET_ON_BAT;
-    BALL_Y = BAT_Y_PX - eff_ball_size();
+    /* Ball sits at BAT_Y_PX - BALL_H_PX = 166 (= $A6) so its bottom
+     * row touches the bat's top row. Matches LA27E_15's `LD (IX+$04),
+     * $A6` at the FIRE-launch path. Using eff_ball_size (= 8 width)
+     * for the Y offset was 1 px too high. */
+    BALL_Y = BAT_Y_PX - BALL_H_PX;
     ball_dx = +BALL_SPEED;
     ball_dy = -BALL_SPEED;
     objects[OBJ_BAT_1].bonus_applied = 0xFF;
@@ -4494,7 +4498,7 @@ static state_t run_level(void) {
                      * default BALL_X_OFFSET_ON_BAT) until SPACE or
                      * timeout. */
                     BALL_X = BAT_X + stuck_offset_x;
-                    BALL_Y = BAT_Y_PX - eff_ball_size();
+                    BALL_Y = BAT_Y_PX - BALL_H_PX;     /* = $A6 per LA27E_15 */
                     ball_moved = 1;
                     stuck_ticks++;
                     if (stuck_ticks >= STUCK_TIMEOUT) {
