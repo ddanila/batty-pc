@@ -4084,6 +4084,12 @@ static void redraw_with_death_sparks(unsigned char level_idx) {
  * bonus), all timer-based bat / ball effects cleared. Called from
  * each of the 3 post-explosion respawn sites. */
 static void respawn_primary_ball(void) {
+    /* Port of all_var_init's LDIR — BAT_X resets to its default $74
+     * on each life-start (and on each level entry, handled at the
+     * outer loop). Without this, a death mid-screen leaves the bat
+     * stranded wherever it was rather than re-centred. */
+    BAT_X      = BAT_X_INIT;
+    BAT_PREV_X = BAT_X_INIT;
     ball_stuck     = 1;
     stuck_ticks    = 0;
     stuck_offset_x = BALL_X_OFFSET_ON_BAT;
@@ -4229,9 +4235,10 @@ static state_t run_level(void) {
      * $BBE0 wraps current_level_number_1up at 15 → 0 while
      * round_number_1up keeps bumping). Game only ends on lives == 0. */
     round_number = 0;
-    /* BAT_X resets to BAT_X_INIT only on NEW GAME (game_restart at
-     * \$B9A0 in the original). Across level transitions and death
-     * respawns the bat stays wherever the player left it. */
+    /* BAT_X resets to BAT_X_INIT at NEW GAME. Original also resets it
+     * at every life/level entry via all_var_init's LDIR from
+     * objects_buff_2 — handled inline at the inner loop's level-init
+     * block and in respawn_primary_ball below. */
     BAT_X      = BAT_X_INIT;
     BAT_PREV_X = BAT_X_INIT;
     for (;;) {
@@ -4240,6 +4247,11 @@ static state_t run_level(void) {
         current_level_idx_var = lvl_idx;
         i = lvl_idx;                                 /* keep `i` alias for the cycle / bg_attr code below */
         objects[OBJ_ENEMY].sprite_set = 0;     /* alien cleared on level entry */
+        /* Port of all_var_init's LDIR — BAT_X resets to the default
+         * $74 at every level entry. Earlier port kept the bat where
+         * the player left it; original re-centres on each level. */
+        BAT_X         = BAT_X_INIT;
+        BAT_PREV_X    = BAT_X_INIT;
         ball_stuck    = 1;
         stuck_offset_x = BALL_X_OFFSET_ON_BAT;
         BALL_SHOW();                      /* visible from level entry; sits on the bat */
