@@ -4233,6 +4233,10 @@ static state_t run_level(void) {
         bat_extra_tgt  = 0;
         objects[OBJ_BAT_1].bonus_applied = 0xFF;
         objects[OBJ_BAT_2].bonus_applied = 0xFF;
+        /* Mirror all_var_init's `clear_hl_buff` of sounds_queue at line
+         * 5984 — sounds in-flight at level entry shouldn't bleed into
+         * the new round. */
+        snd_q_silence_all();
         for (k = 0; k < LVL_CELLS; k++) {
             live_level[k] = levels[(int)i * LVL_CELLS + k];
         }
