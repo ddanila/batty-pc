@@ -1360,7 +1360,12 @@ static void handling_spark_obj(object_t *o) {
 static void handling_blast_obj(object_t *o) {
     o->misc_12++;
     if (o->misc_12 >= BLAST_FRAMES * BLAST_TICKS_PER_FRAME) {
-        o->sprite_set |= 0x80;       /* BIT 7 = inactive */
+        /* Clear sprite_set to 0 (= empty slot) so enemy_prepare can
+         * spawn a fresh alien next time the spawn conditions hit. The
+         * original "SET 7,(IX+\$00)" leaves sprite_set as \$8A; combined
+         * with our enemy_prepare check of "sprite_set != 0" that would
+         * permanently block respawns for the rest of the level. */
+        o->sprite_set = 0;
         return;
     }
     o->sprite_num = (unsigned char)(o->misc_12 / BLAST_TICKS_PER_FRAME);
