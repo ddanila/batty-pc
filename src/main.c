@@ -786,6 +786,10 @@ static int           bat_extra_tgt   = 0;
 static int           pts_400_x = 0;
 static int           pts_400_y = 0;
 static unsigned char pts_400_ticks = 0;
+/* X drift per frame, mirror of the SMC at \$A590 in handling_400pts.
+ * Original chooses from {-2, -1, +1, +2} based on random_number bits at
+ * spawn (LA67B_3 area at \$3030-\$3038). Picked once per +400 spawn. */
+static int           pts_400_dx = 0;
 /* Sprite for the floating points marker. Defaults to the universal
  * "+400" reward; SCORE_5K bonus catches override to the larger
  * "+5000" sprite so the unusual reward has its own visible cue. */
@@ -2726,6 +2730,15 @@ static void step_bonus(void) {
         pts_400_x = bonus_x;
         pts_400_y = bonus_y;
         pts_400_ticks = PTS_400_DURATION;
+        /* Pick X drift in {-2, -1, +1, +2} — port of \$3030's
+         * `AND \$01 / INC A / RL B / JR C / NEG` sequence:
+         *   bit 0 of random → +1 or +2 magnitude
+         *   bit 7 of random → keep positive or negate */
+        {
+            unsigned int r = next_random();
+            int mag = (int)((r & 1) + 1);
+            pts_400_dx = (r & 0x80) ? mag : -mag;
+        }
         return;
     }
     if (bonus_y > PLAYFIELD_H) bonus_active = 0;
@@ -2741,6 +2754,11 @@ static void step_bonus(void) {
 static void step_pts_400(void) {
     if (pts_400_ticks == 0) return;
     if ((pts_400_ticks & 1) == 0) pts_400_y++;
+    /* Apply the X drift each frame (port of LA590's ADD A,SMC). Clamp
+     * to playfield via the original's check_left/right_margin pattern. */
+    pts_400_x += pts_400_dx;
+    if (pts_400_x < 8) pts_400_x = 8;
+    if (pts_400_x > PLAYFIELD_W - 16) pts_400_x = PLAYFIELD_W - 16;
     if (pts_400_y >= PLAYFIELD_H) { pts_400_ticks = 0; return; }
     pts_400_ticks--;
 }
