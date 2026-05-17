@@ -4179,18 +4179,21 @@ static state_t run_level(void) {
      * $BBE0 wraps current_level_number_1up at 15 → 0 while
      * round_number_1up keeps bumping). Game only ends on lives == 0. */
     round_number = 0;
+    /* BAT_X resets to BAT_X_INIT only on NEW GAME (game_restart at
+     * \$B9A0 in the original). Across level transitions and death
+     * respawns the bat stays wherever the player left it. */
+    BAT_X      = BAT_X_INIT;
+    BAT_PREV_X = BAT_X_INIT;
     for (;;) {
         int k;
         unsigned char lvl_idx = (unsigned char)(round_number % N_LEVELS);
         current_level_idx_var = lvl_idx;
         i = lvl_idx;                                 /* keep `i` alias for the cycle / bg_attr code below */
         objects[OBJ_ENEMY].sprite_set = 0;     /* alien cleared on level entry */
-        BAT_X         = BAT_X_INIT;
-        BAT_PREV_X    = BAT_X_INIT;
         ball_stuck    = 1;
         stuck_offset_x = BALL_X_OFFSET_ON_BAT;
         BALL_SHOW();                      /* visible from level entry; sits on the bat */
-        BALL_X        = BAT_X_INIT + BALL_X_OFFSET_ON_BAT;
+        BALL_X        = BAT_X + BALL_X_OFFSET_ON_BAT;
         BALL_Y        = BAT_Y_PX - BALL_H_PX;
         stuck_ticks   = 0;                /* counts up while waiting for launch */
         ball_dx       = +BALL_SPEED;
