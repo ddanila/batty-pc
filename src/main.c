@@ -2740,12 +2740,13 @@ static void step_bonus(void) {
         bonus_apply(bonus_type);                  /* applies effect + pushes catch sound */
         bonus_active = 0;
         score += 400;                         /* matches LD BC,$0400 / add_points_to_score at $A67D */
-        /* Spawn the floating reward marker at the bonus's last
-         * position. SCORE_5K uses the "+5000" sprite (the unusual
-         * reward gets its own glyph); everything else uses the
-         * universal "+400" sprite. */
-        pts_marker_spr = (caught_type == BONUS_TYPE_SCORE_5K)
-            ? SPR_BONUS_5000_POINTS : SPR_400_POINTS;
+        /* Spawn the floating reward marker. Original LA67B_3 at \$A6FC
+         * sets sprite_num = \$00 (= +400) for EVERY catch including
+         * SCORE_5K, before the type dispatch — so the +5000 sprite is
+         * only ever used as a falling-bonus glyph, not a marker. Match
+         * by always using +400 here. */
+        (void)caught_type;
+        pts_marker_spr = SPR_400_POINTS;
         pts_400_x = bonus_x;
         pts_400_y = bonus_y;
         pts_400_ticks = PTS_400_DURATION;
