@@ -15,8 +15,8 @@ all 15 levels → game-over → 3-letter initials entry → back to title.
 PASS state1_title       (pixel-identical)
 PASS state2_menu        (pixel-identical)
 PASS state3_hiscore     (pixel-identical)
-INFO state4_level1      427 / 49 152 px differ (~0.9%)
-INFO state5_bat_band    427 /  8 192 px differ (~5.2%)
+INFO state4_level1      507 / 49 152 px differ (~1.0%)
+INFO state5_bat_band    507 /  8 192 px differ (~6.2%)
 ```
 
 The state4 GT now includes the bat / ball / lives indicator (captured
@@ -24,7 +24,8 @@ The state4 GT now includes the bat / ball / lives indicator (captured
 `notes/modded-batty.md`). The residual is real rendering drift,
 *entirely* in the bat band (y=160..192) — surfaced as its own metric
 `state5_bat_band` so it can't hide inside the whole-frame number.
-Triage of those 427 pixels is the next visual-parity task.
+Triage of those 507 pixels is in `notes/state4-bat-band-triage.md`;
+the next visual-parity task.
 
 | Stage                                       | State |
 |---------------------------------------------|-------|

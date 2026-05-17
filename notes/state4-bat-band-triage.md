@@ -1,10 +1,11 @@
 # state4 / state5 bat-band diff — triage
 
 After bumping the modded-batty spin trap to PC 0xBB61 (post-paint, see
-[`modded-batty.md`](modded-batty.md)), state4 / state5_bat_band report
-**427 px** of diff. All of it sits in the bat band (y=160..192). This
-note decomposes those 427 pixels into specific causes and what to do
-about each.
+[`modded-batty.md`](modded-batty.md)) and then removing the L6853
+lives-skip patch (so the GT *also* paints the lives indicator),
+state4 / state5_bat_band report **507 px** of diff. All of it sits
+in the bat band (y=160..192). This note decomposes those 507 pixels
+into specific causes and what to do about each.
 
 ## Per-region breakdown
 
@@ -13,9 +14,9 @@ Measured directly against `build/level_gt/level_01.scr` and
 
 | Region                              | Diff   | What it is |
 |-------------------------------------|--------|------------|
-| Lives indicators (x=0..32)          |  54 px | We draw two lives icons; the modded-batty GT NOPs `print_lives_indicator`. |
-| Left bg (x=32..104)                 |  26 px | Falloff: shadow-row pixels + ball stuck-on-bat in slightly different cells. |
-| Bat zone (x=104..160)               | 347 px | The bat sprite itself + ball above it + shadow rows. Real bat-render drift. |
+| Lives icons (x=0..40)               | 160 px | **Both** render now. Our `render_lives` is missing the top + bottom edge rows of each indicator sprite — same off-by-Y shape as the bat-top issue. |
+| Left bg (x=40..104)                 |   0 px | Clean. |
+| Bat zone (x=104..160)               | 347 px | The bat sprite + ball + shadow rows. Real bat-render drift. |
 | Right bg + side strip (x=160..256)  |   0 px | Clean. |
 
 ## Bat-zone detail
@@ -74,30 +75,29 @@ PY
 the section "Visual reference" below) shows the two bats at 8× scale
 for eyeball comparison.
 
-## Lives-indicator overhead
+## Lives-indicator: regression now visible (160 px)
 
-Our `render_lives` (`src/main.c:1611`) always paints the lives icons
-at the bottom-left during gameplay. The modded-batty GT patches both:
+Done (loop iter 1): removed the L6853 lives-skip patch from
+`scripts/build_modded_batty.py`. The modded-batty GT now paints the
+lives indicator the same way our `render_lives` does. Test went from
+427 px to 507 px — a +80 net increase because the original's lives
+icons and ours disagree by ~160 px (where before, we were only
+"54 px extra" against an empty GT).
 
-- line 6853: `JR Z,LBE8B_10` → `JR LBE8B_10` (skip the lives draw
-  gate), and
-- the `LBE8B_11` region's three `CALL print_obj_to_buff` (1UP / 2UP /
-  HI labels — also painted via this routine).
+Same shape as the bat-top problem: in both the lives icons and the
+bat body, the top row + bottom row of the sprite render as blank in
+our output, where the GT shows solid ink edges. Middle rows render
+but with the interior ink/paper pattern slightly off. Sprite asset
+bytes (`assets/sprites.bin` at `SPR_LIVES` = `0x070`, `SPR_BAT_NORMAL`
+= `0x3AC`) are byte-identical to the upstream disasm
+(`spr_lives_indicator` at `$7AFC`, `spr_bat_normal` at `$7E38`).
 
-So the GT *deliberately* has no lives indicator while ours does. Two
-ways to resolve:
-
-1. Suppress `render_lives` when `BATTYALL=1` (test mode), same trick
-   we already use for `test_mode_pin_blink`. Cheap. Catches genuine
-   lives-drawing regressions when running `make run`, hides them
-   under test. Tradeoff: same blind-spot pattern the testing.md
-   lesson is warning against.
-2. Recapture the GT with `render_lives` *enabled* by adjusting the
-   modded-batty patches (remove the line 6853 patch, restore the
-   LBE8B_11 lives-portion CALL). Cleanest — keeps test honest.
-
-Recommend (2). The patch list in `scripts/build_modded_batty.py` is
-small; the cost is one more modded-batty build + GT recapture cycle.
+This is almost certainly a single bug in
+`blit_masked_to_scr_buff_ptr` (`src/main.c:1097`) affecting at least
+sprite row 0 and row h-1 — possibly an off-by-one in `for (row = 0;
+row < h; row++)` or in how the row's first/last byte-pair is OR-merged
+against existing scr_buff bytes. Fix this once and BOTH the lives
+icon and bat-top regressions resolve together.
 
 ## Plan for the bat-body 347 px
 

@@ -56,9 +56,9 @@ PATCHES = [
     (6148,
      'CALL all_metal_briks_animation_snd',
      '  DEFB $00, $00, $00   ; MOD: NOP "CALL all_metal_briks_animation_snd"'),
-    (6853,
-     'JR Z,LBE8B_10',
-     '  JR LBE8B_10           ; MOD: unconditional jump - skip lives indicator'),
+    # (6853 lives-indicator skip was removed — keeping it would NOP the
+    # original's lives draw and silently exclude it from the GT, which
+    # masks any drift in our `render_lives`. See state4-bat-band-triage.md.)
     # Spin AFTER the first gameplay-loop iteration has painted bat/ball/
     # lives into scr_buff and flushed them to VRAM (print_obj_from_buf_to_scr
     # at the start of LBAED_5). We trap on the very next instruction —
