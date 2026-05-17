@@ -2625,13 +2625,22 @@ static void bonus_apply(unsigned char type) {
                 objects[OBJ_BALL_2].sprite_set = 0x02;
                 objects[OBJ_BALL_2].x_coord = BALL_X;
                 objects[OBJ_BALL_2].y_coord = BALL_Y;
+                /* Original at LA67B_8 / \$3100 picks ball2 + ball3
+                 * directions from a 3-way split based on ball1's
+                 * 6-bit direction & \$0F. In our integer dx/dy the
+                 * three balls fan: ball1 keeps its trajectory, ball2
+                 * mirrors horizontally, ball3 takes a half-magnitude
+                 * mirror so it travels a different angle from both. */
                 ball2_dx = -ball_dx;       /* mirror primary */
                 ball2_dy = -BALL_SPEED;    /* upward */
                 ball3_active = 1;
                 objects[OBJ_BALL_3].sprite_set = 0x02;
                 objects[OBJ_BALL_3].x_coord = BALL_X;
                 objects[OBJ_BALL_3].y_coord = BALL_Y;
-                ball3_dx = ball_dx;        /* same direction as ball1 */
+                /* Half-magnitude same-sign so ball3 fans between
+                 * ball1 (e.g. +2,-2) and ball2 (-2,-2): goes shallow
+                 * in ball1's direction, less steep upward. */
+                ball3_dx = (ball_dx > 0) ? +1 : -1;
                 ball3_dy = -BALL_SPEED;
                 snd_q_push(SND_TRIPLE_BALL);
             }
