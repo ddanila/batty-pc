@@ -3991,6 +3991,7 @@ static void respawn_primary_ball(void) {
     big_ball_ticks = 0;
     slow_ticks     = 0;
     bat_extra_tgt  = 0;
+    bullet_cooldown = 0;       /* fresh life — no stale fire cooldown */
 }
 
 static void play_bat_explosion(unsigned char level_idx) {
