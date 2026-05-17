@@ -2992,7 +2992,7 @@ static void kill_enemy_by_bat(void) {
     bx_l = eff_bat_left();
     bx_r = eff_bat_right();
     by_t = BAT_Y_PX;
-    by_b = BAT_Y_PX + 8;                            /* body, not shadow */
+    by_b = BAT_Y_PX + 10;             /* h_body_px = \$0A per object_bat_1 init */
     if (ex_r <= bx_l || ex_l >= bx_r) return;
     if (ey_b <= by_t || ey_t >= by_b) return;
     /* Hit. Transition to blast state (per $A4C4): sprite_set = $0A
