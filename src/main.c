@@ -4090,6 +4090,10 @@ static void respawn_primary_ball(void) {
      * stranded wherever it was rather than re-centred. */
     BAT_X      = BAT_X_INIT;
     BAT_PREV_X = BAT_X_INIT;
+    /* Original all_var_init also clears the sounds_queue at $B842
+     * (LD B,$23 / clear_hl_buff). Any stale beep from the just-died
+     * frame would otherwise carry over into the new life. */
+    snd_q_silence_all();
     ball_stuck     = 1;
     stuck_ticks    = 0;
     stuck_offset_x = BALL_X_OFFSET_ON_BAT;
