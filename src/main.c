@@ -2712,12 +2712,17 @@ static void step_bonus(void) {
     if (bonus_y > PLAYFIELD_H) bonus_active = 0;
 }
 
-/* Advance the +400 floating marker each tick. Mirrors handling_400pts
- * at $A58D, which floats Y upward via LA55A_0's shared advance until
- * a bound and then deactivates. */
+/* Advance the +400 floating marker each tick. Port of handling_400pts
+ * at \$A58D + the shared LA55A_0 advance with DE=\$0028, B=\$80.
+ *
+ * Original moves the marker DOWN (Y increases), accelerating as the
+ * accumulator grows; dies when Y >= \$C0 (= 192 = bottom of playfield).
+ * Earlier port had it floating UP — counterintuitive but seemed nicer.
+ * Switched back to match the disasm: marker falls off the bottom. */
 static void step_pts_400(void) {
     if (pts_400_ticks == 0) return;
-    if ((pts_400_ticks & 1) == 0) pts_400_y--;     /* float up every 2 ticks */
+    if ((pts_400_ticks & 1) == 0) pts_400_y++;
+    if (pts_400_y >= PLAYFIELD_H) { pts_400_ticks = 0; return; }
     pts_400_ticks--;
 }
 
