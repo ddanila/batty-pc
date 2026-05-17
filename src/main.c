@@ -2242,13 +2242,19 @@ typedef enum { ST_TITLE, ST_MENU, ST_HISCORE, ST_LEVEL, ST_QUIT } state_t;
 static int auto_advance = 0;
 #define TIMED_OUT(start, ticks) (auto_advance && (bios_ticks() - (start) > (ticks)))
 
-/* Blink phase for the selected option's text. Test mode pins it to 0
- * (BLACK / invisible) so the screendump matches snap2's captured BLACK
- * half deterministically. `make run` uses real-time bios_ticks so the
- * user sees the actual blink. */
+/* Blink phase for the selected option's text on the MENU. Test mode
+ * pins it to 0 (BLACK / invisible) so the screendump matches snap2's
+ * captured BLACK half deterministically. `make run` uses real-time
+ * bios_ticks so the user sees the actual blink. */
 static int blink_phase(void) {
     if (!auto_advance) return 0;
     return (int)((bios_ticks() >> 1) & 1);   /* ~4.5 Hz half-period */
+}
+/* Same cadence but unconditional — used by HUD chips during gameplay
+ * to flash in the bonus's final second. Doesn't need the test-mode
+ * pin since the chips aren't in any of the captured GT snapshots. */
+static int hud_blink_phase(void) {
+    return (int)((bios_ticks() >> 1) & 1);
 }
 
 static void render_hiscore_screen(void) {
@@ -3691,7 +3697,7 @@ static void render_hud_powerups(void) {
      * 50 Hz). On the off-phase we just skip the draw entirely so the
      * letter flickers — a "your bonus is about to expire" cue. */
 #define HUD_CHIP_BLINK_THRESHOLD 50
-    int blink_off = (blink_phase() == 0);
+    int blink_off = (hud_blink_phase() == 0);   /* HUD chips flash in last second */
     if (slow_ticks > 0
         && !(slow_ticks < HUD_CHIP_BLINK_THRESHOLD && blink_off)) {
         draw_glyph(x, HUD_POWERUP_Y, bonus_colours[BONUS_TYPE_SLOW], 0x1C);
