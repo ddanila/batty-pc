@@ -4332,7 +4332,19 @@ static state_t run_level(void) {
     /* The original loops levels forever (increment_round_number at
      * $BBE0 wraps current_level_number_1up at 15 → 0 while
      * round_number_1up keeps bumping). Game only ends on lives == 0. */
-    round_number = 0;
+    /* Test/debug override: BATTY_LEVEL=N (1..15) starts at level N
+     * instead of level 1. Lets the visual regression suite (or a
+     * person investigating a per-level rendering bug) capture each
+     * cycle's level entry without playing through. round_number is
+     * 0-based internally, so subtract 1 from the env value. */
+    {
+        const char *p = getenv("BATTY_LEVEL");
+        round_number = 0;
+        if (p && *p) {
+            int n = atoi(p);
+            if (n >= 1 && n <= N_LEVELS) round_number = (unsigned char)(n - 1);
+        }
+    }
     /* BAT_X resets to BAT_X_INIT at NEW GAME. Original also resets it
      * at every life/level entry via all_var_init's LDIR from
      * objects_buff_2 — handled inline at the inner loop's level-init
