@@ -1,5 +1,57 @@
 # Per-level visual-diff profile
 
+## Iter 19: remaining diffs are mostly magnet ON/OFF coin-flip
+
+Post-iter-18 per-level numbers (`BATTY_LEVEL=N make test`):
+
+| Level | Diff (px) | Notes |
+|-------|-----------|-------|
+| L01   | **0**     | PASS  |
+| L02   | **0**     | PASS  |
+| L03   | 229       | magnet area |
+| L04   | **0**     | PASS  |
+| L05   | **0**     | PASS  |
+| L06   | 281       | magnet area |
+| L07   | **0**     | PASS  |
+| L08   | 214       | magnet 3 ON/OFF (cr 14–17 cc 19–22) |
+| L09   | 672       | magnet area + HUD (cr 1 cc 8–11) |
+| L10   | **0**     | PASS  |
+| L11   | **0**     | PASS  |
+| L12   | 336       | magnet area |
+| L13   | 428       | magnets cr 14–15 cc 3–5 & cc 26–28 |
+| L14   | 428       | magnet area |
+| L15   | **0**     | PASS  |
+
+The cluster of remaining diffs is concentrated in cr 14–17 zones that
+line up with `magnets_per_level[N]`. The original `print_magnets`
+($8D4C) always draws OFF, then coin-flips on `random_generate` bit 0
+and **draws ON only when the bit is 0**. Our port (iter-10) hard-codes
+"always draw both" for test-mode determinism. That matches GT for
+levels where the captured-moment coin happened to land 0 (e.g. L11),
+and DIFFERS for levels where it landed 1 (L8, L13, …). The GT capture
+is one specific frame, so the static-image diff is a coin-flip
+artifact, not a runtime visual regression — at runtime the magnets
+blink between both states.
+
+Possible iter-20+ angles:
+1. Port `random_generate` deterministically and call it the same N
+   times the modded-batty pipeline does before `print_magnets`. Then
+   the per-magnet coin lands the same way and the diff goes to 0.
+2. Capture **two** GTs per level (one each coin) and diff against the
+   nearest match. Simpler but adds complexity to capture pipeline.
+3. Accept the residual as "blinking-element noise" and stop chasing it.
+
+L9's cr 1 cc 8–11 HUD residual remains unexplained — separate from
+the magnet cluster. Iter-19 spent a long time on sentinel-write debug
+trying to peek `attr_buff[1*32+8]` mid-render; the sentinels never
+appeared in the captured PPM, suggesting state4 may be captured
+DURING `show_round_banner`'s 60-PIT wait (after the first
+render_level_screen, before the second), not after it. That would
+mean `state4_level1` is measuring an intermediate render state — and
+the banner overlay at y=141..172 should be visible (but state5_bat_band
+passes for every level, so the banner must be cleared by capture time
+somehow). Worth re-investigating with QEMU monitor logging.
+
 ## Iter 17: BATTY_LEVEL env now actually works end-to-end
 
 Pre-iter-17, `BATTY_LEVEL=N make test` LOOKED like it ran level N but did
