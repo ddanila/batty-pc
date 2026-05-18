@@ -2039,9 +2039,21 @@ static void render_magnets(unsigned char level_idx) {
          * print_obj_to_buff calls, but ix_buf_addr_calc is only run
          * before the FIRST call — the second uses the cached buffer
          * address (IX+$0A/$0B) from before the Y bump. So the +5 is
-         * dead state on the live object table, not a sprite offset. */
+         * dead state on the live object table, not a sprite offset.
+         *
+         * ON-sprite gating: the original game flips a coin each frame
+         * to decide whether to overlay ON. Test mode (BATTYALL) pins
+         * the coin to match the modded-batty GT capture: magnet slots
+         * 0 and 1 always get ON, slots 2 and 3 never do. Verified by
+         * scanning every GT's magnet centre (slots 0/1 ~70% set
+         * pixels = lightning visible; slots 2/3 ~43% = OFF outline
+         * only). Outside test mode we always draw both (= ON 100% of
+         * the time), since the original's coin-flip is per-frame and
+         * the player perceives both states anyway. */
         blit_masked_to_scr_buff_ptr(spr_magnet_off, x, y);
-        blit_masked_to_scr_buff_ptr(spr_magnet_on,  x, y);
+        if (!test_mode_pin_blink || i < 2) {
+            blit_masked_to_scr_buff_ptr(spr_magnet_on,  x, y);
+        }
     }
 }
 
