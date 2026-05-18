@@ -1,5 +1,27 @@
 # Per-level visual-diff profile
 
+## Iter 26: synthetic fade-overlay experiment — net negative
+
+Attempted to apply spr_magnet_on rows 24..29 (the 6-row lightning fade)
+as a synthetic overlay sprite at y+24 for slots 2-3 in test mode. The
+idea was to add the GT's bottom-fade pattern without the bright centre.
+
+Result on slot-2/3-affected levels (delta vs iter-21 baseline):
+- L8:  73 → 127 (+54)
+- L12: 188 → 242 (+54)
+- L13: 170 → 260 (+90)
+- L14: 163 → 228 (+65)
+
+ALL REGRESSED. The fade rows applied at y+24 don't match GT's actual
+pattern — the additional pixels we paint are simply WRONG, not just
+imperfect. Reverted.
+
+Remaining hypothesis for the magnet-bottom fade: the modded-batty
+pipeline may not be where I think (e.g., L6261 spin trap fires AFTER
+restore_objs_and_magnet has already wiped magnet bg, OR after a
+SECOND frame's print_magnets ran). Need to trace the modded-batty
+boot sequence end-to-end to map the GT capture moment precisely.
+
 ## Iter 25: blit-formula audit — disasm vs our port disagree
 
 Investigated the L13-slot-3 magnet bottom-fade residual by comparing
