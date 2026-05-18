@@ -1,5 +1,78 @@
 # Per-level visual-diff profile
 
+## Iter 21 / 22: magnet ON-coin pinned; L9/L13-style residuals remain
+
+Iter 21 fixed the magnet ON/OFF coin-flip residuals by surveying every GT
+and confirming a consistent pattern: per-level magnet slots 0 and 1 are
+always drawn with ON (centre ~70% set pixels = lightning), slots 2 and 3
+are always drawn OFF only (centre ~43% = outline only). Pinned this in
+render_magnets when test_mode_pin_blink is set. Total residual across
+all 15 levels: 2588 → 1383 px (-47%).
+
+Post-iter-21 per-level numbers (`BATTY_LEVEL=N make test`):
+
+| Level | Diff (px) | Hotspot                                       |
+|-------|-----------|------------------------------------------------|
+| L01   | **0**     | PASS                                          |
+| L02   | **0**     | PASS                                          |
+| L03   | 232       | cr 1 cc 8..11 HUD bright-bit anomaly (203 px)  |
+| L04   | **0**     | PASS                                          |
+| L05   | **0**     | PASS                                          |
+| L06   | 147       | magnet slot 2 bottom fade                     |
+| L07   | **0**     | PASS                                          |
+| L08   | 73        | magnet slot 2 bottom fade                     |
+| L09   | 410       | HUD anomaly (217 px) + magnet 2/3 fade (193 px)|
+| L10   | **0**     | PASS                                          |
+| L11   | **0**     | PASS                                          |
+| L12   | 188       | magnet slot 2 bottom fade                     |
+| L13   | 170       | magnets 2/3 bottom fade ONLY (NO HUD anomaly)  |
+| L14   | 163       | magnets 2/3 bottom fade ONLY (NO HUD anomaly)  |
+| L15   | **0**     | PASS                                          |
+
+Iter 22 investigated the two remaining diff classes:
+
+### "Magnet bottom fade" pattern (~150-200 px per affected level)
+
+GT shows alternating-bit checkerboard patterns at y = magnet_y+22..30
+for slots 2 and 3 (e.g. L13 magnet 3 at (24, 108) → GT y=131..137
+byte 5 = $55, $AA, $55, $A2, $45, $2A, $55). Neither OFF-only nor
+OFF+ON at (x, y) nor OFF+ON at (x, y+5) produces this pattern via
+the standard masked-blit formula `(~mask & screen) | (mask & pix)`.
+The pattern resembles spr_magnet_on rows 24-29 (bottom lightning
+fade) but applied at unexpected positions, OR a completely separate
+render path we haven't found in the disasm.
+
+### L3/L9 cr 1 cc 8..11 HUD bright-bit anomaly (~200-220 px)
+
+For L3 (cycle 2) and L9 (cycle 0), OUR attr_buff at cr 1 cc 8..11
+ends up $46 / $45 (bright) instead of GT's $06 / $05 (non-bright).
+The bright bit (bit 6) survives despite:
+1. paint_frame_to_buff explicitly writing lattr cr 1 cc 8 = $06
+   (level_attrs.bin verified to have $06 at offset L*768+40).
+2. print_border_shadow_c clearing bit 6 of cr 1 cc 2..30 already.
+3. NO known code path writing to cr 1 cc 8 after paint_frame.
+
+L13 (also cycle 0, also has 4 magnets, also has the bottom-fade
+pattern) does NOT show this anomaly — its HUD renders correctly.
+Same cycle as L9, same lattr values, same render path; the
+difference is mysterious. Iter 19/20/22 all attempted sentinel-write
+debugging from render_level_screen, but the sentinels never appear in
+the captured PPM — suggesting that state4 capture lands at an
+unexpected render state (perhaps DURING show_round_banner's 60-PIT
+wait when only the FIRST render_level_screen has fired, but
+state5_bat_band passing rules out the banner overlay being visible).
+
+### Open angles for future iters
+
+- Add timing instrumentation to confirm exact state4 capture moment.
+- Investigate whether show_round_banner's kbhit() exits early due to
+  QEMU key-buffer artefacts (= second render_level_screen DOES run).
+- Port `random_generate` deterministically AND inspect what
+  alternative print_obj_to_buff path the original uses for the magnet
+  bottom fade.
+- Reverse the modded-batty pipeline to see exactly what writes the
+  bottom-fade pattern at L13 magnet 3 bottom rows.
+
 ## Iter 19: remaining diffs are mostly magnet ON/OFF coin-flip
 
 Post-iter-18 per-level numbers (`BATTY_LEVEL=N make test`):
