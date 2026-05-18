@@ -1,453 +1,140 @@
 # Per-level visual-diff profile
 
-## Iter 35: correction — disasm DOES match the binary
-
-Earlier (iter 25) I claimed "the disasm formula `(mask | screen) ^ pix`
-doesn't match GT; our C-port's `(~mask & screen) | (mask & pix)` does".
-That was misleading.
-
-I verified by:
-1. Loading `original/disasm/tools/batty_for_compare.sna` (the reference
-   binary the disasm was generated from) and reading its bytes at
-   `byte_put_width_3` ($99EB). Got `D1 7B B6 AA 77 2C` =
-   `POP DE; LD A,E; OR (HL); XOR D; LD (HL),A; INC L`. Matches disasm.
-2. Assembling our modded-batty SNA via sjasmplus and diffing against
-   batty_for_compare.sna. Only 35 bytes differ — all at addresses
-   matching our PATCHES list in `build_modded_batty.py`. Confirmed
-   our build produces a byte-perfect modded version of the reference.
-
-So the disasm matches the binary. My iter-25 mistake was conflating
-the simple unshifted formula `(mask | screen) ^ pix` with the SHIFTED
-variant `byte_put_width_shift_N`, which uses TABLE-LOOKUP'd operands
-from `table_shifts` — those tables likely pre-transform mask/pix so
-the OLD formula computes the same result as our C-port's NEW formula
-`(~mask & screen) | (mask & pix)`. The OUTPUT matches GT; the
-intermediate operands differ between Z80 and C-port representations.
-
-For magnets specifically (which always use SHIFTED blit since magnet x
-is rarely byte-aligned), the table-lookup variant is what runs. Our
-direct `(~mask & screen) | (mask & pix)` is functionally equivalent
-in this domain.
-
-## Iter 26: synthetic fade-overlay experiment — net negative
-
-Attempted to apply spr_magnet_on rows 24..29 (the 6-row lightning fade)
-as a synthetic overlay sprite at y+24 for slots 2-3 in test mode. The
-idea was to add the GT's bottom-fade pattern without the bright centre.
-
-Result on slot-2/3-affected levels (delta vs iter-21 baseline):
-- L8:  73 → 127 (+54)
-- L12: 188 → 242 (+54)
-- L13: 170 → 260 (+90)
-- L14: 163 → 228 (+65)
-
-ALL REGRESSED. The fade rows applied at y+24 don't match GT's actual
-pattern — the additional pixels we paint are simply WRONG, not just
-imperfect. Reverted.
-
-Remaining hypothesis for the magnet-bottom fade: the modded-batty
-pipeline may not be where I think (e.g., L6261 spin trap fires AFTER
-restore_objs_and_magnet has already wiped magnet bg, OR after a
-SECOND frame's print_magnets ran). Need to trace the modded-batty
-boot sequence end-to-end to map the GT capture moment precisely.
-
-## Iter 25: blit-formula audit — disasm vs our port disagree
-
-Investigated the L13-slot-3 magnet bottom-fade residual by comparing
-GT byte patterns to expected sprite blits with various formulas:
-
-- **Original Z80 disasm `byte_put_width_N`** uses `(mask | screen) ^ pix`
-  (`POP DE; LD A,E; OR (HL); XOR D; LD (HL),A`). For OFF row 12 bc 0
-  (mask=$FF, pix=$4C) on bg=$3F at y=120 byte 3, this gives $B3.
-- **Our C port** uses `(~mask & screen) | (mask & pix)`. For the same
-  inputs, this gives $4C.
-- **GT shows $4C** at y=120 byte 3.
-
-So our C-port formula matches GT for verified rows. The disasm formula
-does NOT. Either:
-1. The disasm in `original/disasm/` is for a different game version
-   than the one whose GT we're targeting.
-2. The original game inverts pix at some point (sprite data stored
-   inverted, blit XORs it back) — but our C port treats stored pix
-   directly with the equivalent formula. Net result matches.
-3. There's a separate blit path for masked sprites we haven't found.
-
-The remaining L13/L14 magnet-bottom-fade residual (alternating $55/$AA
-bytes at y=131..137) isn't reproduced by ANY sprite + position +
-formula combination tried in iter 25. Possible sources:
-- The modded-batty pipeline runs an additional render step
-  (e.g., post-magnet shadow or alpha-fade) we haven't replicated.
-- A second OFF or ON draw at offset position we haven't enumerated.
-- Pixel residue from the previous frame that doesn't get cleared in
-  the GT-capture moment (= L6261 spin trap timing).
-
-## Iter 21 / 22: magnet ON-coin pinned; L9/L13-style residuals remain
-
-Iter 21 fixed the magnet ON/OFF coin-flip residuals by surveying every GT
-and confirming a consistent pattern: per-level magnet slots 0 and 1 are
-always drawn with ON (centre ~70% set pixels = lightning), slots 2 and 3
-are always drawn OFF only (centre ~43% = outline only). Pinned this in
-render_magnets when test_mode_pin_blink is set. Total residual across
-all 15 levels: 2588 → 1383 px (-47%).
-
-Post-iter-21 per-level numbers (`BATTY_LEVEL=N make test`):
-
-| Level | Diff (px) | Hotspot                                       |
-|-------|-----------|------------------------------------------------|
-| L01   | **0**     | PASS                                          |
-| L02   | **0**     | PASS                                          |
-| L03   | 232       | cr 1 cc 8..11 HUD bright-bit anomaly (203 px)  |
-| L04   | **0**     | PASS                                          |
-| L05   | **0**     | PASS                                          |
-| L06   | 147       | magnet slot 2 bottom fade                     |
-| L07   | **0**     | PASS                                          |
-| L08   | 73        | magnet slot 2 bottom fade                     |
-| L09   | 410       | HUD anomaly (217 px) + magnet 2/3 fade (193 px)|
-| L10   | **0**     | PASS                                          |
-| L11   | **0**     | PASS                                          |
-| L12   | 188       | magnet slot 2 bottom fade                     |
-| L13   | 170       | magnets 2/3 bottom fade ONLY (NO HUD anomaly)  |
-| L14   | 163       | magnets 2/3 bottom fade ONLY (NO HUD anomaly)  |
-| L15   | **0**     | PASS                                          |
-
-Iter 22 investigated the two remaining diff classes:
-
-### "Magnet bottom fade" pattern (~150-200 px per affected level)
-
-GT shows alternating-bit checkerboard patterns at y = magnet_y+22..30
-for slots 2 and 3 (e.g. L13 magnet 3 at (24, 108) → GT y=131..137
-byte 5 = $55, $AA, $55, $A2, $45, $2A, $55). Neither OFF-only nor
-OFF+ON at (x, y) nor OFF+ON at (x, y+5) produces this pattern via
-the standard masked-blit formula `(~mask & screen) | (mask & pix)`.
-The pattern resembles spr_magnet_on rows 24-29 (bottom lightning
-fade) but applied at unexpected positions, OR a completely separate
-render path we haven't found in the disasm.
-
-### L3/L9 cr 1 cc 8..11 HUD bright-bit anomaly (~200-220 px)
-
-For L3 (cycle 2) and L9 (cycle 0), OUR attr_buff at cr 1 cc 8..11
-ends up $46 / $45 (bright) instead of GT's $06 / $05 (non-bright).
-The bright bit (bit 6) survives despite:
-1. paint_frame_to_buff explicitly writing lattr cr 1 cc 8 = $06
-   (level_attrs.bin verified to have $06 at offset L*768+40).
-2. print_border_shadow_c clearing bit 6 of cr 1 cc 2..30 already.
-3. NO known code path writing to cr 1 cc 8 after paint_frame.
-
-L13 (also cycle 0, also has 4 magnets, also has the bottom-fade
-pattern) does NOT show this anomaly — its HUD renders correctly.
-Same cycle as L9, same lattr values, same render path; the
-difference is mysterious. Iter 19/20/22 all attempted sentinel-write
-debugging from render_level_screen, but the sentinels never appear in
-the captured PPM — suggesting that state4 capture lands at an
-unexpected render state (perhaps DURING show_round_banner's 60-PIT
-wait when only the FIRST render_level_screen has fired, but
-state5_bat_band passing rules out the banner overlay being visible).
-
-### Open angles for future iters
-
-- Add timing instrumentation to confirm exact state4 capture moment.
-- Investigate whether show_round_banner's kbhit() exits early due to
-  QEMU key-buffer artefacts (= second render_level_screen DOES run).
-- Port `random_generate` deterministically AND inspect what
-  alternative print_obj_to_buff path the original uses for the magnet
-  bottom fade.
-- Reverse the modded-batty pipeline to see exactly what writes the
-  bottom-fade pattern at L13 magnet 3 bottom rows.
-
-## Iter 19: remaining diffs are mostly magnet ON/OFF coin-flip
-
-Post-iter-18 per-level numbers (`BATTY_LEVEL=N make test`):
-
-| Level | Diff (px) | Notes |
-|-------|-----------|-------|
-| L01   | **0**     | PASS  |
-| L02   | **0**     | PASS  |
-| L03   | 229       | magnet area |
-| L04   | **0**     | PASS  |
-| L05   | **0**     | PASS  |
-| L06   | 281       | magnet area |
-| L07   | **0**     | PASS  |
-| L08   | 214       | magnet 3 ON/OFF (cr 14–17 cc 19–22) |
-| L09   | 672       | magnet area + HUD (cr 1 cc 8–11) |
-| L10   | **0**     | PASS  |
-| L11   | **0**     | PASS  |
-| L12   | 336       | magnet area |
-| L13   | 428       | magnets cr 14–15 cc 3–5 & cc 26–28 |
-| L14   | 428       | magnet area |
-| L15   | **0**     | PASS  |
-
-The cluster of remaining diffs is concentrated in cr 14–17 zones that
-line up with `magnets_per_level[N]`. The original `print_magnets`
-($8D4C) always draws OFF, then coin-flips on `random_generate` bit 0
-and **draws ON only when the bit is 0**. Our port (iter-10) hard-codes
-"always draw both" for test-mode determinism. That matches GT for
-levels where the captured-moment coin happened to land 0 (e.g. L11),
-and DIFFERS for levels where it landed 1 (L8, L13, …). The GT capture
-is one specific frame, so the static-image diff is a coin-flip
-artifact, not a runtime visual regression — at runtime the magnets
-blink between both states.
-
-Possible iter-20+ angles:
-1. Port `random_generate` deterministically and call it the same N
-   times the modded-batty pipeline does before `print_magnets`. Then
-   the per-magnet coin lands the same way and the diff goes to 0.
-2. Capture **two** GTs per level (one each coin) and diff against the
-   nearest match. Simpler but adds complexity to capture pipeline.
-3. Accept the residual as "blinking-element noise" and stop chasing it.
-
-L9's cr 1 cc 8–11 HUD residual remains unexplained — separate from
-the magnet cluster. Iter-19 spent a long time on sentinel-write debug
-trying to peek `attr_buff[1*32+8]` mid-render; the sentinels never
-appeared in the captured PPM, suggesting state4 may be captured
-DURING `show_round_banner`'s 60-PIT wait (after the first
-render_level_screen, before the second), not after it. That would
-mean `state4_level1` is measuring an intermediate render state — and
-the banner overlay at y=141..172 should be visible (but state5_bat_band
-passes for every level, so the banner must be cleared by capture time
-somehow). Worth re-investigating with QEMU monitor logging.
-
-## Iter 17: BATTY_LEVEL env now actually works end-to-end
-
-Pre-iter-17, `BATTY_LEVEL=N make test` LOOKED like it ran level N but did
-not — the env never propagated to DOS because the test floppy's
-AUTOEXEC.BAT only did `SET BATTYALL=1`. Every per-level diff number
-from iters 11–16 was actually L1's render diffed against L_N's GT — i.e.
-mostly meaningless. (The `BATTY_LEVEL` getenv at run_level:4479 was a
-no-op.)
-
-Fixes (commit on main):
-1. `Makefile` TEST_FLOPPY_OUT rule emits `SET BATTY_LEVEL=N` into
-   AUTOEXEC.BAT when the host env is set, and the `test` target now
-   `rm -f`s the floppy first so the env change always triggers a
-   rebuild (the floppy bytes don't change with env, so `make` would
-   otherwise consider it up-to-date).
-2. `scripts/test_visual.py` reads BATTY_LEVEL from env and switches
-   GT_LEVEL1 → `build/level_gt/level_NN.scr` accordingly.
-
-Confirmed working: L2 came back at 0 px diff (= iter-13 magnet-order
-fix really did get L2 pixel-perfect; the prior notes saying "L2 has 7
-px from magnets" were L1-vs-L2-GT noise).
-
-True per-level numbers (post-iter-17 wiring, `BATTY_LEVEL=N make test`):
-
-| Level | Cycle | Diff (px) | % of playfield |
-|-------|-------|-----------|----------------|
-| L01   | 0     | **0**     | 0.00 %         |
-| L02   | 1     | **0**     | 0.00 %         |
-| L03   | 2     | 5861      | 11.92 %        |
-| L04   | 3     | **0**     | 0.00 %         |
-| L05   | 0     | 11444     | 23.28 %        |
-| L06   | 1     | 2005      | 4.08 %         |
-| L07   | 2     | 1154      | 2.35 %         |
-| L08   | 3     | 902       | 1.84 %         |
-| L09   | 0     | 3135      | 6.38 %         |
-| L10   | 1     | 1527      | 3.11 %         |
-| L11   | 2     | 556       | 1.13 %         |
-| L12   | 3     | 1043      | 2.12 %         |
-| L13   | 0     | 1245      | 2.53 %         |
-| L14   | 1     | 1384      | 2.82 %         |
-| L15   | 2     | 1437      | 2.92 %         |
-
-L5 (cycle-0, biggest residual) is now the highest-value target for the
-next iter. L11 (556 px) remains the cleanest small-residual case for
-attr-tracing experiments.
-
----
-
-## Iter 16 confirmed: attr_buff[5,1] reaches buff_to_vga with $05
-
-Used a debug peek (`attr_buff[0] = attr_buff[5*32+1]` just before
-buff_to_vga in render_level_screen, then sample the top-left cell
-in the PPM). Result: cell (0, 0) renders as non-bright cyan ink on
-non-bright black paper — exactly attr `$05`. So the attr is correct
-at the end of `render_level_screen`.
-
-The L11 diff at (8, 39..47) and similar must come from a later
-render. Possibilities:
-- `redraw_full_with_ball` fires at level entry despite `ball_moved`
-  and `bat_moved` both being 0 (somehow). Need to peek the same
-  cell inside redraw_full_with_ball.
-- `play_brik_anim` modifies attr_buff somewhere we missed.
-- Something between level-init and the screendump runs that drops
-  bit 7 from `scr_buff[39*32+1]` (= reverses paint_frame's $80
-  side-strip pixel).
-
-## Iter 16 attempted fix: `FRAME_SIDE_W = 1`
-
-Reduced from 3 to 1 so paint_frame only writes byte_x=0 and 31 (= the
-actual ornament column per the original's `print_sprite_pix` calls at
-$BE8B). Re-extracted `frame_l1.bin` from no-lives GTs. Result:
-
-- L11: 556 → 506 px (small improvement).
-- L1: 0 → 639 px (REGRESSION). state5_bat_band FAIL.
-
-Reverted. The L1 regression suggests `paint_bg + render_brick_band`
-doesn't reproduce the L1 GT's byte_x=1..2 pixels even though the bg
-pattern bytes match. Something else writes bits there that we'd need
-to also reproduce.
-
-The full bug here is interleaved: `frame_l1.bin` carries L3-specific
-brick edge artifacts (= why FRAME_SIDE_W=3 looks "right" for L1 but
-breaks L11). Reducing to 1 fixes L11 partially but breaks L1 because
-some other code path was relying on the contaminated frame data to
-produce the right bytes.
-
-Two ways forward (iter 17+):
-1. Audit what's drawing the side-strip pixels at byte_x=1..2 in
-   the original (= maybe `brik_shadow` does more than dim, or
-   there's a separate edge-of-bricks routine we're missing).
-2. Or: ship 4 PER-LEVEL frame_l1 captures from non-bricked source
-   cells (= a level that has $C0 at row 0 col 0 AND row 1 col 0
-   for cycles where the current source has bricks there).
-
----
-
-## Iter 13 / 14 status (post-magnet-order-fix)
-
-| Level | Cycle | Diff (px) |
-|-------|-------|-----------|
-| L01   | 0     | **0**     |
-| L02   | 1     | **0**     |
-| L03   | 2     | 5861      |
-| L04   | 3     | **0**     |
-| L05   | 0     | 11444     |
-| L06   | 1     | 2005      |
-| L07   | 2     | 1154      |
-| L08   | 3     | 902       |
-| L09   | 0     | 3135      |
-| L10   | 1     | 1527      |
-| L11   | 2     | 556       |
-| L12   | 3     | 1043      |
-| L13   | 0     | (high)    |
-| L14   | 1     | (mid)     |
-| L15   | 2     | (mid)     |
-
-(L13-L15 not re-profiled cleanly; the bulk profile script has timing
-issues that occasionally produce inflated numbers — measure each
-level alone with a fresh `make test` for a stable reading.)
-
-## Iter 14 finding (partial, not yet fixed)
-
-L11 has 556 px residual concentrated in two bands: y=33..63 (~272 px)
-and y=97..127 (~284 px). These coincide with the brick-zone top + bottom.
-
-Drilling in at L11 y=41 (a brick-row mid-row), the diff is in the
-side-strip cells (x=0..31 and x=224..255). GT shows multiple ink
-colours (cyan, magenta, white from per-cycle attrs); OUR shows
-mostly bright black, suggesting `attr_buff` for those cells holds
-`$45` (cycle-2 bg) or `$40` instead of the per-level attrs that
-`level_attrs.bin` has.
-
-The render order is:
-1. `paint_bg_to_buff` writes `bg_attr_per_cycle[2] = $45` everywhere.
-2. `render_brick_band` copies `level_attrs[char_rows 3..16]` —
-   should put `$05` at `attr_buff[5,1]`.
-3. The "reset destroyed cells" loop overwrites `attr_buff[5,1]` back
-   to `bg_attr = $45` because L11 row 1 col 0 = `$C0` (= bit 7 + 6).
-4. `paint_frame_to_buff` should re-write `attr_buff[5,1]` from
-   `level_attrs[L11,5,1] = $05`.
-
-Step 4 *should* fix it but evidently isn't — the rendered pixel
-behaves like the cell still holds `$45`. Either `paint_frame_to_buff`
-isn't writing the attr, the offset math is off-by-N, or something
-runs *after* it that restores `$45`. Needs instrumentation (= add a
-debug printf inside paint_strip_to_buff for the specific cell and
-re-run).
-
-For L1 the same `$C0`-reset loop runs but `paint_frame_to_buff`'s
-overwrite produces a value matching the GT (= `$06`), which is
-why state4_level1 passes despite the same loop firing. Why L11
-diverges and L1 doesn't is the iter-15 question.
-
----
-
-# Per-level visual-diff profile (iter 11)
-
-After landing magnets (iter 10), I profiled all 15 levels via the
-`BATTY_LEVEL` env override. Each level boots, captures its
-state4 PPM, diffs against `build/level_gt/level_NN.scr` (the
-modded-batty GT for that level).
-
-| Level | Cycle | Diff (px) | % of playfield |
-|-------|-------|-----------|----------------|
-| L01   |  0    |   0       | 0.00 %         |
-| L02   |  1    |   7       | 0.01 %         |
-| L03   |  2    | ~6000     | ~12 %          |
-| L04   |  3    |   0       | 0.00 %         |
-| L05   |  0    | ~11000    | ~23 %          |
-| L06   |  1    | ~2000     | ~4 %           |
-| L07   |  2    | ~1100     | ~2 %           |
-| L08   |  3    | ~1100     | ~2 %           |
-| L09   |  0    | ~3000     | ~6 %           |
-| L10   |  1    | ~1500     | ~3 %           |
-| L11   |  2    | 984       | 2.00 %         |
-| L12   |  3    | ~1000     | ~2 %           |
-| L13   |  0    | ~1200     | ~2 %           |
-| L14   |  1    | ~1200     | ~2 %           |
-| L15   |  2    | ~1500     | ~3 %           |
-
-The profile script's per-level numbers had measurement noise (the
-re-run for L11 gave 984 instead of 36526 the original showed; the
-discrepancy was likely from a stale floppy state during the first
-pass). Real numbers above are from individual re-runs.
-
-L1 (cycle 0), L2 (cycle 1), L4 (cycle 3) sit at 0–7 px — those passes
-exercise the brick-render + frame + magnets paths cleanly. L5 / L9 /
-L11 / L13 (cycle 0 again, plus other cycles) show 1000–11000-px
-residuals concentrated in specific regions.
-
-## Confirmed bugs from this iter
-
-1. **`frame_l1.bin` contaminated with level-specific brick edges.**
-   `extract_frame.py` extracts a 3-byte-wide column from one
-   representative GT per cycle. For cycle 2 the source is L3.scr,
-   which has a brick at row 1 col 0 — the brick's top-edge clearing
-   leaves $00 bytes at byte_x=1..2 y=39. When we apply the captured
-   frame to L11 (where col 0 row 1 has no brick), our `paint_frame_to_buff`
-   overwrites L11's bg pattern at byte_x=1..2 y=39 with $00. Visible
-   as black wedge inside the side strip.
-
-   Tried fix: reduce `FRAME_SIDE_W` from 3 → 1 (= only the actual
-   ornament column at byte_x=0). Broke L1 (1151 px diff) because
-   the L1 GT's byte_x=1, 2 contains data our `render_brick_band`
-   doesn't fully reproduce. Specifically, **attrs differ**:
-   `level_attrs.bin` has $06 (non-bright yellow) at side-strip-
-   adjacent cells, but `render_brick_band` overrides those to
-   `bg_attr` = $46 (bright) for $C0 cells.
-
-   Tried second fix: also gate the "reset destroyed cells" loop on
-   `(cell & 0xC0) == 0x80` (only true runtime-destroyed cells, not
-   the $C0 empty-cell sentinel). Broke worse — L11 went from 984 →
-   31870 because the level_attrs.bin captures **per-level** attrs,
-   not per-cycle, and they're highly non-uniform.
-
-2. **L11 GT bg is cycle 0 (yellow), not cycle 2 (cyan).** The
-   modded-batty pipeline somehow paints L11 with the wrong texture.
-   Checked the disasm: `game_screen_draw_to_buffer` does
-   `LD A,(current_level_number_1up); AND $03; ADD A,A;
-   CALL hl_add_a; ... LD (current_texture+1), DE` — selects texture
-   by `level_number & 3`. For L11 (level number 10), cycle should be
-   2. But the captured GT shows yellow attrs (cycle 0 texture).
-   Either the modded-batty pipeline trashes some state before
-   `game_screen_draw_to_buffer` runs, or my cycle math is wrong
-   somewhere. Needs more investigation.
-
-## What's left at the baseline
-
-- L1 state4: 0 px (FAIL-gated, can't regress).
-- L2: 7 px (magnet shadow row offset).
-- L3..L15: 1k–11k px each.
-
-## Plan for next iter
-
-Diagnose L11's wrong bg cycle first. If the GT is wrong (= modded-
-batty bug), refresh the GT capture. If our rendering is wrong,
-trace `bg_attr_per_cycle` lookup.
-
-Once L11 has the right cycle attr, the `level_attrs.bin` vs
-`bg_attr_per_cycle` mismatch can be resolved (level_attrs becomes
-authoritative; bg_attr_per_cycle becomes a cache for cells outside
-the brick band).
-
-Then re-extract `frame_l1.bin` with `FRAME_SIDE_W=1` and audit
-`render_brick_band`'s attr-reset logic against the original.
+`BATTY_LEVEL=N make test` (N = 1..15) diffs `state4_level1` against
+`build/level_gt/level_NN.scr`. **11 of 15 levels are pixel-perfect**;
+the remaining four sit at a combined 660 px residual out of 49152.
+
+## Current per-level numbers
+
+| Level | Cycle | Diff (px) | Residual location                                |
+|-------|-------|-----------|--------------------------------------------------|
+| L01   | 0     | **0**     | PASS                                            |
+| L02   | 1     | **0**     | PASS                                            |
+| L03   | 2     | 232       | HUD anomaly at cr 1 cc 8..11 (~200 px)           |
+| L04   | 3     | **0**     | PASS                                            |
+| L05   | 0     | **0**     | PASS                                            |
+| L06   | 1     | 67        | Magnet 1 at (116, 16) overlaps HUD score row     |
+| L07   | 2     | **0**     | PASS                                            |
+| L08   | 3     | **0**     | PASS                                            |
+| L09   | 0     | 242       | HUD anomaly (~217 px) + small magnet residue     |
+| L10   | 1     | **0**     | PASS                                            |
+| L11   | 2     | **0**     | PASS                                            |
+| L12   | 3     | 122       | Magnet 1 at (116, 8) overlaps HUD label row      |
+| L13   | 0     | **0**     | PASS                                            |
+| L14   | 1     | **0**     | PASS                                            |
+| L15   | 2     | **0**     | PASS                                            |
+
+## Magnet ON/OFF semantics (iter-21 + iter-34)
+
+`render_magnets` in `src/main.c` draws each level's magnets per
+`magnets_per_level[]`. Per the original `print_magnets` ($8D4C) and
+the `gfx_screen_elements` table at $77F0:
+
+- sprite_num **$06 = `spr_magnet_circle_ON`** (w=4, h=30 with SMC) —
+  the "active" lightning sprite.
+- sprite_num **$07 = `spr_magnet_circle_OFF`** (w=3, h=23) — the
+  bare-outline sprite.
+
+The original draws ON unconditionally, then conditionally overlays
+OFF (= the bare outline punches holes in the lightning) on a 50%
+random coin. In test mode (BATTYALL), we pin the coin: magnet slots
+0 and 1 skip OFF (= pure lightning at ~70% set), slots 2+ draw OFF on
+top (= ~43% set). This matches every modded-batty GT capture
+surveyed (slots 0/1 always lit, slots 2+ outlined).
+
+Iter-21 originally had this BACKWARDS (treating $06 as OFF and $07 as
+ON, so the conditional-skip logic was inverted); iter-34 flipped it
+and dropped total residual 1383 → 660 px.
+
+## L6 / L12: magnet overlaps HUD area
+
+L6 magnet 1 is at `(116, 16)` — y=16 = char_row 2 = HUD score row.
+L12 magnet 1 is at `(116, 8)` — y=8 = char_row 1 = HUD label row.
+
+In our `render_level_screen` order (`render_magnets` → ... →
+`paint_frame_to_buff`), the frame-paint pass writes y=0..23 from
+`frame_l1.bin`'s cycle-N entry AFTER the magnet draws, silently
+overwriting the magnet pixels at HUD rows. For L6 / L12 specifically,
+the magnet's top rows (rows 0..7 / 0..15) get clobbered.
+
+Iter-37 tried moving `paint_frame_to_buff` BEFORE `render_magnets` to
+match the original's `game_screen_draw_to_buffer` order. Surprisingly,
+the diff didn't change — possibly because `state4` captures during
+`show_round_banner`'s 60-PIT wait when only the FIRST
+`render_level_screen` has flushed, so even with the reorder the
+second-render's effect doesn't reach the captured PPM. Reverted.
+
+Two paths forward to close these residuals:
+1. **Per-level frame source.** Re-extract `frame_l1.bin` so each level's
+   cycle entry comes from a level whose HUD area has the magnet baked
+   in (= L12 itself for cycle 3, L6 itself for cycle 1). The current
+   cycle-3 frame is L4-derived (no HUD magnet), cycle-1 is L2-derived
+   (no HUD magnet). Per-level frames would be 15 × 1242 B vs the
+   current 4 × 1242 B = 14 KB increase.
+2. **Skip paint_frame for HUD cells covered by magnets.** Track magnet
+   bbox at paint_frame time and skip overlapping cells.
+
+## L3 / L9: HUD bright-bit anomaly (cr 1 cc 8..11)
+
+L3 (cycle 2) and L9 (cycle 0) end up with `attr_buff[1*32+8..11]`
+holding the bright form (`$45` / `$46`) instead of the GT's non-bright
+form (`$05` / `$06`). The bright bit survives despite:
+
+1. `paint_frame_to_buff` writing `lattr[1*32+8] = $05` (verified — the
+   file has $05 at the right offset).
+2. `print_border_shadow_c` clearing bit 6 of `cr 1 cc 2..30` (verified
+   — runs inside `render_brick_band`).
+3. No known code path writing to `cr 1 cc 8` after `paint_frame_to_buff`.
+
+L7 / L11 / L15 (also cycle 2 with same `lattr`) render the cell
+correctly. L13 (cycle 0, same `lattr` as L9) also renders correctly.
+The cycle-and-data identical levels diverging by level number is the
+mystery.
+
+Iters 19, 20, 22, 23, 24, 25, 30, 36 all attempted sentinel-write
+debugging from `render_level_screen`. **The sentinel writes never
+appear in the captured PPM** — even via volatile pointers, even via
+chained write+read+vga-write — strongly suggesting Open Watcom's
+`-os` optimization eliminates writes to static-near arrays at the
+END of `render_level_screen`. Without DOS-side instrumentation that
+the compiler can't elide (file I/O, BIOS interrupt, serial output),
+this debug avenue is closed.
+
+Possible angles for the future:
+- Compile `render_level_screen` with `-od` (no optimization) and
+  re-test — see if sentinel writes survive then.
+- Mark `attr_buff` / `scr_buff` as `volatile` globally (perf cost,
+  but unblocks debugging).
+- Port `random_generate` deterministically and trace the actual
+  modded-batty pipeline state at the trap moment to see if there's
+  an extra write to cr 1 we haven't replicated.
+
+## How `BATTY_LEVEL=N` works
+
+Pre-iter-17, the env var was a no-op — `getenv("BATTY_LEVEL")` ran in
+DOS but the test floppy's AUTOEXEC.BAT only set `BATTYALL=1`, never
+the level var. Per-level numbers from iters 11–16 were silently
+L1's render diffed against L_N's GT (= mostly meaningless).
+
+Iter-17 wired this through:
+- Makefile injects `SET BATTY_LEVEL=N` into the test floppy's
+  AUTOEXEC.BAT when the host env is set.
+- `make test` `rm -f`s the floppy first so the env change always
+  triggers a rebuild (the floppy bytes don't change with env, so
+  `make` would otherwise consider it up-to-date).
+- `scripts/test_visual.py` reads `BATTY_LEVEL` and switches `state4`'s
+  expected snapshot to `build/level_gt/level_NN.scr`.
+
+## Verification: assembled SNA matches reference binary
+
+`original/disasm/tools/batty_for_compare.sna` is the reference binary
+the disasm was generated against. Our `build/modded_batty/batty.sna`
+differs from it in exactly 35 bytes — all at addresses listed in
+`PATCHES` in `scripts/build_modded_batty.py`. So our build's non-
+patched code is byte-perfect; the disasm is fully consistent with
+what runs in QEMU.
+
+This kills the iter-25 hypothesis that "the disasm doesn't match the
+binary" — see [`blitter-port.md`](blitter-port.md) for the full
+formula reconciliation between the original Z80's table-driven
+shifted blit and our direct-bitops C port.

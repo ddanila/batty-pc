@@ -15,15 +15,36 @@ all 15 levels → game-over → 3-letter initials entry → back to title.
 PASS state1_title       (pixel-identical)
 PASS state2_menu        (pixel-identical)
 PASS state3_hiscore     (pixel-identical)
-PASS state4_level1      (pixel-identical)
+PASS state4_level1      (pixel-identical, default = L1; FAIL-gated since iter-34)
 PASS state5_bat_band    (pixel-identical, FAIL-gated)
 ```
 
-All five pixel-identical against the level-1 GT — bat, ball, lives
-indicator, frame, bricks, bg, running dots. state5_bat_band is
-FAIL-gated, so any regression in the bat region fails the build.
-The journey from 507 → 0 px is documented in
-`notes/state4-bat-band-triage.md`.
+### Per-level pixel parity (`BATTY_LEVEL=N make test`)
+
+`BATTY_LEVEL=N` (N = 1..15) re-runs `state4` against
+`build/level_gt/level_NN.scr`. **11 of 15 levels are pixel-perfect**;
+the remaining four sit at small residuals (total 660 px out of 49152):
+
+| Level | Diff | What's left                                         |
+|-------|------|-----------------------------------------------------|
+| L1    | **0**  | PASS                                              |
+| L2    | **0**  | PASS                                              |
+| L3    | 232  | HUD anomaly at cr 1 cc 8..11 (~200 px)               |
+| L4    | **0**  | PASS                                              |
+| L5    | **0**  | PASS                                              |
+| L6    | 67   | Magnet 1 at (116, 16) overlaps HUD score row         |
+| L7    | **0**  | PASS                                              |
+| L8    | **0**  | PASS                                              |
+| L9    | 242  | HUD anomaly (~217 px) + small magnet residue          |
+| L10   | **0**  | PASS                                              |
+| L11   | **0**  | PASS                                              |
+| L12   | 122  | Magnet 1 at (116, 8) overlaps HUD label row         |
+| L13   | **0**  | PASS                                              |
+| L14   | **0**  | PASS                                              |
+| L15   | **0**  | PASS                                              |
+
+Remaining residuals are documented in
+[`notes/per-level-profile.md`](notes/per-level-profile.md).
 
 | Stage                                       | State |
 |---------------------------------------------|-------|
@@ -46,7 +67,8 @@ The journey from 507 → 0 px is documented in
 | HUD: live score / hi-score / power-up chips  | ✓ chips blink in last second of timed effects |
 | High-score persistence with 3-letter name    | ✓ `HISCORE.DAT` (v2 = 7 bytes; v1 = 4 bytes auto-defaults to `AAA`) |
 | Pause banner (P toggles, ENTER dismisses)    | ✓ |
-| Headless visual regression (5 checkpoints)   | ✓ `make test` (`notes/testing.md`) |
+| Magnets (level decorations + ON/OFF blink)   | ✓ `render_magnets` (`notes/per-level-profile.md`) |
+| Headless visual regression (5 checkpoints + per-level) | ✓ `make test`, `BATTY_LEVEL=N make test` (`notes/testing.md`) |
 | 2-player mode (`game_mode == 2`)             | open — selectable from menu, not wired into run loop |
 | Real `handling_ball` 64-direction motion     | open — port uses integer dx/dy + 5-zone deflection |
 | Frame ornament from `spr_bord_*` primitives  | open — currently bundles a captured `frame_l1.bin` |

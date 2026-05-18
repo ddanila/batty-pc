@@ -117,3 +117,65 @@ exactly when you have a blind spot, and the test is misleadingly green
 for the surface you're iterating on. Fix the capture pipeline (a few
 lines of patch + re-baseline) before doing more renderer work in that
 region. `INFO` is for accepted drift, not unmeasured surface.
+
+## Read the sprite-ID table before writing per-slot draw logic
+
+**Rule.** When the original game dispatches sprites via a numbered
+table, look at the *table* before assuming the ID numbers map to
+labels in the obvious order. The names in `gfx_screen_elements` are
+ordered by entry, not by sprite-data layout.
+
+**Why.** Iter-21 added a "magnet ON-coin pin" for test mode — slots 0/1
+draw ON, slots 2-3 draw OFF only. The implementation drew "OFF first,
+ON conditional on top". Worked for the levels that happen to have
+balanced ON/OFF densities. For 3-4-magnet levels it produced
+wrong-direction residuals because the C variable named
+`spr_magnet_off` was being drawn first when the original draws sprite
+**$06** first — and `gfx_screen_elements[$06]` is
+`spr_magnet_circle_ON`, not OFF. The names overlap with the sprite-
+data labels but the table index drives the actual draw order.
+
+Iter-34 flipped the order ("ON first, OFF conditional second") and
+dropped total residual 1383 → 660 px in one commit. Three previously-
+failing levels (L8, L13, L14) flipped to pixel-perfect.
+
+**How to apply.** When porting a sprite-dispatch routine:
+
+- Read `gfx_screen_elements` (or equivalent) and write down which
+  sprite_num maps to which sprite-data label.
+- Cross-check by looking at what bytes the SMC patches modify — for
+  magnets it patches `spr_magnet_circle_on+1` (the height field of
+  what gets drawn first), which only makes sense if ON is the always-
+  drawn sprite and OFF is the conditional overlay.
+- If the C-port variable names don't match the slot intent, rename
+  them; otherwise it'll look correct but render the wrong sprite.
+
+## Compare your assembled binary against the reference
+
+**Rule.** When the disasm has a `tools/batty_for_compare.sna` (or
+equivalent reference image), assemble your patched version and diff
+the two. Any unexpected non-patch byte differences are bugs in the
+assembler or your patch set.
+
+**Why.** An earlier iter documented "the disasm formula doesn't match
+GT; the C-port formula does" — implying the disasm was unreliable.
+Iter-35 verified our `build/modded_batty/batty.sna` differs from
+`original/disasm/tools/batty_for_compare.sna` at exactly 35 bytes,
+all matching our `PATCHES` list in `build_modded_batty.py`. The
+non-patch code is byte-perfect; the disasm is fully consistent.
+
+The "mismatch" was real but local — for *unshifted* blits the disasm
+formula `(mask | screen) ^ pix` is what the binary runs; for *shifted*
+blits it indexes pre-shifted operands from `table_shifts` at $F200,
+so the OR/XOR computes a pre-transformed value whose **output**
+matches our direct-bitops formula `(~mask & screen) | (mask & pix)`.
+The `table_shifts` indirection had been missed when computing
+expected values.
+
+**How to apply.** When the disasm-vs-GT story doesn't add up:
+
+- Assemble the disasm's source and byte-diff against the reference SNA.
+- If non-patch bytes differ → assembler / patch bug.
+- If only patch bytes differ → disasm is trustworthy. Then look for
+  table lookups, SMC, or other indirection that transforms operands
+  between the named instructions and the actual ALU input.

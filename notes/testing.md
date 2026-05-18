@@ -30,7 +30,7 @@ lock it in as a pixel-identical regression test.
 
 ## Current checkpoints
 
-The test exercises the full attract-mode flow (TITLE → MENU → HISCORE)
+The test exercises the full attract-mode flow (TITLE → MENU → HISCORE → LEVEL)
 on the `batty-test.img` floppy, which sets `BATTYALL=1` in AUTOEXEC so
 the C side disables auto-advance — every transition is driven by
 `sendkey ret` from the Python harness.
@@ -40,26 +40,41 @@ the C side disables auto-advance — every transition is driven by
 | 1     | `LOADING.BIN` static blit | `original/Batty.scr`              | Title / loading screen, decoded from the tape's screen$ block.              |
 | 2     | Markup + sprites + blink   | `20260513T202041Z` (snap2)        | Main menu rendered from `MENUMARK.BIN` + indicators + bottom sprites.       |
 | 3     | Markup hi-score            | `20260513T202038Z` (snap1)        | Hi-score table rendered from `MARKUP.BIN`.                                  |
-| 4     | Full level-1 gameplay paint | `build/level_gt/level_01.scr` (modded-tape GT, *post-first-paint*) | Bricks + frame + bat + ball + lives. Diff is `INFO` — currently 427 px, all in the bat band. |
+| 4     | Full level-N gameplay paint | `build/level_gt/level_NN.scr` (modded-tape GT, *post-first-paint*) | Bricks + frame + bat + ball + lives + magnets. Pixel-identical for L1 (default) and for 11/15 levels via `BATTY_LEVEL=N`. |
 | 5     | Same captured frame, ROI'd to bat band (y=160..192) | same GT | Sub-diff of state4 — surfaces bat-render regressions on their own so they don't hide inside the whole-frame number. |
 
-States 1–3 pass pixel-identical. State 4 and state 5 report the same
-427-px diff under different denominators — same data, sharper framing
-for state 5 (5.2% of the bat band differs vs 0.9% of the whole frame).
+All five states are FAIL-gated on L1 default. 4 of 15 levels still
+have small residuals via `BATTY_LEVEL=N`: L3 (232 px), L6 (67 px),
+L9 (242 px), L12 (122 px) — see [`per-level-profile.md`](per-level-profile.md).
+
+## Per-level testing via `BATTY_LEVEL` env
+
+```sh
+BATTY_LEVEL=9 make test    # builds floppy with SET BATTY_LEVEL=9 in AUTOEXEC,
+                           # boots into level 9 directly, diffs against L9 GT
+```
+
+The `BATTY_LEVEL=N` env var:
+- Makefile injects `SET BATTY_LEVEL=N` into the test floppy's AUTOEXEC.BAT
+  (the bytes don't change with env, so the `test` target also `rm -f`s the
+  floppy first to force a rebuild on env changes).
+- `src/main.c` `getenv("BATTY_LEVEL")` in `run_level` sets
+  `round_number = N-1` so the run-level loop enters at level N.
+- `scripts/test_visual.py` switches `state4_level1`'s expected snapshot
+  to `build/level_gt/level_NN.scr` (default = L1).
 
 ## INFO is for accepted drift, not unmeasured surface
 
-State 4's old GT was captured *before* the gameplay loop drew bat /
+State 4's *original* GT was captured before the gameplay loop drew bat /
 ball / lives — so the renderer's bat sat in a regression-test blind
-spot. Diff stayed at ~228 px (the bat-overlay overhead), and the README
-rationalized it as "the absolute floor without recapturing the GT mid-
-render". A green check on a metric that excluded the surface under
-iteration. Fixed by:
+spot. Diff stayed at ~228 px (the bat-overlay overhead), rationalized
+as "the absolute floor without recapturing the GT mid-render". A green
+check on a metric that excluded the surface under iteration. Fixed by:
 
-- `scripts/build_modded_batty.py` now patches line 6261 (`CALL
+- `scripts/build_modded_batty.py` patches line 6261 (`CALL
   restore_objs_and_magnet` → `JR $`) so the spin trap fires *after*
   the first gameplay-loop iter has painted bat / ball / lives into
-  scr_buff and flushed to VRAM. New trap PC: **0xBB61**.
+  scr_buff and flushed to VRAM. Trap PC: **0xBB61**.
 - `scripts/test_visual.py` adds `state5_bat_band` — same captured
   frame, ROI'd to `y=160..192`. ROI-only checkpoints reuse another
   state's PPM via the `source_label` field.

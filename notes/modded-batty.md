@@ -47,8 +47,13 @@ so if upstream renumbers, the build fails loudly.
 | 6147  | `CALL pause_long`                             → 3-byte NOP      | No 1.2s pause that originally let players read the banner                            |
 | 6148  | `CALL all_metal_briks_animation_snd`          → 3-byte NOP      | Metal-brick fade-in skipped (~40 ms/brick saved)                                     |
 | 6261  | `CALL restore_objs_and_magnet`                → `DEFB $18, $FE, $00` | `JR $` + NOP — spins AFTER the first gameplay-loop iter has painted bat/ball/lives into scr_buff and flushed to VRAM. The trap fires right before the restore step that would wipe them back. |
-| 6853  | `JR Z,LBE8B_10` (lives-indicator gate)        → `JR LBE8B_10`   | Always skip the lives-indicator draw block                                           |
 | LBE8B_11 region | 3 × `CALL print_obj_to_buff` (spr_1up/2up/hi) + 3 × `CALL print_score_in_game` → 3-byte NOPs | No "1UP HI 2UP" labels, no score digits in HUD |
+
+The L6853 lives-indicator skip is **not** applied — keeping it would
+silently exclude `render_lives` from the GT and mask any drift. To
+re-extract `frame_l1.bin` without lives baked in, temporarily re-add
+the L6853 patch, run `scripts/extract_frame.py`, then remove again
+before recapturing GTs (see comment in `build_modded_batty.py`).
 
 The `JR $` spin at line 6261 (= **0xBB61**) is critical: it leaves the
 CPU in the "running" state (so `set_register PC=…` can break it out for

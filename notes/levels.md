@@ -56,32 +56,45 @@ level-data span: `0x6CDB..0x7766` = **2700 B = 15 × 180**.
 Each level is **180 raw bytes**, one byte per cell in a **12-row ×
 15-col** grid (row-major). Per cell:
 
-- `bit 7` (`0x80`) — skip / end (from `sub_adbch:adbc`)
-- `bit 4` (`0x10`) — skip (from `sub_adbch:adc1`)
-- the remaining 6 bits encode the **brick type id**
+- `bit 7` (`0x80`) — no brick / destroyed at runtime (skip rendering)
+- `bit 6` (`0x40`) — present only as `0xC0` (= bit 7 + 6) = "empty
+  sentinel" (never had a brick; level_attrs still applies a strip
+  attr there).
+- `bit 5` (`0x20`) — undestructible (renders, bounces, no destruction
+  — e.g. `$2B`, `$2C`, `$2D`, `$2E`).
+- `bit 4` (`0x10`) — "this hit destroys": 1-hit destructible OR a
+  multi-hit brick already damaged once and primed for the next hit
+  to take it out (e.g. `$11`..`$15`).
+- low nibble (`0x0F`) — brick TYPE / COLOUR index into
+  `briks_colors[]` (`src/main.c`).
 
-Cells where `(byte & 0x90) != 0` render as background (paper). All
-others get blitted as a 16×8-px sprite at `(col*16, row*8)`.
+Cells with bit 7 set are skipped during rendering. All others get
+blitted as a 16×8-px sprite at `(1 + 2*col byte_col, 4 + row char_row)`
+via `print_one_brik_buf_c`.
 
 ## Cell-value vocabulary (across all 15 levels, 2700 cells)
 
-| Value | Count | Pct  | Kind       |
-|-------|-------|------|------------|
-| `0xC0` | 1494 | 55.3% | skip / empty (`bit 7|6`) |
-| `0x15` |  178 |  6.6% | skip (`bit 4` set) |
-| `0x13` |   90 |  3.3% | skip |
-| `0x12` |   86 |  3.2% | skip |
-| `0x14` |   67 |  2.5% | skip |
-| `0x11` |   54 |  2.0% | skip |
-| `0x07` |  216 |  8.0% | brick type 7 |
-| `0x06` |  109 |  4.0% | brick type 6 |
-| `0x09` |  109 |  4.0% | brick type 9 |
-| `0x2E` |   92 |  3.4% | brick type 0x2E |
-| `0x2B` |   93 |  3.4% | brick type 0x2B |
-| `0x08` |   50 |  1.9% | brick type 8 |
-| `0x2C` |   54 |  2.0% | brick type 0x2C |
-| `0x2D` |    8 |  0.3% | brick type 0x2D |
+| Value | Count | Pct   | Kind                                   |
+|-------|-------|-------|----------------------------------------|
+| `$C0` | 1494  | 55.3% | empty sentinel (bit 7+6)               |
+| `$15` |  178  |  6.6% | brick `$15` → briks_colors[5] (= `$70`) |
+| `$13` |   90  |  3.3% | brick `$13` → briks_colors[3] (= `$5F`) |
+| `$12` |   86  |  3.2% | brick `$12` → briks_colors[2] (= `$4F`) |
+| `$14` |   67  |  2.5% | brick `$14` → briks_colors[4] (= `$20`) |
+| `$11` |   54  |  2.0% | brick `$11` → briks_colors[1] (= `$57`) |
+| `$07` |  216  |  8.0% | hard `$07` → briks_colors[7] (= `$57`) |
+| `$06` |  109  |  4.0% | hard `$06` → briks_colors[6] (= `$47`) |
+| `$09` |  109  |  4.0% | hard `$09` → briks_colors[9] (= `$4F`) |
+| `$2E` |   92  |  3.4% | undestructible `$2E` → briks_colors[14] (= `$5F`) |
+| `$2B` |   93  |  3.4% | undestructible `$2B` → briks_colors[11] (= `$47`) |
+| `$08` |   50  |  1.9% | hard `$08` → briks_colors[8] (= `$5F`) |
+| `$2C` |   54  |  2.0% | undestructible `$2C` → briks_colors[12] (= `$57`) |
+| `$2D` |    8  |  0.3% | undestructible `$2D` → briks_colors[13] (= `$4F`) |
 
-**8 distinct brick types** — `{0x06, 0x07, 0x08, 0x09, 0x2B, 0x2C,
-0x2D, 0x2E}`. The 6 "skip" variants probably encode background
-metadata (sound on hit? something else?) — visually all transparent.
+Three categories:
+- `$11..$15` (low nibble 1..5, bit 4 set) = **1-hit destructible**.
+- `$06..$09` (low nibble 6..9, bit 4 clear) = **multi-hit** (= 2 hits
+  to destroy; first hit sets bit 4 → matches `$16..$19` → next hit
+  destroys).
+- `$2B..$2E` (low nibble 11..14, bit 5 set) = **undestructible metal**.
+- `$C0` = empty (no brick here in this level layout).

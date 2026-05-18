@@ -16,9 +16,14 @@ byte 1   height in rows
 then h * w pairs of (mask_byte, pix_byte) per byte-column, row-major.
 ```
 
-The blit semantics: `screen' = (mask | screen) ^ pixel` per byte.
-Truth table: mask=1/pix=0 → ink, mask=1/pix=1 → paper,
-mask=0/pix=1 → XOR (flips bg pattern bit), mask=0/pix=0 → preserve.
+The blit semantics in our C port: `screen' = (~mask & screen) | (mask & pix)`
+— standard "where mask=1 take pix, else preserve screen". The original
+Z80's `byte_put_width_N` ($99EB) uses the equivalent `(mask|screen)^pix`
+arrangement, and the shifted variant (`byte_put_width_shift_N` at $99FE)
+indexes pre-shifted mask/pix from `table_shifts` ($F200) so the OR/XOR
+operands are pre-transformed; the **output** matches our direct-bitops
+formula. See [`blitter-port.md`](blitter-port.md) for the full
+discussion + verification against `batty_for_compare.sna`.
 
 ## Pre-shift table at `0xF200..0xFFFF` — load-time
 
