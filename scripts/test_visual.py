@@ -213,7 +213,20 @@ def main():
     SNAP_HISCORE = Path('build/snapshots/20260513T202038Z/screen.scr')
     SNAP_MENU    = Path('build/snapshots/20260513T202041Z/screen.scr')
     TITLE_SCR    = Path('original/Batty.scr')
-    GT_LEVEL1    = Path('build/level_gt/level_01.scr')
+    # BATTY_LEVEL env (1..15) switches the level-entry GT to that level so
+    # `BATTY_LEVEL=N make test` actually compares L_N render vs L_N GT.
+    # Defaults to L1 when unset / invalid. The matching env passthrough on
+    # the DOS side is in the test floppy's AUTOEXEC.BAT (see Makefile).
+    import os
+    level_env = (os.environ.get('BATTY_LEVEL') or '').strip()
+    try:
+        level_n = int(level_env) if level_env else 1
+        if not (1 <= level_n <= 15): level_n = 1
+    except ValueError:
+        level_n = 1
+    GT_LEVEL1    = Path(f'build/level_gt/level_{level_n:02d}.scr')
+    if level_n != 1:
+        print(f'BATTY_LEVEL={level_n} -> diffing against {GT_LEVEL1}')
     # Per checkpoint: (label, expected_scr, assert_match, roi, source_label)
     # roi=None  -> diff the full 256x192 playfield
     # roi=(x0, y0, x1, y1) -> diff only that sub-rectangle in playfield coords

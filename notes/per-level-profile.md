@@ -1,5 +1,53 @@
 # Per-level visual-diff profile
 
+## Iter 17: BATTY_LEVEL env now actually works end-to-end
+
+Pre-iter-17, `BATTY_LEVEL=N make test` LOOKED like it ran level N but did
+not — the env never propagated to DOS because the test floppy's
+AUTOEXEC.BAT only did `SET BATTYALL=1`. Every per-level diff number
+from iters 11–16 was actually L1's render diffed against L_N's GT — i.e.
+mostly meaningless. (The `BATTY_LEVEL` getenv at run_level:4479 was a
+no-op.)
+
+Fixes (commit on main):
+1. `Makefile` TEST_FLOPPY_OUT rule emits `SET BATTY_LEVEL=N` into
+   AUTOEXEC.BAT when the host env is set, and the `test` target now
+   `rm -f`s the floppy first so the env change always triggers a
+   rebuild (the floppy bytes don't change with env, so `make` would
+   otherwise consider it up-to-date).
+2. `scripts/test_visual.py` reads BATTY_LEVEL from env and switches
+   GT_LEVEL1 → `build/level_gt/level_NN.scr` accordingly.
+
+Confirmed working: L2 came back at 0 px diff (= iter-13 magnet-order
+fix really did get L2 pixel-perfect; the prior notes saying "L2 has 7
+px from magnets" were L1-vs-L2-GT noise).
+
+True per-level numbers (post-iter-17 wiring, `BATTY_LEVEL=N make test`):
+
+| Level | Cycle | Diff (px) | % of playfield |
+|-------|-------|-----------|----------------|
+| L01   | 0     | **0**     | 0.00 %         |
+| L02   | 1     | **0**     | 0.00 %         |
+| L03   | 2     | 5861      | 11.92 %        |
+| L04   | 3     | **0**     | 0.00 %         |
+| L05   | 0     | 11444     | 23.28 %        |
+| L06   | 1     | 2005      | 4.08 %         |
+| L07   | 2     | 1154      | 2.35 %         |
+| L08   | 3     | 902       | 1.84 %         |
+| L09   | 0     | 3135      | 6.38 %         |
+| L10   | 1     | 1527      | 3.11 %         |
+| L11   | 2     | 556       | 1.13 %         |
+| L12   | 3     | 1043      | 2.12 %         |
+| L13   | 0     | 1245      | 2.53 %         |
+| L14   | 1     | 1384      | 2.82 %         |
+| L15   | 2     | 1437      | 2.92 %         |
+
+L5 (cycle-0, biggest residual) is now the highest-value target for the
+next iter. L11 (556 px) remains the cleanest small-residual case for
+attr-tracing experiments.
+
+---
+
 ## Iter 16 confirmed: attr_buff[5,1] reaches buff_to_vga with $05
 
 Used a debug peek (`attr_buff[0] = attr_buff[5*32+1]` just before

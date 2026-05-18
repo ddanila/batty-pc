@@ -213,7 +213,15 @@ $(TEST_FLOPPY_OUT): $(EXE) $(ASSETS) $(FLOPPY_SRC)
 	mcopy -i $@ -o assets/bg_tile.bin ::BGTILE.BIN
 	mcopy -i $@ -o assets/frame_l1.bin ::FRAMEL1.BIN
 	mcopy -i $@ -o assets/sprites.bin ::SPRITES.BIN
-	@printf '@ECHO OFF\r\nSET BATTYALL=1\r\nBATTY\r\n' > build/AUTOEXEC-T.BAT
+	@# BATTY_LEVEL env passthrough — without injecting `SET BATTY_LEVEL=N`
+	@# into the DOS boot AUTOEXEC.BAT, the C-side getenv() at run_level
+	@# never sees the host's env. The line is only emitted when the host
+	@# var is non-empty, so `make test` defaults to L1 as before.
+	@if [ -n "$$BATTY_LEVEL" ]; then \
+	    printf '@ECHO OFF\r\nSET BATTYALL=1\r\nSET BATTY_LEVEL=%s\r\nBATTY\r\n' "$$BATTY_LEVEL" > build/AUTOEXEC-T.BAT ; \
+	else \
+	    printf '@ECHO OFF\r\nSET BATTYALL=1\r\nBATTY\r\n' > build/AUTOEXEC-T.BAT ; \
+	fi
 	mcopy -i $@ -o build/AUTOEXEC-T.BAT ::AUTOEXEC.BAT
 	@echo "Test floppy ready: $@  (full 4-state cycle)"
 
@@ -234,7 +242,12 @@ candidates: build/regions.blockdef
 		original/blocks/03_DATA_headless.dat.bin \
 		build/regions.blockdef assets/candidates
 
-test: $(TEST_FLOPPY_OUT)
+test:
+	@# Force a TEST_FLOPPY_OUT rebuild so AUTOEXEC.BAT picks up the current
+	@# BATTY_LEVEL env var (the floppy itself doesn't change with env so
+	@# the implicit rule would otherwise consider it up-to-date).
+	@rm -f $(TEST_FLOPPY_OUT)
+	@$(MAKE) $(TEST_FLOPPY_OUT)
 	python3 scripts/test_visual.py --floppy $(TEST_FLOPPY_OUT)
 
 run-original:
