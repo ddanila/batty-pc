@@ -505,11 +505,19 @@ static const unsigned char magnets_per_level[N_LEVELS][1 + 2*MAGNETS_MAX_PER_LEV
     { 2, 0x4C,0x82, 0x9C,0x82, 0,0, 0,0 }                      /* L15 */
 };
 
-static const unsigned char briks_colors[10] = {
+/* Mirror of `briks_colors` at $AEEC. Original ASM uses
+ *   LD HL,briks_colors-$01 ; CALL hl_add_a (A = cell low nibble 1..14)
+ * so it reads briks_colors[low_nibble - 1]. Our C-side does
+ *   briks_colors[iy_byte & 0x0F]
+ * which expects 1-based indexing — slot [0] is a never-indexed placeholder. */
+static const unsigned char briks_colors[16] = {
     0x00,                          /* [0] never indexed (low nibble == 0
                                     * means "skip" per the cell format). */
-    0x57, 0x4F, 0x5F, 0x20, 0x70,  /* normal bricks */
-    0x47, 0x57, 0x5F, 0x4F         /* metal bricks */
+    0x57, 0x4F, 0x5F, 0x20, 0x70,  /* [1..5] normal bricks */
+    0x47, 0x57, 0x5F, 0x4F,        /* [6..9] hard (multi-hit) bricks */
+    0x00,                          /* [10] unused per original */
+    0x47, 0x57, 0x4F, 0x5F,        /* [11..14] indestructible bricks (e.g. L5 $2E) */
+    0x00                           /* [15] unused per original */
 };
 
 /* Per-cycle bg attribute. The original game's game_screen_draw_to_buffer
@@ -1012,17 +1020,20 @@ static const unsigned int spr_spark_frames[5] = {
  * "halve the timer each frame" mechanic). 8/4/2/1/1 ticks total. */
 #define SPARK_FRAMES 5
 
-/* Perimeter frame (top + left + right, no bottom). Each side strip is
- * 3 cols wide -- the third col (col 2 left, col 29 right) is the
- * shadow the original casts just inside the cyan frame edge.
+/* Perimeter frame (top + left + right, no bottom). Side strip is 1 col
+ * wide — only the actual ornament byte_x=0 / byte_x=31. The original
+ * draws no shadow column at byte_x=1, 2; those positions are part of
+ * the playfield interior, filled by paint_bg + render_brick_band +
+ * print_briks_c. (Wider side strip would overlap bricks at lvl_col=0 /
+ * lvl_col=14 with the captured-from-L1 frame data.)
  *   top  pixels: 32 cols x 16 rows  = 512 B
  *   top  attrs : 32 cols x  2 rows  =  64 B
- *   left pixels:  3 cols x 176 rows = 528 B
- *   left attrs :  3 cols x  22 rows =  66 B
- *   right pixels: 3 cols x 176 rows = 528 B
- *   right attrs : 3 cols x  22 rows =  66 B
- * Total: 1764 B. */
-#define FRAME_SIDE_W     3
+ *   left pixels:  1 col  x 176 rows = 176 B
+ *   left attrs :  1 col  x  22 rows =  22 B
+ *   right pixels: 1 col  x 176 rows = 176 B
+ *   right attrs : 1 col  x  22 rows =  22 B
+ * Total: 972 B. */
+#define FRAME_SIDE_W     1
 #define FRAME_TOP_H_PX   24        /* HUD is 24 px tall: y=0..7 ornament,
                                     * y=8..15 labels, y=16..23 scores */
 #define FRAME_SIDE_H_PX  168       /* y=24..191 below the HUD */
@@ -1858,6 +1869,7 @@ static void print_briks_c(const unsigned char *cells) {
  * per-cell attrs (brick + shadow) into attr_buff for char rows 3..16.
  * Does NOT touch VGA — buff_to_vga handles the final pass. Assumes
  * paint_bg_to_buff already pre-filled the rest of the buffers. */
+static void print_border_shadow_c(void);
 static void render_brick_band(unsigned char level_idx) {
     int char_row, char_col;
     const unsigned char *cells = live_level;
@@ -1915,6 +1927,53 @@ static void render_brick_band(unsigned char level_idx) {
     }
 
     print_briks_c(cells);
+    print_border_shadow_c();
+}
+
+/* Port of the inner-border-line routine at LBE8B_2 ($BE99). The original
+ * clears bit 7 of scr_buff byte 1 and bit 0 of byte 30 (= x=8 and x=247
+ * black pixels) at 4 specific row bands separated by 28-row gaps:
+ *   y = 0..21, 50..77, 106..133, 162..189.
+ * The gaps line up with regions where other sprites overwrite that
+ * column (lives indicators, score, brick band centres). Without this
+ * the bg-pattern bit at byte_col=1 / byte_col=30 leaks through as a
+ * coloured strip just inside the cyan frame edge. */
+static void inner_border_line_c(void) {
+    int pass;
+    int y;
+    /* Pass 0 covers y=0..21 (= 22 rows; the original's first inner pass
+     * has 28 iters but the first 6 land in attr_buff via address overlap
+     * — those touch the flash bit of cr 18..23 cc 1 / cc 30, which is
+     * a no-op for non-flashing display). Passes 1..3 are 28-row spans
+     * starting at y=50, 106, 162. */
+    static const int starts[4]  = {  0, 50, 106, 162 };
+    static const int lengths[4] = { 22, 28,  28,  28 };
+    for (pass = 0; pass < 4; pass++) {
+        for (y = starts[pass]; y < starts[pass] + lengths[pass]; y++) {
+            if (y < 0 || y >= PLAYFIELD_H) continue;
+            scr_buff[y * 32 + 1]  &= 0x7F;   /* clear leftmost bit  -> x=8   black */
+            scr_buff[y * 32 + 30] &= 0xFE;   /* clear rightmost bit -> x=247 black */
+        }
+    }
+}
+
+/* Port of print_border_shadow ($BFCF) — finalization after print_briks.
+ * Clears bit 6 (the bright attr bit) at:
+ *   - cc 1 of cr 1..23 (left dim strip column, all playfield rows)
+ *   - cr 1 cc 2..30 (HUD label-row dimming)
+ * Without this, bricks at lvl_col=0 (col_byte=1) leak their bright
+ * brick color into cc 1, painting the left dim strip with the brick
+ * colour instead of the non-bright side-strip attr the level expects
+ * (e.g. L1 cr 7 cc 1: should be $1F, our print_briks_c writes $5F). */
+static void print_border_shadow_c(void) {
+    int cr;
+    int cc;
+    for (cr = 1; cr <= 23; cr++) {
+        attr_buff[cr * 32 + 1] &= 0xBF;
+    }
+    for (cc = 2; cc <= 30; cc++) {
+        attr_buff[1 * 32 + cc] &= 0xBF;
+    }
 }
 
 /* Pre-fill scr_buff with the hex tile and attr_buff uniformly with
@@ -1998,12 +2057,13 @@ static void render_level_screen(unsigned char level_idx) {
      * inverting the order leaves the shadow rows punching through
      * the brick top. */
     render_magnets(level_idx);
+    inner_border_line_c();
     render_brick_band(level_idx);
     render_brick_flash_to_buff();
-    /* Frame must paint AFTER bricks so its side-strip attrs override
-     * the leftmost / rightmost brick's body attrs that print_briks_c
-     * lays into the same cells; and BEFORE sprites so the bat / ball
-     * OR-blit over the frame pixels (fixes "bat invisible at edges"). */
+    /* Frame paints AFTER bricks so its side-strip attrs win over what
+     * print_briks_c lays into the same cells; print_border_shadow_c
+     * (inside render_brick_band) dims cc 1 back to non-bright after the
+     * brick attr write. */
     paint_frame_to_buff(cycle, level_idx);
     render_bat(cycle, bg_attr);
     render_lives(cycle, bg_attr);
@@ -3818,6 +3878,7 @@ static void redraw_full_with_ball(unsigned char level_idx) {
      * inverting the order leaves the shadow rows punching through
      * the brick top. */
     render_magnets(level_idx);
+    inner_border_line_c();
     render_brick_band(level_idx);
     render_brick_flash_to_buff();
     paint_frame_to_buff(cycle, level_idx);
@@ -4281,6 +4342,7 @@ static void redraw_with_death_sparks(unsigned char level_idx) {
     fill(0, 0, SCREEN_W, SCREEN_H, COL_BORDER);
     draw_frame(10);
     paint_bg_to_buff(bg_attr, cycle);
+    inner_border_line_c();
     render_brick_band(level_idx);
     render_brick_flash_to_buff();
     paint_frame_to_buff(cycle, level_idx);
