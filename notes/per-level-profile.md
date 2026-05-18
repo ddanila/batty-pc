@@ -1,5 +1,35 @@
 # Per-level visual-diff profile
 
+## Iter 25: blit-formula audit — disasm vs our port disagree
+
+Investigated the L13-slot-3 magnet bottom-fade residual by comparing
+GT byte patterns to expected sprite blits with various formulas:
+
+- **Original Z80 disasm `byte_put_width_N`** uses `(mask | screen) ^ pix`
+  (`POP DE; LD A,E; OR (HL); XOR D; LD (HL),A`). For OFF row 12 bc 0
+  (mask=$FF, pix=$4C) on bg=$3F at y=120 byte 3, this gives $B3.
+- **Our C port** uses `(~mask & screen) | (mask & pix)`. For the same
+  inputs, this gives $4C.
+- **GT shows $4C** at y=120 byte 3.
+
+So our C-port formula matches GT for verified rows. The disasm formula
+does NOT. Either:
+1. The disasm in `original/disasm/` is for a different game version
+   than the one whose GT we're targeting.
+2. The original game inverts pix at some point (sprite data stored
+   inverted, blit XORs it back) — but our C port treats stored pix
+   directly with the equivalent formula. Net result matches.
+3. There's a separate blit path for masked sprites we haven't found.
+
+The remaining L13/L14 magnet-bottom-fade residual (alternating $55/$AA
+bytes at y=131..137) isn't reproduced by ANY sprite + position +
+formula combination tried in iter 25. Possible sources:
+- The modded-batty pipeline runs an additional render step
+  (e.g., post-magnet shadow or alpha-fade) we haven't replicated.
+- A second OFF or ON draw at offset position we haven't enumerated.
+- Pixel residue from the previous frame that doesn't get cleared in
+  the GT-capture moment (= L6261 spin trap timing).
+
 ## Iter 21 / 22: magnet ON-coin pinned; L9/L13-style residuals remain
 
 Iter 21 fixed the magnet ON/OFF coin-flip residuals by surveying every GT
