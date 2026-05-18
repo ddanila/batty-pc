@@ -2034,25 +2034,26 @@ static void render_magnets(unsigned char level_idx) {
     for (i = 0; i < n; i++) {
         int x = rec[1 + 2*i];
         int y = rec[1 + 2*i + 1];
-        /* Both sprites blit at the SAME (x, y). The original's
-         * print_magnets does `ADD A,$05` to (IX+$04) between the two
-         * print_obj_to_buff calls, but ix_buf_addr_calc is only run
-         * before the FIRST call — the second uses the cached buffer
-         * address (IX+$0A/$0B) from before the Y bump. So the +5 is
-         * dead state on the live object table, not a sprite offset.
+        /* Draw order matches the original's print_magnets ($8D4C):
+         *   sprite_num $06 = spr_magnet_circle_ON (lightning, w=4, h=30
+         *                    with SMC) — drawn UNCONDITIONALLY first.
+         *   sprite_num $07 = spr_magnet_circle_OFF (bare outline, w=3,
+         *                    h=23) — drawn CONDITIONALLY after coin.
+         * (Iter 21 had this backwards, treating $06 as the "off state"
+         * and $07 as the "on overlay"; gfx_screen_elements actually
+         * maps $06 → spr_magnet_circle_on and $07 → spr_magnet_circle_off.)
          *
-         * ON-sprite gating: the original game flips a coin each frame
-         * to decide whether to overlay ON. Test mode (BATTYALL) pins
-         * the coin to match the modded-batty GT capture: magnet slots
-         * 0 and 1 always get ON, slots 2 and 3 never do. Verified by
-         * scanning every GT's magnet centre (slots 0/1 ~70% set
-         * pixels = lightning visible; slots 2/3 ~43% = OFF outline
-         * only). Outside test mode we always draw both (= ON 100% of
-         * the time), since the original's coin-flip is per-frame and
-         * the player perceives both states anyway. */
-        blit_masked_to_scr_buff_ptr(spr_magnet_off, x, y);
-        if (!test_mode_pin_blink || i < 2) {
-            blit_masked_to_scr_buff_ptr(spr_magnet_on,  x, y);
+         * Both blits use the SAME (x, y) — original's `ADD A,$05` to
+         * (IX+$04) between calls is dead state since ix_buf_addr_calc
+         * only runs once.
+         *
+         * Coin-pin in test mode: slots 0/1 SKIP the OFF overlay (= GT
+         * shows them as pure lightning, ~70% set pixels). Slots 2/3
+         * DRAW the OFF overlay (= GT shows them at ~43% set with the
+         * outline replacing the lightning's bright body). */
+        blit_masked_to_scr_buff_ptr(spr_magnet_on, x, y);
+        if (!test_mode_pin_blink || i >= 2) {
+            blit_masked_to_scr_buff_ptr(spr_magnet_off, x, y);
         }
     }
 }
