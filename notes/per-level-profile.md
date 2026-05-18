@@ -1,5 +1,34 @@
 # Per-level visual-diff profile
 
+## Iter 35: correction — disasm DOES match the binary
+
+Earlier (iter 25) I claimed "the disasm formula `(mask | screen) ^ pix`
+doesn't match GT; our C-port's `(~mask & screen) | (mask & pix)` does".
+That was misleading.
+
+I verified by:
+1. Loading `original/disasm/tools/batty_for_compare.sna` (the reference
+   binary the disasm was generated from) and reading its bytes at
+   `byte_put_width_3` ($99EB). Got `D1 7B B6 AA 77 2C` =
+   `POP DE; LD A,E; OR (HL); XOR D; LD (HL),A; INC L`. Matches disasm.
+2. Assembling our modded-batty SNA via sjasmplus and diffing against
+   batty_for_compare.sna. Only 35 bytes differ — all at addresses
+   matching our PATCHES list in `build_modded_batty.py`. Confirmed
+   our build produces a byte-perfect modded version of the reference.
+
+So the disasm matches the binary. My iter-25 mistake was conflating
+the simple unshifted formula `(mask | screen) ^ pix` with the SHIFTED
+variant `byte_put_width_shift_N`, which uses TABLE-LOOKUP'd operands
+from `table_shifts` — those tables likely pre-transform mask/pix so
+the OLD formula computes the same result as our C-port's NEW formula
+`(~mask & screen) | (mask & pix)`. The OUTPUT matches GT; the
+intermediate operands differ between Z80 and C-port representations.
+
+For magnets specifically (which always use SHIFTED blit since magnet x
+is rarely byte-aligned), the table-lookup variant is what runs. Our
+direct `(~mask & screen) | (mask & pix)` is functionally equivalent
+in this domain.
+
 ## Iter 26: synthetic fade-overlay experiment — net negative
 
 Attempted to apply spr_magnet_on rows 24..29 (the 6-row lightning fade)
