@@ -31,10 +31,10 @@ This is probably the highest-value remaining behavioral parity task.
 
 Several paths use gameplay-equivalent but not byte-exact motion:
 
-- enemy movement still uses simplified horizontal patrol. It now stays
-  alive at side margins, but the original UFO/bird handlers use the
-  6-bit direction table, `LAA7B` target steering, brick/ball collision,
-  and `check_margins`,
+- enemy movement now uses the original 6-bit direction-table shape and
+  q8.8 subpixel coordinates, but target selection/collision steering is
+  still simplified versus `LAA7B`, brick/ball collision, and
+  `check_margins`,
 - falling bonus Y speed is a constant `2`, while the original uses the
   `LA55A_0` object-motion accumulator,
 - triple-ball fan-out uses integer `dx/dy` approximations instead of

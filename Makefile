@@ -29,9 +29,11 @@ WATCOM_LIB = $(WATCOM_DIR)/lib286/dos
 WCCFLAGS = -0 -ms -os -s -za99 -w4 -we -oi -i=$(WATCOM_H)
 
 SRC     = src/main.c
-OBJ     = $(SRC:src/%.c=build/%.obj)
+OBJ      = $(SRC:src/%.c=build/%.obj)
+TEST_OBJ = build/main-test.obj
 HEADERS = $(wildcard src/*.h)
 EXE     = build/batty.exe
+TEST_EXE = build/batty-test.exe
 
 ASSETS  = assets/loading.bin assets/hi_score.bin assets/main_menu.bin \
           assets/font.bin assets/markup.bin assets/main_menu_markup.bin \
@@ -83,8 +85,14 @@ build:
 build/%.obj: src/%.c $(HEADERS) | build
 	$(WCC) $(WCCFLAGS) -fo=$@ $<
 
+$(TEST_OBJ): src/main.c $(HEADERS) | build
+	$(WCC) $(WCCFLAGS) -dBATTY_SCORELESS_HUD -fo=$@ $<
+
 $(EXE): $(OBJ)
 	$(WLINK) name $@ format dos $(addprefix file ,$(OBJ)) libpath $(WATCOM_LIB) library clibs.lib
+
+$(TEST_EXE): $(TEST_OBJ)
+	$(WLINK) name $@ format dos file $(TEST_OBJ) libpath $(WATCOM_LIB) library clibs.lib
 
 assets: $(ASSETS)
 
@@ -207,9 +215,9 @@ $(FLOPPY_OUT): $(EXE) $(ASSETS) $(FLOPPY_SRC)
 	mcopy -i $@ -o build/AUTOEXEC.BAT ::AUTOEXEC.BAT
 	@echo "Floppy ready: $@  (menu-only cycle)"
 
-$(TEST_FLOPPY_OUT): $(EXE) $(ASSETS) $(FLOPPY_SRC)
+$(TEST_FLOPPY_OUT): $(TEST_EXE) $(ASSETS) $(FLOPPY_SRC)
 	cp "$(FLOPPY_SRC)" $@
-	mcopy -i $@ -o $(EXE) ::BATTY.EXE
+	mcopy -i $@ -o $(TEST_EXE) ::BATTY.EXE
 	mcopy -i $@ -o assets/loading.bin  ::LOADING.BIN
 	mcopy -i $@ -o assets/hi_score.bin ::HISCORE.BIN
 	mcopy -i $@ -o assets/main_menu.bin ::MAINMENU.BIN

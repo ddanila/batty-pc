@@ -79,6 +79,12 @@ bonuses. `get_bonus` updates object state, score, sound, bat/ball
 state, and changes the caught bonus object into the floating points
 sprite; any separate current-bonus letter overlay is port-only.
 
+The normal DOS build draws the in-game score HUD (`1UP`, `HI`, `2UP`
+and their six-digit counters) into `scr_buff` before `buff_to_vga`, so
+it follows the same ZX-format buffer path as the rest of gameplay. The
+visual-test executable is compiled with `BATTY_SCORELESS_HUD` because
+the GT capture pipeline intentionally NOPs the original score block.
+
 `assets/sprites.bin` must include the full `gfx_bonuses` tail through
 `spr_bonus_triple_ball` (`$8CEA..$8D46`). A shorter extraction leaves the
 triple-ball sprite truncated near the end of the blob, making its

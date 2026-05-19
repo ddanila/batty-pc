@@ -575,7 +575,7 @@ static unsigned char bg_tile[BG_TILE_CYCLES * BG_TILE_SIZE];
 #define BALL_SPEED  2
 #define BALL_X_OFFSET_ON_BAT 16  /* = $84 - $74, matches the original's
                                   * object_ball_1.x_coord - object_bat_1.x_coord */
-#define BALL_Y_TOP    24
+#define BALL_Y_TOP     8
 #define BALL_X_MIN     8
 #define BALL_X_MAX   240        /* 256 - 8 - body 8 */
 /* Ball state - x/y now live in objects[OBJ_BALL_1].x_coord/y_coord
@@ -1494,19 +1494,47 @@ static void handling_blast_obj(object_t *o) {
 }
 static void handling_400pts_obj(object_t *o){ (void)o; }
 
-/* Birds/UFOs cross the playfield horizontally. Original handlers
- * ($A9BC handling_bird, $A958 handling_ufo) do flap animation +
- * bomb-drop subprocess; we simplify to straight-line motion that
- * leaves the descriptor's IX+$06 = dir byte intact for collision
- * checks the rest of the code can probe. */
+static const unsigned char direction_table_q8[16] = {
+    0xFF,0xFD,0xFA,0xF4,0xE6,0xE0,0xD4,0xC5,
+    0xB4,0xA1,0x8D,0x78,0x61,0x4A,0x31,0x18
+};
+
+static void enemy_dir_delta_q8(unsigned char dir, unsigned char speed,
+                               int *dx_q8, int *dy_q8) {
+    int idx = dir & 0x0F;
+    int x = direction_table_q8[15 - idx];
+    int y = direction_table_q8[idx];
+    switch (dir & 0x30) {
+        case 0x00: *dx_q8 =  x; *dy_q8 =  y; break;
+        case 0x10: *dx_q8 =  y; *dy_q8 = -x; break;
+        case 0x20: *dx_q8 = -x; *dy_q8 = -y; break;
+        default:   *dx_q8 = -y; *dy_q8 =  x; break;
+    }
+    *dx_q8 *= speed;
+    *dy_q8 *= speed;
+}
+
+static void enemy_turn_towards_target(object_t *o) {
+    unsigned char target = (unsigned char)(o->bonus_applied & 0x3F);
+    unsigned char delta = (unsigned char)((o->dir - target) & 0x3F);
+    if (delta == 0) return;
+    if (delta & 0x20) o->dir = (unsigned char)((o->dir + 1) & 0x3F);
+    else             o->dir = (unsigned char)((o->dir - 1) & 0x3F);
+}
+
+static void enemy_pick_new_target(object_t *o) {
+    o->bonus_applied = (unsigned char)(next_random() & 0x3F);
+}
+
+/* Birds/UFOs use a reduced port of the original 6-bit direction-table
+ * movement. The original also uses LAA7B target steering and collision
+ * reactions; here we keep the same q8.8 motion shape and periodically
+ * steer to a new target so enemies roam through the playfield instead
+ * of patrolling only along the top edge. */
 static void bomb_appear(object_t *o);     /* forward decl */
 static void handling_bird_obj(object_t *o) {
-    /* Advance per IX+$07 = speed; cross from left edge to right when
-     * dir LSB = 0, else right-to-left. misc_12 doubles as the frame
-     * tick counter - the original keeps animation timing in $12/$13;
-     * we use misc_12 as a single per-alien counter and pick frame
-     * index = (misc_12 >> 2) mod 3 for a ~12 Hz wing flap at 50 Hz. */
-    int dx, nx;
+    int dx_q8, dy_q8, nx_q8, ny_q8;
+    int nx, ny;
     /* Port of the entry slide at $A9BC line 3429-3433:
      *   LD A,(IX+$04); CP $08; JR NC,LA9BC_0; INC (IX+$04); RET
      * Alien spawns at Y=0 (= top of playfield) and slides down 8 px
@@ -1517,19 +1545,37 @@ static void handling_bird_obj(object_t *o) {
         o->y_coord++;
         return;
     }
-    dx = (o->dir & 1) ? -(int)o->speed : (int)o->speed;
-    nx = (int)o->x_coord + dx;
     o->misc_12++;
     o->sprite_num = (unsigned char)((o->misc_12 >> 2) % 3);
     bomb_appear(o);
+    if ((o->misc_12 & 0x3F) == 0) enemy_pick_new_target(o);
+    if ((o->misc_12 & 0x03) == 0) enemy_turn_towards_target(o);
+    enemy_dir_delta_q8(o->dir, o->speed, &dx_q8, &dy_q8);
+    nx_q8 = ((int)o->x_coord << 8) + o->x_coord_hi + dx_q8;
+    ny_q8 = ((int)o->y_coord << 8) + o->y_coord_hi + dy_q8;
+    nx = nx_q8 >> 8;
+    ny = ny_q8 >> 8;
     if (nx < 8) {
-        nx = 8;
-        o->dir ^= 1;
+        nx = 8; nx_q8 = nx << 8;
+        o->dir = (unsigned char)((0x20 - o->dir) & 0x3F);
+        enemy_pick_new_target(o);
     } else if (nx >= PLAYFIELD_W - 8 - (int)o->w_body_px) {
-        nx = PLAYFIELD_W - 8 - (int)o->w_body_px;
-        o->dir ^= 1;
+        nx = PLAYFIELD_W - 8 - (int)o->w_body_px; nx_q8 = nx << 8;
+        o->dir = (unsigned char)((0x20 - o->dir) & 0x3F);
+        enemy_pick_new_target(o);
+    }
+    if (ny < 8) {
+        ny = 8; ny_q8 = ny << 8;
+        o->dir = (unsigned char)((0x40 - o->dir) & 0x3F);
+        enemy_pick_new_target(o);
+    } else if (ny >= PLAYFIELD_H) {
+        o->sprite_set |= 0x80;
+        return;
     }
     o->x_coord = (unsigned char)nx;
+    o->x_coord_hi = (unsigned char)(nx_q8 & 0xFF);
+    o->y_coord = (unsigned char)ny;
+    o->y_coord_hi = (unsigned char)(ny_q8 & 0xFF);
 }
 static void handling_ufo_obj(object_t *o) { handling_bird_obj(o); }
 
@@ -2076,6 +2122,8 @@ static void render_magnets(unsigned char level_idx) {
     }
 }
 
+static void render_hud_to_buff(void);
+
 static void render_level_screen(unsigned char level_idx) {
     unsigned char bg_attr = bg_attr_per_cycle[level_idx & 3];
     unsigned char cycle   = (unsigned char)(level_idx & 3);
@@ -2099,6 +2147,7 @@ static void render_level_screen(unsigned char level_idx) {
     paint_frame_to_buff(cycle, level_idx);
     render_bat(cycle, bg_attr);
     render_lives(cycle, bg_attr);
+    render_hud_to_buff();
     buff_to_vga();
 }
 
@@ -3325,12 +3374,10 @@ static void enemy_prepare(void) {
     e->y_coord = 0;
     r = (unsigned char)(next_random() & 3);
     e->x_coord = prop_x_coord[r];
-    /* If x starts on the right, set dir BIT 0 so handling_bird_obj
-     * moves left. The original uses dir=$10 as initial; we encode the
-     * direction in BIT 0 directly to keep our simplified handler
-     * trivial. */
-    e->dir = (r & 1) ? 0x11 : 0x10;
-    e->bonus_applied = 0x10;
+    e->x_coord_hi = 0;
+    e->y_coord_hi = 0;
+    e->dir = (r & 1) ? 0x38 : 0x08;   /* down-left / down-right */
+    e->bonus_applied = e->dir;
 }
 
 /* Port of kill_enemy_by_bat at $A4B8 / kill_enemy at $A4C4. AABB check
@@ -3878,16 +3925,14 @@ static void redraw_bat(unsigned char cycle, unsigned char bg_attr) {
     buff_to_vga_strip(BAT_Y_PX, BAT_H_PX);
 }
 
-static void render_hud_score(void);
-static void render_hud_high_score(void);
+static void render_hud_to_buff(void);
 
 /* Full-frame compose. Walks the same scr_buff -> attr_buff -> VGA
  * path as the original (game_screen_draw_to_buffer @ $BE6B):
  *   - paint bg + bricks + bat + lives into scr_buff/attr_buff
  *   - paint ball, bomb, 400pts, alien into scr_buff (each picks up
  *     its surrounding char cell's bg attr at buff_to_vga time)
- *   - single buff_to_vga pass converts everything to VGA
- *   - score text painted direct-VGA on top. */
+ *   - HUD labels/scores join scr_buff before the same buff_to_vga pass. */
 static void redraw_full_with_ball(unsigned char level_idx) {
     unsigned char bg_attr = bg_attr_per_cycle[level_idx & 3];
     unsigned char cycle   = (unsigned char)(level_idx & 3);
@@ -3964,9 +4009,8 @@ static void redraw_full_with_ball(unsigned char level_idx) {
         render_ball_to_buff(objects[OBJ_BALL_3].x_coord,
                             objects[OBJ_BALL_3].y_coord, bg_attr);
     }
+    render_hud_to_buff();
     buff_to_vga();
-    render_hud_score();
-    render_hud_high_score();
 }
 
 /* Render a short string of N character codes via draw_glyph, anchored
@@ -3987,39 +4031,71 @@ static void score_to_codes(unsigned long s, unsigned char out[6]) {
     }
 }
 
-/* Position of the live score in the empty band between the brick zone
- * (y <= 127) and the bat (y >= 167). 6 digits * 8 px = 48 px wide,
- * centred at playfield x. Only drawn once score > 0 so state4_level1
- * (captured at score=0) stays pixel-identical against the GT. */
-/* Live 1UP score in the top HUD strip, overlaying the frame's
- * baked-in placeholder. Char row 1 (y=8), char col 4 (x=32).
- * 6 digits * 8 px = 48 px wide. */
-#define HUD_SCORE_X (BORDER_X + 32)
-#define HUD_SCORE_Y (BORDER_Y + 8)
-/* Hi-score also in the top HUD strip, centre region — char col 15
- * (x=120), same row. */
-#define HUD_HISCORE_X (BORDER_X + 120)
-#define HUD_HISCORE_Y (BORDER_Y + 8)
-static void render_hud_score(void) {
+#ifndef BATTY_SCORELESS_HUD
+static void draw_glyph_to_buff(int x, int y, unsigned char code) {
+    int r;
+    int byte_col = x >> 3;
+    int shift = x & 7;
+    if (code >= FONT_N) return;
+    for (r = 0; r < FONT_ROWS; r++) {
+        int py = y + r;
+        unsigned char bits;
+        int row_base;
+        if (py < 0 || py >= PLAYFIELD_H) continue;
+        bits = font[code * FONT_ROWS + r];
+        row_base = py * 32;
+        if (byte_col >= 0 && byte_col < 32) {
+            scr_buff[row_base + byte_col] |= (unsigned char)(bits >> shift);
+        }
+        if (shift != 0 && byte_col + 1 >= 0 && byte_col + 1 < 32) {
+            scr_buff[row_base + byte_col + 1] |= (unsigned char)(bits << (8 - shift));
+        }
+    }
+}
+
+static void set_hud_text_attrs(int x, int y, int w, int h) {
+    int col0 = x >> 3;
+    int col1 = (x + w - 1) >> 3;
+    int row0 = y >> 3;
+    int row1 = (y + h - 1) >> 3;
+    int r, c;
+    if (col0 < 0) col0 = 0;
+    if (row0 < 0) row0 = 0;
+    if (col1 >= ATTR_COLS) col1 = ATTR_COLS - 1;
+    if (row1 >= ATTR_ROWS) row1 = ATTR_ROWS - 1;
+    for (r = row0; r <= row1; r++) {
+        for (c = col0; c <= col1; c++) {
+            attr_buff[r * 32 + c] = 0x46;
+        }
+    }
+}
+
+static void draw_hud_text_to_buff(int x, int y,
+                                  const unsigned char *codes, int n) {
+    int i;
+    set_hud_text_attrs(x, y, n * 8, FONT_ROWS);
+    for (i = 0; i < n; i++) draw_glyph_to_buff(x + i * 8, y, codes[i]);
+}
+
+static void render_hud_to_buff(void) {
+    static const unsigned char lbl_1up[] = { 0x01, 0x1E, 0x19 };
+    static const unsigned char lbl_2up[] = { 0x02, 0x1E, 0x19 };
+    static const unsigned char lbl_hi[]  = { 0x11, 0x12 };
     unsigned char digits[6];
-    /* score=0 leaves the frame ornament's baked-in "000000" visible —
-     * that pattern is part of the captured frame_l1.bin and aligns
-     * with the original. Once the player scores, our digits overlay
-     * with the matching colour (idx 6 = non-bright yellow). */
-    if (score == 0) return;
+    draw_hud_text_to_buff( 28, 12, lbl_1up, 3);
+    draw_hud_text_to_buff(120, 12, lbl_hi,  2);
+    draw_hud_text_to_buff(204, 12, lbl_2up, 3);
     score_to_codes(score, digits);
-    draw_text(HUD_SCORE_X, HUD_SCORE_Y, 6, digits, 6);
-}
-static void render_hud_high_score(void) {
-    unsigned char digits[6];
-    /* Mirror render_hud_score: leave the frame's baked placeholder
-     * showing when no real high score has been recorded yet. Once
-     * the player beats the placeholder threshold, the dynamic value
-     * overlays. */
-    if (high_score == 0) return;
+    draw_hud_text_to_buff( 16, 21, digits, 6);
     score_to_codes(high_score, digits);
-    draw_text(HUD_HISCORE_X, HUD_HISCORE_Y, 6, digits, 6);
+    draw_hud_text_to_buff(104, 21, digits, 6);
+    score_to_codes(0, digits);
+    draw_hud_text_to_buff(192, 21, digits, 6);
 }
+#else
+static void render_hud_to_buff(void) {
+}
+#endif
 /* Show a "GAME OVER" screen with the final score + high score, hold
  * ~3 seconds. When the player just beat the high score, a "NEW HIGH
  * SCORE!" banner appears between the labels. */
@@ -4405,9 +4481,8 @@ static void redraw_with_death_sparks(unsigned char level_idx) {
         blit_masked_to_scr_buff(spr_spark_frames[death_sparks[i].sprite_num],
                                  xp, yp);
     }
+    render_hud_to_buff();
     buff_to_vga();
-    render_hud_score();
-    render_hud_high_score();
 }
 
 /* Block in a self-contained PIT-paced loop while the bat explodes —

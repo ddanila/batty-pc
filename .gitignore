@@ -1,5 +1,6 @@
 # Build outputs
 build/batty.exe
+build/batty-test.exe
 build/batty.img
 build/batty-test.img
 build/AUTOEXEC.BAT
