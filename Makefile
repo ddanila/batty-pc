@@ -49,6 +49,10 @@ FLOPPY_OUT       = build/batty.img        # `make run`: 2-state menu loop
 TEST_FLOPPY_OUT  = build/batty-test.img   # `make test`: full 4-state cycle
 
 ZESARUX ?= tools/zesarux/src/zesarux
+ZESARUX_CONFIGURE_OPTS ?=
+ZESARUX_AO ?= null
+ZESARUX_VO ?=
+ZESARUX_RUN_OPTS ?=
 ZRCP_PORT ?= 10000
 
 .PHONY: all clean run floppy assets help run-original run-original-cheat snapshot candidates regions test
@@ -250,8 +254,14 @@ test:
 	@$(MAKE) $(TEST_FLOPPY_OUT)
 	python3 scripts/test_visual.py --floppy $(TEST_FLOPPY_OUT)
 
-run-original:
+tools/zesarux/src/zesarux:
+	git submodule update --init tools/zesarux
+	cd tools/zesarux/src && ./configure $(ZESARUX_CONFIGURE_OPTS) && $(MAKE)
+
+run-original: $(ZESARUX)
 	$(ZESARUX) --noconfigfile --machine 48k \
+		$(if $(ZESARUX_VO),--vo $(ZESARUX_VO)) \
+		--ao $(ZESARUX_AO) $(ZESARUX_RUN_OPTS) \
 		--enable-remoteprotocol --remoteprotocol-port $(ZRCP_PORT) \
 		--quickexit $(CURDIR)/original/batty.tap
 

@@ -140,6 +140,22 @@ targets — install them on demand.
   override with `ZESARUX=/path/to/zesarux` if you have it installed
   elsewhere.
 
+  `make run-original` defaults to `ZESARUX_AO=null` so it also works on
+  Linux hosts where ZEsarUX only built the PC speaker backend. For an
+  interactive window/audio run, install the matching development headers
+  before configuring ZEsarUX, then select the enabled drivers explicitly:
+
+  ```sh
+  make run-original ZESARUX_VO=xwindows ZESARUX_AO=alsa
+  # or, if your ZEsarUX build has SDL enabled:
+  make run-original ZESARUX_VO=sdl ZESARUX_AO=sdl
+  ```
+
+  On a minimal Linux build, `tools/zesarux/src/zesarux --help` lists only
+  `fbdev stdout simpletext null` video and `dsp onebitspeaker null` audio.
+  `onebitspeaker` needs PC speaker I/O permissions; use `null` for smoke
+  tests and RE automation.
+
 ## Approach
 
 **The hard RE is done.** `original/disasm/batty.asm` (from
