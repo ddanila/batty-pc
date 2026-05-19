@@ -50,9 +50,15 @@ TEST_FLOPPY_OUT  = build/batty-test.img   # `make test`: full 4-state cycle
 
 ZESARUX ?= tools/zesarux/src/zesarux
 ZESARUX_CONFIGURE_OPTS ?= --enable-sdl2
-ZESARUX_AO ?= null
-ZESARUX_VO ?=
-ZESARUX_RUN_OPTS ?=
+ifeq ($(HOST_OS),Linux)
+  ZESARUX_AO ?= sdl
+  ZESARUX_VO ?= sdl
+  ZESARUX_RUN_OPTS ?= --zoom 2
+else
+  ZESARUX_AO ?= null
+  ZESARUX_VO ?=
+  ZESARUX_RUN_OPTS ?=
+endif
 ZRCP_PORT ?= 10000
 
 .PHONY: all clean run floppy assets help run-original run-original-cheat snapshot candidates regions test

@@ -140,9 +140,21 @@ targets — install them on demand.
   override with `ZESARUX=/path/to/zesarux` if you have it installed
   elsewhere.
 
-  `make run-original` defaults to `ZESARUX_AO=null` so it also works on
-  Linux hosts where ZEsarUX only built the PC speaker backend. Check the
-  drivers compiled into your local ZEsarUX before choosing overrides:
+  On Linux, `make run-original` defaults to SDL video/audio with a 2x
+  window scale:
+
+  ```sh
+  make run-original
+  ```
+
+  This is equivalent to:
+
+  ```sh
+  make run-original ZESARUX_VO=sdl ZESARUX_AO=sdl ZESARUX_RUN_OPTS="--zoom 2"
+  ```
+
+  Check the drivers compiled into your local ZEsarUX before choosing
+  other overrides:
 
   ```sh
   tools/zesarux/src/zesarux --help | sed -n '/--vo driver/,/--version/p'
@@ -160,12 +172,12 @@ targets — install them on demand.
   # X11 window + ALSA audio, if both drivers are listed by --help:
   make run-original ZESARUX_VO=xwindows ZESARUX_AO=alsa
 
-  # SDL video/audio, if your ZEsarUX build has SDL enabled:
-  make run-original ZESARUX_VO=sdl ZESARUX_AO=sdl
-
   # SDL window + PulseAudio/PipeWire; this is the tested desktop path
   # on the current Linux workstation:
   make run-original ZESARUX_VO=sdl ZESARUX_AO=pulse
+
+  # Headless smoke test / RE automation:
+  make run-original ZESARUX_VO= ZESARUX_AO=null
   ```
 
 ## Approach
