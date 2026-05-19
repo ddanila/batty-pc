@@ -28,6 +28,7 @@ build/modded_batty/
 build/level_gt/_post_tape_boot.sna
 build/level_gt/level_*_modded.*
 build/level_gt_backup_*/
+zesarux_index_menu.idx
 
 # Claude Code session files
 .claude/
