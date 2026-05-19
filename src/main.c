@@ -2486,8 +2486,13 @@ static void snd_q_push(unsigned char id) {
 static int snd_tick_one(sound_slot_t *s) {
     switch (s->id) {
         case SND_NORMAL_BRIK:
-            /* $C0F3: E=$44 -> ~1976 Hz, single 4 ms click. */
-            sound_play(1976, 1);
+            /* $C0F3: D=$08,E=$44. Include the DJNZ/OUT overhead in
+             * the pitch estimate; this is a little lower than the
+             * simple 134615/E approximation and closer to the original
+             * brick tick. The PC speaker frame clock still makes the
+             * pulse longer than the Spectrum's tight 8-cycle beeper
+             * burst. */
+            sound_play(1942, 1);
             return 1;
 
         case SND_BAT_BEAT:
@@ -4068,6 +4073,22 @@ static void score_to_codes(unsigned long s, unsigned char out[6]) {
 }
 
 #ifndef BATTY_SCORELESS_HUD
+static void clear_scr_buff_rect(int x_px, int y_px, int w_px, int h_px) {
+    int row;
+    int col0 = x_px >> 3;
+    int col1 = (x_px + w_px - 1) >> 3;
+    if (col0 < 0) col0 = 0;
+    if (col1 >= 32) col1 = 31;
+    for (row = 0; row < h_px; row++) {
+        int y = y_px + row;
+        int col;
+        if (y < 0 || y >= PLAYFIELD_H) continue;
+        for (col = col0; col <= col1; col++) {
+            scr_buff[y * 32 + col] = 0;
+        }
+    }
+}
+
 static void blit_original_masked_to_scr_buff_ptr(const unsigned char *src,
                                                   int x_px, int y_px) {
     int w = src[0];
@@ -4127,6 +4148,12 @@ static void draw_score_digits_original(int x, int y, unsigned long value) {
 }
 
 static void render_hud_to_buff(void) {
+    clear_scr_buff_rect(0x1C, 0x0C, 24, 8);
+    clear_scr_buff_rect(0x78, 0x0C, 16, 8);
+    clear_scr_buff_rect(0xCC, 0x0C, 24, 8);
+    clear_scr_buff_rect(0x10, 0x15, 48, 8);
+    clear_scr_buff_rect(0x68, 0x15, 48, 8);
+    clear_scr_buff_rect(0xC0, 0x15, 48, 8);
     blit_original_masked_to_scr_buff_ptr(hud_sprites + HUD_SPR_1UP, 0x1C, 0x0C);
     blit_original_masked_to_scr_buff_ptr(hud_sprites + HUD_SPR_2UP, 0xCC, 0x0C);
     blit_original_masked_to_scr_buff_ptr(hud_sprites + HUD_SPR_HI,  0x78, 0x0C);
@@ -4642,14 +4669,14 @@ static void play_bat_explosion(unsigned char level_idx) {
             if (yp >= PLAYFIELD_H) { death_sparks[i].active = 0; continue; }
             if (xp < 8) {
                 death_sparks[i].x_q88 = 8L << 8;
-                death_sparks[i].dir = (unsigned char)((death_sparks[i].dir ^ 0x20) & 0x3F);
+                death_sparks[i].dir = (unsigned char)(((death_sparks[i].dir ^ 0x1F) + 1) & 0x3F);
             } else if (xp >= PLAYFIELD_W - 8) {
                 death_sparks[i].x_q88 = (long)(PLAYFIELD_W - 8) << 8;
-                death_sparks[i].dir = (unsigned char)((death_sparks[i].dir ^ 0x20) & 0x3F);
+                death_sparks[i].dir = (unsigned char)(((death_sparks[i].dir ^ 0x1F) + 1) & 0x3F);
             }
             if (yp < 8) {
                 death_sparks[i].y_q88 = 8L << 8;
-                death_sparks[i].dir = (unsigned char)((death_sparks[i].dir ^ 0x20) & 0x3F);
+                death_sparks[i].dir = (unsigned char)(((death_sparks[i].dir ^ 0x3F) + 1) & 0x3F);
             }
             if (--death_sparks[i].frame_ticks == 0) {
                 if (death_sparks[i].sprite_num >= SPARK_FRAMES - 1) {
