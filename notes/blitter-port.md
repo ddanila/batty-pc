@@ -100,6 +100,20 @@ L1 row 3's `$13`/`$14` (bit 4 set) are 1-hit destructible; L1 row 0's
 `$07` cells (= bit 4 clear) are 2-hit multi-hit; L5 `$2E` (bit 5 set)
 is undestructible metal.
 
+### Runtime destroyed-cell attr cleanup
+
+`level_attrs.bin` is captured with all bricks alive, so the brick band
+starts each repaint with body attrs and shadow attrs already present.
+For runtime-destroyed cells (`cell & 0xC0 == 0x80`), `render_brick_band`
+resets both the body attr cells and the row directly below to the level
+background attr before calling `print_briks_c`.
+
+That shadow-row reset is unconditional. If a live brick sits below the
+destroyed cell, `print_briks_c` writes that lower brick's body attr
+afterward. If the row below is empty or sentinel-only, the stale dimmed
+shadow attr disappears with the destroyed brick instead of tinting the
+background.
+
 ## Original source references
 
 - `byte_put_width_N` at $99EB — the unshifted masked-blit primitive.

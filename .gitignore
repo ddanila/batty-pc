@@ -7,9 +7,14 @@ build/AUTOEXEC-T.BAT
 build/*.obj
 build/*.lst
 
+# Generated asset previews / extracted blobs
+assets/font_sheet.png
+assets/sprites.bin
+
 # Re-generatable analysis artifacts (`make regions`, etc.)
 # Keep snapshots/ since they're laboriously captured by hand.
 build/test_visual/
+build/exercise_bricks/
 build/snap*.sna
 build/snapshots/*.sna
 # Ad-hoc preview captures while iterating on the level renderer

@@ -1892,8 +1892,9 @@ static void render_brick_band(unsigned char level_idx) {
      * destroyed (bit 7), reset the body attr to bg_attr — otherwise
      * destroyed bricks keep showing brick colour even though
      * print_briks_c skips the body pixels. Also clear the shadow row
-     * (the char row below) when there's no brick below to keep its own
-     * attr. */
+     * (the char row below): if a live brick is below, print_briks_c will
+     * repaint its body attr after this cleanup; if not, the stale dimmed
+     * shadow attr disappears with the destroyed brick. */
     {
         int lvl_row, lvl_col;
         for (lvl_row = 0; lvl_row < LVL_ROWS; lvl_row++) {
@@ -1911,16 +1912,8 @@ static void render_brick_band(unsigned char level_idx) {
                     int cc2 = cc1 + 1;
                     attr_buff[cr * 32 + cc1] = bg_attr;
                     attr_buff[cr * 32 + cc2] = bg_attr;
-                    if (lvl_row + 1 < LVL_ROWS) {
-                        unsigned char below = cells[(lvl_row + 1) * LVL_COLS + lvl_col];
-                        if ((below & 0xC0) == 0x80) {
-                            attr_buff[(cr + 1) * 32 + cc1] = bg_attr;
-                            attr_buff[(cr + 1) * 32 + cc2] = bg_attr;
-                        }
-                    } else {
-                        attr_buff[(cr + 1) * 32 + cc1] = bg_attr;
-                        attr_buff[(cr + 1) * 32 + cc2] = bg_attr;
-                    }
+                    attr_buff[(cr + 1) * 32 + cc1] = bg_attr;
+                    attr_buff[(cr + 1) * 32 + cc2] = bg_attr;
                 }
             }
         }
