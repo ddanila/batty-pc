@@ -913,21 +913,6 @@ static int           pts_400_dx = 0;
  * "+5000" sprite so the unusual reward has its own visible cue. */
 static unsigned int  pts_marker_spr = 0;  /* set on catch */
 
-/* Bonus colours indexed by type (ZX VGA palette indices). Picked so
- * they don't collide with the per-level bg cycle colours (yellow /
- * green / cyan / white). */
-static const unsigned char bonus_colours[BONUS_TYPE_COUNT] = {
-    10,   /* L (life)        - bright red     */
-    11,   /* S (slow)        - bright magenta */
-     9,   /* B (big bat)     - bright blue    */
-    14,   /* G (big ball)    - bright yellow  */
-    13,   /* K (kill aliens) - bright cyan    */
-    12,   /* C (catch)       - bright green   */
-    10,   /* R (rocket)      - bright red     */
-    15,   /* $ (5000 points) - bright white   */
-    11,   /* L (laser)       - bright magenta */
-    13    /* 3 (multi-ball)  - bright cyan    */
-};
 
 /* Position of the leftmost dynamic life indicator; we paint
  * spr_lives_indicator (16x6 px sprite at $7AFC) here. Port of
@@ -2509,13 +2494,6 @@ static int blink_phase(void) {
     if (test_mode_pin_blink) return 0;
     return (int)((bios_ticks() >> 1) & 1);   /* ~4.5 Hz half-period */
 }
-/* Same cadence but unconditional — used by HUD chips during gameplay
- * to flash in the bonus's final second. Doesn't need the test-mode
- * pin since the chips aren't in any of the captured GT snapshots. */
-static int hud_blink_phase(void) {
-    return (int)((bios_ticks() >> 1) & 1);
-}
-
 static void render_hiscore_screen(void) {
     load_markup("MARKUP.BIN");
     fill(0, 0, SCREEN_W, SCREEN_H, COL_BORDER);
@@ -3858,7 +3836,6 @@ static void redraw_bat(unsigned char cycle, unsigned char bg_attr) {
 
 static void render_hud_score(void);
 static void render_hud_high_score(void);
-static void render_hud_powerups(void);
 
 /* Full-frame compose. Walks the same scr_buff -> attr_buff -> VGA
  * path as the original (game_screen_draw_to_buffer @ $BE6B):
@@ -3866,17 +3843,15 @@ static void render_hud_powerups(void);
  *   - paint ball, bomb, 400pts, alien into scr_buff (each picks up
  *     its surrounding char cell's bg attr at buff_to_vga time)
  *   - single buff_to_vga pass converts everything to VGA
- *   - frame ornament + HUD text painted direct-VGA on top
- *   - falling bonus painted direct-VGA (uses per-type colour, not
- *     bg-attr — original game writes specific attrs into attr_buff
- *     for the bonus's two cells; we approximate with a coloured blit). */
+ *   - score text painted direct-VGA on top. */
 static void redraw_full_with_ball(unsigned char level_idx) {
     unsigned char bg_attr = bg_attr_per_cycle[level_idx & 3];
     unsigned char cycle   = (unsigned char)(level_idx & 3);
     object_t *enemy = &objects[OBJ_ENEMY];
 
-    fill(0, 0, SCREEN_W, SCREEN_H, COL_BORDER);
-    draw_frame(10);              /* bright red — placeholder */
+    /* The whole playfield is rewritten by buff_to_vga() below. Do not
+     * clear VGA first; the original restores/draws through its ZX-format
+     * buffers without showing a blank frame between object updates. */
     paint_bg_to_buff(bg_attr, cycle);
     /* Magnets blit BEFORE bricks (original at $BE8B does
      * CALL print_magnets; CALL print_briks). The brick top row
@@ -3947,7 +3922,6 @@ static void redraw_full_with_ball(unsigned char level_idx) {
     buff_to_vga();
     render_hud_score();
     render_hud_high_score();
-    render_hud_powerups();
 }
 
 /* Render a short string of N character codes via draw_glyph, anchored
@@ -3981,10 +3955,6 @@ static void score_to_codes(unsigned long s, unsigned char out[6]) {
  * (x=120), same row. */
 #define HUD_HISCORE_X (BORDER_X + 120)
 #define HUD_HISCORE_Y (BORDER_Y + 8)
-/* Power-up letter chips sit in the empty band between the brick
- * field (y <= 127) and the bat (y >= 167), away from the top HUD. */
-#define HUD_POWERUP_X (BORDER_X + 192)
-#define HUD_POWERUP_Y (BORDER_Y + 140)
 static void render_hud_score(void) {
     unsigned char digits[6];
     /* score=0 leaves the frame ornament's baked-in "000000" visible —
@@ -4005,53 +3975,6 @@ static void render_hud_high_score(void) {
     score_to_codes(high_score, digits);
     draw_text(HUD_HISCORE_X, HUD_HISCORE_Y, 6, digits, 6);
 }
-/* Letter chips for the active power-up effects, painted in the bonus
- * colour so the player can see at a glance what's running. Encoded
- * letter codes (notes/encoding.md): B=0x0B, C=0x0C, G=0x10, K=0x14,
- * S=0x1C. KILL_ALIENS + CATCH are lasting bat-attached effects keyed
- * off OBJ_BAT_1.bonus_applied (matches the original's BAT+$14 = $09
- * / $03). */
-static void render_hud_powerups(void) {
-    int x = HUD_POWERUP_X;
-    /* Blink the chip in its final second of life (= ticks < 50 at
-     * 50 Hz). On the off-phase we just skip the draw entirely so the
-     * letter flickers — a "your bonus is about to expire" cue. */
-#define HUD_CHIP_BLINK_THRESHOLD 50
-    int blink_off = (hud_blink_phase() == 0);   /* HUD chips flash in last second */
-    if (slow_ticks > 0
-        && !(slow_ticks < HUD_CHIP_BLINK_THRESHOLD && blink_off)) {
-        draw_glyph(x, HUD_POWERUP_Y, bonus_colours[BONUS_TYPE_SLOW], 0x1C);
-    }
-    if (slow_ticks > 0) x += 10;
-    if (big_bat_active()
-        && !(big_bat_ticks < HUD_CHIP_BLINK_THRESHOLD && blink_off)) {
-        draw_glyph(x, HUD_POWERUP_Y, bonus_colours[BONUS_TYPE_BIG_BAT], 0x0B);
-    }
-    if (big_bat_active()) x += 10;
-    if (big_ball_active()
-        && !(big_ball_ticks < HUD_CHIP_BLINK_THRESHOLD && blink_off)) {
-        draw_glyph(x, HUD_POWERUP_Y, bonus_colours[BONUS_TYPE_BIG_BALL], 0x10);
-    }
-    if (big_ball_active()) x += 10;
-    if (objects[OBJ_BAT_1].bonus_applied == 0x09) {
-        draw_glyph(x, HUD_POWERUP_Y, bonus_colours[BONUS_TYPE_KILL_ALIENS], 0x14);
-        x += 10;
-    }
-    if (objects[OBJ_BAT_1].bonus_applied == 0x03) {
-        draw_glyph(x, HUD_POWERUP_Y, bonus_colours[BONUS_TYPE_CATCH], 0x0C);
-        x += 10;
-    }
-    if (objects[OBJ_BAT_1].bonus_applied == 0x01) {
-        /* L (laser), letter code 0x15 per notes/encoding.md. */
-        draw_glyph(x, HUD_POWERUP_Y, bonus_colours[BONUS_TYPE_LASER], 0x15);
-        x += 10;
-    }
-    if (ball2_active) {
-        /* Digit 3 (multi-ball) — digits use code = digit value. */
-        draw_glyph(x, HUD_POWERUP_Y, bonus_colours[BONUS_TYPE_MULTI_BALL], 0x03);
-    }
-}
-
 /* Show a "GAME OVER" screen with the final score + high score, hold
  * ~3 seconds. When the player just beat the high score, a "NEW HIGH
  * SCORE!" banner appears between the labels. */
@@ -4345,8 +4268,6 @@ static void redraw_with_death_sparks(unsigned char level_idx) {
     unsigned char bg_attr = bg_attr_per_cycle[level_idx & 3];
     unsigned char cycle   = (unsigned char)(level_idx & 3);
     int i;
-    fill(0, 0, SCREEN_W, SCREEN_H, COL_BORDER);
-    draw_frame(10);
     paint_bg_to_buff(bg_attr, cycle);
     inner_border_line_c();
     render_brick_band(level_idx);
@@ -4365,7 +4286,6 @@ static void redraw_with_death_sparks(unsigned char level_idx) {
     buff_to_vga();
     render_hud_score();
     render_hud_high_score();
-    render_hud_powerups();
 }
 
 /* Block in a self-contained PIT-paced loop while the bat explodes —

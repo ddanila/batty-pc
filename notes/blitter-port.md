@@ -66,6 +66,19 @@ the frame. Bat + enemy cells force `bg_attr` via
 `blit_sprite_attrs_to_buff` so the sprite stays bg-coloured even when
 its bbox overlaps frame side-strip cells.
 
+During gameplay redraws, the VGA page is not cleared before
+`buff_to_vga`. The original loop saves/restores object regions in
+`scr_buff` / `attr_buff`, prints active objects into those buffers,
+then copies the ZX-format buffers to screen (`buff_to_screen_pixs` and
+`buff_to_screen_attrib`). Clearing VGA between frames is a port-only
+artifact and causes visible flicker, especially while a falling bonus
+forces full-frame redraws.
+
+The original also does not draw persistent HUD letters for active
+bonuses. `get_bonus` updates object state, score, sound, bat/ball
+state, and changes the caught bonus object into the floating points
+sprite; any separate current-bonus letter overlay is port-only.
+
 (Note: the original game's order is `paint_bg -> paint_frame ->
 inner_border -> ... -> magnets -> bricks`. Our order is functionally
 equivalent for the test GT moment because `paint_frame_to_buff` only

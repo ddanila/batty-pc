@@ -15,6 +15,7 @@ assets/sprites.bin
 # Keep snapshots/ since they're laboriously captured by hand.
 build/test_visual/
 build/exercise_bricks/
+build/exercise_bonus/
 build/snap*.sna
 build/snapshots/*.sna
 # Ad-hoc preview captures while iterating on the level renderer
