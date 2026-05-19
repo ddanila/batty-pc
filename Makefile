@@ -38,6 +38,7 @@ TEST_EXE = build/batty-test.exe
 ASSETS  = assets/loading.bin assets/hi_score.bin assets/main_menu.bin \
           assets/font.bin assets/markup.bin assets/main_menu_markup.bin \
           assets/indicator.bin assets/bottom_sprites.bin \
+          assets/hud_sprites.bin \
           assets/levels.bin assets/level_attrs.bin \
           assets/bg_tile.bin assets/frame_l1.bin \
           assets/sprites.bin
@@ -192,6 +193,11 @@ assets/bottom_sprites.bin: original/blocks/03_DATA_headless.dat.bin
 		                        b[0x93C4-0x6800:0x93C4-0x6800+52])"
 	@echo "wrote $@ ($$(wc -c < $@) bytes)"
 
+assets/hud_sprites.bin: original/blocks/03_DATA_headless.dat.bin
+	@python3 -c "from pathlib import Path; b=Path('$<').read_bytes(); \
+		Path('$@').write_bytes(b[0x68ED-0x6800:0x6A15-0x6800])"
+	@echo "wrote $@ ($$(wc -c < $@) bytes)"
+
 floppy: $(FLOPPY_OUT)
 
 # Both floppies ship the same EXE + assets; only AUTOEXEC.BAT differs.
@@ -206,6 +212,7 @@ $(FLOPPY_OUT): $(EXE) $(ASSETS) $(FLOPPY_SRC)
 	mcopy -i $@ -o assets/main_menu_markup.bin ::MENUMARK.BIN
 	mcopy -i $@ -o assets/indicator.bin ::INDICAT.BIN
 	mcopy -i $@ -o assets/bottom_sprites.bin ::BOTSPR.BIN
+	mcopy -i $@ -o assets/hud_sprites.bin ::HUDSPR.BIN
 	mcopy -i $@ -o assets/levels.bin ::LEVELS.BIN
 	mcopy -i $@ -o assets/level_attrs.bin ::LVLATTR.BIN
 	mcopy -i $@ -o assets/bg_tile.bin ::BGTILE.BIN
@@ -226,6 +233,7 @@ $(TEST_FLOPPY_OUT): $(TEST_EXE) $(ASSETS) $(FLOPPY_SRC)
 	mcopy -i $@ -o assets/main_menu_markup.bin ::MENUMARK.BIN
 	mcopy -i $@ -o assets/indicator.bin ::INDICAT.BIN
 	mcopy -i $@ -o assets/bottom_sprites.bin ::BOTSPR.BIN
+	mcopy -i $@ -o assets/hud_sprites.bin ::HUDSPR.BIN
 	mcopy -i $@ -o assets/levels.bin ::LEVELS.BIN
 	mcopy -i $@ -o assets/level_attrs.bin ::LVLATTR.BIN
 	mcopy -i $@ -o assets/bg_tile.bin ::BGTILE.BIN

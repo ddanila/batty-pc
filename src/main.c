@@ -309,6 +309,23 @@ static int load_bottom_sprites(const char *path) {
     return 0;
 }
 
+#define HUD_SPRITES_SIZE 0x0128
+#define HUD_SPR_1UP      0x0000
+#define HUD_SPR_2UP      0x0032
+#define HUD_SPR_HI       0x0064
+#define HUD_SCORE_DIGITS 0x0086
+static unsigned char hud_sprites[HUD_SPRITES_SIZE];
+
+static int load_hud_sprites(const char *path) {
+    FILE *f = fopen(path, "rb");
+    if (!f) return -1;
+    if (fread(hud_sprites, 1, sizeof(hud_sprites), f) != sizeof(hud_sprites)) {
+        fclose(f); return -2;
+    }
+    fclose(f);
+    return 0;
+}
+
 static void draw_bottom_sprite(const unsigned char *bitmap, int x, int y_top,
                                 unsigned char colour) {
     int r, c, b;
@@ -4051,82 +4068,71 @@ static void score_to_codes(unsigned long s, unsigned char out[6]) {
 }
 
 #ifndef BATTY_SCORELESS_HUD
-static void draw_glyph_to_buff(int x, int y, unsigned char code) {
-    int r;
-    int byte_col = x >> 3;
-    int shift = x & 7;
-    if (code >= FONT_N) return;
-    for (r = 0; r < FONT_ROWS; r++) {
-        int py = y + r;
-        unsigned char bits;
-        int row_base;
-        if (py < 0 || py >= PLAYFIELD_H) continue;
-        bits = font[code * FONT_ROWS + r];
-        row_base = py * 32;
-        if (byte_col >= 0 && byte_col < 32) {
-            scr_buff[row_base + byte_col] |= (unsigned char)(bits >> shift);
-        }
-        if (shift != 0 && byte_col + 1 >= 0 && byte_col + 1 < 32) {
-            scr_buff[row_base + byte_col + 1] |= (unsigned char)(bits << (8 - shift));
-        }
-    }
-}
-
-static void set_hud_text_attrs(int x, int y, int w, int h) {
-    int col0 = x >> 3;
-    int col1 = (x + w - 1) >> 3;
-    int row0 = y >> 3;
-    int row1 = (y + h - 1) >> 3;
-    int r, c;
-    if (col0 < 0) col0 = 0;
-    if (row0 < 0) row0 = 0;
-    if (col1 >= ATTR_COLS) col1 = ATTR_COLS - 1;
-    if (row1 >= ATTR_ROWS) row1 = ATTR_ROWS - 1;
-    for (r = row0; r <= row1; r++) {
-        for (c = col0; c <= col1; c++) {
-            attr_buff[r * 32 + c] = 0x46;
-        }
-    }
-}
-
-static void clear_hud_text_pixels(int x, int y, int w, int h) {
-    int row;
-    int byte_col = x >> 3;
-    int cols = ((x & 7) + w + 7) >> 3;
+static void blit_original_masked_to_scr_buff_ptr(const unsigned char *src,
+                                                  int x_px, int y_px) {
+    int w = src[0];
+    int h = src[1];
+    const unsigned char *p = src + 2;
+    int shift = x_px & 7;
+    int start_col = x_px >> 3;
+    int rshift = 8 - shift;
+    int row, col_byte;
     for (row = 0; row < h; row++) {
-        int py = y + row;
-        int c;
-        if (py < 0 || py >= PLAYFIELD_H) continue;
-        for (c = 0; c < cols; c++) {
-            int bx = byte_col + c;
-            if (bx >= 0 && bx < 32) scr_buff[py * 32 + bx] = 0;
+        int y = y_px + row;
+        if (y < 0 || y >= PLAYFIELD_H) { p += (unsigned)w * 2; continue; }
+        for (col_byte = 0; col_byte < w; col_byte++) {
+            unsigned char mask = *p++;
+            unsigned char pix = *p++;
+            int dst_l = start_col + col_byte;
+            int dst_r = dst_l + 1;
+            unsigned char m_l, p_l, m_r, p_r;
+            unsigned int row_base = (unsigned int)y * 32U;
+            if (shift == 0) {
+                m_l = mask; p_l = pix; m_r = 0; p_r = 0;
+            } else {
+                m_l = (unsigned char)(mask >> shift);
+                p_l = (unsigned char)(pix >> shift);
+                m_r = (unsigned char)(mask << rshift);
+                p_r = (unsigned char)(pix << rshift);
+            }
+            if (dst_l >= 0 && dst_l < 32) {
+                unsigned char *d = &scr_buff[row_base + dst_l];
+                *d = (unsigned char)((m_l | *d) ^ p_l);
+            }
+            if (shift != 0 && dst_r >= 0 && dst_r < 32) {
+                unsigned char *d = &scr_buff[row_base + dst_r];
+                *d = (unsigned char)((m_r | *d) ^ p_r);
+            }
         }
     }
 }
 
-static void draw_hud_text_to_buff(int x, int y,
-                                  const unsigned char *codes, int n) {
+static void draw_score_digits_original(int x, int y, unsigned long value) {
+    unsigned char digits[6];
     int i;
-    int w = n * 8;
-    set_hud_text_attrs(x, y, w, FONT_ROWS);
-    clear_hud_text_pixels(x, y, w, FONT_ROWS);
-    for (i = 0; i < n; i++) draw_glyph_to_buff(x + i * 8, y, codes[i]);
+    score_to_codes(value, digits);
+    for (i = 0; i < 6; i++) {
+        const unsigned char *digit = hud_sprites + HUD_SCORE_DIGITS + 2 + digits[i] * 16;
+        int row;
+        for (row = 0; row < 8; row++) {
+            int py = y + row;
+            unsigned char mask = digit[row * 2];
+            unsigned char pix = digit[row * 2 + 1];
+            int bx = (x >> 3) + i;
+            if (py < 0 || py >= PLAYFIELD_H || bx < 0 || bx >= 32) continue;
+            scr_buff[py * 32 + bx] =
+                (unsigned char)((mask | scr_buff[py * 32 + bx]) ^ pix);
+        }
+    }
 }
 
 static void render_hud_to_buff(void) {
-    static const unsigned char lbl_1up[] = { 0x01, 0x1E, 0x19 };
-    static const unsigned char lbl_2up[] = { 0x02, 0x1E, 0x19 };
-    static const unsigned char lbl_hi[]  = { 0x11, 0x12 };
-    unsigned char digits[6];
-    draw_hud_text_to_buff( 28, 12, lbl_1up, 3);
-    draw_hud_text_to_buff(120, 12, lbl_hi,  2);
-    draw_hud_text_to_buff(204, 12, lbl_2up, 3);
-    score_to_codes(score, digits);
-    draw_hud_text_to_buff( 16, 21, digits, 6);
-    score_to_codes(high_score, digits);
-    draw_hud_text_to_buff(104, 21, digits, 6);
-    score_to_codes(0, digits);
-    draw_hud_text_to_buff(192, 21, digits, 6);
+    blit_original_masked_to_scr_buff_ptr(hud_sprites + HUD_SPR_1UP, 0x1C, 0x0C);
+    blit_original_masked_to_scr_buff_ptr(hud_sprites + HUD_SPR_2UP, 0xCC, 0x0C);
+    blit_original_masked_to_scr_buff_ptr(hud_sprites + HUD_SPR_HI,  0x78, 0x0C);
+    draw_score_digits_original(0x10, 0x15, score);
+    draw_score_digits_original(0x68, 0x15, high_score);
+    draw_score_digits_original(0xC0, 0x15, 0);
 }
 #else
 static void render_hud_to_buff(void) {
@@ -5100,6 +5106,7 @@ int main(void) {
     if (load_font("FONT.BIN") != 0 ||
         load_indicator("INDICAT.BIN") != 0 ||
         load_bottom_sprites("BOTSPR.BIN") != 0 ||
+        load_hud_sprites("HUDSPR.BIN") != 0 ||
         load_levels("LEVELS.BIN") != 0 ||
         load_level_attrs("LVLATTR.BIN") != 0 ||
         load_bg_tile("BGTILE.BIN") != 0 ||
