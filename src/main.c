@@ -1522,9 +1522,12 @@ static void handling_bird_obj(object_t *o) {
     o->misc_12++;
     o->sprite_num = (unsigned char)((o->misc_12 >> 2) % 3);
     bomb_appear(o);
-    if (nx < 8 || nx >= PLAYFIELD_W - 8 - (int)o->w_body_px) {
-        o->sprite_set |= 0x80;       /* off-screen: BIT 7 = inactive */
-        return;
+    if (nx < 8) {
+        nx = 8;
+        o->dir ^= 1;
+    } else if (nx >= PLAYFIELD_W - 8 - (int)o->w_body_px) {
+        nx = PLAYFIELD_W - 8 - (int)o->w_body_px;
+        o->dir ^= 1;
     }
     o->x_coord = (unsigned char)nx;
 }
@@ -1579,18 +1582,39 @@ static void ix_buf_addr_calc(object_t *obj) {
     obj->buf_addr_hi = (unsigned char)((off >> 8) & 0xFF);
     obj->buf_addr_lo = (unsigned char)(off & 0xFF);
 }
+static void blit_sprite_attrs_to_buff_clipped(int x_px, int y_px, int w_px, int h_px,
+                                              unsigned char attr,
+                                              int clip_left_px, int clip_right_px) {
+    int x0 = x_px;
+    int x1 = x_px + w_px;
+    int col_lo, col_hi, row_lo, row_hi, r, c;
+    if (x0 < clip_left_px) x0 = clip_left_px;
+    if (x1 > clip_right_px) x1 = clip_right_px;
+    if (x1 <= x0) return;
+    col_lo = x0 / 8;
+    col_hi = (x1 - 1) / 8;
+    row_lo = y_px / 8;
+    row_hi = (y_px + h_px - 1) / 8;
+    if (col_lo < 0) col_lo = 0;
+    if (row_lo < 0) row_lo = 0;
+    if (col_hi >= ATTR_COLS) col_hi = ATTR_COLS - 1;
+    if (row_hi >= ATTR_ROWS) row_hi = ATTR_ROWS - 1;
+    for (r = row_lo; r <= row_hi; r++) {
+        for (c = col_lo; c <= col_hi; c++) {
+            attr_buff[r * 32 + c] = attr;
+        }
+    }
+}
+
+/* Bat sprite layout (both spr_bat_normal and spr_bat_big):
+ *   rows 0..9  - body (mask=1 = bat colour, pixel=1 = paper for
+ *                internal texture).
+ *   rows 10..12 - shadow drop (mask=0 dotted pattern with pix=1 -
+ *                  the original OR-blit's (mask|screen)^pix flips
+ *                  bg bits at those positions, producing the
+ *                  textured shadow band below the bat).
+ * One blit into scr_buff covers the whole sprite. */
 static void render_bat(unsigned char cycle, unsigned char attr) {
-    /* Bat sprite layout (both spr_bat_normal and spr_bat_big):
-     *   rows 0..9  - body (mask=1 = bat colour, pixel=1 = paper for
-     *                internal texture).
-     *   rows 10..12 - shadow drop (mask=0 dotted pattern with pix=1 -
-     *                  the original OR-blit's (mask|screen)^pix flips
-     *                  bg bits at those positions, producing the
-     *                  textured shadow band below the bat).
-     * One blit into scr_buff covers the whole sprite; we also force
-     * the bg_attr into attr_buff for every cell the bat touches so
-     * the bat stays bg-coloured even when it slides into the side
-     * strip cells (whose attrs were set by paint_frame_to_buff). */
     unsigned int spr;
     int x, y, sprite_w;
     (void)cycle;
@@ -1637,11 +1661,13 @@ static void render_bat(unsigned char cycle, unsigned char attr) {
         }
     }
     y = BAT_Y_PX;
-    /* Force bg attr on every cell the bat sprite covers (body + shadow
-     * rows). Bat is 13 rows tall = 2 char cells vertically; reach can
-     * extend into the side-strip cells when at extremes. */
-    blit_sprite_attrs_to_buff(x - bat_extra_px, y,
-                              sprite_w, 13, attr);
+    /* Force bg attr on the interior playfield cells the bat covers, but
+     * leave the side-frame attr cells alone. The sprite pixels still
+     * OR into the frame at the extremes; only the static tube colour
+     * must stay owned by paint_frame_to_buff. */
+    blit_sprite_attrs_to_buff_clipped(x - bat_extra_px, y,
+                                      sprite_w, 13, attr,
+                                      8, PLAYFIELD_W - 8);
     blit_masked_to_scr_buff(spr, x, y);
 }
 
