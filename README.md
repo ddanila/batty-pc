@@ -140,8 +140,8 @@ targets — install them on demand.
   override with `ZESARUX=/path/to/zesarux` if you have it installed
   elsewhere.
 
-  On Linux, `make run-original` defaults to SDL video/audio with a 2x
-  window scale:
+  On Linux, `make run-original` defaults to SDL video/audio and doubles
+  ZEsarUX's normal Spectrum window scale:
 
   ```sh
   make run-original
@@ -150,7 +150,7 @@ targets — install them on demand.
   This is equivalent to:
 
   ```sh
-  make run-original ZESARUX_VO=sdl ZESARUX_AO=sdl ZESARUX_RUN_OPTS="--zoom 2"
+  make run-original ZESARUX_VO=sdl ZESARUX_AO=sdl ZESARUX_RUN_OPTS="--zoom 4"
   ```
 
   Check the drivers compiled into your local ZEsarUX before choosing

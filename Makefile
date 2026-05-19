@@ -53,7 +53,7 @@ ZESARUX_CONFIGURE_OPTS ?= --enable-sdl2
 ifeq ($(HOST_OS),Linux)
   ZESARUX_AO ?= sdl
   ZESARUX_VO ?= sdl
-  ZESARUX_RUN_OPTS ?= --zoom 2
+  ZESARUX_RUN_OPTS ?= --zoom 4
 else
   ZESARUX_AO ?= null
   ZESARUX_VO ?=
