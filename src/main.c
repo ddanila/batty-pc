@@ -2166,7 +2166,15 @@ static void render_level_screen(unsigned char level_idx) {
     fill(0, 0, SCREEN_W, SCREEN_H, COL_BORDER);
     draw_frame(10);              /* bright red — placeholder */
     paint_bg_to_buff(bg_attr, cycle);
-    /* Magnets blit BEFORE bricks (original at $BE8B does
+    paint_frame_to_buff(cycle, level_idx);
+    render_bat(cycle, bg_attr);
+    render_lives(cycle, bg_attr);
+    render_hud_to_buff();
+    /* Original LBE8B_11 draws score labels/digits immediately before
+     * magnets and bricks. This matters on levels whose magnets overlap
+     * HUD rows: magnets can overwrite the score area, not vice versa.
+     *
+     * Magnets blit BEFORE bricks (original at $BE8B does
      * CALL print_magnets; CALL print_briks). The brick top row
      * overwrites the magnet's lower shadow rows where they overlap;
      * inverting the order leaves the shadow rows punching through
@@ -2176,14 +2184,6 @@ static void render_level_screen(unsigned char level_idx) {
     render_brick_band(level_idx);
     render_brick_flash_to_buff();
     render_brick_hit_anim_to_buff();
-    /* Frame paints AFTER bricks so its side-strip attrs win over what
-     * print_briks_c lays into the same cells; print_border_shadow_c
-     * (inside render_brick_band) dims cc 1 back to non-bright after the
-     * brick attr write. */
-    paint_frame_to_buff(cycle, level_idx);
-    render_bat(cycle, bg_attr);
-    render_lives(cycle, bg_attr);
-    render_hud_to_buff();
     buff_to_vga();
 }
 
@@ -3983,16 +3983,6 @@ static void redraw_full_with_ball(unsigned char level_idx) {
      * clear VGA first; the original restores/draws through its ZX-format
      * buffers without showing a blank frame between object updates. */
     paint_bg_to_buff(bg_attr, cycle);
-    /* Magnets blit BEFORE bricks (original at $BE8B does
-     * CALL print_magnets; CALL print_briks). The brick top row
-     * overwrites the magnet's lower shadow rows where they overlap;
-     * inverting the order leaves the shadow rows punching through
-     * the brick top. */
-    render_magnets(level_idx);
-    inner_border_line_c();
-    render_brick_band(level_idx);
-    render_brick_flash_to_buff();
-    render_brick_hit_anim_to_buff();
     paint_frame_to_buff(cycle, level_idx);
     /* Ball must blit BEFORE bat so the bat overlays the ball's lower 5
      * rows (rows 7..11 of the 12-row ball sprite). Those rows are the
@@ -4005,6 +3995,17 @@ static void redraw_full_with_ball(unsigned char level_idx) {
     render_bat(cycle, bg_attr);
     render_running_dot();
     render_lives(cycle, bg_attr);
+    render_hud_to_buff();
+    /* Magnets blit BEFORE bricks (original at $BE8B does
+     * CALL print_magnets; CALL print_briks). The brick top row
+     * overwrites the magnet's lower shadow rows where they overlap;
+     * inverting the order leaves the shadow rows punching through
+     * the brick top. */
+    render_magnets(level_idx);
+    inner_border_line_c();
+    render_brick_band(level_idx);
+    render_brick_flash_to_buff();
+    render_brick_hit_anim_to_buff();
     if (bomb_active) {
         blit_masked_to_scr_buff_ptr(spr_bomb_data, bomb_x, bomb_y);
     }
@@ -4050,7 +4051,6 @@ static void redraw_full_with_ball(unsigned char level_idx) {
         render_ball_to_buff(objects[OBJ_BALL_3].x_coord,
                             objects[OBJ_BALL_3].y_coord, bg_attr);
     }
-    render_hud_to_buff();
     buff_to_vga();
 }
 
@@ -4073,22 +4073,6 @@ static void score_to_codes(unsigned long s, unsigned char out[6]) {
 }
 
 #ifndef BATTY_SCORELESS_HUD
-static void clear_scr_buff_rect(int x_px, int y_px, int w_px, int h_px) {
-    int row;
-    int col0 = x_px >> 3;
-    int col1 = (x_px + w_px - 1) >> 3;
-    if (col0 < 0) col0 = 0;
-    if (col1 >= 32) col1 = 31;
-    for (row = 0; row < h_px; row++) {
-        int y = y_px + row;
-        int col;
-        if (y < 0 || y >= PLAYFIELD_H) continue;
-        for (col = col0; col <= col1; col++) {
-            scr_buff[y * 32 + col] = 0;
-        }
-    }
-}
-
 static void blit_original_masked_to_scr_buff_ptr(const unsigned char *src,
                                                   int x_px, int y_px) {
     int w = src[0];
@@ -4148,12 +4132,6 @@ static void draw_score_digits_original(int x, int y, unsigned long value) {
 }
 
 static void render_hud_to_buff(void) {
-    clear_scr_buff_rect(0x1C, 0x0C, 24, 8);
-    clear_scr_buff_rect(0x78, 0x0C, 16, 8);
-    clear_scr_buff_rect(0xCC, 0x0C, 24, 8);
-    clear_scr_buff_rect(0x10, 0x15, 48, 8);
-    clear_scr_buff_rect(0x68, 0x15, 48, 8);
-    clear_scr_buff_rect(0xC0, 0x15, 48, 8);
     blit_original_masked_to_scr_buff_ptr(hud_sprites + HUD_SPR_1UP, 0x1C, 0x0C);
     blit_original_masked_to_scr_buff_ptr(hud_sprites + HUD_SPR_2UP, 0xCC, 0x0C);
     blit_original_masked_to_scr_buff_ptr(hud_sprites + HUD_SPR_HI,  0x78, 0x0C);
@@ -4535,12 +4513,13 @@ static void redraw_with_death_sparks(unsigned char level_idx) {
     unsigned char cycle   = (unsigned char)(level_idx & 3);
     int i;
     paint_bg_to_buff(bg_attr, cycle);
+    paint_frame_to_buff(cycle, level_idx);
+    render_lives(cycle, bg_attr);
+    render_hud_to_buff();
     inner_border_line_c();
     render_brick_band(level_idx);
     render_brick_flash_to_buff();
     render_brick_hit_anim_to_buff();
-    paint_frame_to_buff(cycle, level_idx);
-    render_lives(cycle, bg_attr);
     for (i = 0; i < DEATH_SPARK_COUNT; i++) {
         int xp, yp;
         if (!death_sparks[i].active) continue;
@@ -4550,7 +4529,6 @@ static void redraw_with_death_sparks(unsigned char level_idx) {
         blit_masked_to_scr_buff(spr_spark_frames[death_sparks[i].sprite_num],
                                  xp, yp);
     }
-    render_hud_to_buff();
     buff_to_vga();
 }
 
