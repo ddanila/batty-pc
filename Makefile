@@ -146,17 +146,17 @@ assets/bg_tile.bin: build/level_gt/level_01.scr scripts/extract_bg_tile.py
 # manually when needed; see notes/state4-bat-band-triage.md.
 
 # Sprite block extracted verbatim from the original game's program at
-# $7A8C..$8920 (offset $128c..$2120 within 03_DATA_headless.dat.bin,
+# $7A8C..$8D46 (offset $128c..$2546 within 03_DATA_headless.dat.bin,
 # which loads at $6800). Contains all masked sprites we need:
 #   spr_big_ball, spr_lives_indicator, spr_ball_normal,
 #   spr_bat_normal, spr_bat_big, spr_ufo_1..6, spr_bird_1..6,
-#   spr_alien_blast_1..5
+#   spr_alien_blast_1..5, spr_bonus_* through spr_bonus_triple_ball
 # (offsets recorded in main.c). Format per sprite: (width_bytes,
 # height_rows) + rows of (mask, pixel) pairs per byte-column,
 # drawn via blit_masked_sprite.
-assets/sprites.bin: original/blocks/03_DATA_headless.dat.bin
+assets/sprites.bin: original/blocks/03_DATA_headless.dat.bin Makefile
 	@python3 -c "import sys; b=open('$<','rb').read(); \
-		open('$@','wb').write(b[0x128c:0x2500])"
+		open('$@','wb').write(b[0x128c:0x2546])"
 	@echo "wrote $@ ($$(wc -c < $@) bytes)"
 
 # Bottom decorative sprite + arrow combined: 32x13 each (4 bytes

@@ -922,14 +922,14 @@ static unsigned int  pts_marker_spr = 0;  /* set on catch */
 #define LIVES_Y_PX    0xB9       /* = 185 */
 
 /* The original game's sprite block, extracted verbatim from the
- * program at $7A8C..$17E0 (offset 0x128c..0x17e0 within
+ * program at $7A8C..$8D46 (offset 0x128c..0x2546 within
  * 03_DATA_headless.dat.bin). Format per sprite:
  *   byte 0  -- width in bytes
  *   byte 1  -- height in rows
  *   then h rows of w (mask, pixel) pairs - blit semantics described
  *   in blit_masked_sprite below.
  * The constants below are offsets WITHIN sprites_blob. */
-#define SPRITES_BLOB_SIZE 0x1274
+#define SPRITES_BLOB_SIZE 0x12BA
 static unsigned char sprites_blob[SPRITES_BLOB_SIZE];
 #define SPR_BIG_BALL     (0x7A8C - 0x7A8C)   /* = 0x000 */
 #define SPR_LIVES        (0x7AFC - 0x7A8C)   /* = 0x070 */
@@ -2702,29 +2702,11 @@ static unsigned int spr_for_bonus(unsigned char t) {
     }
 }
 
-/* Paint the bonus into scr_buff + attr_buff. The bonus sprite is
- * actually 24 px wide x 13 rows tall (3 bytes x 13 rows) including
- * a trailing drop-shadow band — earlier code used BONUS_W_PX=8 /
- * BONUS_H_PX=6 for the attr override which only covered ~1/3 of the
- * sprite, leaving the outer body pixels rendering with bg_attr (=
- * invisible yellow on yellow). Read the actual sprite header for
- * the attr-write extent.
- *
- * Don't clear scr_buff under the bonus: that produced a solid-black
- * 16x16 backdrop that was MORE jarring than the natural ZX colour
- * clash. With the bg pattern preserved and the cell attr set to
- * (bright | bonus_ink | bg_paper), bg-pattern clear bits stay in the
- * bg's paper colour (matches surrounding cells) and only the set
- * bits + bonus body recolour to bonus_ink — exactly the artefact
- * the original game produces. */
+/* Paint the bonus into scr_buff only. The original set_bonus selects an
+ * entry in gfx_bonuses, and print_obj_to_buff writes only object pixels;
+ * it does not call print_sprite_attrib for falling bonuses. Colours must
+ * therefore come from the existing attr_buff cells underneath. */
 static void render_bonus_to_buff(unsigned char bg) {
-    /* No per-cell attr override: the original's bonus drop renders in
-     * whichever attr each char cell already has (= the level's bg
-     * attr in the empty playfield, the brick's attr if it's passing
-     * through the brick zone). Earlier port set a per-bonus tint
-     * (0x40 | colour_ink | bg_paper) which painted each falling
-     * bonus's cells in a custom colour — visible as a wrong-colour
-     * band trailing the bonus through the otherwise monochrome bg. */
     unsigned int spr = spr_for_bonus(bonus_type);
     (void)bg;
     blit_masked_to_scr_buff(spr, bonus_x, bonus_y);

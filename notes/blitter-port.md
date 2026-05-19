@@ -79,6 +79,11 @@ bonuses. `get_bonus` updates object state, score, sound, bat/ball
 state, and changes the caught bonus object into the floating points
 sprite; any separate current-bonus letter overlay is port-only.
 
+`assets/sprites.bin` must include the full `gfx_bonuses` tail through
+`spr_bonus_triple_ball` (`$8CEA..$8D46`). A shorter extraction leaves the
+triple-ball sprite truncated near the end of the blob, making its
+falling bonus render from partial data plus zero-filled memory.
+
 (Note: the original game's order is `paint_bg -> paint_frame ->
 inner_border -> ... -> magnets -> bricks`. Our order is functionally
 equivalent for the test GT moment because `paint_frame_to_buff` only
