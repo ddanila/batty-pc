@@ -133,7 +133,7 @@ targets — install them on demand.
 
   ```sh
   git submodule update --init tools/zesarux
-  cd tools/zesarux/src && ./configure && make    # builds tools/zesarux/src/zesarux
+  cd tools/zesarux/src && ./configure --enable-sdl2 && make
   ```
 
   The Makefile and scripts default to `tools/zesarux/src/zesarux`;
@@ -162,6 +162,10 @@ targets — install them on demand.
 
   # SDL video/audio, if your ZEsarUX build has SDL enabled:
   make run-original ZESARUX_VO=sdl ZESARUX_AO=sdl
+
+  # SDL window + PulseAudio/PipeWire; this is the tested desktop path
+  # on the current Linux workstation:
+  make run-original ZESARUX_VO=sdl ZESARUX_AO=pulse
   ```
 
 ## Approach

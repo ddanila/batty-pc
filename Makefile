@@ -49,7 +49,7 @@ FLOPPY_OUT       = build/batty.img        # `make run`: 2-state menu loop
 TEST_FLOPPY_OUT  = build/batty-test.img   # `make test`: full 4-state cycle
 
 ZESARUX ?= tools/zesarux/src/zesarux
-ZESARUX_CONFIGURE_OPTS ?=
+ZESARUX_CONFIGURE_OPTS ?= --enable-sdl2
 ZESARUX_AO ?= null
 ZESARUX_VO ?=
 ZESARUX_RUN_OPTS ?=
