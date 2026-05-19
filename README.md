@@ -141,20 +141,28 @@ targets — install them on demand.
   elsewhere.
 
   `make run-original` defaults to `ZESARUX_AO=null` so it also works on
-  Linux hosts where ZEsarUX only built the PC speaker backend. For an
-  interactive window/audio run, install the matching development headers
-  before configuring ZEsarUX, then select the enabled drivers explicitly:
+  Linux hosts where ZEsarUX only built the PC speaker backend. Check the
+  drivers compiled into your local ZEsarUX before choosing overrides:
 
   ```sh
-  make run-original ZESARUX_VO=xwindows ZESARUX_AO=alsa
-  # or, if your ZEsarUX build has SDL enabled:
-  make run-original ZESARUX_VO=sdl ZESARUX_AO=sdl
+  tools/zesarux/src/zesarux --help | sed -n '/--vo driver/,/--version/p'
   ```
 
-  On a minimal Linux build, `tools/zesarux/src/zesarux --help` lists only
-  `fbdev stdout simpletext null` video and `dsp onebitspeaker null` audio.
-  `onebitspeaker` needs PC speaker I/O permissions; use `null` for smoke
-  tests and RE automation.
+  On a minimal Linux build, this may list only `fbdev stdout simpletext
+  null` video and `dsp onebitspeaker null` audio. `onebitspeaker` needs
+  PC speaker I/O permissions; use `null` for smoke tests and RE
+  automation. If `xwindows` or `sdl` is not listed, the current binary
+  cannot open a window with that driver. Install the matching development
+  headers, rebuild ZEsarUX, and then select the enabled drivers
+  explicitly:
+
+  ```sh
+  # X11 window + ALSA audio, if both drivers are listed by --help:
+  make run-original ZESARUX_VO=xwindows ZESARUX_AO=alsa
+
+  # SDL video/audio, if your ZEsarUX build has SDL enabled:
+  make run-original ZESARUX_VO=sdl ZESARUX_AO=sdl
+  ```
 
 ## Approach
 
