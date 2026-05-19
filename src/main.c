@@ -2323,7 +2323,7 @@ static void sound_tick(void) {
 
 /* --- Sound queue (port of sounds_queue at $C0B8 + play_sounds_queue) ---
  *
- * 4 slots, each tracks a sound id + per-sound state byte. snd_q_push
+ * 5 slots, each tracks a sound id + per-sound state byte. snd_q_push
  * adds an event; snd_q_tick is called from the 50 Hz frame body and
  * dispatches each active slot to its play_sound_<id> handler.
  * Single-shot sounds clear their slot on first tick; multi-frame
@@ -2334,7 +2334,7 @@ static void sound_tick(void) {
  *   period = 26 * E T-states; freq = 3500000 / period = 134615 / E.
  * Each handler matches the E parameter ranges of the original's
  * play_sound_<event> routine (sound.asm at $C0F3+). */
-#define SQ_SLOTS 4
+#define SQ_SLOTS 5
 typedef struct { unsigned char id; unsigned char state; } sound_slot_t;
 
 /* Sound IDs match the original play_sounds_list at $C0BC. */
@@ -2343,6 +2343,7 @@ typedef struct { unsigned char id; unsigned char state; } sound_slot_t;
 #define SND_BALL_START    4
 #define SND_ALIEN_BLAST   6
 #define SND_LIVE_ADD      7
+#define SND_SPARK_FANOUT  8
 #define SND_BAT_RESIZE_1  9
 #define SND_TRIPLE_BALL   0x0A
 #define SND_SHOT          0x0B
@@ -2359,6 +2360,7 @@ static void snd_q_push(unsigned char id) {
                 case SND_LIVE_ADD:    snd_q[i].state = 0x20; break;
                 case SND_BALL_START:  snd_q[i].state = 0x00; break;
                 case SND_SHOT:        snd_q[i].state = 0x00; break;
+                case SND_SPARK_FANOUT:snd_q[i].state = 0x3D; break;  /* LBC10 push */
                 case SND_BAT_RESIZE_1:snd_q[i].state = 0xC0; break;  /* matches \$3212 push */
                 case SND_TRIPLE_BALL: snd_q[i].state = 0x10; break;  /* matches \$3072 push */
                 case SND_ALIEN_BLAST: snd_q[i].state = 0x30; break;
@@ -2449,6 +2451,19 @@ static int snd_tick_one(sound_slot_t *s) {
             s->state = (unsigned char)(s->state + 8);
             if (s->state == 0x60) s->state = 0x21;
             if (s->state == 0xA1) return 1;
+            return 0;
+        }
+
+        case SND_SPARK_FANOUT: {
+            /* $C1ED: E = ((state >> 2) & $3F) + $20, D=2, then
+             * sound_beep_cont_de subtracts 8 from E between the two
+             * pulses. PC speaker cannot reproduce the Spectrum
+             * bit-banged duty exactly; use the midpoint E for the
+             * frame so the rising envelope follows the original. */
+            unsigned int e = (((unsigned int)s->state >> 2) & 0x3Fu) + 0x20u;
+            if (e > 4) e -= 4;
+            sound_play(134615U / e, 1);
+            s->state++;
             return 0;
         }
 
@@ -4456,11 +4471,9 @@ static void play_bat_explosion(unsigned char level_idx) {
         death_sparks[i].duration_base = 0x18;     /* (IX+\$14) at spawn */
         dir = (unsigned char)((dir + 5) & 0x3F);
     }
-    /* Push sound $08 — same beep LBC10's level-cleared branch uses, but
-     * here it covers the spark-fanout. Approximated with a longer
-     * fixed-frequency tone until play_sound_08's state-driven envelope
-     * is mapped properly. */
-    sound_play(700, 30);
+    /* Push sound $08 — LBC10 seeds sounds_queue with id=$08,state=$3D
+     * before the spark fanout loop. */
+    snd_q_push(SND_SPARK_FANOUT);
     last = pit_ticks();
     do {
         unsigned long now;
@@ -4469,6 +4482,7 @@ static void play_bat_explosion(unsigned char level_idx) {
             now = pit_ticks();
         } while (now == last);
         last = now;
+        snd_q_tick();
         alive = 0;
         for (i = 0; i < DEATH_SPARK_COUNT; i++) {
             int dx_q88, dy_q88;
@@ -4513,6 +4527,7 @@ static void play_bat_explosion(unsigned char level_idx) {
         }
         redraw_with_death_sparks(level_idx);
     } while (alive);
+    snd_q_silence_all();
 }
 
 static state_t run_level(void) {

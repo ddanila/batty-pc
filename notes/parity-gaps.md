@@ -44,10 +44,11 @@ visibly wrong.
 ### Sound envelopes are approximate
 
 Most queued sound effects follow the original sound IDs and rough
-periods, but the PC speaker layer is not a cycle-exact port. The
-known explicit approximation is the bat-death / level-clear sound $08:
-`play_bat_explosion` uses a fixed 700 Hz tone until the original
-state-driven envelope is mapped.
+periods, but the PC speaker layer is not a cycle-exact Spectrum beeper
+port. The original toggles port `$FE` in tight loops; the DOS port uses
+PIT channel 2 square waves and frame-paced queue updates. Envelope
+shape can be matched, but exact timbre/duty/timing would need a
+sampled audio backend or a much lower-level beeper emulator.
 
 ### Rocket clear behavior needs capture comparison
 
