@@ -1526,6 +1526,18 @@ static void enemy_pick_new_target(object_t *o) {
     o->bonus_applied = (unsigned char)(next_random() & 0x3F);
 }
 
+static void enemy_target_away_from_margins(object_t *o) {
+    if (o->x_coord <= 8) {
+        o->bonus_applied = (o->y_coord <= 12) ? 0x08 : 0x00;
+    } else if (o->x_coord >= PLAYFIELD_W - 8 - o->w_body_px) {
+        o->bonus_applied = (o->y_coord <= 12) ? 0x38 : 0x20;
+    } else if (o->y_coord <= 8) {
+        o->bonus_applied = (o->x_coord < PLAYFIELD_W / 2) ? 0x08 : 0x38;
+    } else {
+        enemy_pick_new_target(o);
+    }
+}
+
 /* Birds/UFOs use a reduced port of the original 6-bit direction-table
  * movement. The original also uses LAA7B target steering and collision
  * reactions; here we keep the same q8.8 motion shape and periodically
@@ -1558,16 +1570,22 @@ static void handling_bird_obj(object_t *o) {
     if (nx < 8) {
         nx = 8; nx_q8 = nx << 8;
         o->dir = (unsigned char)((0x20 - o->dir) & 0x3F);
-        enemy_pick_new_target(o);
+        o->x_coord = (unsigned char)nx;
+        o->y_coord = (unsigned char)ny;
+        enemy_target_away_from_margins(o);
     } else if (nx >= PLAYFIELD_W - 8 - (int)o->w_body_px) {
         nx = PLAYFIELD_W - 8 - (int)o->w_body_px; nx_q8 = nx << 8;
         o->dir = (unsigned char)((0x20 - o->dir) & 0x3F);
-        enemy_pick_new_target(o);
+        o->x_coord = (unsigned char)nx;
+        o->y_coord = (unsigned char)ny;
+        enemy_target_away_from_margins(o);
     }
     if (ny < 8) {
         ny = 8; ny_q8 = ny << 8;
         o->dir = (unsigned char)((0x40 - o->dir) & 0x3F);
-        enemy_pick_new_target(o);
+        o->x_coord = (unsigned char)nx;
+        o->y_coord = (unsigned char)ny;
+        enemy_target_away_from_margins(o);
     } else if (ny >= PLAYFIELD_H) {
         o->sprite_set |= 0x80;
         return;
@@ -2114,9 +2132,10 @@ static void render_magnets(unsigned char level_idx) {
          * Coin-pin in test mode: slots 0/1 SKIP the OFF overlay (= GT
          * shows them as pure lightning, ~70% set pixels). Slots 2/3
          * DRAW the OFF overlay (= GT shows them at ~43% set with the
-         * outline replacing the lightning's bright body). */
+         * outline replacing the lightning's bright body). Normal play
+         * follows the original coin flip from print_magnets. */
         blit_masked_to_scr_buff_ptr(spr_magnet_on, x, y);
-        if (!test_mode_pin_blink || i >= 2) {
+        if (test_mode_pin_blink ? (i >= 2) : (next_random() & 1)) {
             blit_masked_to_scr_buff_ptr(spr_magnet_off, x, y);
         }
     }
@@ -4070,10 +4089,27 @@ static void set_hud_text_attrs(int x, int y, int w, int h) {
     }
 }
 
+static void clear_hud_text_pixels(int x, int y, int w, int h) {
+    int row;
+    int byte_col = x >> 3;
+    int cols = ((x & 7) + w + 7) >> 3;
+    for (row = 0; row < h; row++) {
+        int py = y + row;
+        int c;
+        if (py < 0 || py >= PLAYFIELD_H) continue;
+        for (c = 0; c < cols; c++) {
+            int bx = byte_col + c;
+            if (bx >= 0 && bx < 32) scr_buff[py * 32 + bx] = 0;
+        }
+    }
+}
+
 static void draw_hud_text_to_buff(int x, int y,
                                   const unsigned char *codes, int n) {
     int i;
-    set_hud_text_attrs(x, y, n * 8, FONT_ROWS);
+    int w = n * 8;
+    set_hud_text_attrs(x, y, w, FONT_ROWS);
+    clear_hud_text_pixels(x, y, w, FONT_ROWS);
     for (i = 0; i < n; i++) draw_glyph_to_buff(x + i * 8, y, codes[i]);
 }
 
