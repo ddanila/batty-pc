@@ -4073,45 +4073,6 @@ static void score_to_codes(unsigned long s, unsigned char out[6]) {
 }
 
 #ifndef BATTY_SCORELESS_HUD
-static void blit_original_masked_to_scr_buff_ptr(const unsigned char *src,
-                                                  int x_px, int y_px) {
-    int w = src[0];
-    int h = src[1];
-    const unsigned char *p = src + 2;
-    int shift = x_px & 7;
-    int start_col = x_px >> 3;
-    int rshift = 8 - shift;
-    int row, col_byte;
-    for (row = 0; row < h; row++) {
-        int y = y_px + row;
-        if (y < 0 || y >= PLAYFIELD_H) { p += (unsigned)w * 2; continue; }
-        for (col_byte = 0; col_byte < w; col_byte++) {
-            unsigned char mask = *p++;
-            unsigned char pix = *p++;
-            int dst_l = start_col + col_byte;
-            int dst_r = dst_l + 1;
-            unsigned char m_l, p_l, m_r, p_r;
-            unsigned int row_base = (unsigned int)y * 32U;
-            if (shift == 0) {
-                m_l = mask; p_l = pix; m_r = 0; p_r = 0;
-            } else {
-                m_l = (unsigned char)(mask >> shift);
-                p_l = (unsigned char)(pix >> shift);
-                m_r = (unsigned char)(mask << rshift);
-                p_r = (unsigned char)(pix << rshift);
-            }
-            if (dst_l >= 0 && dst_l < 32) {
-                unsigned char *d = &scr_buff[row_base + dst_l];
-                *d = (unsigned char)((m_l | *d) ^ p_l);
-            }
-            if (shift != 0 && dst_r >= 0 && dst_r < 32) {
-                unsigned char *d = &scr_buff[row_base + dst_r];
-                *d = (unsigned char)((m_r | *d) ^ p_r);
-            }
-        }
-    }
-}
-
 static void draw_score_digits_original(int x, int y, unsigned long value) {
     unsigned char digits[6];
     int i;
@@ -4126,15 +4087,16 @@ static void draw_score_digits_original(int x, int y, unsigned long value) {
             int bx = (x >> 3) + i;
             if (py < 0 || py >= PLAYFIELD_H || bx < 0 || bx >= 32) continue;
             scr_buff[py * 32 + bx] =
-                (unsigned char)((mask | scr_buff[py * 32 + bx]) ^ pix);
+                (unsigned char)(((unsigned char)(~mask) & scr_buff[py * 32 + bx])
+                                | (mask & pix));
         }
     }
 }
 
 static void render_hud_to_buff(void) {
-    blit_original_masked_to_scr_buff_ptr(hud_sprites + HUD_SPR_1UP, 0x1C, 0x0C);
-    blit_original_masked_to_scr_buff_ptr(hud_sprites + HUD_SPR_2UP, 0xCC, 0x0C);
-    blit_original_masked_to_scr_buff_ptr(hud_sprites + HUD_SPR_HI,  0x78, 0x0C);
+    blit_masked_to_scr_buff_ptr(hud_sprites + HUD_SPR_1UP, 0x1C, 0x0C);
+    blit_masked_to_scr_buff_ptr(hud_sprites + HUD_SPR_2UP, 0xCC, 0x0C);
+    blit_masked_to_scr_buff_ptr(hud_sprites + HUD_SPR_HI,  0x78, 0x0C);
     draw_score_digits_original(0x10, 0x15, score);
     draw_score_digits_original(0x68, 0x15, high_score);
     draw_score_digits_original(0xC0, 0x15, 0);

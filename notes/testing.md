@@ -47,6 +47,13 @@ All five states are FAIL-gated on L1 default. 4 of 15 levels still
 have small residuals via `BATTY_LEVEL=N`: L3 (232 px), L6 (67 px),
 L9 (242 px), L12 (122 px) — see [`per-level-profile.md`](per-level-profile.md).
 
+`make test-hud` is a separate normal-build check because `make test`
+uses `BATTY_SCORELESS_HUD`. It boots the regular floppy to L1 and
+compares the stable original HUD regions (`1UP` / `HI` / `2UP`, player
+1 zero score, player 2 zero score) against the original
+`20260513T202101Z` capture. The high-score digits are intentionally
+excluded because `HISCORE.DAT` can vary between local runs.
+
 ## Per-level testing via `BATTY_LEVEL` env
 
 ```sh

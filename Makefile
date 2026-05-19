@@ -64,7 +64,7 @@ else
 endif
 ZRCP_PORT ?= 10000
 
-.PHONY: all clean run floppy assets help run-original run-original-cheat snapshot candidates regions test
+.PHONY: all clean run floppy assets help run-original run-original-cheat snapshot candidates regions test test-hud
 
 all: $(EXE) $(ASSETS)
 
@@ -275,6 +275,9 @@ test:
 	@rm -f $(TEST_FLOPPY_OUT)
 	@$(MAKE) $(TEST_FLOPPY_OUT)
 	python3 scripts/test_visual.py --floppy $(TEST_FLOPPY_OUT)
+
+test-hud: $(FLOPPY_OUT)
+	python3 scripts/test_hud.py --floppy $(FLOPPY_OUT)
 
 tools/zesarux/src/zesarux:
 	git submodule update --init tools/zesarux
