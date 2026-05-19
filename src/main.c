@@ -662,6 +662,20 @@ static int           brick_flash_x     = 0;
 static int           brick_flash_y     = 0;
 static void render_brick_flash_to_buff(void);    /* forward decl — defined alongside brick_collision */
 
+/* Original briks_data: up to five simultaneous hard-brick shimmer
+ * animations after a non-destroying hit. Each slot lasts 16 ticks:
+ * anim_brik's eight frames, two ticks per frame. */
+#define BRICK_HIT_ANIM_SLOTS 5
+#define BRICK_HIT_ANIM_TICKS 16
+static unsigned char brick_hit_anim_ticks[BRICK_HIT_ANIM_SLOTS];
+static unsigned char brick_hit_anim_col[BRICK_HIT_ANIM_SLOTS];
+static unsigned char brick_hit_anim_row[BRICK_HIT_ANIM_SLOTS];
+static void brick_hit_anim_spawn(int col, int row);
+static void step_brick_hit_anim(void);
+static int any_brick_hit_anim(void);
+static void reset_brick_hit_anim(void);
+static void render_brick_hit_anim_to_buff(void);
+
 /* Rocket bonus animation — instead of insta-destroying every brick
  * on catch, fly a rocket up from the bat through the playfield and
  * destroy whatever it passes through. Two animation frames cycled
@@ -2051,6 +2065,7 @@ static void render_level_screen(unsigned char level_idx) {
     inner_border_line_c();
     render_brick_band(level_idx);
     render_brick_flash_to_buff();
+    render_brick_hit_anim_to_buff();
     /* Frame paints AFTER bricks so its side-strip attrs win over what
      * print_briks_c lays into the same cells; print_border_shadow_c
      * (inside render_brick_band) dims cc 1 back to non-bright after the
@@ -3152,7 +3167,10 @@ static int brick_collision(int prev_x, int prev_y, int new_x, int new_y) {
     if (*cell & 0x20) {
         /* Undestructible: bounce off with the same brick-tick sound
          * as a destruction (the original plays SND_NORMAL_BRIK on
-         * every brick collision regardless of survival). */
+         * every brick collision regardless of survival). It also
+         * schedules the same briks_data shimmer slot used by hard
+         * bricks, because bit 5 jumps to LAFFC_34. */
+        brick_hit_anim_spawn(col, row);
         snd_q_push(SND_NORMAL_BRIK);
         return axis;
     }
@@ -3162,6 +3180,7 @@ static int brick_collision(int prev_x, int prev_y, int new_x, int new_y) {
      * two hits even with SMASH active. */
     if (!big_ball_active() && !(*cell & 0x10)) {
         *cell |= 0x10;
+        brick_hit_anim_spawn(col, row);
         snd_q_push(SND_NORMAL_BRIK);
         return axis;
     }
@@ -3466,8 +3485,10 @@ static void step_bullet_one(int b) {
             int hit = 0;
             if (*cell & 0x20) {
                 hit = 1;                       /* undestructible: stop, no destroy */
+                brick_hit_anim_spawn(col, row);
             } else if (!(*cell & 0x10)) {
                 *cell |= 0x10;                 /* multi-hit, set bit 4 */
+                brick_hit_anim_spawn(col, row);
                 hit = 1;
             } else {
                 unsigned int idx = (unsigned int)((row < 12) ? row : 11);
@@ -3844,6 +3865,7 @@ static void redraw_full_with_ball(unsigned char level_idx) {
     inner_border_line_c();
     render_brick_band(level_idx);
     render_brick_flash_to_buff();
+    render_brick_hit_anim_to_buff();
     paint_frame_to_buff(cycle, level_idx);
     /* Ball must blit BEFORE bat so the bat overlays the ball's lower 5
      * rows (rows 7..11 of the 12-row ball sprite). Those rows are the
@@ -4090,6 +4112,82 @@ static const unsigned char brik_anim_sprites[7][16] = {
 /* anim_brik order at $AF6F: sprites 2,6,3,7,4,5,5,1 (0-indexed) */
 static const unsigned char brik_anim_order[8] = { 1, 5, 2, 6, 3, 4, 4, 0 };
 
+static void reset_brick_hit_anim(void) {
+    int i;
+    for (i = 0; i < BRICK_HIT_ANIM_SLOTS; i++) {
+        brick_hit_anim_ticks[i] = 0;
+    }
+}
+
+static void brick_hit_anim_spawn(int col, int row) {
+    int i;
+    for (i = 0; i < BRICK_HIT_ANIM_SLOTS; i++) {
+        if (brick_hit_anim_ticks[i]
+            && brick_hit_anim_col[i] == (unsigned char)col
+            && brick_hit_anim_row[i] == (unsigned char)row) {
+            brick_hit_anim_ticks[i] = 1;
+            return;
+        }
+    }
+    for (i = 0; i < BRICK_HIT_ANIM_SLOTS; i++) {
+        if (!brick_hit_anim_ticks[i]) {
+            brick_hit_anim_ticks[i] = 1;
+            brick_hit_anim_col[i] = (unsigned char)col;
+            brick_hit_anim_row[i] = (unsigned char)row;
+            return;
+        }
+    }
+}
+
+static void step_brick_hit_anim(void) {
+    int i;
+    for (i = 0; i < BRICK_HIT_ANIM_SLOTS; i++) {
+        if (!brick_hit_anim_ticks[i]) continue;
+        if (++brick_hit_anim_ticks[i] > BRICK_HIT_ANIM_TICKS) {
+            brick_hit_anim_ticks[i] = 0;
+        }
+    }
+}
+
+static int any_brick_hit_anim(void) {
+    int i;
+    for (i = 0; i < BRICK_HIT_ANIM_SLOTS; i++) {
+        if (brick_hit_anim_ticks[i]) return 1;
+    }
+    return 0;
+}
+
+/* Port of briks_data / metal_brik_anim ($B6A9): active slots overlay
+ * anim_brik frames directly into the screen buffer. Attributes are left
+ * alone, matching the original routine's pixel-only writes. */
+static void render_brick_hit_anim_to_buff(void) {
+    int i, r;
+    for (i = 0; i < BRICK_HIT_ANIM_SLOTS; i++) {
+        unsigned char tick = brick_hit_anim_ticks[i];
+        unsigned char frame_idx;
+        const unsigned char *spr;
+        unsigned int hl;
+        int col, row;
+        if (!tick) continue;
+        col = brick_hit_anim_col[i];
+        row = brick_hit_anim_row[i];
+        if (row >= LVL_ROWS || col >= LVL_COLS
+            || (live_level[row * LVL_COLS + col] & 0x80)) {
+            brick_hit_anim_ticks[i] = 0;
+            continue;
+        }
+        frame_idx = (unsigned char)((tick - 1) >> 1);
+        if (frame_idx >= 8) frame_idx = 7;
+        spr = brik_anim_sprites[brik_anim_order[frame_idx]];
+        hl = 0x401 + (unsigned int)row * 0x100 + (unsigned int)col * 2;
+        for (r = 0; r < 8; r++) {
+            scr_buff[hl]     = spr[r * 2];
+            scr_buff[hl + 1] = spr[r * 2 + 1];
+            hl += 32;
+        }
+    }
+}
+
 static void brik_anim_apply_frame(unsigned char frame_idx) {
     const unsigned char *spr = brik_anim_sprites[frame_idx];
     int row, col, r;
@@ -4254,6 +4352,7 @@ static void redraw_with_death_sparks(unsigned char level_idx) {
     inner_border_line_c();
     render_brick_band(level_idx);
     render_brick_flash_to_buff();
+    render_brick_hit_anim_to_buff();
     paint_frame_to_buff(cycle, level_idx);
     render_lives(cycle, bg_attr);
     for (i = 0; i < DEATH_SPARK_COUNT; i++) {
@@ -4338,6 +4437,7 @@ static void play_bat_explosion(unsigned char level_idx) {
     bullet_blast_ticks[0] = 0;
     bullet_blast_ticks[1] = 0;
     brick_flash_ticks = 0;
+    reset_brick_hit_anim();
     objects[OBJ_ENEMY].sprite_set = 0;
     /* Extras may still be inactive but defensive-clear in case a new
      * call site is added that forgets to deactivate them upstream. */
@@ -4487,6 +4587,7 @@ static state_t run_level(void) {
         bullet_cooldown       = 0;
         rocket_active      = 0;
         brick_flash_ticks  = 0;
+        reset_brick_hit_anim();
         ball2_active   = 0;
         objects[OBJ_BALL_2].sprite_set = 0x82;
         ball3_active   = 0;
@@ -4674,6 +4775,7 @@ static state_t run_level(void) {
                 step_bullet_blast();
                 step_rocket();
                 step_brick_flash();
+                step_brick_hit_anim();
                 if (bat_fire_anim_ticks) bat_fire_anim_ticks--;
                 if (bullet_cooldown >= 2) bullet_cooldown -= 2;     /* SUB \$02 / frame */
                 else bullet_cooldown = 0;
@@ -4750,6 +4852,7 @@ static state_t run_level(void) {
                 if (any_bullet_blast()) ball_moved = 1;
                 if (rocket_active) ball_moved = 1;
                 if (brick_flash_ticks) ball_moved = 1;
+                if (any_brick_hit_anim()) ball_moved = 1;
                 if (ball2_active) ball_moved = 1;
                 if (ball3_active) ball_moved = 1;
             }
