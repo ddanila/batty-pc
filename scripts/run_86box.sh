@@ -51,7 +51,7 @@ log="$vm_dir/86box.log"
 
 cat > "$cfg" <<EOF
 [General]
-scale = 5
+scale = 3
 
 [Machine]
 machine = $machine
