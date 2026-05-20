@@ -1187,6 +1187,72 @@ static unsigned char paper_pal(unsigned char attr) {
     return (unsigned char)(((attr >> 3) & 7) | ((attr & 0x40) >> 3));
 }
 
+static unsigned char ink_table[256];
+static unsigned char paper_table[256];
+
+static void init_pal_tables(void) {
+    int i;
+    for (i = 0; i < 256; i++) {
+        ink_table[i] = ink_pal((unsigned char)i);
+        paper_table[i] = paper_pal((unsigned char)i);
+    }
+}
+
+static unsigned long prof_bg_pit = 0;
+static unsigned long prof_frame_pit = 0;
+static unsigned long prof_hud_pit = 0;
+static unsigned long prof_bricks_pit = 0;
+static unsigned long prof_vga_pit = 0;
+static unsigned long prof_frames_count = 0;
+
+static unsigned short last_prof_tick = 0;
+
+static unsigned short pit_current_ticks(void) {
+    unsigned char low, high;
+    unsigned short val;
+    _disable();
+    outp(0x43, 0x00);
+    low = inp(0x40);
+    high = inp(0x40);
+    _enable();
+    val = (unsigned short)(((unsigned short)high << 8) | low);
+    return val;
+}
+
+static void prof_start(void) {
+    last_prof_tick = pit_current_ticks();
+}
+
+static unsigned short prof_elapsed(void) {
+    unsigned short now = pit_current_ticks();
+    unsigned short diff;
+    if (now <= last_prof_tick) {
+        diff = last_prof_tick - now;
+    } else {
+        diff = (last_prof_tick - now) + 23864u;
+    }
+    last_prof_tick = now;
+    return diff;
+}
+
+static void write_profile_report(void) {
+    FILE *f = fopen("A:\\PROFILE.TXT", "w");
+    if (!f) f = fopen("PROFILE.TXT", "w");
+    if (f) {
+        unsigned long total = prof_bg_pit + prof_frame_pit + prof_hud_pit + prof_bricks_pit + prof_vga_pit;
+        fprintf(f, "Profiling Report over %lu frames:\n", prof_frames_count);
+        if (total > 0) {
+            fprintf(f, "  paint_bg_to_buff:     %lu (%u%%)\n", prof_bg_pit, (unsigned)((prof_bg_pit * 100) / total));
+            fprintf(f, "  paint_frame_to_buff:  %lu (%u%%)\n", prof_frame_pit, (unsigned)((prof_frame_pit * 100) / total));
+            fprintf(f, "  HUD / Lives:          %lu (%u%%)\n", prof_hud_pit, (unsigned)((prof_hud_pit * 100) / total));
+            fprintf(f, "  render_brick_band:    %lu (%u%%)\n", prof_bricks_pit, (unsigned)((prof_bricks_pit * 100) / total));
+            fprintf(f, "  buff_to_vga:          %lu (%u%%)\n", prof_vga_pit, (unsigned)((prof_vga_pit * 100) / total));
+        }
+        fprintf(f, "  Total PIT ticks sum:  %lu\n", total);
+        fclose(f);
+    }
+}
+
 /* Buffer-pipeline variant of paint_strip: write the strip's pixel
  * data into scr_buff (overwriting the bg pattern that paint_bg_to_buff
  * left there) and the attrs into attr_buff. Called before bat / ball
@@ -1286,42 +1352,47 @@ static void blit_masked_to_scr_buff_ptr(const unsigned char *src,
     const unsigned char *p = src + 2;
     int shift     = x_px & 7;
     int start_col = x_px >> 3;
-    int rshift    = 8 - shift;
     int row, col_byte;
-    for (row = 0; row < h; row++) {
-        int y = y_px + row;
-        if (y < 0 || y >= PLAYFIELD_H) { p += (unsigned)w * 2; continue; }
-        for (col_byte = 0; col_byte < w; col_byte++) {
-            unsigned char mask = *p++;
-            unsigned char pix  = *p++;
-            int dst_l = start_col + col_byte;
-            int dst_r = dst_l + 1;
-            unsigned char m_l, p_l, m_r, p_r;
+
+    if (shift == 0) {
+        for (row = 0; row < h; row++) {
+            int y = y_px + row;
+            if (y < 0 || y >= PLAYFIELD_H) { p += (unsigned)w * 2; continue; }
             unsigned int row_base = (unsigned int)y * 32U;
-            if (shift == 0) {
-                m_l = mask; p_l = pix; m_r = 0; p_r = 0;
-            } else {
-                m_l = (unsigned char)(mask >> shift);
-                p_l = (unsigned char)(pix  >> shift);
-                m_r = (unsigned char)(mask << rshift);
-                p_r = (unsigned char)(pix  << rshift);
+            for (col_byte = 0; col_byte < w; col_byte++) {
+                unsigned char mask = *p++;
+                unsigned char pix  = *p++;
+                int dst_l = start_col + col_byte;
+                if (dst_l >= 0 && dst_l < 32) {
+                    unsigned char *d = &scr_buff[row_base + dst_l];
+                    *d = (unsigned char)(((unsigned char)(~mask) & *d) | (mask & pix));
+                }
             }
-            /* Standard mask & pix sprite blit:
-             *   where mask=1  -> take pix bit (sprite content)
-             *   where mask=0  -> preserve screen bit (transparent)
-             * = (~mask & screen) | (mask & pix). Earlier port used
-             * `(mask | screen) ^ pix` per a misreading of the original
-             * blitter — it left rows whose mask bits coincided with
-             * bg-pattern bits invisible (top + bottom of bat sprite,
-             * lives icons, etc.). Verified empirically against four GT
-             * data points; see state4-bat-band-triage.md. */
-            if (dst_l >= 0 && dst_l < 32) {
-                unsigned char *d = &scr_buff[row_base + dst_l];
-                *d = (unsigned char)(((unsigned char)(~m_l) & *d) | (m_l & p_l));
-            }
-            if (shift != 0 && dst_r >= 0 && dst_r < 32) {
-                unsigned char *d = &scr_buff[row_base + dst_r];
-                *d = (unsigned char)(((unsigned char)(~m_r) & *d) | (m_r & p_r));
+        }
+    } else {
+        int rshift = 8 - shift;
+        for (row = 0; row < h; row++) {
+            int y = y_px + row;
+            if (y < 0 || y >= PLAYFIELD_H) { p += (unsigned)w * 2; continue; }
+            unsigned int row_base = (unsigned int)y * 32U;
+            for (col_byte = 0; col_byte < w; col_byte++) {
+                unsigned char mask = *p++;
+                unsigned char pix  = *p++;
+                int dst_l = start_col + col_byte;
+                int dst_r = dst_l + 1;
+                unsigned char m_l = (unsigned char)(mask >> shift);
+                unsigned char p_l = (unsigned char)(pix  >> shift);
+                unsigned char m_r = (unsigned char)(mask << rshift);
+                unsigned char p_r = (unsigned char)(pix  << rshift);
+
+                if (dst_l >= 0 && dst_l < 32) {
+                    unsigned char *d = &scr_buff[row_base + dst_l];
+                    *d = (unsigned char)(((unsigned char)(~m_l) & *d) | (m_l & p_l));
+                }
+                if (dst_r >= 0 && dst_r < 32) {
+                    unsigned char *d = &scr_buff[row_base + dst_r];
+                    *d = (unsigned char)(((unsigned char)(~m_r) & *d) | (m_r & p_r));
+                }
             }
         }
     }
@@ -2148,38 +2219,159 @@ static void print_border_shadow_c(void) {
  * attr_buff. */
 static void paint_bg_to_buff(unsigned char attr, unsigned char cycle) {
     const unsigned char *tile = bg_tile + (int)cycle * BG_TILE_SIZE;
-    int y, byte_col, char_row, char_col;
+    int y;
     for (y = 0; y < PLAYFIELD_H; y++) {
         int ty = y & 15;
-        for (byte_col = 0; byte_col < 32; byte_col++) {
-            scr_buff[y * 32 + byte_col] = tile[ty * 2 + (byte_col & 1)];
+        unsigned char t0 = tile[ty * 2];
+        unsigned char t1 = tile[ty * 2 + 1];
+        unsigned short pattern = t0 | ((unsigned short)t1 << 8);
+        unsigned short *dest = (unsigned short *)&scr_buff[y * 32];
+        int i;
+        for (i = 0; i < 16; i++) {
+            dest[i] = pattern;
         }
     }
-    for (char_row = 0; char_row < ATTR_ROWS; char_row++) {
-        for (char_col = 0; char_col < ATTR_COLS; char_col++) {
-            attr_buff[char_row * 32 + char_col] = attr;
-        }
-    }
+    memset(attr_buff, attr, sizeof(attr_buff));
 }
 
 /* Single-pass buffer-to-VGA conversion: walk scr_buff bits and emit
  * each pixel via the surrounding char cell's attr_buff entry. Mirrors
  * the original game's final-frame paint (game_screen_draw_to_buffer
  * at $BE6B followed by buffer-to-screen copy). */
-static void buff_to_vga(void) {
-    int y, byte_col, bit;
-    for (y = 0; y < PLAYFIELD_H; y++) {
-        for (byte_col = 0; byte_col < 32; byte_col++) {
-            unsigned char b = scr_buff[y * 32 + byte_col];
-            unsigned char attr = attr_buff[(y / 8) * 32 + byte_col];
-            unsigned char ink = ink_pal(attr);
-            unsigned char paper = paper_pal(attr);
-            for (bit = 0; bit < 8; bit++) {
-                vga[(long)(BORDER_Y + y) * SCREEN_W + BORDER_X + byte_col * 8 + bit] =
-                    (b & (0x80 >> bit)) ? ink : paper;
+static void buff_to_vga_strip(int y0, int h);
+
+static unsigned char prev_scr_buff[6144];
+static unsigned char prev_attr_buff[768];
+static unsigned char dirty_lines[PLAYFIELD_H];
+static int force_full_flush = 1;
+
+static void fast_memcpy(void *dest, const void *src, unsigned int n_bytes) {
+    unsigned int n_words = n_bytes >> 1;
+    _asm {
+        push es
+        push di
+        push si
+        mov ax, ds
+        mov es, ax
+        mov di, dest
+        mov si, src
+        mov cx, n_words
+        cld
+        rep movsw
+        pop si
+        pop di
+        pop es
+    }
+}
+
+static void compute_dirty_lines(void) {
+    int r;
+    memset(dirty_lines, 0, sizeof(dirty_lines));
+    for (r = 0; r < PLAYFIELD_H; r++) {
+        if (memcmp(&scr_buff[r << 5], &prev_scr_buff[r << 5], 32) != 0) {
+            dirty_lines[r] = 1;
+        } else {
+            int attr_row = r >> 3;
+            if (memcmp(&attr_buff[attr_row << 5], &prev_attr_buff[attr_row << 5], 32) != 0) {
+                dirty_lines[r] = 1;
             }
         }
     }
+}
+
+static void flush_dirty_to_vga(void) {
+    int y;
+    int start_y = -1;
+    for (y = 0; y < PLAYFIELD_H; y++) {
+        if (dirty_lines[y]) {
+            if (start_y == -1) {
+                start_y = y;
+            }
+        } else {
+            if (start_y != -1) {
+                buff_to_vga_strip(start_y, y - start_y);
+                start_y = -1;
+            }
+        }
+    }
+    if (start_y != -1) {
+        buff_to_vga_strip(start_y, PLAYFIELD_H - start_y);
+    }
+}
+
+static void buff_to_vga(void) {
+    int y, byte_col;
+    for (y = 0; y < PLAYFIELD_H; y++) {
+        unsigned char __far *dest = vga + (long)(BORDER_Y + y) * SCREEN_W + BORDER_X;
+        const unsigned char *scr_row = &scr_buff[y * 32];
+        const unsigned char *attr_row = &attr_buff[(y >> 3) * 32];
+        for (byte_col = 0; byte_col < 32; byte_col++) {
+            unsigned char b = scr_row[byte_col];
+            unsigned char attr = attr_row[byte_col];
+            unsigned char ink = ink_table[attr];
+            unsigned char paper = paper_table[attr];
+            unsigned char diff = ink ^ paper;
+
+            _asm {
+                les di, dest
+                mov ah, b
+                mov dh, paper
+                mov cl, diff
+
+                shl ah, 1
+                sbb al, al
+                and al, cl
+                xor al, dh
+                stosb
+
+                shl ah, 1
+                sbb al, al
+                and al, cl
+                xor al, dh
+                stosb
+
+                shl ah, 1
+                sbb al, al
+                and al, cl
+                xor al, dh
+                stosb
+
+                shl ah, 1
+                sbb al, al
+                and al, cl
+                xor al, dh
+                stosb
+
+                shl ah, 1
+                sbb al, al
+                and al, cl
+                xor al, dh
+                stosb
+
+                shl ah, 1
+                sbb al, al
+                and al, cl
+                xor al, dh
+                stosb
+
+                shl ah, 1
+                sbb al, al
+                and al, cl
+                xor al, dh
+                stosb
+
+                shl ah, 1
+                sbb al, al
+                and al, cl
+                xor al, dh
+                stosb
+
+                mov word ptr dest, di
+            }
+        }
+    }
+    fast_memcpy(prev_scr_buff, scr_buff, sizeof(scr_buff));
+    fast_memcpy(prev_attr_buff, attr_buff, sizeof(attr_buff));
 }
 
 /* Port of print_magnets ($8D4C) — paints each magnet specified in
@@ -2814,22 +3006,25 @@ static state_t run_hiscore(void) {
 static void paint_bg_strip_to_buff(unsigned char attr, unsigned char cycle,
                                     int y0, int h) {
     const unsigned char *tile = bg_tile + (int)cycle * BG_TILE_SIZE;
-    int y, byte_col, char_row;
+    int y, char_row;
     int y_end = y0 + h;
     if (y_end > PLAYFIELD_H) y_end = PLAYFIELD_H;
     for (y = y0; y < y_end; y++) {
         int ty = y & 15;
-        for (byte_col = 0; byte_col < 32; byte_col++) {
-            scr_buff[y * 32 + byte_col] = tile[ty * 2 + (byte_col & 1)];
+        unsigned char t0 = tile[ty * 2];
+        unsigned char t1 = tile[ty * 2 + 1];
+        unsigned short pattern = t0 | ((unsigned short)t1 << 8);
+        unsigned short *dest = (unsigned short *)&scr_buff[y * 32];
+        int i;
+        for (i = 0; i < 16; i++) {
+            dest[i] = pattern;
         }
     }
     {
         int char_row_lo = y0 / 8;
         int char_row_hi = (y_end - 1) / 8;
         for (char_row = char_row_lo; char_row <= char_row_hi && char_row < ATTR_ROWS; char_row++) {
-            for (byte_col = 0; byte_col < 32; byte_col++) {
-                attr_buff[char_row * 32 + byte_col] = attr;
-            }
+            memset(&attr_buff[char_row * 32], attr, 32);
         }
     }
 }
@@ -2838,18 +3033,75 @@ static void paint_bg_strip_to_buff(unsigned char attr, unsigned char cycle,
  * version of buff_to_vga used after a paint_bg_strip_to_buff +
  * sprite blits to redraw just the affected band. */
 static void buff_to_vga_strip(int y0, int h) {
-    int y, byte_col, bit;
+    int y, byte_col;
     int y_end = y0 + h;
     if (y_end > PLAYFIELD_H) y_end = PLAYFIELD_H;
     for (y = y0; y < y_end; y++) {
+        unsigned char __far *dest = vga + (long)(BORDER_Y + y) * SCREEN_W + BORDER_X;
+        const unsigned char *scr_row = &scr_buff[y * 32];
+        const unsigned char *attr_row = &attr_buff[(y >> 3) * 32];
         for (byte_col = 0; byte_col < 32; byte_col++) {
-            unsigned char b = scr_buff[y * 32 + byte_col];
-            unsigned char attr = attr_buff[(y / 8) * 32 + byte_col];
-            unsigned char ink = ink_pal(attr);
-            unsigned char paper = paper_pal(attr);
-            for (bit = 0; bit < 8; bit++) {
-                vga[(long)(BORDER_Y + y) * SCREEN_W + BORDER_X + byte_col * 8 + bit] =
-                    (b & (0x80 >> bit)) ? ink : paper;
+            unsigned char b = scr_row[byte_col];
+            unsigned char attr = attr_row[byte_col];
+            unsigned char ink = ink_table[attr];
+            unsigned char paper = paper_table[attr];
+            unsigned char diff = ink ^ paper;
+
+            _asm {
+                les di, dest
+                mov ah, b
+                mov dh, paper
+                mov cl, diff
+
+                shl ah, 1
+                sbb al, al
+                and al, cl
+                xor al, dh
+                stosb
+
+                shl ah, 1
+                sbb al, al
+                and al, cl
+                xor al, dh
+                stosb
+
+                shl ah, 1
+                sbb al, al
+                and al, cl
+                xor al, dh
+                stosb
+
+                shl ah, 1
+                sbb al, al
+                and al, cl
+                xor al, dh
+                stosb
+
+                shl ah, 1
+                sbb al, al
+                and al, cl
+                xor al, dh
+                stosb
+
+                shl ah, 1
+                sbb al, al
+                and al, cl
+                xor al, dh
+                stosb
+
+                shl ah, 1
+                sbb al, al
+                and al, cl
+                xor al, dh
+                stosb
+
+                shl ah, 1
+                sbb al, al
+                and al, cl
+                xor al, dh
+                stosb
+
+                mov word ptr dest, di
             }
         }
     }
@@ -4110,6 +4362,8 @@ static void redraw_bat(unsigned char cycle, unsigned char bg_attr) {
     render_running_dot();
     render_lives(cycle, bg_attr);
     buff_to_vga_strip(BAT_Y_PX, BAT_H_PX);
+    fast_memcpy(&prev_scr_buff[BAT_Y_PX << 5], &scr_buff[BAT_Y_PX << 5], BAT_H_PX << 5);
+    fast_memcpy(&prev_attr_buff[21 << 5], &attr_buff[21 << 5], 3 << 5);
 }
 
 static void render_hud_to_buff(void);
@@ -4125,23 +4379,21 @@ static void redraw_full_with_ball(unsigned char level_idx) {
     unsigned char cycle   = (unsigned char)(level_idx & 3);
     object_t *enemy = &objects[OBJ_ENEMY];
 
-    /* The whole playfield is rewritten by buff_to_vga() below. Do not
-     * clear VGA first; the original restores/draws through its ZX-format
-     * buffers without showing a blank frame between object updates. */
+    prof_start();
+
     paint_bg_to_buff(bg_attr, cycle);
+    prof_bg_pit += prof_elapsed();
+
     paint_frame_to_buff(cycle, level_idx);
-    /* Ball must blit BEFORE bat so the bat overlays the ball's lower 5
-     * rows (rows 7..11 of the 12-row ball sprite). Those rows are the
-     * "ball-resting-on-bat" mask: drawn first they paint a few pixels
-     * the bat then covers. Drawn after the bat, they instead punch
-     * holes through the bat top — visible as a 7-px diagonal smudge
-     * (see state4-bat-band-triage.md iter 4). The secondary balls
-     * below render after bat too, since they can land anywhere. */
+    prof_frame_pit += prof_elapsed();
+
     if (BALL_VISIBLE) render_ball_to_buff(BALL_X, BALL_Y, bg_attr);
     render_bat(cycle, bg_attr);
     render_running_dot();
     render_lives(cycle, bg_attr);
     render_hud_to_buff();
+    prof_hud_pit += prof_elapsed();
+
     /* Magnets blit BEFORE bricks (original at $BE8B does
      * CALL print_magnets; CALL print_briks). The brick top row
      * overwrites the magnet's lower shadow rows where they overlap;
@@ -4197,7 +4449,20 @@ static void redraw_full_with_ball(unsigned char level_idx) {
         render_ball_to_buff(objects[OBJ_BALL_3].x_coord,
                             objects[OBJ_BALL_3].y_coord, bg_attr);
     }
-    buff_to_vga();
+    prof_bricks_pit += prof_elapsed();
+
+    if (force_full_flush) {
+        memset(dirty_lines, 1, sizeof(dirty_lines));
+        force_full_flush = 0;
+    } else {
+        compute_dirty_lines();
+    }
+    flush_dirty_to_vga();
+    fast_memcpy(prev_scr_buff, scr_buff, sizeof(scr_buff));
+    fast_memcpy(prev_attr_buff, attr_buff, sizeof(attr_buff));
+    prof_vga_pit += prof_elapsed();
+
+    prof_frames_count++;
 }
 
 /* Render a short string of N character codes via draw_glyph, anchored
@@ -4915,6 +5180,7 @@ static state_t run_level(void) {
                         /* Resuming: schedule a full redraw to erase banner. */
                         bat_moved = 1;
                         ball_moved = 1;
+                        force_full_flush = 1;
                     }
                     continue;
                 }
@@ -5216,6 +5482,7 @@ int main(void) {
     if (getenv("BATTYALL") != NULL) test_mode_pin_blink = 1;
     set_mode(0x13);
     set_palette(zx_palette, 16);
+    init_pal_tables();
 
     if (load_font("FONT.BIN") != 0 ||
         load_indicator("INDICAT.BIN") != 0 ||
@@ -5246,6 +5513,7 @@ int main(void) {
 
     kbd_restore();
     timer_restore();
+    write_profile_report();
     set_mode(0x03);
     return 0;
 }
