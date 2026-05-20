@@ -7,26 +7,6 @@ they are good next targets when tightening original fidelity.
 
 ## Visible / behavioral
 
-### RNG is not original
-
-The original `random_generate` at `$8EB4` updates `random_number`
-from:
-
-- two bytes of state initialized to `$8E17`,
-- a `random_seed` pointer walking `$8000..$9FFF`,
-- `ctrl_btns_pressed`, which perturbs one byte from player input.
-
-The port currently uses a generic C LCG in `next_random`. This means
-the broad probabilities are close, but exact sequences differ for:
-
-- bonus drop / type selection,
-- bomb appearance,
-- enemy side selection,
-- `+400` drift direction,
-- alien-blast noise.
-
-This is probably the highest-value remaining behavioral parity task.
-
 ### Some motion is approximate, not descriptor-exact
 
 Several paths use gameplay-equivalent but not byte-exact motion:
@@ -35,8 +15,6 @@ Several paths use gameplay-equivalent but not byte-exact motion:
   q8.8 subpixel coordinates, but target selection/collision steering is
   still simplified versus `LAA7B`, brick/ball collision, and
   `check_margins`,
-- triple-ball fan-out uses integer `dx/dy` approximations instead of
-  the original 6-bit direction split,
 - big-bat resize timing is matched visually but not a literal port of
   the original bit-gated state machine.
 

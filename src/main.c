@@ -667,6 +667,43 @@ static unsigned char ball3_active = 0;
 static int           ball3_dx     = -BALL_SPEED;
 static int           ball3_dy     = -BALL_SPEED;
 
+/* Original random_generate walks $8000..$9FFF and folds those bytes
+ * into the two random_number bytes. Ship that 8 KB source window from
+ * the original program so bonuses / bombs / enemies consume the same
+ * byte-stream shape as the Spectrum game. */
+#define RANDOM_ROM_SIZE 0x2000
+static unsigned char random_rom[RANDOM_ROM_SIZE];
+static unsigned char random_e = 0x17;
+static unsigned char random_d = 0x8E;
+static unsigned int  random_seed_addr = 0x8000;
+
+static unsigned char ball_dir_from_delta(int dx, int dy) {
+    unsigned char q;
+    unsigned char d;
+    if (dx >= 0 && dy >= 0) q = 0x00;
+    else if (dx >= 0)       q = 0x10;
+    else if (dy < 0)        q = 0x20;
+    else                    q = 0x30;
+    d = (abs(dx) >= BALL_SPEED) ? 0x08 : 0x04;
+    return (unsigned char)(q | d);
+}
+
+static void ball_delta_from_dir(unsigned char dir, int *dx, int *dy) {
+    int mag_x;
+    int mag_y;
+    switch (dir & 0x0F) {
+        case 0x04: mag_x = 2; mag_y = 1; break;
+        case 0x08: mag_x = 1; mag_y = 1; break;
+        default:   mag_x = 1; mag_y = 2; break;
+    }
+    switch (dir & 0x30) {
+        case 0x00: *dx =  mag_x; *dy =  mag_y; break;
+        case 0x10: *dx =  mag_x; *dy = -mag_y; break;
+        case 0x20: *dx = -mag_x; *dy = -mag_y; break;
+        default:   *dx = -mag_x; *dy =  mag_y; break;
+    }
+}
+
 /* Brick destruction flash — a solid bright-white 16x8 rectangle
  * painted at the destroyed cell for a few ticks before the cell
  * fully disappears. Makes a brick popping feel less abrupt. We
@@ -907,6 +944,8 @@ static unsigned char map_orig_to_our_bonus(unsigned char code) {
 
 /* Forward decls - defined below in the enemy section. */
 static unsigned int next_random(void);
+static unsigned char random_hi(unsigned int r) { return (unsigned char)(r >> 8); }
+static unsigned char random_lo(unsigned int r) { return (unsigned char)r; }
 extern unsigned char round_number;
 /* SLOW is permanent within a life in the original — ball speed is
  * set at $A67B_7 and not auto-restored. all_var_init at level/life
@@ -921,7 +960,9 @@ extern unsigned char round_number;
  * Setting to UINT_MAX-ish so the timer-based expiration never fires;
  * big_bat_active() AND with bat.bonus_applied does the real gating. */
 #define BIG_BAT_DURATION  0xFFFFu
-#define BIG_BALL_DURATION 500
+/* Original smash_counter expires at $F8 and advances only on every
+ * other counter_misc value while the big-ball sprite is being printed. */
+#define BIG_BALL_DURATION 0xF8u
 #define BAT_BIG_EXTRA_PX    8     /* width added on each side in big mode */
 static int           bonus_x = 0;
 static int           bonus_y = 0;
@@ -1109,6 +1150,16 @@ static int load_sprites(const char *path) {
     FILE *f = fopen(path, "rb");
     if (!f) return -1;
     if (fread(sprites_blob, 1, sizeof(sprites_blob), f) != sizeof(sprites_blob)) {
+        fclose(f); return -2;
+    }
+    fclose(f);
+    return 0;
+}
+
+static int load_random_rom(const char *path) {
+    FILE *f = fopen(path, "rb");
+    if (!f) return -1;
+    if (fread(random_rom, 1, sizeof(random_rom), f) != sizeof(random_rom)) {
         fclose(f); return -2;
     }
     fclose(f);
@@ -1553,7 +1604,7 @@ static void enemy_turn_towards_target(object_t *o) {
 }
 
 static void enemy_pick_new_target(object_t *o) {
-    o->bonus_applied = (unsigned char)(next_random() & 0x3F);
+    o->bonus_applied = (unsigned char)(random_lo(next_random()) & 0x3F);
 }
 
 static void enemy_target_away_from_margins(object_t *o) {
@@ -2165,7 +2216,7 @@ static void render_magnets(unsigned char level_idx) {
          * outline replacing the lightning's bright body). Normal play
          * follows the original coin flip from print_magnets. */
         blit_masked_to_scr_buff_ptr(spr_magnet_on, x, y);
-        if (test_mode_pin_blink ? (i >= 2) : (next_random() & 1)) {
+        if (test_mode_pin_blink ? (i >= 2) : (random_lo(next_random()) & 1)) {
             blit_masked_to_scr_buff_ptr(spr_magnet_off, x, y);
         }
     }
@@ -2589,7 +2640,7 @@ static int snd_tick_one(sound_slot_t *s) {
              * E = (random & $3F) + state with D=1; state += 8; wraps
              * from $60 to $21 once; stops at $A1. ~22 frames of zip-
              * style noise. */
-            unsigned int e = ((unsigned int)next_random() & 0x3Fu) + (unsigned int)s->state;
+            unsigned int e = ((unsigned int)random_lo(next_random()) & 0x3Fu) + (unsigned int)s->state;
             sound_beep_cont_d(0x01, (unsigned char)e);
             s->state = (unsigned char)(s->state + 8);
             if (s->state == 0x60) s->state = 0x21;
@@ -3000,35 +3051,39 @@ static void bonus_apply(unsigned char type) {
         case BONUS_TYPE_MULTI_BALL:
             /* Spawn two extra balls at the primary's current position
              * for a 3-ball total (port of LA67B_8 / "triple ball" at
-             * $A67B). Directions fan out: ball2 mirrors ball1's dx,
-             * ball3 goes straight up with the opposite of that. */
+             * $A67B). Directions come from the original low-nibble
+             * split: primary d=$04 -> extras $0C/$08, primary d=$08
+             * -> $0C/$04, otherwise -> $08/$04, preserving quadrant. */
             /* Original at LA67B_8 (\$3074): `LD (IY+\$14),\$FF` after
              * setting balls_quantity = 3 — overwrites bat.bonus_applied
              * to \$FF (TRIPLE_BALL is ball-side, not bat-side). */
             objects[OBJ_BAT_1].bonus_applied = 0xFF;
             objects[OBJ_BAT_2].bonus_applied = 0xFF;
             if (!ball2_active && !ball3_active) {
+                unsigned char base_dir = ball_dir_from_delta(ball_dx, ball_dy);
+                unsigned char q = (unsigned char)(base_dir & 0x30);
+                unsigned char d = (unsigned char)(base_dir & 0x0F);
+                unsigned char ball2_dir, ball3_dir;
+                if (d == 0x04) {
+                    ball2_dir = (unsigned char)(q | 0x0C);
+                    ball3_dir = (unsigned char)(q | 0x08);
+                } else if (d == 0x08) {
+                    ball2_dir = (unsigned char)(q | 0x0C);
+                    ball3_dir = (unsigned char)(q | 0x04);
+                } else {
+                    ball2_dir = (unsigned char)(q | 0x08);
+                    ball3_dir = (unsigned char)(q | 0x04);
+                }
                 ball2_active = 1;
                 objects[OBJ_BALL_2].sprite_set = 0x02;
                 objects[OBJ_BALL_2].x_coord = BALL_X;
                 objects[OBJ_BALL_2].y_coord = BALL_Y;
-                /* Original at LA67B_8 / \$3100 picks ball2 + ball3
-                 * directions from a 3-way split based on ball1's
-                 * 6-bit direction & \$0F. In our integer dx/dy the
-                 * three balls fan: ball1 keeps its trajectory, ball2
-                 * mirrors horizontally, ball3 takes a half-magnitude
-                 * mirror so it travels a different angle from both. */
-                ball2_dx = -ball_dx;       /* mirror primary */
-                ball2_dy = -BALL_SPEED;    /* upward */
+                ball_delta_from_dir(ball2_dir, &ball2_dx, &ball2_dy);
                 ball3_active = 1;
                 objects[OBJ_BALL_3].sprite_set = 0x02;
                 objects[OBJ_BALL_3].x_coord = BALL_X;
                 objects[OBJ_BALL_3].y_coord = BALL_Y;
-                /* Half-magnitude same-sign so ball3 fans between
-                 * ball1 (e.g. +2,-2) and ball2 (-2,-2): goes shallow
-                 * in ball1's direction, less steep upward. */
-                ball3_dx = (ball_dx > 0) ? +1 : -1;
-                ball3_dy = -BALL_SPEED;
+                ball_delta_from_dir(ball3_dir, &ball3_dx, &ball3_dy);
                 snd_q_push(SND_TRIPLE_BALL);
             }
             break;
@@ -3096,7 +3151,7 @@ static void step_bonus(void) {
             big_bat_ticks = 0;                        /* keep the two in sync */
         }
     }
-    if (big_ball_ticks > 0) {
+    if (big_ball_ticks > 0 && ((pit_ticks() & 1UL) == 0)) {
         big_ball_ticks--;
         if (big_ball_ticks == 0
             && objects[OBJ_BAT_1].bonus_applied == 0x07) {
@@ -3213,10 +3268,11 @@ static void try_spawn_bonus(int col, int row) {
      * i.e. 5/16 ≈ 31% per destroyed brick. (Earlier port used a
      * deterministic every-Nth counter — close in average rate but
      * obvious as a pattern to the player.) */
-    if ((next_random() & 0x0F) >= 5) return;
+    if ((random_hi(next_random()) & 0x0F) >= 5) return;
     tbl = (round_number >= 6) ? bonus_table_second : bonus_table_first;
     for (tries = 0; tries < 16; tries++) {
-        unsigned char idx = (unsigned char)(next_random() & 0x0F);
+        unsigned int rnd = next_random();
+        unsigned char idx = (unsigned char)(random_hi(rnd) & 0x0F);
         unsigned char code = tbl[idx];
         unsigned char mapped;
         /* Original generate_new_bonus at $9DFE re-rolls when the picked
@@ -3238,7 +3294,7 @@ static void try_spawn_bonus(int col, int row) {
         if (code == 0x05 && life_dropped_this_round) continue;
         if (code == 0x06 && rocket_active) continue;
         if (code == 0x06 && round_number >= 6
-            && (next_random() & 0xC0) != 0) continue;
+            && (random_lo(rnd) & 0xC0) != 0) continue;
         mapped = map_orig_to_our_bonus(code);
         if (mapped != BONUS_TYPE_UNSUPPORTED) {
             bonus_active = 1;
@@ -3380,10 +3436,22 @@ static int live_bricks_remaining(void) {
  * Picks bird (sprite_set $09) on odd rounds, UFO ($08) on even. X
  * coord from prop_x_coord[random & 3] = {$40, $A8, $40, $A8}. Speed
  * from per-round prop table. */
-static unsigned int rng_state = 0xACE1u;
+static unsigned char ctrl_btns_pressed_value(void) {
+    unsigned char v = 0;
+    if (key_state[SC_RIGHT]) v |= 0x01;
+    if (key_state[SC_LEFT])  v |= 0x02;
+    if (key_state[SC_SPACE]) v |= 0x10;
+    return v;
+}
+
 static unsigned int next_random(void) {
-    rng_state = (unsigned int)(rng_state * 25173u + 13849u);
-    return rng_state;
+    unsigned char src = random_rom[random_seed_addr & (RANDOM_ROM_SIZE - 1)];
+    random_e = (unsigned char)(random_e + src + 0x05 + ctrl_btns_pressed_value());
+    random_d = (unsigned char)(random_d + (unsigned char)(~src) + 0x16
+                               + (unsigned char)random_seed_addr);
+    random_seed_addr = (unsigned int)((random_seed_addr + 1) & 0x9FFF);
+    if (random_seed_addr < 0x8000) random_seed_addr |= 0x8000;
+    return (unsigned int)(((unsigned int)random_d << 8) | random_e);
 }
 
 /* prop_uneven / prop_even / prop_x_coord from $9F27. Fields:
@@ -3436,7 +3504,7 @@ static void enemy_prepare(void) {
     e->speed = prop[5];
     e->sprite_num = 0;
     e->y_coord = 0;
-    r = (unsigned char)(next_random() & 3);
+    r = (unsigned char)(random_lo(next_random()) & 3);
     e->x_coord = prop_x_coord[r];
     e->x_coord_hi = 0;
     e->y_coord_hi = 0;
@@ -3532,7 +3600,7 @@ static void bomb_appear(object_t *o) {
      * LD A,(random_number+$01); ADD A,B; AND $3F; RET NZ`. ADD
      * not XOR — the byte distributions are subtly different,
      * even though both gate at $3F = 1/64. */
-    if ((unsigned char)(((r >> 8) + (r & 0xFF)) & 0x3F) != 0) return;
+    if ((unsigned char)((random_hi(r) + random_lo(r)) & 0x3F) != 0) return;
     /* Only spawn while alien still in upper half (y < $C0 = 192). */
     if (o->y_coord + 8 >= 0xC0) return;
     bomb_active = 1;
@@ -5103,7 +5171,8 @@ int main(void) {
         load_level_attrs("LVLATTR.BIN") != 0 ||
         load_bg_tile("BGTILE.BIN") != 0 ||
         load_frame("FRAMEL1.BIN") != 0 ||
-        load_sprites("SPRITES.BIN") != 0) {
+        load_sprites("SPRITES.BIN") != 0 ||
+        load_random_rom("RANDOM.BIN") != 0) {
         fill(0, 0, SCREEN_W, SCREEN_H, 10 /* bright red */);
     }
 

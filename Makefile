@@ -41,7 +41,7 @@ ASSETS  = assets/loading.bin assets/hi_score.bin assets/main_menu.bin \
           assets/hud_sprites.bin \
           assets/levels.bin assets/level_attrs.bin \
           assets/bg_tile.bin assets/frame_l1.bin \
-          assets/sprites.bin
+          assets/sprites.bin assets/random_seed.bin
 HISCORE_SNAP      ?= build/snapshots/20260513T202038Z/screen.scr
 MAINMENU_SNAP     ?= build/snapshots/20260513T202041Z/screen.scr
 MAINMENU_SNAP_RAM ?= build/snapshots/20260513T202041Z/ram_4000_FFFF.bin
@@ -198,6 +198,11 @@ assets/hud_sprites.bin: original/blocks/03_DATA_headless.dat.bin
 		Path('$@').write_bytes(b[0x68ED-0x6800:0x6A15-0x6800])"
 	@echo "wrote $@ ($$(wc -c < $@) bytes)"
 
+assets/random_seed.bin: original/blocks/03_DATA_headless.dat.bin
+	@python3 -c "from pathlib import Path; b=Path('$<').read_bytes(); \
+		Path('$@').write_bytes(b[0x8000-0x6800:0xA000-0x6800])"
+	@echo "wrote $@ ($$(wc -c < $@) bytes)"
+
 floppy: $(FLOPPY_OUT)
 
 # Both floppies ship the same EXE + assets; only AUTOEXEC.BAT differs.
@@ -218,6 +223,7 @@ $(FLOPPY_OUT): $(EXE) $(ASSETS) $(FLOPPY_SRC)
 	mcopy -i $@ -o assets/bg_tile.bin ::BGTILE.BIN
 	mcopy -i $@ -o assets/frame_l1.bin ::FRAMEL1.BIN
 	mcopy -i $@ -o assets/sprites.bin ::SPRITES.BIN
+	mcopy -i $@ -o assets/random_seed.bin ::RANDOM.BIN
 	@printf '@ECHO OFF\r\nBATTY\r\n' > build/AUTOEXEC.BAT
 	mcopy -i $@ -o build/AUTOEXEC.BAT ::AUTOEXEC.BAT
 	@echo "Floppy ready: $@  (menu-only cycle)"
@@ -239,6 +245,7 @@ $(TEST_FLOPPY_OUT): $(TEST_EXE) $(ASSETS) $(FLOPPY_SRC)
 	mcopy -i $@ -o assets/bg_tile.bin ::BGTILE.BIN
 	mcopy -i $@ -o assets/frame_l1.bin ::FRAMEL1.BIN
 	mcopy -i $@ -o assets/sprites.bin ::SPRITES.BIN
+	mcopy -i $@ -o assets/random_seed.bin ::RANDOM.BIN
 	@# BATTY_LEVEL env passthrough — without injecting `SET BATTY_LEVEL=N`
 	@# into the DOS boot AUTOEXEC.BAT, the C-side getenv() at run_level
 	@# never sees the host's env. The line is only emitted when the host

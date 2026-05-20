@@ -11,6 +11,7 @@ build/*.lst
 # Generated asset previews / extracted blobs
 assets/font_sheet.png
 assets/sprites.bin
+assets/random_seed.bin
 
 # Re-generatable analysis artifacts (`make regions`, etc.)
 # Keep snapshots/ since they're laboriously captured by hand.
