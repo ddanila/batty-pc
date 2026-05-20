@@ -64,7 +64,15 @@ else
 endif
 ZRCP_PORT ?= 10000
 
-.PHONY: all clean run floppy assets help run-original run-original-cheat snapshot candidates regions test test-hud
+BOX86_BIN       ?= /home/ddanila/.local/86box/bin/86Box
+BOX86_VM_DIR    ?= build/86box
+BOX86_MACHINE   ?= ibmxt
+BOX86_GFXCARD   ?= vga
+BOX86_FDD_TYPE  ?= 35_2hd
+BOX86_ASSETPATH ?= /home/ddanila/fun/86Box/src/unix/assets
+BOX86_ROMPATH   ?= /home/ddanila/fun/86Box-roms
+
+.PHONY: all clean run run-86box floppy assets help run-original run-original-cheat snapshot candidates regions test test-hud
 
 all: $(EXE) $(ASSETS)
 
@@ -74,6 +82,7 @@ help:
 	@echo "  assets        decode original/*.scr into assets/"
 	@echo "  floppy        pack $(EXE) + assets onto $(FLOPPY_OUT)"
 	@echo "  run           build the floppy and boot it in QEMU (our recreation)"
+	@echo "  run-86box     build the floppy and boot it in 86Box (IBM XT + VGA)"
 	@echo "  run-original  boot the ORIGINAL batty.tap in ZEsarUX with ZRCP open"
 	@echo "  snapshot      dump RAM + screen from running ZEsarUX -> build/snapshots/"
 	@echo "  regions       static scan of main blob -> build/regions.{txt,blockdef}"
@@ -260,6 +269,16 @@ $(TEST_FLOPPY_OUT): $(TEST_EXE) $(ASSETS) $(FLOPPY_SRC)
 
 run: $(FLOPPY_OUT)
 	bash scripts/run.sh $(FLOPPY_OUT)
+
+run-86box: $(FLOPPY_OUT)
+	BOX86_BIN="$(BOX86_BIN)" \
+	BOX86_VM_DIR="$(BOX86_VM_DIR)" \
+	BOX86_MACHINE="$(BOX86_MACHINE)" \
+	BOX86_GFXCARD="$(BOX86_GFXCARD)" \
+	BOX86_FDD_TYPE="$(BOX86_FDD_TYPE)" \
+	BOX86_ASSETPATH="$(BOX86_ASSETPATH)" \
+	BOX86_ROMPATH="$(BOX86_ROMPATH)" \
+	bash scripts/run_86box.sh $(FLOPPY_OUT)
 
 # --- Reverse-engineering helpers ---
 

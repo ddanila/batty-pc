@@ -79,8 +79,18 @@ Remaining residuals are documented in
 brew install mtools qemu
 make floppy   # builds build/batty.exe + assets, packs build/batty.img
 make run      # boots in QEMU
+make run-86box # boots in 86Box as an IBM XT with an ISA VGA card
 make test     # headless visual-regression (boots, drives keys, pixel-diffs)
 ```
+
+`make run-86box` defaults to the locally built SDL frontend at
+`/home/ddanila/.local/86box/bin/86Box` and writes its VM config under
+`build/86box/`. It uses 86Box's `ibmxt` machine, `vga` video card, and
+mounts `build/batty.img` as drive A:. ROMs are expected at
+`/home/ddanila/fun/86Box-roms` from the upstream 86Box ROM checkout.
+Override `BOX86_BIN`, `BOX86_ROMPATH`, `BOX86_MACHINE`,
+`BOX86_GFXCARD`, or `BOX86_FDD_TYPE` when testing another local
+emulator install or ROM set.
 
 The remaining Makefile targets (`make regions`, `make candidates`,
 `make run-original`, `make snapshot`) drive RE tooling against the

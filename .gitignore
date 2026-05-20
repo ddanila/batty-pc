@@ -17,6 +17,7 @@ assets/random_seed.bin
 # Keep snapshots/ since they're laboriously captured by hand.
 build/test_visual/
 build/test_hud/
+build/86box/
 build/exercise_bricks/
 build/exercise_bonus/
 build/snap*.sna
