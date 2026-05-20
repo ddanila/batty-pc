@@ -35,8 +35,6 @@ Several paths use gameplay-equivalent but not byte-exact motion:
   q8.8 subpixel coordinates, but target selection/collision steering is
   still simplified versus `LAA7B`, brick/ball collision, and
   `check_margins`,
-- falling bonus Y speed is a constant `2`, while the original uses the
-  `LA55A_0` object-motion accumulator,
 - triple-ball fan-out uses integer `dx/dy` approximations instead of
   the original 6-bit direction split,
 - big-bat resize timing is matched visually but not a literal port of

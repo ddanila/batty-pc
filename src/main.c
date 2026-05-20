@@ -712,6 +712,26 @@ static int           rocket_y      = 0;
 #define STUCK_TIMEOUT 192
 static unsigned int stuck_ticks = 0;
 
+/* Original handling_bonus drives Y through the shared LA55A_0
+ * fixed-point accelerator. Falling bonuses and bombs use DE=$0008,
+ * B=$02 (accelerate to 2 px/frame); the +400 marker uses DE=$0028,
+ * B=$80 and dies when it reaches y=$C0. */
+typedef struct {
+    unsigned int  acc;
+    unsigned char frac;
+} motion_acc_t;
+
+static int motion_accel_step(motion_acc_t *m, unsigned int de,
+                             unsigned char cap_hi) {
+    unsigned int acc = (unsigned int)(m->acc + de);
+    unsigned int sum;
+    if ((unsigned char)(acc >> 8) == cap_hi) acc = (unsigned int)cap_hi << 8;
+    m->acc = acc;
+    sum = acc + m->frac;
+    m->frac = (unsigned char)sum;
+    return (int)((signed char)(sum >> 8));
+}
+
 /* Bomb state - port of bomb_appear at $A977. UFOs (and birds) drop a
  * single bomb that falls toward the bat. Mutually exclusive with a
  * regular bonus in the original since they share object_bonus; here
@@ -720,10 +740,7 @@ static unsigned int stuck_ticks = 0;
 static unsigned char bomb_active = 0;
 static int           bomb_x = 0;
 static int           bomb_y = 0;
-/* Bomb shares handling_bonus's LA55A_0 accumulator in the original
- * (it's a bonus with sprite_num=\$0A), so it falls at the same ~2
- * px/frame peak as a regular bonus. */
-#define BOMB_FALL_SPEED 2
+static motion_acc_t  bomb_motion = {0, 0};
 #define BOMB_W_PX       8
 #define BOMB_H_PX       12
 /* ball_visible is encoded in objects[OBJ_BALL_1].sprite_set bit 7:
@@ -828,11 +845,6 @@ static void save_high_score(void) {
  * marginal "shadow touched the bat" doesn't register as a catch. */
 #define BONUS_W_PX        16
 #define BONUS_H_PX        8
-/* Original handling_bonus drives Y via the LA55A_0 accumulator
- * (DE=\$0008, B=\$02) — accelerates ~8 frames to a peak of ~2 px/frame.
- * Constant 2 closely matches the bulk of that motion. Was 1, making
- * bonuses fall almost half as fast as the original. */
-#define BONUS_FALL_SPEED  2
 /* Original game bonus codes from set_bonus / bonus_table_* at $9E4A:
  *   $01 gun        (deferred - needs bullet system)
  *   $02 triple_ball (deferred - needs multi-ball)
@@ -915,6 +927,7 @@ static int           bonus_x = 0;
 static int           bonus_y = 0;
 static unsigned char bonus_type   = 0;
 static unsigned char bonus_active = 0;
+static motion_acc_t  bonus_motion = {0, 0};
 static unsigned int  slow_ticks      = 0;
 static unsigned int  big_bat_ticks   = 0;
 static unsigned int  big_ball_ticks  = 0;
@@ -931,10 +944,10 @@ static int           bat_extra_tgt   = 0;
  * sprite_set $0B transition at $A6BA + handling_400pts at $A58D).
  * The original puts the marker in the same slot the bonus occupied;
  * we use side state for now since the bonus state is also side. */
-#define PTS_400_DURATION  30          /* ~0.6 sec at 50 Hz */
 static int           pts_400_x = 0;
 static int           pts_400_y = 0;
-static unsigned char pts_400_ticks = 0;
+static unsigned char pts_400_active = 0;
+static motion_acc_t  pts_400_motion = {0, 0};
 /* X drift per frame, mirror of the SMC at \$A590 in handling_400pts.
  * Original chooses from {-2, -1, +1, +2} based on random_number bits at
  * spawn (LA67B_3 area at \$3030-\$3038). Picked once per +400 spawn. */
@@ -3112,7 +3125,7 @@ static void step_bonus(void) {
         }
     }
     if (!bonus_active) return;
-    bonus_y += BONUS_FALL_SPEED;
+    bonus_y += motion_accel_step(&bonus_motion, 0x0008, 0x02);
     bat_left  = eff_bat_left();
     bat_right = eff_bat_right();
     /* Catch test uses bat body (10 px) not full sprite (13 px =
@@ -3136,7 +3149,9 @@ static void step_bonus(void) {
         pts_marker_spr = SPR_400_POINTS;
         pts_400_x = bonus_x;
         pts_400_y = bonus_y;
-        pts_400_ticks = PTS_400_DURATION;
+        pts_400_active = 1;
+        pts_400_motion.acc = (unsigned int)(((pit_ticks() & 1UL) ? 0xFEu : 0xFFu) << 8);
+        pts_400_motion.frac = 0;
         /* Pick X drift in {-2, -1, +1, +2} — port of \$3030's
          * `AND \$01 / INC A / RL B / JR C / NEG` sequence:
          *   bit 0 of random → +1 or +2 magnitude
@@ -3159,15 +3174,14 @@ static void step_bonus(void) {
  * Earlier port had it floating UP — counterintuitive but seemed nicer.
  * Switched back to match the disasm: marker falls off the bottom. */
 static void step_pts_400(void) {
-    if (pts_400_ticks == 0) return;
-    if ((pts_400_ticks & 1) == 0) pts_400_y++;
+    if (!pts_400_active) return;
+    pts_400_y += motion_accel_step(&pts_400_motion, 0x0028, 0x80);
     /* Apply the X drift each frame (port of LA590's ADD A,SMC). Clamp
      * to playfield via the original's check_left/right_margin pattern. */
     pts_400_x += pts_400_dx;
     if (pts_400_x < 8) pts_400_x = 8;
     if (pts_400_x > PLAYFIELD_W - 16) pts_400_x = PLAYFIELD_W - 16;
-    if (pts_400_y >= PLAYFIELD_H) { pts_400_ticks = 0; return; }
-    pts_400_ticks--;
+    if (pts_400_y >= PLAYFIELD_H) pts_400_active = 0;
 }
 
 /* Brick band geometry: 12 rows * 8 px starting at y=32, 15 cols * 16 px
@@ -3231,6 +3245,8 @@ static void try_spawn_bonus(int col, int row) {
             bonus_x = 8 + col * 16 + (16 - BONUS_W_PX) / 2;
             bonus_y = 32 + row * 8;
             bonus_type = mapped;
+            bonus_motion.acc = 0;
+            bonus_motion.frac = 0;
             return;
         }
     }
@@ -3522,6 +3538,8 @@ static void bomb_appear(object_t *o) {
     bomb_active = 1;
     bomb_x = (int)o->x_coord + 8;
     bomb_y = (int)o->y_coord + 8;
+    bomb_motion.acc = 0;
+    bomb_motion.frac = 0;
 }
 
 /* Step the bomb each frame: fall, check bat collision, deactivate
@@ -3529,7 +3547,7 @@ static void bomb_appear(object_t *o) {
 static void step_bomb(void) {
     int bx_l, bx_r, by_t, by_b;
     if (!bomb_active) return;
-    bomb_y += BOMB_FALL_SPEED;
+    bomb_y += motion_accel_step(&bomb_motion, 0x0008, 0x02);
     /* Original bomb_appear at $A977 sets (object_bonus+$0C, +$0D) =
      * $08, $08 — bomb body is 8x8 starting at (bomb_x, bomb_y), not
      * the full 8x12 sprite extent. Earlier port used only the last
@@ -4016,7 +4034,7 @@ static void redraw_full_with_ball(unsigned char level_idx) {
     if (bomb_active) {
         blit_masked_to_scr_buff_ptr(spr_bomb_data, bomb_x, bomb_y);
     }
-    if (pts_400_ticks > 0) {
+    if (pts_400_active) {
         blit_masked_to_scr_buff(pts_marker_spr, pts_400_x, pts_400_y);
     }
     if ((enemy->sprite_set & 0x7F) != 0 && !(enemy->sprite_set & 0x80)) {
@@ -4563,7 +4581,7 @@ static void play_bat_explosion(unsigned char level_idx) {
     bomb_active = 0;
     bonus_active = 0;
     rocket_active = 0;
-    pts_400_ticks = 0;
+    pts_400_active = 0;
     bullet_active[0] = 0;
     bullet_active[1] = 0;
     bullet_blast_ticks[0] = 0;
@@ -4724,7 +4742,7 @@ static state_t run_level(void) {
         objects[OBJ_BALL_2].sprite_set = 0x82;
         ball3_active   = 0;
         objects[OBJ_BALL_3].sprite_set = 0x82;
-        pts_400_ticks  = 0;
+        pts_400_active = 0;
         slow_ticks     = 0;
         big_bat_ticks  = 0;
         big_ball_ticks = 0;
@@ -4976,7 +4994,7 @@ static state_t run_level(void) {
                     high_score_beaten_this_game = 1;
                 }
                 if (bonus_active) ball_moved = 1;
-                if (pts_400_ticks > 0) ball_moved = 1;
+                if (pts_400_active) ball_moved = 1;
                 if (bat_extra_px != bat_extra_tgt) bat_moved = 1;
                 if (objects[OBJ_ENEMY].sprite_set != 0) ball_moved = 1;
                 if (bomb_active) ball_moved = 1;
