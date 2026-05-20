@@ -30,14 +30,6 @@ PIT channel 2 square waves and frame-paced queue updates. Envelope
 shape can be matched, but exact timbre/duty/timing would need a
 sampled audio backend or a much lower-level beeper emulator.
 
-### Rocket clear behavior needs capture comparison
-
-The rocket now follows the original high-level loop: it flies upward,
-destroys destructible bricks, then awards points for remaining
-destructible bricks and clears the round. Its body overlap, spawn
-position, and per-tick destruction cadence should still be checked
-against original gameplay captures.
-
 ## Render implementation shortcuts
 
 ### Frame ornament is captured

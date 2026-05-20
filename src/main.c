@@ -730,16 +730,18 @@ static int any_brick_hit_anim(void);
 static void reset_brick_hit_anim(void);
 static void render_brick_hit_anim_to_buff(void);
 
-/* Rocket bonus animation — instead of insta-destroying every brick
- * on catch, fly a rocket up from the bat through the playfield and
- * destroy whatever it passes through. Two animation frames cycled
- * each tick. Deactivates when off the top of the playfield. */
-#define ROCKET_W_PX     16
-#define ROCKET_H_PX     14
-#define ROCKET_SPEED    3
+/* Rocket bonus animation. The original uses spr_bonus_rocket_1/2 as a
+ * 3-byte-wide, 27/28-row sprite; get_rocket also patches frame 1's
+ * height to $1B. Use that visible footprint for the brick sweep rather
+ * than the narrower placeholder box the earlier port used. */
+#define ROCKET_W_PX     24
+#define ROCKET_H_PX     27
 static unsigned char rocket_active = 0;
 static int           rocket_x      = 0;
 static int           rocket_y      = 0;
+static unsigned int  rocket_acc    = 0;
+static unsigned char rocket_frac   = 0;
+static unsigned char rocket_counter = 0;
 /* Stuck-on-bat dwell counter. While ball_stuck, the ball rides the
  * bat; SPACE detaches immediately; after STUCK_TIMEOUT ticks the ball
  * auto-launches. ~5 sec at 50 Hz. */
@@ -2882,15 +2884,13 @@ static void render_bullet_to_buff(void) {
  * crude flame-flicker effect. No per-cell attr override — same
  * "monochrome except blocks" rule as bullets / bonus. */
 static void render_rocket_to_buff(void) {
-    static unsigned char rocket_anim_tick = 0;
     unsigned int spr;
     if (!rocket_active) return;
-    rocket_anim_tick++;
     /* Original handling_rocket at \$A89A toggles sprite each frame:
      *   LD A,(counter_misc); AND \$01; LD (IX+\$01),A
      * Was masking \& 2 which only flipped every 2 ticks — half the
      * original's flame flicker rate. */
-    spr = (rocket_anim_tick & 1) ? SPR_BONUS_ROCKET_2 : SPR_BONUS_ROCKET_1;
+    spr = (rocket_counter & 1) ? SPR_BONUS_ROCKET_2 : SPR_BONUS_ROCKET_1;
     blit_masked_to_scr_buff(spr, rocket_x, rocket_y);
 }
 
@@ -3017,6 +3017,24 @@ static void bonus_apply(unsigned char type) {
              * moment instead of the level just dissolving. */
             if (!rocket_active) {
                 rocket_active = 1;
+                /* Original LBAED_6 hides every object while the rocket
+                 * clear loop runs, then keeps the caught bat + rocket
+                 * alive. Mirror the visible result: the ball, bullets,
+                 * alien, bomb, and any marker vanish for the rocket
+                 * sequence instead of continuing to play underneath. */
+                BALL_HIDE();
+                ball_stuck = 0;
+                ball2_active = 0;
+                ball3_active = 0;
+                objects[OBJ_BALL_2].sprite_set = 0x82;
+                objects[OBJ_BALL_3].sprite_set = 0x82;
+                bomb_active = 0;
+                bullet_active[0] = 0;
+                bullet_active[1] = 0;
+                bullet_blast_ticks[0] = 0;
+                bullet_blast_ticks[1] = 0;
+                pts_400_active = 0;
+                objects[OBJ_ENEMY].sprite_set = 0;
                 /* Original get_rocket at $AA9D:
                  *   rocket_x = bat_x + 4 (normal) or +12 (big)
                  *   rocket_y = bat_y + 6 (inside the bat body)
@@ -3026,6 +3044,9 @@ static void bonus_apply(unsigned char type) {
                 rocket_x = BAT_X + 4;
                 if (bat_extra_px >= BAT_BIG_EXTRA_PX) rocket_x += 8;
                 rocket_y = BAT_Y_PX + 6;
+                rocket_acc = 0;
+                rocket_frac = 0;
+                rocket_counter = 0;
                 /* No catch sound — get_rocket at $AA9D pushes none. */
                 /* INC (IY+\$14) at $AA9D:\$AA72: ROCKET catch bumps
                  * bat.bonus_applied by 1, which silently cancels any
@@ -3817,8 +3838,23 @@ static void step_rocket(void) {
     int col_lo, col_hi, row_lo, row_hi, r, c;
     int killed_this_tick = 0;
     if (!rocket_active) return;
-    rocket_y -= ROCKET_SPEED;
-    if (rocket_y + ROCKET_H_PX < 0) {
+    /* Port of handling_rocket at $A89A:
+     *   HL = LA8CF - $20
+     *   if counter_misc >= $38, persist HL back to LA8CF
+     *   y/fract = HL + (current_y:LA8D1)
+     * This gives a slow initial lift followed by acceleration instead
+     * of a constant-pixel rocket climb. */
+    {
+        unsigned int hl;
+        unsigned int sum;
+        rocket_counter++;
+        hl = (unsigned int)(rocket_acc - 0x0020u);
+        if (rocket_counter >= 0x38) rocket_acc = hl;
+        sum = (unsigned int)(hl + (((unsigned int)(unsigned char)rocket_y) << 8) + rocket_frac);
+        rocket_frac = (unsigned char)sum;
+        rocket_y = (int)(unsigned char)(sum >> 8);
+    }
+    if (rocket_y >= PLAYFIELD_H || rocket_y + ROCKET_H_PX < 0) {
         rocket_active = 0;
         /* Mirror LBB97 → LBBFB: award bonus points for every brick the
          * rocket didn't reach and end the level. Matches the original's
@@ -4904,7 +4940,8 @@ static state_t run_level(void) {
                      * once (port of object_bullet_1 / _2 at $A0FA).
                      * Independent of ball state — SPACE can refire
                      * the laser while the ball is in play. */
-                    if (objects[OBJ_BAT_1].bonus_applied == 0x01
+                    if (!rocket_active
+                        && objects[OBJ_BAT_1].bonus_applied == 0x01
                         && bullet_cooldown == 0) {
                         int free_slot = -1;
                         int j;
@@ -4959,8 +4996,8 @@ static state_t run_level(void) {
                 {
                     int min_now = 8 + bat_extra_px;
                     int max_now = 248 - BAT_BODY_W - bat_extra_px;
-                    if (key_state[SC_LEFT]  && BAT_X > min_now) BAT_X -= 4;
-                    if (key_state[SC_RIGHT] && BAT_X < max_now) BAT_X += 4;
+                    if (!rocket_active && key_state[SC_LEFT]  && BAT_X > min_now) BAT_X -= 4;
+                    if (!rocket_active && key_state[SC_RIGHT] && BAT_X < max_now) BAT_X += 4;
                 }
                 if (ball_stuck) {
                     /* Ball rides the bat at the catch offset (= where it
