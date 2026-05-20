@@ -2388,17 +2388,13 @@ static void kbd_restore(void) {
     prev_int9 = NULL;
 }
 
-/* --- PC speaker sound (PIT channel 2 + port 0x61) ---------------------
+/* --- PC speaker sound (direct port 0x61 beeper pulses) ----------------
  *
- * sound_play programs PIT counter 2 (input 1.193 MHz) to (freq) Hz and
- * gates the speaker via port 0x61 bits 0 (PIT2 gate) and 1 (speaker
- * enable). The 50 Hz PIT-0 IRQ we install earlier is on counter 0, so
- * we never collide.
- *
- * Most Batty effects are not sustained tones. The Spectrum code flips
- * the beeper in short blocking bursts (`sound_beep_cont_d` /
- * `sound_beep_cont_de`). `sound_pulse_ms` mirrors that shape better
- * than holding the PC speaker for whole 50 Hz frames. */
+ * The original Spectrum routines do not program a timer. They toggle the
+ * beeper bit, spin for a small B-counter, toggle it off, and spin again.
+ * Using DOS millisecond delays or PIT-sustained tones makes these effects
+ * too long and melodic, so the PC port drives the speaker data bit directly
+ * in short blocking bursts shaped like sound_beep/sound_beep2. */
 /* Pause flag: while set, the per-frame body does no physics; only P
  * (toggle), ESC (quit), and ENTER (advance) are responded to. */
 static unsigned char paused = 0;
@@ -2409,19 +2405,64 @@ static void sound_silence(void) {
     _enable();
 }
 
-static void sound_pulse_ms(unsigned int freq_hz, unsigned int duration_ms) {
-    unsigned int divisor;
-    if (freq_hz < 20) return;
-    if (duration_ms == 0) duration_ms = 1;
-    divisor = (unsigned int)(1193180UL / freq_hz);
+static void sound_spin(unsigned int count) {
+    volatile unsigned int i;
+    for (i = 0; i < count; i++) (void)inp(0x61);
+}
+
+static void sound_beep_e(unsigned char e) {
+    unsigned char base;
+    unsigned int span = (unsigned int)e * 2u;
+    if (span == 0) span = 1;
+
     _disable();
-    outp(0x43, 0xB6);
-    outp(0x42, (unsigned char)(divisor & 0xFF));
-    outp(0x42, (unsigned char)((divisor >> 8) & 0xFF));
-    outp(0x61, (unsigned char)(inp(0x61) | 0x03));
+    base = (unsigned char)(inp(0x61) & 0xFC);
+    outp(0x61, (unsigned char)(base | 0x02));
     _enable();
-    delay(duration_ms);
-    sound_silence();
+    sound_spin(span);
+    _disable();
+    outp(0x61, base);
+    _enable();
+    sound_spin(span);
+}
+
+static void sound_beep2_bd(unsigned char b, unsigned char d) {
+    unsigned char base;
+    unsigned int hi = (unsigned int)b * 2u;
+    unsigned int lo = (unsigned int)d * 2u;
+    if (hi == 0) hi = 1;
+    if (lo == 0) lo = 1;
+
+    _disable();
+    base = (unsigned char)(inp(0x61) & 0xFC);
+    outp(0x61, (unsigned char)(base | 0x02));
+    _enable();
+    sound_spin(hi);
+    _disable();
+    outp(0x61, base);
+    _enable();
+    sound_spin(lo);
+}
+
+static void sound_beep_cont_d(unsigned char d, unsigned char e) {
+    while (d--) sound_beep_e(e);
+}
+
+static void sound_beep_cont_de(unsigned char d, unsigned char e) {
+    while (d--) {
+        sound_beep_e(e);
+        e = (unsigned char)(e - 8);
+    }
+}
+
+static void sound_play_lc122(unsigned char c, unsigned char e) {
+    while (c) {
+        unsigned char a = (unsigned char)(c ^ e);
+        unsigned char b = (unsigned char)((a << 1) & 0x0C);
+        unsigned char d = (unsigned char)((a << 1) & 0x0F);
+        sound_beep2_bd((unsigned char)(b + 0x08), d);
+        c--;
+    }
 }
 
 static void sound_tick(void) {
@@ -2436,9 +2477,7 @@ static void sound_tick(void) {
  * sounds (live-add ascending sweep, ball-launch / shot descending
  * sweep) advance state per frame and clear when exhausted.
  *
- * Frequencies derive from the original sound_beep's period:
- *   period = 26 * E T-states; freq = 3500000 / period = 134615 / E.
- * Each handler matches the E parameter ranges of the original's
+ * Each handler mirrors the D/E/B/C parameters of the original's
  * play_sound_<event> routine (sound.asm at $C0F3+). */
 #define SQ_SLOTS 5
 typedef struct { unsigned char id; unsigned char state; } sound_slot_t;
@@ -2481,16 +2520,13 @@ static void snd_q_push(unsigned char id) {
 static int snd_tick_one(sound_slot_t *s) {
     switch (s->id) {
         case SND_NORMAL_BRIK:
-            /* $C0F3: D=$08,E=$44. Include the DJNZ/OUT overhead in
-             * the pitch estimate; this is a little lower than the
-             * simple 134615/E approximation and closer to the original
-             * brick tick. */
-            sound_pulse_ms(1942, 4);
+            /* $C0F3: D=$08,E=$44. */
+            sound_beep_cont_d(0x08, 0x44);
             return 1;
 
         case SND_BAT_BEAT:
             /* $C16F: D=$04,E=$66. */
-            sound_pulse_ms(1320, 3);
+            sound_beep_cont_d(0x04, 0x66);
             return 1;
 
         case SND_LIVE_ADD: {
@@ -2498,9 +2534,7 @@ static int snd_tick_one(sound_slot_t *s) {
              * at E = state + $14 (ascending pitch as state shrinks).
              * state -= 2 per frame; cleared when 0. */
             if ((s->state & 3) == 0) {
-                unsigned int e = (unsigned int)s->state + 0x14;
-                if (e == 0) e = 1;
-                sound_pulse_ms(134615U / e, 1);
+                sound_beep_cont_d(0x03, (unsigned char)(s->state + 0x14));
             }
             if (s->state == 0) return 1;
             s->state -= 2;
@@ -2508,31 +2542,21 @@ static int snd_tick_one(sound_slot_t *s) {
         }
 
         case SND_BALL_START: {
-            /* $C116: C=9 cycles, E=$14 initially - play_sound_LC122
-             * descends through the (C, E) pairs producing a quick
-             * down-chirp. 9 frames at E rising 4 each frame. */
-            unsigned int e = 0x14 + s->state * 4;
-            sound_pulse_ms(134615U / e, 1);
-            if (s->state >= 8) return 1;
-            s->state++;
-            return 0;
+            /* $C116: C=$09,E=$14, then clear the slot. */
+            sound_play_lc122(0x09, 0x14);
+            return 1;
         }
 
         case SND_SHOT: {
-            /* $C235: C=4, E=$0F starting. 4-frame zip. */
-            unsigned int e = 0x0F + s->state * 4;
-            sound_pulse_ms(134615U / e, 1);
-            if (s->state >= 3) return 1;
-            s->state++;
-            return 0;
+            /* $C235: C=$04,E=$0F, then clear the slot. */
+            sound_play_lc122(0x04, 0x0F);
+            return 1;
         }
 
         case SND_BAT_RESIZE_1: {
             /* $C200: state starts $C0 (from the bonus_resize push at
              * \$3212), decrements by $0B per frame until below $10. */
-            unsigned int e = (unsigned int)s->state;
-            if (e == 0) e = 1;
-            sound_pulse_ms(134615U / e, 1);
+            sound_beep_cont_d(0x01, s->state);
             if (s->state < 0x10 + 0x0B) return 1;
             s->state -= 0x0B;
             return 0;
@@ -2541,9 +2565,7 @@ static int snd_tick_one(sound_slot_t *s) {
         case SND_TRIPLE_BALL: {
             /* $C21D: state starts $10 (from the LA67B_8 push at
              * \$3072), increments by $0B per frame until past $C0. */
-            unsigned int e = (unsigned int)s->state;
-            if (e == 0) e = 1;
-            sound_pulse_ms(134615U / e, 1);
+            sound_beep_cont_d(0x01, s->state);
             if (s->state >= 0xC1 - 0x0B) return 1;
             s->state += 0x0B;
             return 0;
@@ -2555,8 +2577,7 @@ static int snd_tick_one(sound_slot_t *s) {
              * from $60 to $21 once; stops at $A1. ~22 frames of zip-
              * style noise. */
             unsigned int e = ((unsigned int)next_random() & 0x3Fu) + (unsigned int)s->state;
-            if (e == 0) e = 1;
-            sound_pulse_ms(134615U / e, 1);
+            sound_beep_cont_d(0x01, (unsigned char)e);
             s->state = (unsigned char)(s->state + 8);
             if (s->state == 0x60) s->state = 0x21;
             if (s->state == 0xA1) return 1;
@@ -2564,23 +2585,16 @@ static int snd_tick_one(sound_slot_t *s) {
         }
 
         case SND_SPARK_FANOUT: {
-            /* $C1ED: E = ((state >> 2) & $3F) + $20, D=2, then
-             * sound_beep_cont_de subtracts 8 from E between the two
-             * pulses. PC speaker cannot reproduce the Spectrum
-             * bit-banged duty exactly; use the midpoint E for the
-             * frame so the rising envelope follows the original. */
+            /* $C1ED: E = ((state >> 2) & $3F) + $20, D=2. */
             unsigned int e = (((unsigned int)s->state >> 2) & 0x3Fu) + 0x20u;
-            if (e > 4) e -= 4;
-            sound_pulse_ms(134615U / e, 2);
+            sound_beep_cont_de(0x02, (unsigned char)e);
             s->state++;
             return 0;
         }
 
         case SND_BAT_RESIZE_2: {
-            /* $C247: one-shot fixed-pitch beep, D=$0A E=$30 — single
-             * frame in our PIT-paced queue. Mirror of push_resize_sound
-             * at $A645 (sound_bat_resize_2). */
-            sound_pulse_ms(2800, 5);
+            /* $C241: D=$0A,E=$30. */
+            sound_beep_cont_de(0x0A, 0x30);
             return 1;
         }
 
@@ -4343,7 +4357,7 @@ static int play_brik_anim(void) {
         brik_anim_apply_frame(frame);
         buff_to_vga_strip(32, 96);
         if (frame == 4 && !ping_played) {
-            sound_pulse_ms(2800, 10);           /* play_sound_metal_brik: D=$18,E=$30 */
+            sound_beep_cont_d(0x18, 0x30);      /* play_sound_metal_brik */
             ping_played = 1;
         }
         t = pit_ticks();
