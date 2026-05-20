@@ -40,6 +40,7 @@ mem_size=${BOX86_MEM_SIZE:-640}
 cpu_family=${BOX86_CPU_FAMILY:-8088}
 cpu_speed=${BOX86_CPU_SPEED:-4772728}
 asset_path=${BOX86_ASSETPATH:-/home/ddanila/fun/86Box/src/unix/assets}
+fd_controller=${BOX86_FD_CONTROLLER:-dtk_pii151b}
 
 mkdir -p "$vm_dir"
 vm_dir=$(realpath "$vm_dir")
@@ -49,6 +50,9 @@ global_cfg="$vm_dir/86box_global.cfg"
 log="$vm_dir/86box.log"
 
 cat > "$cfg" <<EOF
+[General]
+scale = 5
+
 [Machine]
 machine = $machine
 cpu_family = $cpu_family
@@ -62,6 +66,9 @@ gfxcard = $gfxcard
 
 [Sound]
 sound_type = float
+
+[Storage controllers]
+fdc = $fd_controller
 
 [Floppy and CD-ROM drives]
 fdd_01_type = $fdd_type
