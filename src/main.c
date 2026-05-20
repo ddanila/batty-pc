@@ -2454,13 +2454,13 @@ static void kbd_restore(void) {
     prev_int9 = NULL;
 }
 
-/* --- PC speaker sound (direct port 0x61 beeper pulses) ----------------
+/* --- PC speaker sound (PIT channel 2, original-style envelopes) -------
  *
  * The original Spectrum routines do not program a timer. They toggle the
  * beeper bit, spin for a small B-counter, toggle it off, and spin again.
- * Using DOS millisecond delays or PIT-sustained tones makes these effects
- * too long and melodic, so the PC port drives the speaker data bit directly
- * in short blocking bursts shaped like sound_beep/sound_beep2. */
+ * Pure port-bit flips are too short for QEMU's PC-speaker audio path to
+ * sample reliably, while DOS millisecond delays stretch the effects.
+ * Compromise: gate PIT channel 2 for the same short D/E envelope shape. */
 /* Pause flag: while set, the per-frame body does no physics; only P
  * (toggle), ESC (quit), and ENTER (advance) are responded to. */
 static unsigned char paused = 0;
@@ -2476,37 +2476,54 @@ static void sound_spin(unsigned int count) {
     for (i = 0; i < count; i++) (void)inp(0x61);
 }
 
-static void sound_beep_e(unsigned char e) {
-    unsigned char base;
-    unsigned int span = (unsigned int)e * 2u;
-    if (span == 0) span = 1;
+static void sound_pit_set_period(unsigned int period) {
+    if (period < 20) period = 20;
+    _disable();
+    outp(0x43, 0xB6);                 /* counter 2, lo+hi, mode 3 */
+    outp(0x42, (unsigned char)(period & 0xFF));
+    outp(0x42, (unsigned char)((period >> 8) & 0xFF));
+    _enable();
+}
 
+static void sound_gate_on(void) {
     _disable();
-    base = (unsigned char)(inp(0x61) & 0xFC);
-    outp(0x61, (unsigned char)(base | 0x02));
+    outp(0x61, (unsigned char)(inp(0x61) | 0x03));
     _enable();
-    sound_spin(span);
+}
+
+static void sound_gate_off(void) {
     _disable();
-    outp(0x61, base);
+    outp(0x61, (unsigned char)(inp(0x61) & 0xFC));
     _enable();
+}
+
+static void sound_beep_e(unsigned char e) {
+    unsigned int span = (unsigned int)e * 48u;
+    unsigned int gap = (unsigned int)e * 12u;
+    if (span == 0) span = 1;
+    if (gap == 0) gap = 1;
+
+    /* Original period is proportional to E. PIT divisor ~= 1193180 /
+     * (3500000 / (26*E)) = 8.86*E; use 9*E as the close integer form. */
+    sound_pit_set_period((unsigned int)e * 9u);
+    sound_gate_on();
     sound_spin(span);
+    sound_gate_off();
+    sound_spin(gap);
 }
 
 static void sound_beep2_bd(unsigned char b, unsigned char d) {
-    unsigned char base;
-    unsigned int hi = (unsigned int)b * 2u;
-    unsigned int lo = (unsigned int)d * 2u;
+    unsigned char period = (unsigned char)(((unsigned int)b + (unsigned int)d) / 2u);
+    unsigned int hi = (unsigned int)b * 48u;
+    unsigned int lo = (unsigned int)d * 12u;
+    if (period == 0) period = 1;
     if (hi == 0) hi = 1;
     if (lo == 0) lo = 1;
 
-    _disable();
-    base = (unsigned char)(inp(0x61) & 0xFC);
-    outp(0x61, (unsigned char)(base | 0x02));
-    _enable();
+    sound_pit_set_period((unsigned int)period * 9u);
+    sound_gate_on();
     sound_spin(hi);
-    _disable();
-    outp(0x61, base);
-    _enable();
+    sound_gate_off();
     sound_spin(lo);
 }
 
