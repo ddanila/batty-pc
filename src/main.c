@@ -2395,13 +2395,10 @@ static void kbd_restore(void) {
  * enable). The 50 Hz PIT-0 IRQ we install earlier is on counter 0, so
  * we never collide.
  *
- * Tones are non-blocking: each call sets sound_end_tick = pit_frame_counter
- * + duration_ticks; sound_tick() (called from the per-frame body)
- * silences when due. A new sound_play before the previous tone expires
- * overrides it - the latest event wins, which matches how a fast
- * action game's audio normally feels. */
-static unsigned long sound_end_tick = 0;
-
+ * Most Batty effects are not sustained tones. The Spectrum code flips
+ * the beeper in short blocking bursts (`sound_beep_cont_d` /
+ * `sound_beep_cont_de`). `sound_pulse_ms` mirrors that shape better
+ * than holding the PC speaker for whole 50 Hz frames. */
 /* Pause flag: while set, the per-frame body does no physics; only P
  * (toggle), ESC (quit), and ENTER (advance) are responded to. */
 static unsigned char paused = 0;
@@ -2410,26 +2407,24 @@ static void sound_silence(void) {
     _disable();
     outp(0x61, (unsigned char)(inp(0x61) & 0xFC));
     _enable();
-    sound_end_tick = 0;
 }
 
-static void sound_play(unsigned int freq_hz, unsigned int duration_ticks) {
+static void sound_pulse_ms(unsigned int freq_hz, unsigned int duration_ms) {
     unsigned int divisor;
-    if (freq_hz < 20) return;             /* below audible / divisor too big */
+    if (freq_hz < 20) return;
+    if (duration_ms == 0) duration_ms = 1;
     divisor = (unsigned int)(1193180UL / freq_hz);
     _disable();
-    outp(0x43, 0xB6);                     /* counter 2, lo+hi, mode 3 */
+    outp(0x43, 0xB6);
     outp(0x42, (unsigned char)(divisor & 0xFF));
     outp(0x42, (unsigned char)((divisor >> 8) & 0xFF));
     outp(0x61, (unsigned char)(inp(0x61) | 0x03));
     _enable();
-    sound_end_tick = pit_frame_counter + duration_ticks;
+    delay(duration_ms);
+    sound_silence();
 }
 
 static void sound_tick(void) {
-    if (sound_end_tick != 0 && pit_frame_counter >= sound_end_tick) {
-        sound_silence();
-    }
 }
 
 /* --- Sound queue (port of sounds_queue at $C0B8 + play_sounds_queue) ---
@@ -2489,15 +2484,13 @@ static int snd_tick_one(sound_slot_t *s) {
             /* $C0F3: D=$08,E=$44. Include the DJNZ/OUT overhead in
              * the pitch estimate; this is a little lower than the
              * simple 134615/E approximation and closer to the original
-             * brick tick. The PC speaker frame clock still makes the
-             * pulse longer than the Spectrum's tight 8-cycle beeper
-             * burst. */
-            sound_play(1942, 1);
+             * brick tick. */
+            sound_pulse_ms(1942, 4);
             return 1;
 
         case SND_BAT_BEAT:
-            /* $C16F: E=$66 -> ~1320 Hz. */
-            sound_play(1320, 1);
+            /* $C16F: D=$04,E=$66. */
+            sound_pulse_ms(1320, 3);
             return 1;
 
         case SND_LIVE_ADD: {
@@ -2507,7 +2500,7 @@ static int snd_tick_one(sound_slot_t *s) {
             if ((s->state & 3) == 0) {
                 unsigned int e = (unsigned int)s->state + 0x14;
                 if (e == 0) e = 1;
-                sound_play(134615U / e, 1);
+                sound_pulse_ms(134615U / e, 1);
             }
             if (s->state == 0) return 1;
             s->state -= 2;
@@ -2519,7 +2512,7 @@ static int snd_tick_one(sound_slot_t *s) {
              * descends through the (C, E) pairs producing a quick
              * down-chirp. 9 frames at E rising 4 each frame. */
             unsigned int e = 0x14 + s->state * 4;
-            sound_play(134615U / e, 1);
+            sound_pulse_ms(134615U / e, 1);
             if (s->state >= 8) return 1;
             s->state++;
             return 0;
@@ -2528,7 +2521,7 @@ static int snd_tick_one(sound_slot_t *s) {
         case SND_SHOT: {
             /* $C235: C=4, E=$0F starting. 4-frame zip. */
             unsigned int e = 0x0F + s->state * 4;
-            sound_play(134615U / e, 1);
+            sound_pulse_ms(134615U / e, 1);
             if (s->state >= 3) return 1;
             s->state++;
             return 0;
@@ -2539,7 +2532,7 @@ static int snd_tick_one(sound_slot_t *s) {
              * \$3212), decrements by $0B per frame until below $10. */
             unsigned int e = (unsigned int)s->state;
             if (e == 0) e = 1;
-            sound_play(134615U / e, 1);
+            sound_pulse_ms(134615U / e, 1);
             if (s->state < 0x10 + 0x0B) return 1;
             s->state -= 0x0B;
             return 0;
@@ -2550,7 +2543,7 @@ static int snd_tick_one(sound_slot_t *s) {
              * \$3072), increments by $0B per frame until past $C0. */
             unsigned int e = (unsigned int)s->state;
             if (e == 0) e = 1;
-            sound_play(134615U / e, 1);
+            sound_pulse_ms(134615U / e, 1);
             if (s->state >= 0xC1 - 0x0B) return 1;
             s->state += 0x0B;
             return 0;
@@ -2563,7 +2556,7 @@ static int snd_tick_one(sound_slot_t *s) {
              * style noise. */
             unsigned int e = ((unsigned int)next_random() & 0x3Fu) + (unsigned int)s->state;
             if (e == 0) e = 1;
-            sound_play(134615U / e, 1);
+            sound_pulse_ms(134615U / e, 1);
             s->state = (unsigned char)(s->state + 8);
             if (s->state == 0x60) s->state = 0x21;
             if (s->state == 0xA1) return 1;
@@ -2578,7 +2571,7 @@ static int snd_tick_one(sound_slot_t *s) {
              * frame so the rising envelope follows the original. */
             unsigned int e = (((unsigned int)s->state >> 2) & 0x3Fu) + 0x20u;
             if (e > 4) e -= 4;
-            sound_play(134615U / e, 1);
+            sound_pulse_ms(134615U / e, 2);
             s->state++;
             return 0;
         }
@@ -2587,7 +2580,7 @@ static int snd_tick_one(sound_slot_t *s) {
             /* $C247: one-shot fixed-pitch beep, D=$0A E=$30 — single
              * frame in our PIT-paced queue. Mirror of push_resize_sound
              * at $A645 (sound_bat_resize_2). */
-            sound_play(2800, 2);
+            sound_pulse_ms(2800, 5);
             return 1;
         }
 
@@ -4350,7 +4343,7 @@ static int play_brik_anim(void) {
         brik_anim_apply_frame(frame);
         buff_to_vga_strip(32, 96);
         if (frame == 4 && !ping_played) {
-            sound_play(2600, 2);                /* spr_brik_5 ping */
+            sound_pulse_ms(2800, 10);           /* play_sound_metal_brik: D=$18,E=$30 */
             ping_played = 1;
         }
         t = pit_ticks();
