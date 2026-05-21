@@ -49,22 +49,36 @@ the original's table-driven path, computed at runtime in C.
 
 ```
 paint_bg              -> bg pattern + bg_attr in attr_buff
-render_magnets        -> ON sprite always, OFF overlay for slots 2-3
-inner_border_line_c   -> 1 px inner border at byte 1 / byte 30
-render_brick_band     -> level_attrs copy + print_briks_c + print_border_shadow_c
-render_brick_flash    -> brick-destroyed flash (mid-game only)
 paint_frame_to_buff   -> HUD strip + side strip (from frame_l1.bin)
 render_bat            -> bat at BAT_X, BAT_Y_PX
 render_lives          -> lives indicator at y=185
+render_hud_to_buff    -> 1UP / HI / 2UP labels and score digits
+render_magnets        -> ON sprite always, OFF overlay for slots 2-3
+inner_border_line_c   -> 1 px inner border at byte 1 / byte 30,
+                          lower three bands only in the port
+render_brick_band     -> level_attrs copy + print_briks_c + print_border_shadow_c
+render_brick_flash    -> brick-destroyed flash (mid-game only)
 buff_to_vga           -> final scr/attr → VGA
 ```
 
-`paint_frame_to_buff` runs AFTER `render_brick_band` so its side-strip
-attrs override the leftmost / rightmost brick's body attrs at the
-side-strip cells, and BEFORE sprites so they OR-blit cleanly over
+`paint_frame_to_buff` runs BEFORE sprites so they OR-blit cleanly over
 the frame. Bat + enemy cells force `bg_attr` via
 `blit_sprite_attrs_to_buff` so the sprite stays bg-coloured even when
 its bbox overlaps frame side-strip cells.
+
+The original clears the vertical inner-border line before drawing the
+top border, then the top border restores the y=0..21 pixels. The port's
+`paint_frame_to_buff` is a combined top+side asset, so
+`inner_border_line_c` applies only the net visible lower bands
+(y=50..77, 106..133, 162..189). Clearing the top band after the combined
+frame punches 12 black holes in L1 at x=8/x=247.
+
+Gameplay redraws cache the static level image in `bg_scr_buff` /
+`bg_attr_buff`. Each moving object marks the exact pixel rows covered by
+its sprite, and each frame flushes the union of the previous and current
+dirty rows. Sprite heights come from the sprite headers, not collision
+constants, so tall falling bonuses and the 28-row rocket animation do
+not leave stale bottom rows behind.
 
 During gameplay redraws, the VGA page is not cleared before
 `buff_to_vga`. The original loop saves/restores object regions in

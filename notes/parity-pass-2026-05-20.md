@@ -35,6 +35,7 @@ in `parity-gaps.md`.
 
 - `make all`
 - `make test-hud`
-- `make test` (same accepted `state4_level1` 12-pixel drift)
+- `make test` (at the time, same accepted `state4_level1` 12-pixel drift;
+  later fixed by matching the original's top-border/inner-line net order)
 - `python3 scripts/exercise_bonus.py` ran successfully; that natural
   smoke path did not spawn a falling bonus during its 30 sampled frames.

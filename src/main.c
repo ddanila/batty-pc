@@ -2166,26 +2166,18 @@ static void render_brick_band(unsigned char level_idx) {
     print_border_shadow_c();
 }
 
-/* Port of the inner-border-line routine at LBE8B_2 ($BE99). The original
- * clears bit 7 of scr_buff byte 1 and bit 0 of byte 30 (= x=8 and x=247
- * black pixels) at 4 specific row bands separated by 28-row gaps:
- *   y = 0..21, 50..77, 106..133, 162..189.
- * The gaps line up with regions where other sprites overwrite that
- * column (lives indicators, score, brick band centres). Without this
- * the bg-pattern bit at byte_col=1 / byte_col=30 leaks through as a
- * coloured strip just inside the cyan frame edge. */
+/* Port of the inner-border-line routine at LBE8B_2 ($BE99), adjusted to
+ * the port's combined frame asset. The original clears y=0..21 before
+ * it draws the top border, so those top-frame pixels are restored later.
+ * Since paint_frame_to_buff() already includes the top border, the net
+ * visible effect here starts at the lower three bands only. */
 static void inner_border_line_c(void) {
     int pass;
     int y;
-    /* Pass 0 covers y=0..21 (= 22 rows; the original's first inner pass
-     * has 28 iters but the first 6 land in attr_buff via address overlap
-     * — those touch the flash bit of cr 18..23 cc 1 / cc 30, which is
-     * a no-op for non-flashing display). Passes 1..3 are 28-row spans
-     * starting at y=50, 106, 162. */
-    static const int starts[4]  = {  0, 50, 106, 162 };
-    static const int lengths[4] = { 22, 28,  28,  28 };
-    for (pass = 0; pass < 4; pass++) {
-        for (y = starts[pass]; y < starts[pass] + lengths[pass]; y++) {
+    static const int starts[3] = { 50, 106, 162 };
+    for (pass = 0; pass < 3; pass++) {
+        int start = starts[pass];
+        for (y = start; y < start + 28; y++) {
             if (y < 0 || y >= PLAYFIELD_H) continue;
             scr_buff[y * 32 + 1]  &= 0x7F;   /* clear leftmost bit  -> x=8   black */
             scr_buff[y * 32 + 30] &= 0xFE;   /* clear rightmost bit -> x=247 black */
@@ -2240,10 +2232,30 @@ static void paint_bg_to_buff(unsigned char attr, unsigned char cycle) {
  * at $BE6B followed by buffer-to-screen copy). */
 static void buff_to_vga_strip(int y0, int h);
 
-static unsigned char prev_scr_buff[6144];
-static unsigned char prev_attr_buff[768];
+static unsigned char bg_scr_buff[6144];
+static unsigned char bg_attr_buff[768];
 static unsigned char dirty_lines[PLAYFIELD_H];
+static unsigned char prev_dirty_lines[PLAYFIELD_H];
+static int static_bg_dirty = 1;
 static int force_full_flush = 1;
+
+static unsigned long prev_score = 0xFFFFFFFFUL;
+static unsigned long prev_high_score = 0xFFFFFFFFUL;
+static int prev_lives = -1;
+
+static void mark_dirty(int y_start, int height) {
+    int y;
+    int end = y_start + height;
+    if (y_start < 0) y_start = 0;
+    if (end > PLAYFIELD_H) end = PLAYFIELD_H;
+    for (y = y_start; y < end; y++) {
+        dirty_lines[y] = 1;
+    }
+}
+
+static int sprite_height(unsigned int spr) {
+    return sprites_blob[spr + 1];
+}
 
 static void fast_memcpy(void *dest, const void *src, unsigned int n_bytes) {
     unsigned int n_words = n_bytes >> 1;
@@ -2264,20 +2276,6 @@ static void fast_memcpy(void *dest, const void *src, unsigned int n_bytes) {
     }
 }
 
-static void compute_dirty_lines(void) {
-    int r;
-    memset(dirty_lines, 0, sizeof(dirty_lines));
-    for (r = 0; r < PLAYFIELD_H; r++) {
-        if (memcmp(&scr_buff[r << 5], &prev_scr_buff[r << 5], 32) != 0) {
-            dirty_lines[r] = 1;
-        } else {
-            int attr_row = r >> 3;
-            if (memcmp(&attr_buff[attr_row << 5], &prev_attr_buff[attr_row << 5], 32) != 0) {
-                dirty_lines[r] = 1;
-            }
-        }
-    }
-}
 
 static void flush_dirty_to_vga(void) {
     int y;
@@ -2370,8 +2368,6 @@ static void buff_to_vga(void) {
             }
         }
     }
-    fast_memcpy(prev_scr_buff, scr_buff, sizeof(scr_buff));
-    fast_memcpy(prev_attr_buff, attr_buff, sizeof(attr_buff));
 }
 
 /* Port of print_magnets ($8D4C) — paints each magnet specified in
@@ -2418,9 +2414,34 @@ static void render_magnets(unsigned char level_idx) {
 
 static void render_hud_to_buff(void);
 
+static void render_level_screen_static(unsigned char level_idx) {
+    unsigned char bg_attr = bg_attr_per_cycle[level_idx & 3];
+    unsigned char cycle   = (unsigned char)(level_idx & 3);
+    paint_bg_to_buff(bg_attr, cycle);
+    paint_frame_to_buff(cycle, level_idx);
+    render_lives(cycle, bg_attr);
+    render_hud_to_buff();
+    render_magnets(level_idx);
+    inner_border_line_c();
+    render_brick_band(level_idx);
+}
+
+static void build_static_background(unsigned char level_idx) {
+    render_level_screen_static(level_idx);
+    fast_memcpy(bg_scr_buff, scr_buff, sizeof(bg_scr_buff));
+    fast_memcpy(bg_attr_buff, attr_buff, sizeof(bg_attr_buff));
+}
+
 static void render_level_screen(unsigned char level_idx) {
     unsigned char bg_attr = bg_attr_per_cycle[level_idx & 3];
     unsigned char cycle   = (unsigned char)(level_idx & 3);
+
+    static_bg_dirty = 1;
+    memset(prev_dirty_lines, 0, sizeof(prev_dirty_lines));
+    prev_score = 0xFFFFFFFFUL;
+    prev_high_score = 0xFFFFFFFFUL;
+    prev_lives = -1;
+
     fill(0, 0, SCREEN_W, SCREEN_H, COL_BORDER);
     draw_frame(10);              /* bright red — placeholder */
     paint_bg_to_buff(bg_attr, cycle);
@@ -3161,6 +3182,10 @@ static void render_rocket_to_buff(void) {
      * original's flame flicker rate. */
     spr = (rocket_counter & 1) ? SPR_BONUS_ROCKET_2 : SPR_BONUS_ROCKET_1;
     blit_masked_to_scr_buff(spr, rocket_x, rocket_y);
+}
+
+static unsigned int current_rocket_spr(void) {
+    return (rocket_counter & 1) ? SPR_BONUS_ROCKET_2 : SPR_BONUS_ROCKET_1;
 }
 
 /* Direct-VGA fallback kept for the bat-only-move path (redraw_bat
@@ -4351,6 +4376,7 @@ static void step_ball3(void) {
  * Re-fills the strip's scr_buff/attr_buff with bg, blits bat + lives
  * via the scr_buff pipeline, then flushes the strip to VGA. */
 static void redraw_bat(unsigned char cycle, unsigned char bg_attr) {
+    int y;
     /* Note: paint_frame_to_buff writes outside this strip too, but
      * buff_to_vga_strip only flushes BAT_Y_PX..BAT_H_PX so the off-
      * strip side-strip pixels just sit in scr_buff until the next
@@ -4362,8 +4388,9 @@ static void redraw_bat(unsigned char cycle, unsigned char bg_attr) {
     render_running_dot();
     render_lives(cycle, bg_attr);
     buff_to_vga_strip(BAT_Y_PX, BAT_H_PX);
-    fast_memcpy(&prev_scr_buff[BAT_Y_PX << 5], &scr_buff[BAT_Y_PX << 5], BAT_H_PX << 5);
-    fast_memcpy(&prev_attr_buff[21 << 5], &attr_buff[21 << 5], 3 << 5);
+    for (y = BAT_Y_PX; y < BAT_Y_PX + BAT_H_PX; y++) {
+        prev_dirty_lines[y] = 1;
+    }
 }
 
 static void render_hud_to_buff(void);
@@ -4378,37 +4405,72 @@ static void redraw_full_with_ball(unsigned char level_idx) {
     unsigned char bg_attr = bg_attr_per_cycle[level_idx & 3];
     unsigned char cycle   = (unsigned char)(level_idx & 3);
     object_t *enemy = &objects[OBJ_ENEMY];
+    int y, cr, i;
 
     prof_start();
 
-    paint_bg_to_buff(bg_attr, cycle);
+    if (force_full_flush || score != prev_score || high_score != prev_high_score
+        || lives != prev_lives || brick_flash_ticks > 0 || any_brick_hit_anim()) {
+        static_bg_dirty = 1;
+    }
+
+    if (static_bg_dirty) {
+        build_static_background(level_idx);
+        static_bg_dirty = 0;
+        prev_score = score;
+        prev_high_score = high_score;
+        prev_lives = lives;
+        force_full_flush = 1;
+    } else {
+        /* Restore only the lines touched by moving sprites last frame.
+         * Untouched lines still contain the cached static background. */
+        for (y = 0; y < PLAYFIELD_H; y++) {
+            if (prev_dirty_lines[y]) {
+                fast_memcpy(&scr_buff[y << 5], &bg_scr_buff[y << 5], 32);
+            }
+        }
+        for (cr = 0; cr < 24; cr++) {
+            int dirty = 0;
+            int r;
+            for (r = 0; r < 8; r++) {
+                if (prev_dirty_lines[(cr << 3) + r]) {
+                    dirty = 1;
+                    break;
+                }
+            }
+            if (dirty) {
+                fast_memcpy(&attr_buff[cr << 5], &bg_attr_buff[cr << 5], 32);
+            }
+        }
+    }
+    memset(dirty_lines, 0, sizeof(dirty_lines));
     prof_bg_pit += prof_elapsed();
 
-    paint_frame_to_buff(cycle, level_idx);
+    /* The frame itself is static and baked into bg_scr_buff/bg_attr_buff. */
     prof_frame_pit += prof_elapsed();
 
-    if (BALL_VISIBLE) render_ball_to_buff(BALL_X, BALL_Y, bg_attr);
+    if (BALL_VISIBLE) {
+        render_ball_to_buff(BALL_X, BALL_Y, bg_attr);
+        mark_dirty(BALL_Y, 12);
+    }
     render_bat(cycle, bg_attr);
     render_running_dot();
-    render_lives(cycle, bg_attr);
-    render_hud_to_buff();
+    mark_dirty(BAT_Y_PX, 13);
+
+    /* Lives and HUD are static in the cached background and are rebuilt
+     * only when score/lives/brick-animation invalidation requires it. */
     prof_hud_pit += prof_elapsed();
 
-    /* Magnets blit BEFORE bricks (original at $BE8B does
-     * CALL print_magnets; CALL print_briks). The brick top row
-     * overwrites the magnet's lower shadow rows where they overlap;
-     * inverting the order leaves the shadow rows punching through
-     * the brick top. */
-    render_magnets(level_idx);
-    inner_border_line_c();
-    render_brick_band(level_idx);
     render_brick_flash_to_buff();
     render_brick_hit_anim_to_buff();
+
     if (bomb_active) {
         blit_masked_to_scr_buff_ptr(spr_bomb_data, bomb_x, bomb_y);
+        mark_dirty(bomb_y, 12);
     }
     if (pts_400_active) {
         blit_masked_to_scr_buff(pts_marker_spr, pts_400_x, pts_400_y);
+        mark_dirty(pts_400_y, sprite_height(pts_marker_spr));
     }
     if ((enemy->sprite_set & 0x7F) != 0 && !(enemy->sprite_set & 0x80)) {
         unsigned int spr;
@@ -4418,48 +4480,69 @@ static void redraw_full_with_ball(unsigned char level_idx) {
             if (frame >= BLAST_FRAMES) frame = BLAST_FRAMES - 1;
             spr = spr_blast_frames[frame];
         } else {
-            /* Alien is either bird (\$09) or UFO (\$08) — the only
-             * other types enemy_prepare ever sets. L4-spark slot
-             * type \$07 was an earlier port-only feature; the
-             * original's \$9EAA returns early for L4. */
             unsigned char frame = enemy->sprite_num % 3;
             spr = (enemy->sprite_set == 0x09)
                 ? spr_bird_frames[frame]
                 : spr_ufo_frames[frame];
         }
-        /* Force a contrast attr in the enemy's char cells so it
-         * shows over the brick row's attrs (otherwise it would
-         * inherit red / cyan / etc brick colours and visually
-         * disappear). */
         spr_w_px = sprites_blob[spr]     * 8;
         spr_h_px = sprites_blob[spr + 1];
         blit_sprite_attrs_to_buff(enemy->x_coord, enemy->y_coord,
                                    spr_w_px, spr_h_px, bg_attr);
         blit_masked_to_scr_buff(spr, enemy->x_coord, enemy->y_coord);
+        mark_dirty(enemy->y_coord, spr_h_px);
     }
-    if (bonus_active) render_bonus_to_buff(bg_attr);
+    if (bonus_active) {
+        unsigned int spr = spr_for_bonus(bonus_type);
+        render_bonus_to_buff(bg_attr);
+        mark_dirty(bonus_y, sprite_height(spr));
+    }
     render_bullet_to_buff();
-    if (any_bullet_blast()) render_bullet_blast_to_buff();
-    if (rocket_active) render_rocket_to_buff();
+    for (i = 0; i < N_BULLETS; i++) {
+        if (bullet_active[i]) {
+            mark_dirty(bullet_y[i], 8);
+        }
+    }
+    if (any_bullet_blast()) {
+        render_bullet_blast_to_buff();
+        for (i = 0; i < N_BULLETS; i++) {
+            if (bullet_blast_ticks[i]) {
+                mark_dirty(bullet_blast_y[i], 8);
+            }
+        }
+    }
+    if (rocket_active) {
+        unsigned int spr = current_rocket_spr();
+        render_rocket_to_buff();
+        mark_dirty(rocket_y, sprite_height(spr));
+    }
     if (ball2_active) {
         render_ball_to_buff(objects[OBJ_BALL_2].x_coord,
                             objects[OBJ_BALL_2].y_coord, bg_attr);
+        mark_dirty(objects[OBJ_BALL_2].y_coord, 12);
     }
     if (ball3_active) {
         render_ball_to_buff(objects[OBJ_BALL_3].x_coord,
                             objects[OBJ_BALL_3].y_coord, bg_attr);
+        mark_dirty(objects[OBJ_BALL_3].y_coord, 12);
     }
     prof_bricks_pit += prof_elapsed();
 
     if (force_full_flush) {
+        for (y = 0; y < PLAYFIELD_H; y++) {
+            prev_dirty_lines[y] = dirty_lines[y];
+        }
         memset(dirty_lines, 1, sizeof(dirty_lines));
         force_full_flush = 0;
     } else {
-        compute_dirty_lines();
+        /* Flush both the old sprite positions and the new sprite positions. */
+        for (y = 0; y < PLAYFIELD_H; y++) {
+            int current_dirty = dirty_lines[y];
+            dirty_lines[y] = prev_dirty_lines[y] | current_dirty;
+            prev_dirty_lines[y] = current_dirty;
+        }
     }
     flush_dirty_to_vga();
-    fast_memcpy(prev_scr_buff, scr_buff, sizeof(scr_buff));
-    fast_memcpy(prev_attr_buff, attr_buff, sizeof(attr_buff));
     prof_vga_pit += prof_elapsed();
 
     prof_frames_count++;

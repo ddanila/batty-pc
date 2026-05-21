@@ -1,8 +1,8 @@
 # Per-level visual-diff profile
 
 `BATTY_LEVEL=N make test` (N = 1..15) diffs `state4_level1` against
-`build/level_gt/level_NN.scr`. **11 of 15 levels are pixel-perfect**;
-the remaining four sit at a combined 660 px residual out of 49152.
+`build/level_gt/level_NN.scr`. **13 of 15 levels are pixel-perfect**;
+the remaining two sit at a combined 611 px residual out of 49152.
 
 ## Current per-level numbers
 
@@ -10,16 +10,16 @@ the remaining four sit at a combined 660 px residual out of 49152.
 |-------|-------|-----------|--------------------------------------------------|
 | L01   | 0     | **0**     | PASS                                            |
 | L02   | 1     | **0**     | PASS                                            |
-| L03   | 2     | 232       | HUD anomaly at cr 1 cc 8..11 (~200 px)           |
+| L03   | 2     | 305       | HUD / top-frame residual                          |
 | L04   | 3     | **0**     | PASS                                            |
 | L05   | 0     | **0**     | PASS                                            |
-| L06   | 1     | 67        | Magnet 1 at (116, 16) overlaps HUD score row     |
+| L06   | 1     | **0**     | PASS                                             |
 | L07   | 2     | **0**     | PASS                                            |
 | L08   | 3     | **0**     | PASS                                            |
-| L09   | 0     | 242       | HUD anomaly (~217 px) + small magnet residue     |
+| L09   | 0     | 306       | HUD / top-frame residual                          |
 | L10   | 1     | **0**     | PASS                                            |
 | L11   | 2     | **0**     | PASS                                            |
-| L12   | 3     | 122       | Magnet 1 at (116, 8) overlaps HUD label row      |
+| L12   | 3     | **0**     | PASS                                             |
 | L13   | 0     | **0**     | PASS                                            |
 | L14   | 1     | **0**     | PASS                                            |
 | L15   | 2     | **0**     | PASS                                            |
@@ -46,7 +46,7 @@ Iter-21 originally had this BACKWARDS (treating $06 as OFF and $07 as
 ON, so the conditional-skip logic was inverted); iter-34 flipped it
 and dropped total residual 1383 → 660 px.
 
-## L6 / L12: magnet overlaps HUD area
+## L6 / L12: magnet overlaps HUD area (resolved)
 
 L6 magnet 1 is at `(116, 16)` — y=16 = char_row 2 = HUD score row.
 L12 magnet 1 is at `(116, 8)` — y=8 = char_row 1 = HUD label row.
@@ -64,15 +64,11 @@ the diff didn't change — possibly because `state4` captures during
 `render_level_screen` has flushed, so even with the reorder the
 second-render's effect doesn't reach the captured PPM. Reverted.
 
-Two paths forward to close these residuals:
-1. **Per-level frame source.** Re-extract `frame_l1.bin` so each level's
-   cycle entry comes from a level whose HUD area has the magnet baked
-   in (= L12 itself for cycle 3, L6 itself for cycle 1). The current
-   cycle-3 frame is L4-derived (no HUD magnet), cycle-1 is L2-derived
-   (no HUD magnet). Per-level frames would be 15 × 1242 B vs the
-   current 4 × 1242 B = 14 KB increase.
-2. **Skip paint_frame for HUD cells covered by magnets.** Track magnet
-   bbox at paint_frame time and skip overlapping cells.
+Resolved while chasing the L1 12-pixel residual: `inner_border_line_c`
+was clearing the top-frame inner edge after `paint_frame_to_buff`, while
+the original clears that vertical line before drawing the top border.
+Matching the original's net final image removed the stale top-border
+holes and also cleared the L6/L12 magnet/HUD residuals.
 
 ## L3 / L9: HUD bright-bit anomaly (cr 1 cc 8..11)
 

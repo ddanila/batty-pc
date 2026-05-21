@@ -19,9 +19,11 @@ build/test_visual/
 build/test_hud/
 build/86box/
 build/exercise_bricks/
+build/exercise_ball/
 build/exercise_bonus/
 build/snap*.sna
 build/snapshots/*.sna
+build/PROFILE.TXT
 # Ad-hoc preview captures while iterating on the level renderer
 build/level_preview/
 
@@ -36,6 +38,7 @@ zesarux_index_menu.idx
 
 # Claude Code session files
 .claude/
+.antigravitycli/
 
 # Python
 __pycache__/

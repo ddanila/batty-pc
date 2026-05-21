@@ -22,23 +22,23 @@ PASS state5_bat_band    (pixel-identical, FAIL-gated)
 ### Per-level pixel parity (`BATTY_LEVEL=N make test`)
 
 `BATTY_LEVEL=N` (N = 1..15) re-runs `state4` against
-`build/level_gt/level_NN.scr`. **11 of 15 levels are pixel-perfect**;
-the remaining four sit at small residuals (total 660 px out of 49152):
+`build/level_gt/level_NN.scr`. **13 of 15 levels are pixel-perfect**;
+the remaining two sit at small residuals (total 611 px out of 49152):
 
 | Level | Diff | What's left                                         |
 |-------|------|-----------------------------------------------------|
 | L1    | **0**  | PASS                                              |
 | L2    | **0**  | PASS                                              |
-| L3    | 232  | HUD anomaly at cr 1 cc 8..11 (~200 px)               |
+| L3    | 305  | HUD / top-frame residual                              |
 | L4    | **0**  | PASS                                              |
 | L5    | **0**  | PASS                                              |
-| L6    | 67   | Magnet 1 at (116, 16) overlaps HUD score row         |
+| L6    | **0**  | PASS                                              |
 | L7    | **0**  | PASS                                              |
 | L8    | **0**  | PASS                                              |
-| L9    | 242  | HUD anomaly (~217 px) + small magnet residue          |
+| L9    | 306  | HUD / top-frame residual                              |
 | L10   | **0**  | PASS                                              |
 | L11   | **0**  | PASS                                              |
-| L12   | 122  | Magnet 1 at (116, 8) overlaps HUD label row         |
+| L12   | **0**  | PASS                                             |
 | L13   | **0**  | PASS                                              |
 | L14   | **0**  | PASS                                              |
 | L15   | **0**  | PASS                                              |
