@@ -49,11 +49,11 @@ captures are pixel-identical via `BATTY_LEVEL=N` — see
 
 `make test-brick-flash` drives a dynamic L3 gameplay path and fails if
 the bright-white brick destruction flash remains after it should clear.
-This is intentionally a regression guard for the DOS port's dirty-line
-cleanup. The stronger long-term target is to pair this with an original
-ZEsarUX dynamic capture of the same event so the test compares our
-mid-game brick animation against a real original-game reference, not
-only against invariants.
+The stale-flash decision is reference-derived: the test compares each
+brick cell's bright-white coverage against the original-captured L3
+render in `build/level_gt/level_03.scr`, allowing only a small margin
+above the original brick art. That catches the dirty-line white-block
+failure without hard-coding that every white pixel is wrong.
 
 `make test-hud` is a separate normal-build check because `make test`
 uses `BATTY_SCORELESS_HUD`. It boots the regular floppy to L1 and

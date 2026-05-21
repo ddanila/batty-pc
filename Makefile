@@ -87,7 +87,7 @@ help:
 	@echo "  snapshot      dump RAM + screen from running ZEsarUX -> build/snapshots/"
 	@echo "  regions       static scan of main blob -> build/regions.{txt,blockdef}"
 	@echo "  candidates    render bytedata regions as PNGs -> assets/candidates/"
-	@echo "  test-brick-flash  verify brick destruction flash clears"
+	@echo "  test-brick-flash  verify brick flash clears vs original L3 reference"
 	@echo "  clean         remove build/"
 
 build:
