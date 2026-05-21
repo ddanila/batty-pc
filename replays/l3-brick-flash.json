@@ -1,0 +1,27 @@
+{
+  "name": "l3-brick-flash",
+  "description": "Advance to L3, release the ball, and capture the brick band before and after a brick-destruction opportunity.",
+  "timebase": {
+    "unit": "seconds"
+  },
+  "port": {
+    "floppy": "build/batty-test.img",
+    "boot_wait": 10.0
+  },
+  "original": {
+    "snapshot": "original/disasm/tools/batty_for_compare.sna",
+    "boot_wait": 1.0
+  },
+  "events": [
+    {"at": 0.0, "key": "enter", "kind": "tap", "note": "title -> menu"},
+    {"at": 1.5, "key": "enter", "kind": "tap", "note": "menu -> hi-score"},
+    {"at": 3.0, "key": "enter", "kind": "tap", "note": "hi-score -> L1"},
+    {"at": 4.5, "key": "enter", "kind": "tap", "note": "L1 -> L2"},
+    {"at": 6.0, "key": "enter", "kind": "tap", "note": "L2 -> L3"},
+    {"at": 7.8, "key": "space", "kind": "tap", "note": "release ball"}
+  ],
+  "captures": [
+    {"at": 7.5, "name": "l3_initial", "roi": [8, 32, 248, 128]},
+    {"at": 19.8, "name": "l3_after", "roi": [8, 32, 248, 128]}
+  ]
+}

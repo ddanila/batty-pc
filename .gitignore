@@ -18,6 +18,8 @@ assets/random_seed.bin
 build/test_visual/
 build/test_hud/
 build/test_brick_flash/
+build/replay/
+build/replay-smoke/
 build/86box/
 build/exercise_bricks/
 build/exercise_ball/
