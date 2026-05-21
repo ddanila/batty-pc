@@ -263,10 +263,14 @@ $(TEST_FLOPPY_OUT): $(TEST_EXE) $(ASSETS) $(FLOPPY_SRC)
 	@# never sees the host's env. The line is only emitted when the host
 	@# var is non-empty, so `make test` defaults to L1 as before.
 	@if [ -n "$$BATTY_LEVEL" ]; then \
-	    printf '@ECHO OFF\r\nSET BATTYALL=1\r\nSET BATTY_LEVEL=%s\r\nBATTY\r\n' "$$BATTY_LEVEL" > build/AUTOEXEC-T.BAT ; \
+	    printf '@ECHO OFF\r\nSET BATTYALL=1\r\nSET BATTY_LEVEL=%s\r\n' "$$BATTY_LEVEL" > build/AUTOEXEC-T.BAT ; \
 	else \
-	    printf '@ECHO OFF\r\nSET BATTYALL=1\r\nBATTY\r\n' > build/AUTOEXEC-T.BAT ; \
-	fi
+	    printf '@ECHO OFF\r\nSET BATTYALL=1\r\n' > build/AUTOEXEC-T.BAT ; \
+	fi; \
+	if [ -n "$$BATTY_START_LEVEL" ]; then \
+	    printf 'SET BATTY_START_LEVEL=%s\r\n' "$$BATTY_START_LEVEL" >> build/AUTOEXEC-T.BAT ; \
+	fi; \
+	printf 'BATTY\r\n' >> build/AUTOEXEC-T.BAT
 	mcopy -i $@ -o build/AUTOEXEC-T.BAT ::AUTOEXEC.BAT
 	@echo "Test floppy ready: $@  (full 4-state cycle)"
 
@@ -311,10 +315,14 @@ test-hud: $(FLOPPY_OUT)
 test-brick-flash: $(TEST_FLOPPY_OUT)
 	python3 scripts/test_brick_flash.py
 
-replay-l3-brick-flash: $(TEST_FLOPPY_OUT)
+replay-l3-brick-flash:
+	rm -f $(TEST_FLOPPY_OUT)
+	BATTY_LEVEL=3 BATTY_START_LEVEL=1 $(MAKE) $(TEST_FLOPPY_OUT)
 	python3 scripts/replay_harness.py replays/l3-brick-flash.json --side port
 
-replay-l3-brick-flash-both: $(TEST_FLOPPY_OUT) $(ZESARUX)
+replay-l3-brick-flash-both: $(ZESARUX)
+	rm -f $(TEST_FLOPPY_OUT)
+	BATTY_LEVEL=3 BATTY_START_LEVEL=1 $(MAKE) $(TEST_FLOPPY_OUT)
 	python3 scripts/replay_harness.py replays/l3-brick-flash.json --side both --compare
 
 tools/zesarux/src/zesarux:

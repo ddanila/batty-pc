@@ -6,26 +6,28 @@
   },
   "comparison": {
     "aligned_start": false,
-    "note": "The checked-in original snapshot is useful for backend validation, but it is not aligned to the DOS port's L3 test-mode route yet. Keep this replay INFO-only until a matching original start snapshot is captured."
+    "note": "The harness now starts both runners through explicit replay hooks, but the original setup still needs a verified frame-sync point before this can become fail-gated."
   },
   "port": {
     "floppy": "build/batty-test.img",
     "boot_wait": 10.0
   },
   "original": {
-    "snapshot": "original/disasm/tools/batty_for_compare.sna",
-    "boot_wait": 1.0
+    "snapshot_from": "build/snapshots/20260513T202101Z",
+    "boot_wait": 0.5,
+    "setup": [
+      {"op": "enter_cpu_step"},
+      {"op": "write_memory", "address": "0xB7EA", "bytes": [2]},
+      {"op": "set_register", "register": "PC", "value": "0xBA24"},
+      {"op": "exit_cpu_step"},
+      {"op": "sleep", "seconds": 2.0}
+    ]
   },
   "events": [
-    {"at": 0.0, "key": "enter", "kind": "tap", "note": "title -> menu"},
-    {"at": 1.5, "key": "enter", "kind": "tap", "note": "menu -> hi-score"},
-    {"at": 3.0, "key": "enter", "kind": "tap", "note": "hi-score -> L1"},
-    {"at": 4.5, "key": "enter", "kind": "tap", "note": "L1 -> L2"},
-    {"at": 6.0, "key": "enter", "kind": "tap", "note": "L2 -> L3"},
-    {"at": 7.8, "key": "space", "kind": "tap", "note": "release ball"}
+    {"at": 1.0, "key": "space", "kind": "tap", "note": "release ball"}
   ],
   "captures": [
-    {"at": 7.5, "name": "l3_initial", "roi": [8, 32, 248, 128]},
-    {"at": 19.8, "name": "l3_after", "roi": [8, 32, 248, 128]}
+    {"at": 0.8, "name": "l3_initial", "roi": [8, 32, 248, 128]},
+    {"at": 13.0, "name": "l3_after", "roi": [8, 32, 248, 128]}
   ]
 }

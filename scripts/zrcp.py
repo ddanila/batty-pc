@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Tuple
 
 
-PROMPT = b"command> "
+PROMPT_RE = re.compile(br"command(?:@cpu-step)?> ")
 
 
 class ZrcpError(RuntimeError):
@@ -62,15 +62,15 @@ class ZrcpClient:
         self.sock.sendall((line + "\n").encode("utf-8"))
         raw = self._read_until_prompt(timeout=timeout)
         text = raw.decode("latin1", errors="replace")
-        if text.endswith(PROMPT.decode("ascii")):
-            text = text[:-len(PROMPT)]
+        text = re.sub(r"command(?:@cpu-step)?> $", "", text)
         return text.rstrip("\r\n")
 
     def _read_until_prompt(self, timeout: Optional[float] = None) -> bytes:
         if self.sock is None:
             raise ZrcpError("not connected")
         deadline = time.monotonic() + (self.timeout if timeout is None else timeout)
-        while PROMPT not in self._buffer:
+        match = PROMPT_RE.search(self._buffer)
+        while match is None:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 raise TimeoutError("timed out waiting for ZRCP prompt")
@@ -81,7 +81,8 @@ class ZrcpClient:
             if not chunk:
                 raise ZrcpError("ZRCP connection closed")
             self._buffer += chunk
-        pos = self._buffer.index(PROMPT) + len(PROMPT)
+            match = PROMPT_RE.search(self._buffer)
+        pos = match.end()
         out = self._buffer[:pos]
         self._buffer = self._buffer[pos:]
         return out
@@ -129,10 +130,10 @@ class ZrcpClient:
         self.command(f"set-register {register}={value:04X}H")
 
     def enter_cpu_step(self) -> None:
-        self.command("enter-cpu-step")
+        self.command("enter-cpu-step", timeout=max(self.timeout, 15.0))
 
     def exit_cpu_step(self) -> None:
-        self.command("exit-cpu-step")
+        self.command("exit-cpu-step", timeout=max(self.timeout, 15.0))
 
     def run(self, opcodes: int, *, verbose: bool = False,
             no_stop_on_data: bool = False, timeout: Optional[float] = None) -> str:

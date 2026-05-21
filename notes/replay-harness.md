@@ -31,18 +31,24 @@ make replay-l3-brick-flash-both
 ```
 
 `replay-l3-brick-flash` is a port-side smoke run. It validates replay
-timing, QEMU driving, and capture extraction.
+timing, QEMU driving, and capture extraction. The Make target rebuilds
+the test floppy with `BATTY_LEVEL=3` and `BATTY_START_LEVEL=1` so the
+DOS port starts directly in L3 gameplay instead of spending replay time
+in title/menu screens.
 
 `replay-l3-brick-flash-both` also drives ZEsarUX and prints INFO diffs.
-It is not a parity gate yet because the checked-in original snapshot is
-not aligned to the DOS port's L3 test-mode route. The harness refuses
-`--fail-on-diff` unless a replay marks `comparison.aligned_start=true`.
+The original side starts from the tracked `20260513T202101Z` RAM
+snapshot converted to `.sna`, then uses ZRCP setup commands to poke the
+level counter to L3 and jump through the original level-init path. It is
+not a parity gate yet because the exact frame-sync point still needs to
+be verified. The harness refuses `--fail-on-diff` unless a replay marks
+`comparison.aligned_start=true`.
 
 ## Next required step
 
-Capture or generate an original-game start snapshot aligned to a replay
-fixture. For L3 brick/bonus work, that means an original state at the
-same L3 entry point, same RNG state, same ball/bat/object state, and the
-same input route as the DOS test floppy. Once that exists, update the
-replay's `original.snapshot`, mark `comparison.aligned_start=true`, and
-promote the replay to a fail-gated target.
+Verify and lock an original frame-sync point for the L3 replay. For L3
+brick/bonus work, that means proving the ZRCP setup leaves original and
+port at the same L3 entry point, same RNG state, and same
+ball/bat/object state before the first capture. Once that is proven,
+mark `comparison.aligned_start=true` and promote the replay to a
+fail-gated target.

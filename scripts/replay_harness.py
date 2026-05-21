@@ -130,6 +130,27 @@ def validate_spec(spec: ReplaySpec) -> None:
             raise ValueError(f"unsupported event kind {event.kind!r}")
 
 
+def parse_int(value: object) -> int:
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        return int(value, 0)
+    raise TypeError(f"expected integer-like value, got {value!r}")
+
+
+def ensure_sna_from_snapshot_dir(snapshot_dir: Path) -> Path:
+    sna = snapshot_dir.parent / f"{snapshot_dir.name}.sna"
+    ram = snapshot_dir / "ram_4000_FFFF.bin"
+    if not ram.exists():
+        raise FileNotFoundError(ram)
+    if not sna.exists() or sna.stat().st_mtime < ram.stat().st_mtime:
+        subprocess.run([
+            "python3", str(Path(__file__).parent / "snap_to_sna.py"),
+            str(snapshot_dir), str(sna),
+        ], check=True)
+    return sna
+
+
 def write_indices(path: Path, idx: bytes) -> None:
     path.write_bytes(idx)
 
@@ -176,17 +197,42 @@ def run_port(spec: ReplaySpec, out_dir: Path) -> None:
         write_indices(out_dir / f"{capture.name}.idx", idx)
 
 
+def apply_original_setup(zc: ZrcpClient, setup: Sequence[Dict[str, object]]) -> None:
+    for step in setup:
+        op = step.get("op")
+        if op == "sleep":
+            time.sleep(float(step.get("seconds", 0.0)))
+        elif op == "enter_cpu_step":
+            zc.enter_cpu_step()
+        elif op == "exit_cpu_step":
+            zc.exit_cpu_step()
+        elif op == "write_memory":
+            address = parse_int(step["address"])
+            data = bytes(parse_int(v) for v in step.get("bytes", []))
+            zc.write_memory(address, data)
+        elif op == "set_register":
+            zc.set_register(str(step["register"]), parse_int(step["value"]))
+        elif op == "command":
+            zc.command(str(step["value"]))
+        else:
+            raise ValueError(f"unsupported original setup op {op!r}")
+
+
 def run_original(spec: ReplaySpec, out_dir: Path, zesarux: str, port: int) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     snapshot = spec.original.get("snapshot")
+    if not snapshot and spec.original.get("snapshot_from"):
+        snapshot = str(ensure_sna_from_snapshot_dir(Path(str(spec.original["snapshot_from"]))))
     if not snapshot:
-        raise ValueError(f"{spec.path}: original.snapshot is required")
+        raise ValueError(f"{spec.path}: original.snapshot or original.snapshot_from is required")
     boot_wait = float(spec.original.get("boot_wait", 0.0))
     proc, zc = launch_emulator(zesarux, machine="48k",
-                               extra_args=["--snap", str(snapshot)],
+                               extra_args=[],
                                port=port, headless=True)
     try:
+        zc.snapshot_load(str(Path(str(snapshot)).resolve()))
         time.sleep(boot_wait)
+        apply_original_setup(zc, spec.original.get("setup", []))
         actions = []
         for event in spec.events:
             actions.append(("event", event.at, event))

@@ -73,6 +73,8 @@ The `BATTY_LEVEL=N` env var:
 - Makefile injects `SET BATTY_LEVEL=N` into the test floppy's AUTOEXEC.BAT
   (the bytes don't change with env, so the `test` target also `rm -f`s the
   floppy first to force a rebuild on env changes).
+- Makefile also passes `BATTY_START_LEVEL=1` through for replay targets;
+  when set, the DOS port starts directly in `ST_LEVEL` after asset load.
 - `src/main.c` `getenv("BATTY_LEVEL")` in `run_level` sets
   `round_number = N-1` so the run-level loop enters at level N.
 - `scripts/test_visual.py` switches `state4_level1`'s expected snapshot

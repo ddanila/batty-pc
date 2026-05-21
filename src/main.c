@@ -5594,6 +5594,7 @@ int main(void) {
      * against snap2. Plain `make run` floppy leaves it off and the
      * user sees the natural ~4.5 Hz menu blink. */
     if (getenv("BATTYALL") != NULL) test_mode_pin_blink = 1;
+    if (getenv("BATTY_START_LEVEL") != NULL) state = ST_LEVEL;
     set_mode(0x13);
     set_palette(zx_palette, 16);
     init_pal_tables();
