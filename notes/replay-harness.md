@@ -47,7 +47,9 @@ causes the DOS port to write `PROBE.TXT` with the L3 entry counters,
 RNG bytes, object bytes, and live level copy. The target currently sets
 `BATTY_REPLAY_RANDOM=8E49` so the DOS port starts from the original's
 probed L3 random-number bytes, and `BATTY_REPLAY_BAT_OBJECT` so the
-bat descriptor starts from the original's probed L3 bytes.
+bat descriptor starts from the original's probed L3 bytes. It also sets
+`BATTY_REPLAY_BALL_OBJECT` to test whether the ball descriptor accounts
+for the remaining replay drift.
 
 `replay-l3-brick-flash-both` also drives ZEsarUX and prints INFO diffs.
 The original side starts from the tracked `20260513T202101Z` RAM
@@ -55,10 +57,11 @@ snapshot converted to `.sna`, then uses ZRCP setup commands to poke the
 level and round counters to L3 and jump through the original level-init
 path. The current probe comparison proves that the brick count, current
 level, round number, and level byte copy match; it also shows that RNG
-and bat object bytes now match, while ball object bytes still differ.
-It is not a parity gate yet because the exact frame-sync point still
-needs to be verified. The harness refuses `--fail-on-diff` unless a
-replay marks `comparison.aligned_start=true`.
+and bat object bytes now match, and can force the ball object bytes to
+match for alignment experiments. It is not a parity gate yet because
+the exact frame-sync point still needs to be verified. The harness
+refuses `--fail-on-diff` unless a replay marks
+`comparison.aligned_start=true`.
 
 ## Next required step
 
