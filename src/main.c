@@ -3807,6 +3807,32 @@ static void play_bat_explosion(unsigned char level_idx);   /* forward */
 static void respawn_primary_ball(void);                     /* forward */
 static unsigned char current_level_idx_var;  /* set by run_level so
                                               * enemy_prepare can read it */
+
+static void write_replay_probe(void) {
+    FILE *f;
+    int i;
+    if (getenv("BATTY_REPLAY_PROBE") == NULL) return;
+    f = fopen("PROBE.TXT", "wt");
+    if (!f) return;
+    fprintf(f, "round_number=%02X\n", (unsigned)round_number);
+    fprintf(f, "current_level=%02X\n", (unsigned)current_level_idx_var);
+    fprintf(f, "bricks_quantity=%02X\n", (unsigned)live_bricks_remaining());
+    fprintf(f, "random_number=%02X%02X\n", (unsigned)random_d, (unsigned)random_e);
+    fprintf(f, "random_seed=%04X\n", random_seed_addr);
+    fprintf(f, "object_ball_1=");
+    for (i = 0; i < (int)sizeof(object_t); i++) {
+        fprintf(f, "%02X", ((unsigned char *)&objects[OBJ_BALL_1])[i]);
+    }
+    fprintf(f, "\nobject_bat_1=");
+    for (i = 0; i < (int)sizeof(object_t); i++) {
+        fprintf(f, "%02X", ((unsigned char *)&objects[OBJ_BAT_1])[i]);
+    }
+    fprintf(f, "\ncurrent_level_copy=");
+    for (i = 0; i < LVL_CELLS; i++) fprintf(f, "%02X", live_level[i]);
+    fprintf(f, "\n");
+    fclose(f);
+}
+
 static void enemy_prepare(void) {
     object_t *e = &objects[OBJ_ENEMY];
     const unsigned char *prop;
@@ -5263,6 +5289,7 @@ static state_t run_level(void) {
         for (k = 0; k < LVL_CELLS; k++) {
             live_level[k] = levels[(int)i * LVL_CELLS + k];
         }
+        write_replay_probe();
         render_level_screen(i);
         if (show_round_banner((unsigned int)round_number + 1)) return ST_QUIT;
         render_level_screen(i);                /* re-paint to clear the banner */

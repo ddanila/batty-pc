@@ -270,6 +270,9 @@ $(TEST_FLOPPY_OUT): $(TEST_EXE) $(ASSETS) $(FLOPPY_SRC)
 	if [ -n "$$BATTY_START_LEVEL" ]; then \
 	    printf 'SET BATTY_START_LEVEL=%s\r\n' "$$BATTY_START_LEVEL" >> build/AUTOEXEC-T.BAT ; \
 	fi; \
+	if [ -n "$$BATTY_REPLAY_PROBE" ]; then \
+	    printf 'SET BATTY_REPLAY_PROBE=%s\r\n' "$$BATTY_REPLAY_PROBE" >> build/AUTOEXEC-T.BAT ; \
+	fi; \
 	printf 'BATTY\r\n' >> build/AUTOEXEC-T.BAT
 	mcopy -i $@ -o build/AUTOEXEC-T.BAT ::AUTOEXEC.BAT
 	@echo "Test floppy ready: $@  (full 4-state cycle)"
@@ -317,12 +320,12 @@ test-brick-flash: $(TEST_FLOPPY_OUT)
 
 replay-l3-brick-flash:
 	rm -f $(TEST_FLOPPY_OUT)
-	BATTY_LEVEL=3 BATTY_START_LEVEL=1 $(MAKE) $(TEST_FLOPPY_OUT)
+	BATTY_LEVEL=3 BATTY_START_LEVEL=1 BATTY_REPLAY_PROBE=1 $(MAKE) $(TEST_FLOPPY_OUT)
 	python3 scripts/replay_harness.py replays/l3-brick-flash.json --side port
 
 replay-l3-brick-flash-both: $(ZESARUX)
 	rm -f $(TEST_FLOPPY_OUT)
-	BATTY_LEVEL=3 BATTY_START_LEVEL=1 $(MAKE) $(TEST_FLOPPY_OUT)
+	BATTY_LEVEL=3 BATTY_START_LEVEL=1 BATTY_REPLAY_PROBE=1 $(MAKE) $(TEST_FLOPPY_OUT)
 	python3 scripts/replay_harness.py replays/l3-brick-flash.json --side both --compare
 
 tools/zesarux/src/zesarux:

@@ -8,6 +8,7 @@ small and reviewable.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import subprocess
 import sys
@@ -70,6 +71,7 @@ class ReplaySpec:
     port: Dict[str, object]
     original: Dict[str, object]
     comparison: Dict[str, object]
+    state_probe: Dict[str, object]
 
     @staticmethod
     def load(path: Path) -> "ReplaySpec":
@@ -103,6 +105,7 @@ class ReplaySpec:
             port=dict(data.get("port", {})),
             original=dict(data.get("original", {})),
             comparison=dict(data.get("comparison", {})),
+            state_probe=dict(data.get("state_probe", {})),
         )
 
     @property
@@ -159,6 +162,74 @@ def read_indices(path: Path) -> bytes:
     return path.read_bytes()
 
 
+def hex_bytes(data: bytes) -> str:
+    return data.hex().upper()
+
+
+def roi_bytes(idx: bytes, roi: Optional[Tuple[int, int, int, int]]) -> bytes:
+    if roi is None:
+        return idx
+    x0, y0, x1, y1 = roi
+    out = bytearray()
+    for y in range(y0, y1):
+        row = y * PLAYFIELD_W
+        out.extend(idx[row + x0:row + x1])
+    return bytes(out)
+
+
+def write_probe_report(out_dir: Path, side: str, rows: Sequence[Tuple[str, str]]) -> None:
+    lines = [f"# {side} state probe", ""]
+    for name, value in rows:
+        lines.append(f"{name}: {value}")
+    lines.append("")
+    (out_dir / "state_probe.txt").write_text("\n".join(lines))
+    print(f"  state probe ({side})")
+    for name, value in rows:
+        print(f"    {name}: {value}")
+
+
+def read_probe_report(out_dir: Path) -> Dict[str, str]:
+    path = out_dir / "state_probe.txt"
+    values: Dict[str, str] = {}
+    if not path.exists():
+        return values
+    for line in path.read_text(errors="replace").splitlines():
+        if line.startswith("#") or ":" not in line:
+            continue
+        name, value = line.split(":", 1)
+        values[name.strip()] = value.strip()
+    return values
+
+
+def run_port_state_probe(spec: ReplaySpec, out_dir: Path) -> None:
+    rows = []
+    probe_file = spec.port.get("probe_file")
+    if probe_file:
+        extracted = out_dir / str(probe_file)
+        subprocess.run([
+            "mcopy", "-i", str(spec.port.get("floppy", "build/batty-test.img")),
+            f"::{probe_file}", str(extracted),
+        ], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if extracted.exists():
+            for line in extracted.read_text(errors="replace").splitlines():
+                if "=" in line:
+                    name, value = line.split("=", 1)
+                    rows.append((name.strip(), value.strip()))
+    for probe in spec.state_probe.get("port", []):
+        source = probe.get("source")
+        name = str(probe.get("name", source))
+        if source == "screen_hash":
+            cap = str(probe["capture"])
+            idx = read_indices(out_dir / f"{cap}.idx")
+            roi = probe.get("roi")
+            data = roi_bytes(idx, tuple(int(v) for v in roi) if roi else None)
+            rows.append((name, hashlib.sha256(data).hexdigest()))
+        else:
+            raise ValueError(f"unsupported port probe source {source!r}")
+    if rows:
+        write_probe_report(out_dir, "port", rows)
+
+
 def run_port(spec: ReplaySpec, out_dir: Path) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     floppy = Path(str(spec.port.get("floppy", "build/batty-test.img")))
@@ -195,6 +266,7 @@ def run_port(spec: ReplaySpec, out_dir: Path) -> None:
     for capture in spec.captures:
         idx = ppm_inner_to_indices(out_dir / f"{capture.name}.ppm")
         write_indices(out_dir / f"{capture.name}.idx", idx)
+    run_port_state_probe(spec, out_dir)
 
 
 def apply_original_setup(zc: ZrcpClient, setup: Sequence[Dict[str, object]]) -> None:
@@ -218,6 +290,18 @@ def apply_original_setup(zc: ZrcpClient, setup: Sequence[Dict[str, object]]) -> 
             raise ValueError(f"unsupported original setup op {op!r}")
 
 
+def run_original_state_probe(spec: ReplaySpec, out_dir: Path, zc: ZrcpClient) -> None:
+    rows = []
+    for probe in spec.state_probe.get("original", []):
+        name = str(probe["name"])
+        address = parse_int(probe["address"])
+        length = parse_int(probe["length"])
+        data = zc.read_memory(address, length)
+        rows.append((name, hex_bytes(data)))
+    if rows:
+        write_probe_report(out_dir, "original", rows)
+
+
 def run_original(spec: ReplaySpec, out_dir: Path, zesarux: str, port: int) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     snapshot = spec.original.get("snapshot")
@@ -233,6 +317,7 @@ def run_original(spec: ReplaySpec, out_dir: Path, zesarux: str, port: int) -> No
         zc.snapshot_load(str(Path(str(snapshot)).resolve()))
         time.sleep(boot_wait)
         apply_original_setup(zc, spec.original.get("setup", []))
+        run_original_state_probe(spec, out_dir, zc)
         actions = []
         for event in spec.events:
             actions.append(("event", event.at, event))
@@ -298,6 +383,17 @@ def compare_outputs(spec: ReplaySpec, port_dir: Path, original_dir: Path,
         if note:
             print(f"       {note}")
     failures = 0
+    port_state = read_probe_report(port_dir)
+    original_state = read_probe_report(original_dir)
+    common = sorted(set(port_state) & set(original_state))
+    if common:
+        print("  state probe comparison")
+        for name in common:
+            same = port_state[name] == original_state[name]
+            tag = "PASS" if same else "INFO"
+            print(f"    {tag} {name}: port={port_state[name]} original={original_state[name]}")
+            if fail_on_diff and not same:
+                failures += 1
     for capture in spec.captures:
         actual = read_indices(port_dir / f"{capture.name}.idx")
         expected = read_indices(original_dir / f"{capture.name}.idx")
