@@ -3799,6 +3799,33 @@ static void apply_replay_random_override(void) {
     random_e = (unsigned char)v;
 }
 
+static int replay_hex_nibble(char c) {
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+    return -1;
+}
+
+static int replay_parse_hex_bytes(const char *p, unsigned char *out, int n) {
+    int i;
+    if (p == NULL) return -1;
+    for (i = 0; i < n; i++) {
+        int hi = replay_hex_nibble(p[i * 2]);
+        int lo = replay_hex_nibble(p[i * 2 + 1]);
+        if (hi < 0 || lo < 0) return -1;
+        out[i] = (unsigned char)((hi << 4) | lo);
+    }
+    if (p[n * 2] != '\0') return -1;
+    return 0;
+}
+
+static void apply_replay_bat_object_override(void) {
+    unsigned char bytes[sizeof(object_t)];
+    if (replay_parse_hex_bytes(getenv("BATTY_REPLAY_BAT_OBJECT"),
+                               bytes, (int)sizeof(bytes)) != 0) return;
+    memcpy(&objects[OBJ_BAT_1], bytes, sizeof(bytes));
+}
+
 /* prop_uneven / prop_even / prop_x_coord from $9F27. Fields:
  *   +0 type ($09=bird, $08=UFO)
  *   +1 misc_12
@@ -5301,6 +5328,7 @@ static state_t run_level(void) {
             live_level[k] = levels[(int)i * LVL_CELLS + k];
         }
         apply_replay_random_override();
+        apply_replay_bat_object_override();
         write_replay_probe();
         render_level_screen(i);
         if (show_round_banner((unsigned int)round_number + 1)) return ST_QUIT;
