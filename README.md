@@ -22,20 +22,19 @@ PASS state5_bat_band    (pixel-identical, FAIL-gated)
 ### Per-level pixel parity (`BATTY_LEVEL=N make test`)
 
 `BATTY_LEVEL=N` (N = 1..15) re-runs `state4` against
-`build/level_gt/level_NN.scr`. **13 of 15 levels are pixel-perfect**;
-the remaining two sit at small residuals (total 611 px out of 49152):
+`build/level_gt/level_NN.scr`. **All 15 levels are pixel-perfect**.
 
 | Level | Diff | What's left                                         |
 |-------|------|-----------------------------------------------------|
 | L1    | **0**  | PASS                                              |
 | L2    | **0**  | PASS                                              |
-| L3    | 305  | HUD / top-frame residual                              |
+| L3    | **0**  | PASS                                              |
 | L4    | **0**  | PASS                                              |
 | L5    | **0**  | PASS                                              |
 | L6    | **0**  | PASS                                              |
 | L7    | **0**  | PASS                                              |
 | L8    | **0**  | PASS                                              |
-| L9    | 306  | HUD / top-frame residual                              |
+| L9    | **0**  | PASS                                              |
 | L10   | **0**  | PASS                                              |
 | L11   | **0**  | PASS                                              |
 | L12   | **0**  | PASS                                             |
@@ -43,7 +42,7 @@ the remaining two sit at small residuals (total 611 px out of 49152):
 | L14   | **0**  | PASS                                              |
 | L15   | **0**  | PASS                                              |
 
-Remaining residuals are documented in
+The resolved parity history is documented in
 [`notes/per-level-profile.md`](notes/per-level-profile.md).
 
 | Stage                                       | State |

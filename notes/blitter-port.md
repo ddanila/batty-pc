@@ -73,6 +73,11 @@ top border, then the top border restores the y=0..21 pixels. The port's
 (y=50..77, 106..133, 162..189). Clearing the top band after the combined
 frame punches 12 black holes in L1 at x=8/x=247.
 
+The gameplay static-background cache does one extra narrow top-frame
+restore for cells `cr 0..2, cc 8..10` immediately before dirty flushing.
+That matches the original-captured final image for L3/L9 without
+repainting the whole HUD after magnets.
+
 Gameplay redraws cache the static level image in `bg_scr_buff` /
 `bg_attr_buff`. Each moving object marks the exact pixel rows covered by
 its sprite, and each frame flushes the union of the previous and current

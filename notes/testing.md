@@ -40,12 +40,20 @@ the C side disables auto-advance — every transition is driven by
 | 1     | `LOADING.BIN` static blit | `original/Batty.scr`              | Title / loading screen, decoded from the tape's screen$ block.              |
 | 2     | Markup + sprites + blink   | `20260513T202041Z` (snap2)        | Main menu rendered from `MENUMARK.BIN` + indicators + bottom sprites.       |
 | 3     | Markup hi-score            | `20260513T202038Z` (snap1)        | Hi-score table rendered from `MARKUP.BIN`.                                  |
-| 4     | Full level-N gameplay paint | `build/level_gt/level_NN.scr` (modded-tape GT, *post-first-paint*) | Bricks + frame + bat + ball + lives + magnets. Pixel-identical for L1 (default) and for 13/15 levels via `BATTY_LEVEL=N`. |
+| 4     | Full level-N gameplay paint | `build/level_gt/level_NN.scr` (modded-tape GT, *post-first-paint*) | Bricks + frame + bat + ball + lives + magnets. Pixel-identical for all 15 levels via `BATTY_LEVEL=N`. |
 | 5     | Same captured frame, ROI'd to bat band (y=160..192) | same GT | Sub-diff of state4 — surfaces bat-render regressions on their own so they don't hide inside the whole-frame number. |
 
-All five states are FAIL-gated on L1 default. 2 of 15 levels still
-have small residuals via `BATTY_LEVEL=N`: L3 (305 px) and L9 (306 px)
-— see [`per-level-profile.md`](per-level-profile.md).
+All five states are FAIL-gated on L1 default. All 15 level-entry
+captures are pixel-identical via `BATTY_LEVEL=N` — see
+[`per-level-profile.md`](per-level-profile.md).
+
+`make test-brick-flash` drives a dynamic L3 gameplay path and fails if
+the bright-white brick destruction flash remains after it should clear.
+This is intentionally a regression guard for the DOS port's dirty-line
+cleanup. The stronger long-term target is to pair this with an original
+ZEsarUX dynamic capture of the same event so the test compares our
+mid-game brick animation against a real original-game reference, not
+only against invariants.
 
 `make test-hud` is a separate normal-build check because `make test`
 uses `BATTY_SCORELESS_HUD`. It boots the regular floppy to L1 and

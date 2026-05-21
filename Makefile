@@ -72,7 +72,7 @@ BOX86_FDD_TYPE  ?= 35_2hd
 BOX86_ASSETPATH ?= /home/ddanila/fun/86Box/src/unix/assets
 BOX86_ROMPATH   ?= /home/ddanila/fun/86Box-roms
 
-.PHONY: all clean run run-86box floppy assets help run-original run-original-cheat snapshot candidates regions test test-hud
+.PHONY: all clean run run-86box floppy assets help run-original run-original-cheat snapshot candidates regions test test-hud test-brick-flash
 
 all: $(EXE) $(ASSETS)
 
@@ -87,6 +87,7 @@ help:
 	@echo "  snapshot      dump RAM + screen from running ZEsarUX -> build/snapshots/"
 	@echo "  regions       static scan of main blob -> build/regions.{txt,blockdef}"
 	@echo "  candidates    render bytedata regions as PNGs -> assets/candidates/"
+	@echo "  test-brick-flash  verify brick destruction flash clears"
 	@echo "  clean         remove build/"
 
 build:
@@ -304,6 +305,9 @@ test:
 
 test-hud: $(FLOPPY_OUT)
 	python3 scripts/test_hud.py --floppy $(FLOPPY_OUT)
+
+test-brick-flash: $(TEST_FLOPPY_OUT)
+	python3 scripts/test_brick_flash.py
 
 tools/zesarux/src/zesarux:
 	git submodule update --init tools/zesarux

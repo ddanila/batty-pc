@@ -1307,6 +1307,23 @@ static void paint_frame_to_buff(unsigned char cycle, unsigned char level_idx) {
                         right_col * 8, FRAME_TOP_H_PX);
 }
 
+static void restore_top_frame_center(unsigned char cycle, unsigned char level_idx) {
+    const unsigned char *base = frame_l1 + (unsigned int)cycle * FRAME_SIZE;
+    const unsigned char *top_px = base;
+    const unsigned char *lattr = level_attrs + (unsigned int)level_idx * ATTR_BAND_SIZE;
+    int y, cr, cc;
+    for (y = 0; y < FRAME_TOP_H_PX; y++) {
+        for (cc = 8; cc <= 10; cc++) {
+            scr_buff[y * 32 + cc] = top_px[y * 32 + cc];
+        }
+    }
+    for (cr = 0; cr < FRAME_TOP_H_PX / 8; cr++) {
+        for (cc = 8; cc <= 10; cc++) {
+            attr_buff[cr * 32 + cc] = lattr[cr * 32 + cc];
+        }
+    }
+}
+
 /* Blit an original-format masked sprite at playfield (x_px, y_px).
  *
  * Sprite layout (verbatim from the program at $7A8C+):
@@ -2424,6 +2441,7 @@ static void render_level_screen_static(unsigned char level_idx) {
     render_magnets(level_idx);
     inner_border_line_c();
     render_brick_band(level_idx);
+    restore_top_frame_center(cycle, level_idx);
 }
 
 static void build_static_background(unsigned char level_idx) {
@@ -2461,6 +2479,7 @@ static void render_level_screen(unsigned char level_idx) {
     render_magnets(level_idx);
     inner_border_line_c();
     render_brick_band(level_idx);
+    restore_top_frame_center(cycle, level_idx);
     render_brick_flash_to_buff();
     render_brick_hit_anim_to_buff();
     buff_to_vga();
@@ -4462,7 +4481,17 @@ static void redraw_full_with_ball(unsigned char level_idx) {
     prof_hud_pit += prof_elapsed();
 
     render_brick_flash_to_buff();
+    if (brick_flash_ticks) {
+        mark_dirty(brick_flash_y, 8);
+    }
     render_brick_hit_anim_to_buff();
+    if (any_brick_hit_anim()) {
+        for (i = 0; i < BRICK_HIT_ANIM_SLOTS; i++) {
+            if (brick_hit_anim_ticks[i]) {
+                mark_dirty(32 + (int)brick_hit_anim_row[i] * 8, 8);
+            }
+        }
+    }
 
     if (bomb_active) {
         blit_masked_to_scr_buff_ptr(spr_bomb_data, bomb_x, bomb_y);
@@ -4526,6 +4555,8 @@ static void redraw_full_with_ball(unsigned char level_idx) {
                             objects[OBJ_BALL_3].y_coord, bg_attr);
         mark_dirty(objects[OBJ_BALL_3].y_coord, 12);
     }
+    restore_top_frame_center(cycle, level_idx);
+    mark_dirty(0, FRAME_TOP_H_PX);
     prof_bricks_pit += prof_elapsed();
 
     if (force_full_flush) {

@@ -137,9 +137,9 @@ data labels but the table index drives the actual draw order.
 
 Iter-34 flipped the order ("ON first, OFF conditional second") and
 dropped total residual 1383 → 660 px in one commit. Three previously-
-failing levels (L8, L13, L14) flipped to pixel-perfect. A later
-inner-border/frame-order fix moved the profile to 13/15 levels
-pixel-perfect with 611 px residual total.
+failing levels (L8, L13, L14) flipped to pixel-perfect. Later
+inner-border/frame-order and top-frame cache fixes moved the profile
+to 15/15 levels pixel-perfect.
 
 **How to apply.** When porting a sprite-dispatch routine:
 
