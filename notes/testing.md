@@ -120,9 +120,16 @@ leaves `BATTYALL` unset and the user sees the natural blink.
 
 Mid-game frames. State 4 is a single level-init paint; nothing
 exercises ball physics / collisions / bonus drops under parity.
-The natural next step is a **replay file**: `(tick_N, key)` pairs
-driving both ZEsarUX (via ZRCP) and QEMU (via `sendkey`) in lockstep,
+The natural next step is replay files: timestamped key events driving
+both ZEsarUX (via ZRCP) and QEMU (via `sendkey`), then
 snapshot/compare at fixed checkpoints. The original is deterministic
-(same RNG state + same inputs = same output), so this works once
-frame-synchronised input is wired up. Ad-hoc smoke scripts under
-`scripts/exercise_*.py` cover individual scenarios in the meantime.
+(same RNG state + same inputs = same output), so these become parity
+gates once a replay starts both runners from an aligned state. Ad-hoc
+smoke scripts under `scripts/exercise_*.py` cover individual scenarios
+in the meantime.
+
+The first reusable replay harness is in `scripts/replay_harness.py`;
+see [`replay-harness.md`](replay-harness.md). It currently supports
+DOS-port and ZEsarUX-original runs plus INFO comparisons. Replays only
+become fail-gated once their spec marks the original and port start
+states as aligned.

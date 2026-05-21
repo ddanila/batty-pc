@@ -72,7 +72,7 @@ BOX86_FDD_TYPE  ?= 35_2hd
 BOX86_ASSETPATH ?= /home/ddanila/fun/86Box/src/unix/assets
 BOX86_ROMPATH   ?= /home/ddanila/fun/86Box-roms
 
-.PHONY: all clean run run-86box floppy assets help run-original run-original-cheat snapshot candidates regions test test-hud test-brick-flash
+.PHONY: all clean run run-86box floppy assets help run-original run-original-cheat snapshot candidates regions test test-hud test-brick-flash replay-l3-brick-flash replay-l3-brick-flash-both
 
 all: $(EXE) $(ASSETS)
 
@@ -88,6 +88,8 @@ help:
 	@echo "  regions       static scan of main blob -> build/regions.{txt,blockdef}"
 	@echo "  candidates    render bytedata regions as PNGs -> assets/candidates/"
 	@echo "  test-brick-flash  verify brick flash clears vs original L3 reference"
+	@echo "  replay-l3-brick-flash       run the L3 replay against the DOS port"
+	@echo "  replay-l3-brick-flash-both  run DOS + original and print INFO diffs"
 	@echo "  clean         remove build/"
 
 build:
@@ -308,6 +310,12 @@ test-hud: $(FLOPPY_OUT)
 
 test-brick-flash: $(TEST_FLOPPY_OUT)
 	python3 scripts/test_brick_flash.py
+
+replay-l3-brick-flash: $(TEST_FLOPPY_OUT)
+	python3 scripts/replay_harness.py replays/l3-brick-flash.json --side port
+
+replay-l3-brick-flash-both: $(TEST_FLOPPY_OUT) $(ZESARUX)
+	python3 scripts/replay_harness.py replays/l3-brick-flash.json --side both --compare
 
 tools/zesarux/src/zesarux:
 	git submodule update --init tools/zesarux

@@ -4,6 +4,10 @@
   "timebase": {
     "unit": "seconds"
   },
+  "comparison": {
+    "aligned_start": false,
+    "note": "The checked-in original snapshot is useful for backend validation, but it is not aligned to the DOS port's L3 test-mode route yet. Keep this replay INFO-only until a matching original start snapshot is captured."
+  },
   "port": {
     "floppy": "build/batty-test.img",
     "boot_wait": 10.0

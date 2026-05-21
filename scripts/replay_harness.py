@@ -69,6 +69,7 @@ class ReplaySpec:
     captures: Tuple[Capture, ...]
     port: Dict[str, object]
     original: Dict[str, object]
+    comparison: Dict[str, object]
 
     @staticmethod
     def load(path: Path) -> "ReplaySpec":
@@ -101,6 +102,7 @@ class ReplaySpec:
             captures=tuple(sorted(captures, key=lambda c: c.at)),
             port=dict(data.get("port", {})),
             original=dict(data.get("original", {})),
+            comparison=dict(data.get("comparison", {})),
         )
 
     @property
@@ -240,6 +242,15 @@ def diff_capture(actual: bytes, expected: bytes,
 
 def compare_outputs(spec: ReplaySpec, port_dir: Path, original_dir: Path,
                     fail_on_diff: bool) -> int:
+    aligned = bool(spec.comparison.get("aligned_start", False))
+    if fail_on_diff and not aligned:
+        raise ValueError(
+            f"{spec.path}: refusing --fail-on-diff because comparison.aligned_start is false")
+    if not aligned:
+        note = spec.comparison.get("note")
+        print("  INFO comparison is not a parity gate: start states are not marked aligned")
+        if note:
+            print(f"       {note}")
     failures = 0
     for capture in spec.captures:
         actual = read_indices(port_dir / f"{capture.name}.idx")
