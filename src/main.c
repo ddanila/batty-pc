@@ -3788,6 +3788,17 @@ static unsigned int next_random(void) {
     return (unsigned int)(((unsigned int)random_d << 8) | random_e);
 }
 
+static void apply_replay_random_override(void) {
+    const char *p = getenv("BATTY_REPLAY_RANDOM");
+    char *endp;
+    unsigned long v;
+    if (p == NULL || *p == '\0') return;
+    v = strtoul(p, &endp, 16);
+    if (*endp != '\0' || v > 0xFFFFUL) return;
+    random_d = (unsigned char)(v >> 8);
+    random_e = (unsigned char)v;
+}
+
 /* prop_uneven / prop_even / prop_x_coord from $9F27. Fields:
  *   +0 type ($09=bird, $08=UFO)
  *   +1 misc_12
@@ -5289,6 +5300,7 @@ static state_t run_level(void) {
         for (k = 0; k < LVL_CELLS; k++) {
             live_level[k] = levels[(int)i * LVL_CELLS + k];
         }
+        apply_replay_random_override();
         write_replay_probe();
         render_level_screen(i);
         if (show_round_banner((unsigned int)round_number + 1)) return ST_QUIT;

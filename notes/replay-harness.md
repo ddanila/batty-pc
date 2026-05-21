@@ -44,7 +44,9 @@ the test floppy with `BATTY_LEVEL=3` and `BATTY_START_LEVEL=1` so the
 DOS port starts directly in L3 gameplay instead of spending replay time
 in title/menu screens. It also enables `BATTY_REPLAY_PROBE=1`, which
 causes the DOS port to write `PROBE.TXT` with the L3 entry counters,
-RNG bytes, object bytes, and live level copy.
+RNG bytes, object bytes, and live level copy. The target currently sets
+`BATTY_REPLAY_RANDOM=8E49` so the DOS port starts from the original's
+probed L3 random-number bytes.
 
 `replay-l3-brick-flash-both` also drives ZEsarUX and prints INFO diffs.
 The original side starts from the tracked `20260513T202101Z` RAM
@@ -52,16 +54,16 @@ snapshot converted to `.sna`, then uses ZRCP setup commands to poke the
 level and round counters to L3 and jump through the original level-init
 path. The current probe comparison proves that the brick count, current
 level, round number, and level byte copy match; it also shows that RNG
-and ball/bat object bytes still differ. It is not a parity gate yet
-because the exact frame-sync point still needs to be verified. The
-harness refuses `--fail-on-diff` unless a replay marks
+bytes now match, while ball/bat object bytes still differ. It is not a
+parity gate yet because the exact frame-sync point still needs to be
+verified. The harness refuses `--fail-on-diff` unless a replay marks
 `comparison.aligned_start=true`.
 
 ## Next required step
 
 Verify and lock an original frame-sync point for the L3 replay. For L3
 brick/bonus work, that means proving the ZRCP setup leaves original and
-port at the same L3 entry point, same RNG state, and same
-ball/bat/object state before the first capture. Once that is proven,
-mark `comparison.aligned_start=true` and promote the replay to a
-fail-gated target.
+port at the same L3 entry point and same ball/bat/object state before
+the first capture. Once that is proven, mark
+`comparison.aligned_start=true` and promote the replay to a fail-gated
+target.
