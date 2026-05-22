@@ -6,7 +6,7 @@
   },
   "comparison": {
     "aligned_start": false,
-    "note": "The harness now starts both runners through explicit replay hooks, but the original setup still needs a verified frame-sync point before this can become fail-gated."
+    "note": "Probe-time state (RNG, bat, ball, enemy) now PASS on every probe line, but captures still drift because QEMU and ZEsarUX advance at different rates after probe."
   },
   "port": {
     "floppy": "build/batty-test.img",
@@ -19,9 +19,9 @@
     "setup": [
       {"op": "enter_cpu_step"},
       {"op": "write_memory", "address": "0xB7EA", "bytes": [2, 2]},
+      {"op": "write_memory", "address": "0x8E17", "bytes": [142, 73]},
       {"op": "set_register", "register": "PC", "value": "0xBA24"},
-      {"op": "exit_cpu_step"},
-      {"op": "sleep", "seconds": 2.0}
+      {"op": "run", "opcodes": 1000000}
     ]
   },
   "state_probe": {

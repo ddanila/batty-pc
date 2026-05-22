@@ -274,6 +274,13 @@ def apply_original_setup(zc: ZrcpClient, setup: Sequence[Dict[str, object]]) -> 
         op = step.get("op")
         if op == "sleep":
             time.sleep(float(step.get("seconds", 0.0)))
+        elif op == "run":
+            # Step N opcodes — bit-exact across runs, unlike sleep which
+            # advances at wall-clock speed and lands the Z80 at a
+            # non-deterministic PC.
+            zc.run(parse_int(step["opcodes"]),
+                   no_stop_on_data=True,
+                   timeout=max(10.0, parse_int(step["opcodes"]) / 50000.0))
         elif op == "enter_cpu_step":
             zc.enter_cpu_step()
         elif op == "exit_cpu_step":

@@ -44,41 +44,61 @@ the test floppy with `BATTY_LEVEL=3` and `BATTY_START_LEVEL=1` so the
 DOS port starts directly in L3 gameplay instead of spending replay time
 in title/menu screens. It also enables `BATTY_REPLAY_PROBE=1`, which
 causes the DOS port to write `PROBE.TXT` with the L3 entry counters,
-RNG bytes, object bytes, and live level copy. The target currently sets
-`BATTY_REPLAY_RANDOM=8E49` so the DOS port starts from the original's
-probed L3 random-number bytes, and `BATTY_REPLAY_BAT_OBJECT` so the
-bat descriptor starts from the original's probed L3 bytes. It also sets
-`BATTY_REPLAY_BALL_OBJECT` to test whether the ball descriptor accounts
-for the remaining replay drift. `BATTY_REPLAY_ENEMY_OBJECT` is wired up
-the same way for the alien descriptor at `$9B96`, ready to use once a
-deterministic original-side value is available.
+RNG bytes, object bytes, and live level copy. The target sets
+`BATTY_REPLAY_RANDOM=8E49`, `BATTY_REPLAY_BAT_OBJECT`,
+`BATTY_REPLAY_BALL_OBJECT`, and `BATTY_REPLAY_ENEMY_OBJECT` so the
+port's RNG and bat/ball/enemy descriptors at L3 entry exactly match
+the original's probe at the same point.
 
 `replay-l3-brick-flash-both` also drives ZEsarUX and prints INFO diffs.
 The original side starts from the tracked `20260513T202101Z` RAM
-snapshot converted to `.sna`, then uses ZRCP setup commands to poke the
-level and round counters to L3 and jump through the original level-init
-path. The current probe comparison proves that the brick count, current
-level, round number, and level byte copy match; it also shows that RNG
-and bat object bytes now match, and can force the ball / enemy object
-bytes to match for alignment experiments. It is not a parity gate yet
-because the exact frame-sync point still needs to be verified. The
-harness refuses `--fail-on-diff` unless a replay marks
-`comparison.aligned_start=true`.
+snapshot converted to `.sna`, then uses ZRCP setup commands to poke
+the level and round counters to L3, pin `random_number` at `$8E17` to
+the same `8E49` the port forces, jump to `BA24`, and step the Z80 a
+fixed number of opcodes via the harness's `run` op (replaces the
+earlier wall-clock `sleep 2.0`, which let the original land at a
+non-deterministic PC because emulator speed varies). At one million
+opcodes the original ends up with RNG, bat, ball, and enemy bytes that
+match the port's overrides byte-for-byte, so the probe comparison is
+now `PASS` on every named state line — including `object_enemy`, which
+was the previously-non-deterministic ($40 vs $A8 spawn-column) value.
+
+The harness still does not mark `comparison.aligned_start=true`, so
+`--fail-on-diff` remains refused. Captures continue to diverge:
+`l3_initial` ≈ 246 / 23040 px (1.07%) and `l3_after` ≈ 81%. Both diffs
+come from runtime drift in the wall-clock window between the probe and
+the screendump — QEMU and ZEsarUX advance at different effective rates,
+so even with identical L3-entry state the alien lands at a slightly
+different pixel position 0.8 s later and at a very different state
+13 s later (after the ball-release event).
 
 ## Next required step
 
-Pin the original's enemy descriptor to a deterministic value. Running
-`replay-l3-brick-flash-both` twice currently produces different
-`object_enemy` probe bytes because the original's `random_number` at
-the point `enemy_prepare` chooses the alien's spawn column hasn't been
-forced to a fixed value yet. The two observed states differ only in the
-spawn column (`$40` vs `$A8`), the byte that `prop_x_coord[r & 3]`
-selects. Adding a ZRCP `write_memory` for `random_number` (or for
-`object_enemy` directly) before the `BA24` jump would lock the alien
-into one of those two spawn columns and let the port-side
-`BATTY_REPLAY_ENEMY_OBJECT` env var hold the alignment.
+Resolve cross-emulator runtime drift before the captures can be
+fail-gated. The two emulators we drive — QEMU (DOS port) and ZEsarUX
+(original) — run at independent effective speeds: QEMU is host-bound,
+ZEsarUX is real-time-clamped, and neither is frame-locked to the
+harness clock. As a result, 0.8 s of wall-clock advances the port and
+the original by different numbers of game frames, and the alien sprite
+lands at different pixel positions. Three plausible paths:
 
-Once that is wired, the comparison should mainly cover the alien's path
-through the brick band. With the enemy state aligned, the L3 brick row
-6 col 6 mismatch should disappear (the port currently renders that
-brick under the alien sprite, the original has the alien elsewhere).
+- **Frame-step both sides.** Replace the harness's wall-clock `at`
+  scheduling with explicit "step N PIT frames" / "step N Z80 frames"
+  commands, so each capture fires after the same number of game frames
+  on each side. Cleanest for parity but requires both DOS-port hooks
+  (pause/step on a PIT tick) and ZEsarUX breakpoints on the frame
+  interrupt vector.
+- **Make the port run-bound too.** Add a port-side env var that pauses
+  the main loop until a "go" signal, then runs a fixed number of frames
+  before capture. Mirror that on the ZEsarUX side with `run N opcodes`
+  per captured beat. Less invasive than full frame-stepping but still
+  needs a new pause hook in `run_level`.
+- **Compare cycle-equivalent windows.** Split the L3 spec into two
+  short-window replays whose captures land within the first few frames
+  after probe (where drift is small), and accept that long-window
+  captures stay informational. Quickest win, no harness changes; gives
+  a real parity gate for level-entry visuals.
+
+Of the three, the third path is the lowest-risk near-term win: it lets
+`l3_initial` become a fail-gated parity check while we work on the
+infrastructure for the longer-window captures.
