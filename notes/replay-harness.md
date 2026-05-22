@@ -15,7 +15,9 @@ Each replay declares:
 - `state_probe`: optional port/original state values to record before
   replay input is applied,
 - `comparison.aligned_start`: whether original and port start from the
-  same gameplay state and can be treated as a parity gate.
+  same gameplay state and can be treated as a parity gate,
+- `comparison.required_probe_rows`: optional state-probe rows that must
+  exist on both sides and match even when capture diffs are only INFO.
 
 The harness writes decoded palette-index buffers next to raw captures:
 
@@ -73,6 +75,10 @@ port's RNG and bat/ball/enemy descriptors at L3 entry exactly match
 the original's probe at the same point.
 
 `replay-l3-brick-flash-both` also drives ZEsarUX and prints INFO diffs.
+Its stable probe rows are now a gate: RNG, counters, bat, brick-hit
+animation slots, and level-copy bytes must match, even though the later
+screenshots are still informational. This catches setup regressions
+without pretending the wall-clock captures are pixel-stable.
 The original side starts from the tracked `20260513T202101Z` RAM
 snapshot converted to `.sna`, then uses ZRCP setup commands to poke
 the level and round counters to L3, pin `random_number` at `$8E17` to
@@ -80,11 +86,13 @@ the same `8E49` the port forces, jump to `BA24`, and step the Z80 a
 fixed number of opcodes via the harness's `run` op (replaces the
 earlier wall-clock `sleep 2.0`, which let the original land at a
 non-deterministic PC because emulator speed varies). At one million
-opcodes the original ends up with RNG, bat, ball, enemy, brick-hit
+opcodes the original ends up with RNG, counters, bat, brick-hit
 animation slots, and level-copy bytes that match the port's probe
-byte-for-byte, so the probe comparison is now `PASS` on every named
-state line — including `object_enemy`, which was the
-previously-non-deterministic ($40 vs $A8 spawn-column) value.
+byte-for-byte, so those rows are required. Ball and enemy object rows
+remain useful diagnostics, but are not required: this opcode landing
+can still phase-shift them before the next capture. They become gate
+candidates once the next pause or frame-step checkpoint replaces this
+coarse opcode step.
 
 The harness still does not mark `comparison.aligned_start=true`, so
 `--fail-on-diff` remains refused. Captures continue to diverge:

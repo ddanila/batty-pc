@@ -450,10 +450,12 @@ def compare_outputs(spec: ReplaySpec, port_dir: Path, original_dir: Path,
     port_state = read_probe_report(port_dir)
     original_state = read_probe_report(original_dir)
     common = sorted(set(port_state) & set(original_state))
+    required_probe_rows = set(str(v) for v in spec.comparison.get("required_probe_rows", []))
     summary = {
         "spec": spec.name,
         "aligned_start": aligned,
         "fail_on_diff": fail_on_diff,
+        "required_probe_rows": sorted(required_probe_rows),
         "probe_rows": [],
         "port_only_probe_rows": sorted(set(port_state) - set(original_state)),
         "original_only_probe_rows": sorted(set(original_state) - set(port_state)),
@@ -465,13 +467,15 @@ def compare_outputs(spec: ReplaySpec, port_dir: Path, original_dir: Path,
             port_val = port_state[name]
             orig_val = original_state[name]
             same = port_val == orig_val
+            required = name in required_probe_rows
             summary["probe_rows"].append({
                 "name": name,
                 "match": same,
+                "required": required,
                 "port": port_val,
                 "original": orig_val,
             })
-            tag = "PASS" if same else "INFO"
+            tag = "PASS" if same else ("FAIL" if required else "INFO")
             if same:
                 # PASS lines only need name + value; dumping the value
                 # twice (especially long hex like current_level_copy)
@@ -480,8 +484,20 @@ def compare_outputs(spec: ReplaySpec, port_dir: Path, original_dir: Path,
                 print(f"    {tag} {name}: {preview}")
             else:
                 print(f"    {tag} {name}: port={port_val} original={orig_val}")
-            if fail_on_diff and not same:
+            if not same and (fail_on_diff or required):
                 failures += 1
+    missing_required = sorted(required_probe_rows - set(common))
+    for name in missing_required:
+        print(f"    FAIL {name}: required probe row missing from one side")
+        summary["probe_rows"].append({
+            "name": name,
+            "match": False,
+            "required": True,
+            "missing": True,
+            "port": port_state.get(name),
+            "original": original_state.get(name),
+        })
+        failures += 1
     for capture in spec.captures:
         actual = read_indices(port_dir / f"{capture.name}.idx")
         expected = read_indices(original_dir / f"{capture.name}.idx")
