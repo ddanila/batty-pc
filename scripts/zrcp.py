@@ -55,7 +55,8 @@ class ZrcpClient:
                 self.sock = None
                 self._buffer = b""
 
-    def command(self, line: str, timeout: Optional[float] = None) -> str:
+    def command(self, line: str, timeout: Optional[float] = None,
+                allow_error: bool = False) -> str:
         if self.sock is None:
             self.connect()
         assert self.sock is not None
@@ -63,7 +64,16 @@ class ZrcpClient:
         raw = self._read_until_prompt(timeout=timeout)
         text = raw.decode("latin1", errors="replace")
         text = re.sub(r"command(?:@cpu-step)?> $", "", text)
-        return text.rstrip("\r\n")
+        text = text.rstrip("\r\n")
+        # ZEsarUX signals failure by prefixing the response with "Error.";
+        # the body of the response is the error message. Without this
+        # check, callers silently drop the failure on the floor and the
+        # downstream symptom (e.g. a breakpoint that never trips) is
+        # hard to trace back. Set allow_error=True if you need to read
+        # the error string yourself.
+        if not allow_error and text.startswith("Error."):
+            raise ZrcpError(f"ZRCP command failed: {line!r} -> {text!r}")
+        return text
 
     def _read_until_prompt(self, timeout: Optional[float] = None) -> bytes:
         if self.sock is None:
