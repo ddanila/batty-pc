@@ -982,6 +982,7 @@ static int big_bat_active(void);     /* forward — defined below */
  * every-other-frame from $9D45's `RR E` gating. */
 static int           bat_extra_px    = 0;
 static int           bat_extra_tgt   = 0;
+static int           bat_draw_extra_px = 0;
 
 /* "+400" floating-marker state spawned on bonus catch (port of
  * sprite_set $0B transition at $A6BA + handling_400pts at $A58D).
@@ -1906,6 +1907,21 @@ static void render_bat(unsigned char cycle, unsigned char attr) {
     blit_masked_to_scr_buff(spr, x, y);
 }
 
+static int bat_draw_extra_for_bounds(int extra) {
+    return (extra >= BAT_BIG_EXTRA_PX) ? BAT_BIG_EXTRA_PX : extra;
+}
+
+static void bat_sprite_bounds(int x, int extra, int *x0, int *x1) {
+    int e = bat_draw_extra_for_bounds(extra);
+    *x0 = x - e;
+    *x1 = x + BAT_W_BYTES * 8 + e;
+}
+
+static void remember_bat_draw_state(void) {
+    BAT_PREV_X = BAT_X;
+    bat_draw_extra_px = bat_extra_px;
+}
+
 /* Two pixels that walk back and forth along the bat — the original's
  * running_dot at $B8E6. Drawn into scr_buff at offset $1660 (row 179,
  * = 6 rows into the 13-row bat sprite) by ANDing one bit per dot via
@@ -2466,6 +2482,7 @@ static void render_level_screen(unsigned char level_idx) {
     paint_frame_to_buff(cycle, level_idx);
     render_bat(cycle, bg_attr);
     render_lives(cycle, bg_attr);
+    remember_bat_draw_state();
     render_hud_to_buff();
     /* Original LBE8B_11 draws score labels/digits immediately before
      * magnets and bricks. This matters on levels whose magnets overlap
@@ -3040,31 +3057,34 @@ static state_t run_hiscore(void) {
     }
 }
 
-/* Restore a horizontal strip of scr_buff to the level's hex bg tile
- * and attr_buff (for the char rows the strip covers) to bg_attr.
- * Used to wipe a sprite's previous position before re-blitting. */
-static void paint_bg_strip_to_buff(unsigned char attr, unsigned char cycle,
-                                    int y0, int h) {
+/* Restore a byte-column window of scr_buff to the level's hex bg tile
+ * and attr_buff to bg_attr. Used to wipe a sprite's previous position
+ * before re-blitting. */
+static void paint_bg_window_to_buff(unsigned char attr, unsigned char cycle,
+                                    int y0, int h, int byte_lo, int byte_hi) {
     const unsigned char *tile = bg_tile + (int)cycle * BG_TILE_SIZE;
     int y, char_row;
     int y_end = y0 + h;
+    if (byte_lo < 0) byte_lo = 0;
+    if (byte_hi > 31) byte_hi = 31;
+    if (y0 < 0) y0 = 0;
     if (y_end > PLAYFIELD_H) y_end = PLAYFIELD_H;
+    if (byte_lo > byte_hi || y0 >= y_end) return;
     for (y = y0; y < y_end; y++) {
         int ty = y & 15;
         unsigned char t0 = tile[ty * 2];
         unsigned char t1 = tile[ty * 2 + 1];
-        unsigned short pattern = t0 | ((unsigned short)t1 << 8);
-        unsigned short *dest = (unsigned short *)&scr_buff[y * 32];
-        int i;
-        for (i = 0; i < 16; i++) {
-            dest[i] = pattern;
+        int byte_col;
+        for (byte_col = byte_lo; byte_col <= byte_hi; byte_col++) {
+            scr_buff[y * 32 + byte_col] = (byte_col & 1) ? t1 : t0;
         }
     }
     {
         int char_row_lo = y0 / 8;
         int char_row_hi = (y_end - 1) / 8;
         for (char_row = char_row_lo; char_row <= char_row_hi && char_row < ATTR_ROWS; char_row++) {
-            memset(&attr_buff[char_row * 32], attr, 32);
+            memset(&attr_buff[char_row * 32 + byte_lo], attr,
+                   (unsigned int)(byte_hi - byte_lo + 1));
         }
     }
 }
@@ -3072,15 +3092,19 @@ static void paint_bg_strip_to_buff(unsigned char attr, unsigned char cycle,
 /* Flush a horizontal strip of scr_buff/attr_buff to VGA — partial
  * version of buff_to_vga used after a paint_bg_strip_to_buff +
  * sprite blits to redraw just the affected band. */
-static void buff_to_vga_strip(int y0, int h) {
+static void buff_to_vga_rect_bytes(int y0, int h, int byte_lo, int byte_hi) {
     int y, byte_col;
     int y_end = y0 + h;
+    if (byte_lo < 0) byte_lo = 0;
+    if (byte_hi > 31) byte_hi = 31;
+    if (byte_lo > byte_hi) return;
     if (y_end > PLAYFIELD_H) y_end = PLAYFIELD_H;
     for (y = y0; y < y_end; y++) {
-        unsigned char __far *dest = vga + (long)(BORDER_Y + y) * SCREEN_W + BORDER_X;
+        unsigned char __far *dest = vga + (long)(BORDER_Y + y) * SCREEN_W
+                                  + BORDER_X + byte_lo * 8;
         const unsigned char *scr_row = &scr_buff[y * 32];
         const unsigned char *attr_row = &attr_buff[(y >> 3) * 32];
-        for (byte_col = 0; byte_col < 32; byte_col++) {
+        for (byte_col = byte_lo; byte_col <= byte_hi; byte_col++) {
             unsigned char b = scr_row[byte_col];
             unsigned char attr = attr_row[byte_col];
             unsigned char ink = ink_table[attr];
@@ -3145,6 +3169,10 @@ static void buff_to_vga_strip(int y0, int h) {
             }
         }
     }
+}
+
+static void buff_to_vga_strip(int y0, int h) {
+    buff_to_vga_rect_bytes(y0, h, 0, 31);
 }
 
 /* DOS extended-key scancodes (after a leading 0 byte from getch). */
@@ -4508,25 +4536,38 @@ static void step_ball3(void) {
  * timeout still trips, so the cycle keeps moving even with no input.
  * Under BATTYALL=1 (test floppy) auto-advance is off and the test
  * orchestrator drives every transition via sendkey. */
-/* Redraw the bat band only (y=167..185). Independent of bricks.
- * Re-fills the strip's scr_buff/attr_buff with bg, blits bat + lives
- * via the scr_buff pipeline, then flushes the strip to VGA. */
+/* Redraw the bat's object window only. Original print_obj_from_buf_to_scr
+ * computes a byte-aligned union of previous/current object bounds, then
+ * recovers that window from scr_buff instead of repainting the whole
+ * row band. Keep the same shape here: restore the old/current bat
+ * footprint, re-blit the bat/running dot, and flush only those bytes.
+ * Side-frame bytes are therefore touched only when the bat actually
+ * overlaps them. */
 static void redraw_bat(unsigned char cycle, unsigned char bg_attr) {
+    int old_x0, old_x1, new_x0, new_x1;
+    int byte_lo, byte_hi;
     int y;
-    /* Note: paint_frame_to_buff writes outside this strip too, but
-     * buff_to_vga_strip only flushes BAT_Y_PX..BAT_H_PX so the off-
-     * strip side-strip pixels just sit in scr_buff until the next
-     * full redraw. Inside the strip, the frame side cells are
-     * restored before the bat OR-blit lands on them. */
-    paint_bg_strip_to_buff(bg_attr, cycle, BAT_Y_PX, BAT_H_PX);
+    bat_sprite_bounds(BAT_PREV_X, bat_draw_extra_px, &old_x0, &old_x1);
+    bat_sprite_bounds(BAT_X, bat_extra_px, &new_x0, &new_x1);
+    if (new_x0 < old_x0) old_x0 = new_x0;
+    if (new_x1 > old_x1) old_x1 = new_x1;
+    byte_lo = old_x0 >> 3;
+    byte_hi = (old_x1 + 7) >> 3;
+    if (byte_lo < 0) byte_lo = 0;
+    if (byte_hi > 32) byte_hi = 32;
+    if (byte_lo >= byte_hi) return;
+
+    paint_bg_window_to_buff(bg_attr, cycle, BAT_Y_PX, BAT_H_PX,
+                            byte_lo, byte_hi - 1);
     paint_frame_to_buff(cycle, current_level_idx_var);
     render_bat(cycle, bg_attr);
     render_running_dot();
     render_lives(cycle, bg_attr);
-    buff_to_vga_strip(BAT_Y_PX, BAT_H_PX);
+    buff_to_vga_rect_bytes(BAT_Y_PX, BAT_H_PX, byte_lo, byte_hi - 1);
     for (y = BAT_Y_PX; y < BAT_Y_PX + BAT_H_PX; y++) {
         prev_dirty_lines[y] = 1;
     }
+    remember_bat_draw_state();
 }
 
 static void render_hud_to_buff(void);
@@ -4592,6 +4633,7 @@ static void redraw_full_with_ball(unsigned char level_idx) {
     render_bat(cycle, bg_attr);
     render_running_dot();
     mark_dirty(BAT_Y_PX, 13);
+    remember_bat_draw_state();
 
     /* Lives and HUD are static in the cached background and are rebuilt
      * only when score/lives/brick-animation invalidation requires it. */
@@ -5648,7 +5690,6 @@ static state_t run_level(void) {
 
             if (BAT_X != BAT_PREV_X) {
                 bat_moved = 1;
-                BAT_PREV_X = BAT_X;
             }
 
             if (ball_moved) {

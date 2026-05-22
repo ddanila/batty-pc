@@ -199,6 +199,33 @@ def lint_moving_object_attrs(src_path: Path) -> int:
     return 0
 
 
+def lint_bat_redraw_window(src_path: Path) -> int:
+    """Source-code lint: bat-only redraw must stay object-window scoped.
+
+    The original print_obj_from_buf_to_scr restores the byte-aligned
+    union of previous/current object bounds. A full BAT_Y_PX strip flush
+    makes both side borders visibly repaint while the bat moves.
+    """
+    text = src_path.read_text()
+    start = text.find("static void redraw_bat(")
+    end = text.find("static void render_hud_to_buff", start)
+    if start < 0 or end < 0:
+        print("  FAIL lint: could not locate redraw_bat()")
+        return 1
+    body = text[start:end]
+    failed = 0
+    if "buff_to_vga_rect_bytes(BAT_Y_PX, BAT_H_PX" not in body:
+        print("  FAIL lint: redraw_bat() does not flush a byte-window rectangle")
+        failed += 1
+    if "buff_to_vga_strip(BAT_Y_PX, BAT_H_PX" in body:
+        print("  FAIL lint: redraw_bat() flushes the full bat strip")
+        failed += 1
+    if failed:
+        return failed
+    print("  PASS lint: redraw_bat is byte-window scoped")
+    return 0
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--floppy', default='build/batty.img')
@@ -302,6 +329,7 @@ def main():
     # Source-code lint: catch this class of regression even when state4
     # can't (= the buggy code path is only exercised mid-gameplay).
     failed += lint_moving_object_attrs(Path('src/main.c'))
+    failed += lint_bat_redraw_window(Path('src/main.c'))
 
     sys.exit(failed)
 
