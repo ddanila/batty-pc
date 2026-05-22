@@ -49,7 +49,9 @@ RNG bytes, object bytes, and live level copy. The target currently sets
 probed L3 random-number bytes, and `BATTY_REPLAY_BAT_OBJECT` so the
 bat descriptor starts from the original's probed L3 bytes. It also sets
 `BATTY_REPLAY_BALL_OBJECT` to test whether the ball descriptor accounts
-for the remaining replay drift.
+for the remaining replay drift. `BATTY_REPLAY_ENEMY_OBJECT` is wired up
+the same way for the alien descriptor at `$9B96`, ready to use once a
+deterministic original-side value is available.
 
 `replay-l3-brick-flash-both` also drives ZEsarUX and prints INFO diffs.
 The original side starts from the tracked `20260513T202101Z` RAM
@@ -57,17 +59,26 @@ snapshot converted to `.sna`, then uses ZRCP setup commands to poke the
 level and round counters to L3 and jump through the original level-init
 path. The current probe comparison proves that the brick count, current
 level, round number, and level byte copy match; it also shows that RNG
-and bat object bytes now match, and can force the ball object bytes to
-match for alignment experiments. It is not a parity gate yet because
-the exact frame-sync point still needs to be verified. The harness
-refuses `--fail-on-diff` unless a replay marks
+and bat object bytes now match, and can force the ball / enemy object
+bytes to match for alignment experiments. It is not a parity gate yet
+because the exact frame-sync point still needs to be verified. The
+harness refuses `--fail-on-diff` unless a replay marks
 `comparison.aligned_start=true`.
 
 ## Next required step
 
-Verify and lock an original frame-sync point for the L3 replay. For L3
-brick/bonus work, that means proving the ZRCP setup leaves original and
-port at the same L3 entry point and same ball/bat/object state before
-the first capture. Once that is proven, mark
-`comparison.aligned_start=true` and promote the replay to a fail-gated
-target.
+Pin the original's enemy descriptor to a deterministic value. Running
+`replay-l3-brick-flash-both` twice currently produces different
+`object_enemy` probe bytes because the original's `random_number` at
+the point `enemy_prepare` chooses the alien's spawn column hasn't been
+forced to a fixed value yet. The two observed states differ only in the
+spawn column (`$40` vs `$A8`), the byte that `prop_x_coord[r & 3]`
+selects. Adding a ZRCP `write_memory` for `random_number` (or for
+`object_enemy` directly) before the `BA24` jump would lock the alien
+into one of those two spawn columns and let the port-side
+`BATTY_REPLAY_ENEMY_OBJECT` env var hold the alignment.
+
+Once that is wired, the comparison should mainly cover the alien's path
+through the brick band. With the enemy state aligned, the L3 brick row
+6 col 6 mismatch should disappear (the port currently renders that
+brick under the alien sprite, the original has the alien elsewhere).

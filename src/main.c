@@ -3833,6 +3833,13 @@ static void apply_replay_ball_object_override(void) {
     memcpy(&objects[OBJ_BALL_1], bytes, sizeof(bytes));
 }
 
+static void apply_replay_enemy_object_override(void) {
+    unsigned char bytes[sizeof(object_t)];
+    if (replay_parse_hex_bytes(getenv("BATTY_REPLAY_ENEMY_OBJECT"),
+                               bytes, (int)sizeof(bytes)) != 0) return;
+    memcpy(&objects[OBJ_ENEMY], bytes, sizeof(bytes));
+}
+
 /* prop_uneven / prop_even / prop_x_coord from $9F27. Fields:
  *   +0 type ($09=bird, $08=UFO)
  *   +1 misc_12
@@ -3871,6 +3878,10 @@ static void write_replay_probe(void) {
     fprintf(f, "\nobject_bat_1=");
     for (i = 0; i < (int)sizeof(object_t); i++) {
         fprintf(f, "%02X", ((unsigned char *)&objects[OBJ_BAT_1])[i]);
+    }
+    fprintf(f, "\nobject_enemy=");
+    for (i = 0; i < (int)sizeof(object_t); i++) {
+        fprintf(f, "%02X", ((unsigned char *)&objects[OBJ_ENEMY])[i]);
     }
     fprintf(f, "\ncurrent_level_copy=");
     for (i = 0; i < LVL_CELLS; i++) fprintf(f, "%02X", live_level[i]);
@@ -5337,6 +5348,7 @@ static state_t run_level(void) {
         apply_replay_random_override();
         apply_replay_bat_object_override();
         apply_replay_ball_object_override();
+        apply_replay_enemy_object_override();
         write_replay_probe();
         render_level_screen(i);
         if (show_round_banner((unsigned int)round_number + 1)) return ST_QUIT;

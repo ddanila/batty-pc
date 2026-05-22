@@ -32,6 +32,7 @@
       {"name": "random_number", "address": "0x8E17", "length": 2},
       {"name": "object_ball_1", "address": "0x9AD0", "length": 22},
       {"name": "object_bat_1", "address": "0x9B54", "length": 22},
+      {"name": "object_enemy", "address": "0x9B96", "length": 22},
       {"name": "briks_data", "address": "0xB6F4", "length": 35},
       {"name": "current_level_copy", "address": "0x6100", "length": 180}
     ],
