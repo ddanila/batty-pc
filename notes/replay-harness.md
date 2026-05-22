@@ -30,6 +30,11 @@ after the original setup commands run and before replay input begins.
 
 Comparisons are made in RGB palette space, matching `test_visual.py`,
 so bright-black and non-bright black remain visually equivalent.
+For every differing capture, comparison runs also write a cropped diff
+image to `build/replay/<name>/compare/<capture>-diff.png`. Matching
+pixels are dimmed for context and mismatches are red. The console line
+prints the mismatch bounding box as playfield coordinates, which makes
+drift checks easier to compare across repeated runs.
 
 ## Commands
 
@@ -83,7 +88,11 @@ come from runtime drift in the wall-clock window between the probe and
 the screendump — QEMU and ZEsarUX advance at different effective rates,
 so even with identical L3-entry state the alien lands at a slightly
 different pixel position 0.8 s later and at a very different state
-13 s later (after the ball-release event).
+13 s later (after the ball-release event). Use the generated
+`build/replay/l3-brick-flash/compare/*-diff.png` files and printed
+`bounds=(x0, y0, x1, y1)` values to distinguish small phase drift from
+whole-playfield divergence while designing the next pause or frame-step
+checkpoint.
 
 ## Next required step
 

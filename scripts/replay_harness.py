@@ -384,20 +384,54 @@ def run_original(spec: ReplaySpec, out_dir: Path, zesarux: str, port: int) -> No
 
 
 def diff_capture(actual: bytes, expected: bytes,
-                 roi: Optional[Tuple[int, int, int, int]]) -> Tuple[int, int]:
+                 roi: Optional[Tuple[int, int, int, int]]
+                 ) -> Tuple[int, int, Optional[Tuple[int, int, int, int]]]:
     if roi is None:
-        total = PLAYFIELD_W * PLAYFIELD_H
-        diff = sum(1 for a, e in zip(actual, expected)
-                   if PALETTE_RGB[a] != PALETTE_RGB[e])
-        return diff, total
+        roi = (0, 0, PLAYFIELD_W, PLAYFIELD_H)
     x0, y0, x1, y1 = roi
     diff = 0
+    min_x = PLAYFIELD_W
+    min_y = PLAYFIELD_H
+    max_x = -1
+    max_y = -1
     for y in range(y0, y1):
         row = y * PLAYFIELD_W
         for x in range(x0, x1):
             if PALETTE_RGB[actual[row + x]] != PALETTE_RGB[expected[row + x]]:
                 diff += 1
-    return diff, (x1 - x0) * (y1 - y0)
+                min_x = min(min_x, x)
+                min_y = min(min_y, y)
+                max_x = max(max_x, x + 1)
+                max_y = max(max_y, y + 1)
+    bounds = None if diff == 0 else (min_x, min_y, max_x, max_y)
+    return diff, (x1 - x0) * (y1 - y0), bounds
+
+
+def write_diff_png(actual: bytes, expected: bytes, out_path: Path,
+                   roi: Optional[Tuple[int, int, int, int]]) -> bool:
+    try:
+        from PIL import Image
+    except ImportError:
+        return False
+    if roi is None:
+        roi = (0, 0, PLAYFIELD_W, PLAYFIELD_H)
+    x0, y0, x1, y1 = roi
+    img = Image.new("RGB", (x1 - x0, y1 - y0))
+    px = img.load()
+    for y in range(y0, y1):
+        row = y * PLAYFIELD_W
+        for x in range(x0, x1):
+            i = row + x
+            dx = x - x0
+            dy = y - y0
+            if PALETTE_RGB[actual[i]] == PALETTE_RGB[expected[i]]:
+                r, g, b = PALETTE_RGB[expected[i]]
+                px[dx, dy] = (r // 3, g // 3, b // 3)
+            else:
+                px[dx, dy] = (255, 0, 0)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    img.save(out_path)
+    return True
 
 
 def compare_outputs(spec: ReplaySpec, port_dir: Path, original_dir: Path,
@@ -435,11 +469,16 @@ def compare_outputs(spec: ReplaySpec, port_dir: Path, original_dir: Path,
     for capture in spec.captures:
         actual = read_indices(port_dir / f"{capture.name}.idx")
         expected = read_indices(original_dir / f"{capture.name}.idx")
-        diff, total = diff_capture(actual, expected, capture.roi)
+        diff, total, bounds = diff_capture(actual, expected, capture.roi)
         pct = 100.0 * diff / total
         tag = "PASS" if diff == 0 else ("FAIL" if fail_on_diff else "INFO")
         roi = f" roi={capture.roi}" if capture.roi else ""
-        print(f"  {tag} {capture.name}: {diff}/{total} px differ ({pct:.2f}%){roi}")
+        bounds_text = f" bounds={bounds}" if bounds else ""
+        print(f"  {tag} {capture.name}: {diff}/{total} px differ ({pct:.2f}%){roi}{bounds_text}")
+        if diff:
+            diff_path = port_dir.parent / "compare" / f"{capture.name}-diff.png"
+            if write_diff_png(actual, expected, diff_path, capture.roi):
+                print(f"       diff artifact: {diff_path}")
         if diff and fail_on_diff:
             failures += 1
     return failures
