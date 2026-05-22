@@ -418,9 +418,18 @@ def compare_outputs(spec: ReplaySpec, port_dir: Path, original_dir: Path,
     if common:
         print("  state probe comparison")
         for name in common:
-            same = port_state[name] == original_state[name]
+            port_val = port_state[name]
+            orig_val = original_state[name]
+            same = port_val == orig_val
             tag = "PASS" if same else "INFO"
-            print(f"    {tag} {name}: port={port_state[name]} original={original_state[name]}")
+            if same:
+                # PASS lines only need name + value; dumping the value
+                # twice (especially long hex like current_level_copy)
+                # buries the actual signal in CI logs.
+                preview = port_val if len(port_val) <= 48 else port_val[:48] + "..."
+                print(f"    {tag} {name}: {preview}")
+            else:
+                print(f"    {tag} {name}: port={port_val} original={orig_val}")
             if fail_on_diff and not same:
                 failures += 1
     for capture in spec.captures:
