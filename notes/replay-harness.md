@@ -34,9 +34,22 @@ so bright-black and non-bright black remain visually equivalent.
 ## Commands
 
 ```sh
-make replay-l3-brick-flash
-make replay-l3-brick-flash-both
+make replay-l3-entry            # fail-gated L3-entry pixel-exact parity
+make replay-l3-brick-flash      # port-side smoke
+make replay-l3-brick-flash-both # informational two-runner comparison
 ```
+
+`replay-l3-entry` is the first true parity gate. Both runners pause at
+the original's main-loop entry (`LB9E8_2 = $BA83`): the port spins on
+`kbhit()` after `play_brik_anim` (gated by `BATTY_REPLAY_WAIT_KEY=1`),
+the original halts via a ZRCP `run_until_pc` op (`enable-breakpoints`
+must precede `set-breakpoint`, learned the hard way). Override env vars
+inject the original's probed `$BA83` state into the port's bat / ball /
+enemy descriptors so the pause-time state matches byte-for-byte. The
+harness fires a single `at=0.1` capture while both sides are still
+paused, then an `at=0.5` `enter` tap wakes the port so QEMU can exit
+cleanly. `--fail-on-diff` returns 0 with `l3_entry: 0/23040 px differ`
+and `PASS` on every state-probe row.
 
 `replay-l3-brick-flash` is a port-side smoke run. It validates replay
 timing, QEMU driving, and capture extraction. The Make target rebuilds
@@ -74,31 +87,23 @@ different pixel position 0.8 s later and at a very different state
 
 ## Next required step
 
-Resolve cross-emulator runtime drift before the captures can be
-fail-gated. The two emulators we drive — QEMU (DOS port) and ZEsarUX
-(original) — run at independent effective speeds: QEMU is host-bound,
-ZEsarUX is real-time-clamped, and neither is frame-locked to the
-harness clock. As a result, 0.8 s of wall-clock advances the port and
-the original by different numbers of game frames, and the alien sprite
-lands at different pixel positions. Three plausible paths:
+Extend the pause-on-both-sides pattern to mid-gameplay captures so the
+brick-flash window (`l3_after` style) can be fail-gated too. Two
+plausible paths:
 
 - **Frame-step both sides.** Replace the harness's wall-clock `at`
   scheduling with explicit "step N PIT frames" / "step N Z80 frames"
-  commands, so each capture fires after the same number of game frames
-  on each side. Cleanest for parity but requires both DOS-port hooks
-  (pause/step on a PIT tick) and ZEsarUX breakpoints on the frame
-  interrupt vector.
-- **Make the port run-bound too.** Add a port-side env var that pauses
-  the main loop until a "go" signal, then runs a fixed number of frames
-  before capture. Mirror that on the ZEsarUX side with `run N opcodes`
-  per captured beat. Less invasive than full frame-stepping but still
-  needs a new pause hook in `run_level`.
-- **Compare cycle-equivalent windows.** Split the L3 spec into two
-  short-window replays whose captures land within the first few frames
-  after probe (where drift is small), and accept that long-window
-  captures stay informational. Quickest win, no harness changes; gives
-  a real parity gate for level-entry visuals.
+  commands so each capture fires after the same number of game frames
+  on each side. Requires a port-side PIT-tick step hook (pause, run
+  N frames, pause again) and a matching ZEsarUX breakpoint on the
+  Z80 frame-interrupt vector.
+- **Trampoline pauses between captures.** Reuse the existing
+  `BATTY_REPLAY_WAIT_KEY` mechanism but rearm the port for a second
+  pause at a known game-state point (e.g. after the first brick hit),
+  and add a matching `run_until_pc` setup op for the original. Less
+  invasive than frame-stepping; works well for "checkpoint" captures
+  but doesn't help for sweeps that need a continuous timeline.
 
-Of the three, the third path is the lowest-risk near-term win: it lets
-`l3_initial` become a fail-gated parity check while we work on the
-infrastructure for the longer-window captures.
+The first path is the structurally cleaner answer; the second is the
+faster way to land a second parity gate while we design the frame-step
+hooks.

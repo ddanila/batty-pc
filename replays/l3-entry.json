@@ -1,0 +1,48 @@
+{
+  "name": "l3-entry",
+  "description": "Static L3-entry parity capture. Both runners pause at main-loop entry (port via BATTY_REPLAY_WAIT_KEY, original via ZRCP breakpoint at LB9E8_2 = $BA83) so the screendump catches identical bytes on both sides with no wall-clock drift.",
+  "timebase": {
+    "unit": "seconds"
+  },
+  "comparison": {
+    "aligned_start": true,
+    "note": "Both runners are paused at the original's LB9E8_2 main-loop entry. The capture fires while still paused; the trailing 'enter' tap wakes the port so QEMU can exit cleanly."
+  },
+  "port": {
+    "floppy": "build/batty-test.img",
+    "probe_file": "PROBE.TXT",
+    "boot_wait": 10.0
+  },
+  "original": {
+    "snapshot_from": "build/snapshots/20260513T202101Z",
+    "boot_wait": 0.5,
+    "setup": [
+      {"op": "enter_cpu_step"},
+      {"op": "write_memory", "address": "0xB7EA", "bytes": [2, 2]},
+      {"op": "write_memory", "address": "0x8E17", "bytes": [142, 73]},
+      {"op": "set_register", "register": "PC", "value": "0xBA24"},
+      {"op": "run_until_pc", "pc": "0xBA83", "max_opcodes": 5000000}
+    ]
+  },
+  "state_probe": {
+    "original": [
+      {"name": "bricks_quantity", "address": "0xB7E9", "length": 1},
+      {"name": "current_level", "address": "0xB7EA", "length": 1},
+      {"name": "round_number", "address": "0xB7EB", "length": 1},
+      {"name": "random_number", "address": "0x8E17", "length": 2},
+      {"name": "object_ball_1", "address": "0x9AD0", "length": 22},
+      {"name": "object_bat_1", "address": "0x9B54", "length": 22},
+      {"name": "object_enemy", "address": "0x9B96", "length": 22},
+      {"name": "current_level_copy", "address": "0x6100", "length": 180}
+    ],
+    "port": [
+      {"name": "level_entry", "source": "screen_hash", "capture": "l3_entry", "roi": [8, 32, 248, 128]}
+    ]
+  },
+  "events": [
+    {"at": 0.5, "key": "enter", "kind": "tap", "note": "wake port from BATTY_REPLAY_WAIT_KEY pause so QEMU can exit"}
+  ],
+  "captures": [
+    {"at": 0.1, "name": "l3_entry", "roi": [8, 32, 248, 128]}
+  ]
+}

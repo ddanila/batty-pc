@@ -281,6 +281,28 @@ def apply_original_setup(zc: ZrcpClient, setup: Sequence[Dict[str, object]]) -> 
             zc.run(parse_int(step["opcodes"]),
                    no_stop_on_data=True,
                    timeout=max(10.0, parse_int(step["opcodes"]) / 50000.0))
+        elif op == "run_until_pc":
+            # Run until the Z80 reaches a specific PC, bounded by a
+            # max_opcodes safety stop. Used to land the original side at
+            # the exact same game-state point the port pauses at (e.g.
+            # main-loop entry after the brick shimmer animation).
+            #
+            # ZEsarUX requires `enable-breakpoints` to run *before*
+            # `set-breakpoint`; otherwise the set silently fails with
+            # "you must enable breakpoints first".
+            target_pc = parse_int(step["pc"])
+            max_opcodes = parse_int(step.get("max_opcodes", 5000000))
+            zc.enable_breakpoints()
+            zc.set_breakpoint(1, f"PC={target_pc:04X}H")
+            zc.run(max_opcodes,
+                   no_stop_on_data=True,
+                   timeout=max(15.0, max_opcodes / 50000.0))
+            regs = zc.get_registers()
+            actual_pc = regs.get("PC", -1)
+            if actual_pc != target_pc:
+                raise RuntimeError(
+                    f"run_until_pc: expected PC=${target_pc:04X}, "
+                    f"got PC=${actual_pc:04X} after {max_opcodes} opcodes")
         elif op == "enter_cpu_step":
             zc.enter_cpu_step()
         elif op == "exit_cpu_step":

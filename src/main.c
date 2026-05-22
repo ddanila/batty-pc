@@ -5354,6 +5354,17 @@ static state_t run_level(void) {
         if (show_round_banner((unsigned int)round_number + 1)) return ST_QUIT;
         render_level_screen(i);                /* re-paint to clear the banner */
         if (play_brik_anim()) return ST_QUIT;
+        /* Replay parity hook: block here until the harness sends a key,
+         * giving the original side a matching breakpoint to halt at and
+         * letting both runners capture the static L3-entry screen with
+         * no wall-clock drift. The wake key is consumed below so it
+         * doesn't double as the next main-loop input. */
+        if (getenv("BATTY_REPLAY_WAIT_KEY") != NULL) {
+            while (!kbhit()) {
+                sound_tick();
+            }
+            (void)getch();
+        }
         cycle = (unsigned char)(i & 3);
         bg_attr = bg_attr_per_cycle[i & 3];
         start     = bios_ticks();

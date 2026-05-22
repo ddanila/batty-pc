@@ -285,6 +285,9 @@ $(TEST_FLOPPY_OUT): $(TEST_EXE) $(ASSETS) $(FLOPPY_SRC)
 	if [ -n "$$BATTY_REPLAY_ENEMY_OBJECT" ]; then \
 	    printf 'SET BATTY_REPLAY_ENEMY_OBJECT=%s\r\n' "$$BATTY_REPLAY_ENEMY_OBJECT" >> build/AUTOEXEC-T.BAT ; \
 	fi; \
+	if [ -n "$$BATTY_REPLAY_WAIT_KEY" ]; then \
+	    printf 'SET BATTY_REPLAY_WAIT_KEY=%s\r\n' "$$BATTY_REPLAY_WAIT_KEY" >> build/AUTOEXEC-T.BAT ; \
+	fi; \
 	printf 'BATTY\r\n' >> build/AUTOEXEC-T.BAT
 	mcopy -i $@ -o build/AUTOEXEC-T.BAT ::AUTOEXEC.BAT
 	@echo "Test floppy ready: $@  (full 4-state cycle)"
@@ -339,6 +342,18 @@ replay-l3-brick-flash-both: $(ZESARUX)
 	rm -f $(TEST_FLOPPY_OUT)
 	BATTY_LEVEL=3 BATTY_START_LEVEL=1 BATTY_REPLAY_PROBE=1 BATTY_REPLAY_RANDOM=8E49 BATTY_REPLAY_BAT_OBJECT=01017400AD000000040DEFAE1C0A74AD040DF0008380 BATTY_REPLAY_BALL_OBJECT=02008000A7000803020CEEF0080780A7020C0000B68C BATTY_REPLAY_ENEMY_OBJECT=0900A80009FE1001030FDB35180CA808030F70701000 $(MAKE) $(TEST_FLOPPY_OUT)
 	python3 scripts/replay_harness.py replays/l3-brick-flash.json --side both --compare
+
+# L3-entry static parity gate. Both runners pause at main-loop entry, so
+# the capture lands on identical bytes on both sides — fail-gated via
+# --fail-on-diff with comparison.aligned_start=true.
+# Object overrides use the original's probed state at $BA83 (LB9E8_2,
+# the original's main-loop entry, BEFORE handling_bat / enemy_prepare
+# run on this frame), so the port's pause-time objects exactly match
+# the original's probe values.
+replay-l3-entry: $(ZESARUX)
+	rm -f $(TEST_FLOPPY_OUT)
+	BATTY_LEVEL=3 BATTY_START_LEVEL=1 BATTY_REPLAY_PROBE=1 BATTY_REPLAY_WAIT_KEY=1 BATTY_REPLAY_RANDOM=8E49 BATTY_REPLAY_BAT_OBJECT=01007400AD000000040D00001C0A00000000F0008380 BATTY_REPLAY_BALL_OBJECT=02008400A0000803020C00000807000000000000C08C BATTY_REPLAY_ENEMY_OBJECT=00017800880000000318000018180000000050440000 $(MAKE) $(TEST_FLOPPY_OUT)
+	python3 scripts/replay_harness.py replays/l3-entry.json --side both --compare --fail-on-diff
 
 tools/zesarux/src/zesarux:
 	git submodule update --init tools/zesarux
