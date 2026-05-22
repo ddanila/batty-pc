@@ -72,7 +72,7 @@ BOX86_FDD_TYPE  ?= 35_2hd
 BOX86_ASSETPATH ?= /home/ddanila/fun/86Box/src/unix/assets
 BOX86_ROMPATH   ?= /home/ddanila/fun/86Box-roms
 
-.PHONY: all clean run run-86box floppy assets help run-original run-original-cheat snapshot candidates regions test test-hud test-brick-flash replay-l3-brick-flash replay-l3-brick-flash-both
+.PHONY: all clean run run-86box floppy assets help run-original run-original-cheat snapshot candidates regions test test-hud test-brick-flash test-rocket-bonus replay-l3-brick-flash replay-l3-brick-flash-both
 
 all: $(EXE) $(ASSETS)
 
@@ -88,6 +88,7 @@ help:
 	@echo "  regions       static scan of main blob -> build/regions.{txt,blockdef}"
 	@echo "  candidates    render bytedata regions as PNGs -> assets/candidates/"
 	@echo "  test-brick-flash  verify brick flash clears vs original L3 reference"
+	@echo "  test-rocket-bonus  verify rocket bonus cannot trigger no-ball death"
 	@echo "  replay-l3-brick-flash       run the L3 replay against the DOS port"
 	@echo "  replay-l3-brick-flash-both  run DOS + original and print INFO diffs"
 	@echo "  clean         remove build/"
@@ -332,6 +333,9 @@ test-hud: $(FLOPPY_OUT)
 
 test-brick-flash: $(TEST_FLOPPY_OUT)
 	python3 scripts/test_brick_flash.py
+
+test-rocket-bonus:
+	python3 scripts/test_rocket_bonus.py
 
 replay-l3-brick-flash:
 	rm -f $(TEST_FLOPPY_OUT)

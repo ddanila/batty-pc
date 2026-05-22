@@ -55,6 +55,13 @@ render in `build/level_gt/level_03.scr`, allowing only a small margin
 above the original brick art. That catches the dirty-line white-block
 failure without hard-coding that every white pixel is wrong.
 
+`make test-rocket-bonus` is a source-level regression for the rocket /
+next-level bonus. The original main loop checks `object_rocket` before
+`balls_quantity` (`LBAED -> LBAED_6`), so catching the rocket can hide
+all balls while the level-clear sequence runs without entering the
+bat-death path. The test fails if the port's no-ball death guard stops
+excluding `rocket_active`.
+
 `make test-hud` is a separate normal-build check because `make test`
 uses `BATTY_SCORELESS_HUD`. It boots the regular floppy to L1 and
 compares the stable original HUD regions (`1UP` / `HI` / `2UP`, player

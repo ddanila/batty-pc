@@ -5574,12 +5574,16 @@ static state_t run_level(void) {
                         step_ball3();
                     }
                 }
-                /* Mirror balls_quantity == 0 → LBC10's bat-explosion
-                 * branch. If the primary ball is hidden (= it fell while
-                 * extras were in play) and the last extra just fell,
-                 * the player has no balls left: run the death animation
-                 * and respawn the primary stuck on the bat. */
-                if (!BALL_VISIBLE && !ball2_active && !ball3_active) {
+                /* Mirror LBAED's ordering: object_rocket is checked
+                 * before balls_quantity, and an active rocket jumps to
+                 * the rocket loop instead of LBC10's bat-explosion
+                 * path. The rocket catch hides all balls while the
+                 * level-clear sequence runs, so that temporary no-ball
+                 * state must not cost a life. */
+                if (!rocket_active
+                    && !BALL_VISIBLE
+                    && !ball2_active
+                    && !ball3_active) {
                     play_bat_explosion(current_level_idx_var);
                     if (lives > 0) lives--;
                     if (lives > 0) respawn_primary_ball();
