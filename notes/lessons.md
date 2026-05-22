@@ -181,3 +181,32 @@ expected values.
 - If only patch bytes differ → disasm is trustworthy. Then look for
   table lookups, SMC, or other indirection that transforms operands
   between the named instructions and the actual ALU input.
+
+## ZEsarUX silently no-ops breakpoint commands
+
+**Rule.** Call `enable-breakpoints` *before* `set-breakpoint` in ZRCP.
+If breakpoints are globally disabled, `set-breakpoint N <cond>` returns
+`"Error. You must enable breakpoints first"` — but the harness's
+`zrcp.py` wrapper discards command output, so the failure is invisible.
+Subsequent `run` calls don't trip the breakpoint and execution sails
+past the target PC.
+
+**Why.** Building `replay-l3-entry`, the harness's `run_until_pc` op
+set breakpoint 1 to `PC=BA83H` then ran 5M opcodes. The Z80 ended at
+`PC=$BB38` (the `HALT/DI` inside the main loop's frame wait) and the
+op raised "expected PC=$BA83, got PC=$BB38." Probing via raw `command`
+showed the set-breakpoint returned an error string but the wrapper had
+swallowed it, and `get-breakpoints` listed `Disabled 1: None`. Flipping
+the order — `enable-breakpoints` first, then `set-breakpoint` — got
+`Enabled 1: PC=BA83H` and the next `run` halted exactly at `$BA83`.
+
+**How to apply.** Whenever a ZRCP `run`-based control flow lands past
+the target:
+
+- Call `get-breakpoints` and confirm the row shows `Enabled N: <cond>`
+  (not `Disabled`).
+- If the wrapper isn't surfacing errors, drop to `zc.command(raw)` to
+  see the actual response string while debugging.
+- Treat the global enable as a precondition for the per-slot set, not
+  the other way around. The same pattern almost certainly applies to
+  ZEsarUX's other conditional facilities (watchpoints, memory traps).
