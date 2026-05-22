@@ -436,6 +436,7 @@ def write_diff_png(actual: bytes, expected: bytes, out_path: Path,
 
 def compare_outputs(spec: ReplaySpec, port_dir: Path, original_dir: Path,
                     fail_on_diff: bool) -> int:
+    compare_dir = port_dir.parent / "compare"
     aligned = bool(spec.comparison.get("aligned_start", False))
     if fail_on_diff and not aligned:
         raise ValueError(
@@ -449,12 +450,27 @@ def compare_outputs(spec: ReplaySpec, port_dir: Path, original_dir: Path,
     port_state = read_probe_report(port_dir)
     original_state = read_probe_report(original_dir)
     common = sorted(set(port_state) & set(original_state))
+    summary = {
+        "spec": spec.name,
+        "aligned_start": aligned,
+        "fail_on_diff": fail_on_diff,
+        "probe_rows": [],
+        "port_only_probe_rows": sorted(set(port_state) - set(original_state)),
+        "original_only_probe_rows": sorted(set(original_state) - set(port_state)),
+        "captures": [],
+    }
     if common:
         print("  state probe comparison")
         for name in common:
             port_val = port_state[name]
             orig_val = original_state[name]
             same = port_val == orig_val
+            summary["probe_rows"].append({
+                "name": name,
+                "match": same,
+                "port": port_val,
+                "original": orig_val,
+            })
             tag = "PASS" if same else "INFO"
             if same:
                 # PASS lines only need name + value; dumping the value
@@ -475,12 +491,27 @@ def compare_outputs(spec: ReplaySpec, port_dir: Path, original_dir: Path,
         roi = f" roi={capture.roi}" if capture.roi else ""
         bounds_text = f" bounds={bounds}" if bounds else ""
         print(f"  {tag} {capture.name}: {diff}/{total} px differ ({pct:.2f}%){roi}{bounds_text}")
+        artifact = None
         if diff:
-            diff_path = port_dir.parent / "compare" / f"{capture.name}-diff.png"
+            diff_path = compare_dir / f"{capture.name}-diff.png"
             if write_diff_png(actual, expected, diff_path, capture.roi):
+                artifact = str(diff_path)
                 print(f"       diff artifact: {diff_path}")
+        summary["captures"].append({
+            "name": capture.name,
+            "roi": list(capture.roi) if capture.roi else None,
+            "diff_pixels": diff,
+            "total_pixels": total,
+            "diff_percent": pct,
+            "bounds": list(bounds) if bounds else None,
+            "diff_artifact": artifact,
+        })
         if diff and fail_on_diff:
             failures += 1
+    compare_dir.mkdir(parents=True, exist_ok=True)
+    summary_path = compare_dir / "summary.json"
+    summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")
+    print(f"  comparison summary: {summary_path}")
     return failures
 
 

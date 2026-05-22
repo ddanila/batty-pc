@@ -34,7 +34,10 @@ For every differing capture, comparison runs also write a cropped diff
 image to `build/replay/<name>/compare/<capture>-diff.png`. Matching
 pixels are dimmed for context and mismatches are red. The console line
 prints the mismatch bounding box as playfield coordinates, which makes
-drift checks easier to compare across repeated runs.
+drift checks easier to compare across repeated runs. Each comparison
+also writes `build/replay/<name>/compare/summary.json` with the
+aligned-start flag, common probe-row matches, side-only probe rows,
+capture diff counts, mismatch bounds, and diff artifact paths.
 
 ## Commands
 
