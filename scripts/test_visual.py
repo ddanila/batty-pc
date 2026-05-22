@@ -214,10 +214,10 @@ def lint_bat_redraw_window(src_path: Path) -> int:
         return 1
     body = text[start:end]
     failed = 0
-    if "buff_to_vga_rect_bytes(BAT_Y_PX, BAT_H_PX" not in body:
+    if "buff_to_vga_rect_bytes(BAT_Y, BAT_H_PX" not in body:
         print("  FAIL lint: redraw_bat() does not flush a byte-window rectangle")
         failed += 1
-    if "buff_to_vga_strip(BAT_Y_PX, BAT_H_PX" in body:
+    if "buff_to_vga_strip(BAT_Y" in body or "buff_to_vga_strip(BAT_Y_PX, BAT_H_PX" in body:
         print("  FAIL lint: redraw_bat() flushes the full bat strip")
         failed += 1
     if failed:
