@@ -62,7 +62,8 @@ the test floppy with `BATTY_LEVEL=3` and `BATTY_START_LEVEL=1` so the
 DOS port starts directly in L3 gameplay instead of spending replay time
 in title/menu screens. It also enables `BATTY_REPLAY_PROBE=1`, which
 causes the DOS port to write `PROBE.TXT` with the L3 entry counters,
-RNG bytes, object bytes, and live level copy. The target sets
+RNG bytes, object bytes, original-shaped `briks_data`, and live level
+copy. The target sets
 `BATTY_REPLAY_RANDOM=8E49`, `BATTY_REPLAY_BAT_OBJECT`,
 `BATTY_REPLAY_BALL_OBJECT`, and `BATTY_REPLAY_ENEMY_OBJECT` so the
 port's RNG and bat/ball/enemy descriptors at L3 entry exactly match
@@ -76,10 +77,11 @@ the same `8E49` the port forces, jump to `BA24`, and step the Z80 a
 fixed number of opcodes via the harness's `run` op (replaces the
 earlier wall-clock `sleep 2.0`, which let the original land at a
 non-deterministic PC because emulator speed varies). At one million
-opcodes the original ends up with RNG, bat, ball, and enemy bytes that
-match the port's overrides byte-for-byte, so the probe comparison is
-now `PASS` on every named state line — including `object_enemy`, which
-was the previously-non-deterministic ($40 vs $A8 spawn-column) value.
+opcodes the original ends up with RNG, bat, ball, enemy, brick-hit
+animation slots, and level-copy bytes that match the port's probe
+byte-for-byte, so the probe comparison is now `PASS` on every named
+state line — including `object_enemy`, which was the
+previously-non-deterministic ($40 vs $A8 spawn-column) value.
 
 The harness still does not mark `comparison.aligned_start=true`, so
 `--fail-on-diff` remains refused. Captures continue to diverge:

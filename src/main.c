@@ -3860,6 +3860,40 @@ static void respawn_primary_ball(void);                     /* forward */
 static unsigned char current_level_idx_var;  /* set by run_level so
                                               * enemy_prepare can read it */
 
+static unsigned int replay_probe_screen_addr_for_brick(int col, int row) {
+    unsigned int x = 8u + (unsigned int)col * 16u;
+    unsigned int y = 32u + (unsigned int)row * 8u;
+    return 0x4000u
+         + ((y & 0xC0u) << 5)
+         + ((y & 0x07u) << 8)
+         + ((y & 0x38u) << 2)
+         + (x >> 3);
+}
+
+static void write_replay_briks_data(FILE *f) {
+    int i;
+    fprintf(f, "\nbriks_data=");
+    for (i = 0; i < BRICK_HIT_ANIM_SLOTS; i++) {
+        unsigned char tick = brick_hit_anim_ticks[i];
+        unsigned char col = brick_hit_anim_col[i];
+        unsigned char row = brick_hit_anim_row[i];
+        unsigned int screen_addr = tick
+                                 ? replay_probe_screen_addr_for_brick(col, row)
+                                 : 0;
+        unsigned int scr_buff_addr = tick ? 0xDA00u + 0x401u
+                                  + (unsigned int)row * 0x100u
+                                  + (unsigned int)col * 2u : 0;
+        unsigned int level_addr = tick ? 0x6100u
+                                + (unsigned int)row * LVL_COLS
+                                + (unsigned int)col : 0;
+        fprintf(f, "%02X%02X%02X%02X%02X%02X%02X",
+                tick,
+                screen_addr & 0xFFu, screen_addr >> 8,
+                scr_buff_addr & 0xFFu, scr_buff_addr >> 8,
+                level_addr & 0xFFu, level_addr >> 8);
+    }
+}
+
 static void write_replay_probe(void) {
     FILE *f;
     int i;
@@ -3883,6 +3917,7 @@ static void write_replay_probe(void) {
     for (i = 0; i < (int)sizeof(object_t); i++) {
         fprintf(f, "%02X", ((unsigned char *)&objects[OBJ_ENEMY])[i]);
     }
+    write_replay_briks_data(f);
     fprintf(f, "\ncurrent_level_copy=");
     for (i = 0; i < LVL_CELLS; i++) fprintf(f, "%02X", live_level[i]);
     fprintf(f, "\n");
