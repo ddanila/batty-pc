@@ -48,8 +48,10 @@ MAINMENU_SNAP_RAM ?= build/snapshots/20260513T202041Z/ram_4000_FFFF.bin
 LEVEL1_SNAP_RAM   ?= build/snapshots/20260513T202101Z/ram_4000_FFFF.bin
 
 FLOPPY_SRC      ?= vendor/msdos/floppy-minimal.img
-FLOPPY_OUT       = build/batty.img        # `make run`: 2-state menu loop
-TEST_FLOPPY_OUT  = build/batty-test.img   # `make test`: full 4-state cycle
+# `make run`: normal interactive boot image.
+FLOPPY_OUT       = build/batty.img
+# `make test`: full 4-state visual-regression image.
+TEST_FLOPPY_OUT  = build/batty-test.img
 
 ZESARUX ?= tools/zesarux/src/zesarux
 ZESARUX_CONFIGURE_OPTS ?= --enable-sdl2
@@ -72,7 +74,7 @@ BOX86_FDD_TYPE  ?= 35_2hd
 BOX86_ASSETPATH ?= /home/ddanila/fun/86Box/src/unix/assets
 BOX86_ROMPATH   ?= /home/ddanila/fun/86Box-roms
 
-.PHONY: all clean run run-86box floppy assets help run-original run-original-cheat snapshot candidates regions test test-hud test-brick-flash test-rocket-bonus replay-l3-brick-flash replay-l3-brick-flash-both
+.PHONY: all clean run run-86box profile-86box read-profile floppy assets help run-original run-original-cheat snapshot candidates regions test test-hud test-brick-flash test-rocket-bonus replay-l3-brick-flash replay-l3-brick-flash-both
 
 all: $(EXE) $(ASSETS)
 
@@ -83,6 +85,8 @@ help:
 	@echo "  floppy        pack $(EXE) + assets onto $(FLOPPY_OUT)"
 	@echo "  run           build the floppy and boot it in QEMU (our recreation)"
 	@echo "  run-86box     build the floppy and boot it in 86Box (IBM XT + VGA)"
+	@echo "  profile-86box run 86Box with BATTY_RENDER_PROFILE=1 (sound off)"
+	@echo "  read-profile  extract and print PROFILE.TXT from $(FLOPPY_OUT)"
 	@echo "  run-original  boot the ORIGINAL batty.tap in ZEsarUX with ZRCP open"
 	@echo "  snapshot      dump RAM + screen from running ZEsarUX -> build/snapshots/"
 	@echo "  regions       static scan of main blob -> build/regions.{txt,blockdef}"
@@ -237,7 +241,17 @@ $(FLOPPY_OUT): $(EXE) $(ASSETS) $(FLOPPY_SRC)
 	mcopy -i $@ -o assets/frame_l1.bin ::FRAMEL1.BIN
 	mcopy -i $@ -o assets/sprites.bin ::SPRITES.BIN
 	mcopy -i $@ -o assets/random_seed.bin ::RANDOM.BIN
-	@printf '@ECHO OFF\r\nBATTY\r\n' > build/AUTOEXEC.BAT
+	@printf '@ECHO OFF\r\n' > build/AUTOEXEC.BAT
+	@if [ -n "$$BATTY_NOSOUND" ]; then \
+	    printf 'SET BATTY_NOSOUND=%s\r\n' "$$BATTY_NOSOUND" >> build/AUTOEXEC.BAT ; \
+	fi
+	@if [ -n "$$BATTY_SOUND_OFF" ]; then \
+	    printf 'SET BATTY_SOUND_OFF=%s\r\n' "$$BATTY_SOUND_OFF" >> build/AUTOEXEC.BAT ; \
+	fi
+	@if [ -n "$$BATTY_RENDER_PROFILE" ]; then \
+	    printf 'SET BATTY_RENDER_PROFILE=%s\r\n' "$$BATTY_RENDER_PROFILE" >> build/AUTOEXEC.BAT ; \
+	fi
+	@printf 'BATTY\r\n' >> build/AUTOEXEC.BAT
 	mcopy -i $@ -o build/AUTOEXEC.BAT ::AUTOEXEC.BAT
 	@echo "Floppy ready: $@  (menu-only cycle)"
 
@@ -293,10 +307,14 @@ $(TEST_FLOPPY_OUT): $(TEST_EXE) $(ASSETS) $(FLOPPY_SRC)
 	mcopy -i $@ -o build/AUTOEXEC-T.BAT ::AUTOEXEC.BAT
 	@echo "Test floppy ready: $@  (full 4-state cycle)"
 
-run: $(FLOPPY_OUT)
+run:
+	rm -f $(FLOPPY_OUT)
+	$(MAKE) $(FLOPPY_OUT)
 	bash scripts/run.sh $(FLOPPY_OUT)
 
-run-86box: $(FLOPPY_OUT)
+run-86box:
+	rm -f $(FLOPPY_OUT)
+	$(MAKE) $(FLOPPY_OUT)
 	BOX86_BIN="$(BOX86_BIN)" \
 	BOX86_VM_DIR="$(BOX86_VM_DIR)" \
 	BOX86_MACHINE="$(BOX86_MACHINE)" \
@@ -305,6 +323,27 @@ run-86box: $(FLOPPY_OUT)
 	BOX86_ASSETPATH="$(BOX86_ASSETPATH)" \
 	BOX86_ROMPATH="$(BOX86_ROMPATH)" \
 	bash scripts/run_86box.sh $(FLOPPY_OUT)
+
+profile-86box:
+	rm -f $(FLOPPY_OUT)
+	BATTY_RENDER_PROFILE=1 $(MAKE) $(FLOPPY_OUT)
+	BOX86_BIN="$(BOX86_BIN)" \
+	BOX86_VM_DIR="$(BOX86_VM_DIR)" \
+	BOX86_MACHINE="$(BOX86_MACHINE)" \
+	BOX86_GFXCARD="$(BOX86_GFXCARD)" \
+	BOX86_FDD_TYPE="$(BOX86_FDD_TYPE)" \
+	BOX86_ASSETPATH="$(BOX86_ASSETPATH)" \
+	BOX86_ROMPATH="$(BOX86_ROMPATH)" \
+	bash scripts/run_86box.sh $(FLOPPY_OUT)
+
+read-profile:
+	@mkdir -p build
+	@if ! timeout 5s mtype -i $(FLOPPY_OUT) ::PROFILE.TXT > build/PROFILE.TXT; then \
+	    echo "PROFILE.TXT not found on $(FLOPPY_OUT). Exit the game cleanly after a profile run, then retry."; \
+	    exit 1; \
+	fi
+	@cat build/PROFILE.TXT
+	@python3 scripts/analyze_profile.py build/PROFILE.TXT
 
 # --- Reverse-engineering helpers ---
 

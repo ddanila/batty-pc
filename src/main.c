@@ -1193,12 +1193,24 @@ static unsigned char paper_pal(unsigned char attr) {
 
 static unsigned char ink_table[256];
 static unsigned char paper_table[256];
+static unsigned short vga_black_paper_nibble_words[16][16][2];
 
 static void init_pal_tables(void) {
     int i;
     for (i = 0; i < 256; i++) {
         ink_table[i] = ink_pal((unsigned char)i);
         paper_table[i] = paper_pal((unsigned char)i);
+    }
+    for (i = 0; i < 16; i++) {
+        int n;
+        for (n = 0; n < 16; n++) {
+            unsigned char p0 = (n & 8) ? (unsigned char)i : 0;
+            unsigned char p1 = (n & 4) ? (unsigned char)i : 0;
+            unsigned char p2 = (n & 2) ? (unsigned char)i : 0;
+            unsigned char p3 = (n & 1) ? (unsigned char)i : 0;
+            vga_black_paper_nibble_words[i][n][0] = (unsigned short)(p0 | ((unsigned short)p1 << 8));
+            vga_black_paper_nibble_words[i][n][1] = (unsigned short)(p2 | ((unsigned short)p3 << 8));
+        }
     }
 }
 
@@ -1208,6 +1220,10 @@ static unsigned long prof_hud_pit = 0;
 static unsigned long prof_bricks_pit = 0;
 static unsigned long prof_vga_pit = 0;
 static unsigned long prof_frames_count = 0;
+static unsigned long prof_vga_rects = 0;
+static unsigned long prof_vga_bytes = 0;
+static unsigned long prof_static_rebuilds = 0;
+static int sound_disabled = 0;
 
 static unsigned short last_prof_tick = 0;
 
@@ -1252,6 +1268,10 @@ static void write_profile_report(void) {
             fprintf(f, "  render_brick_band:    %lu (%u%%)\n", prof_bricks_pit, (unsigned)((prof_bricks_pit * 100) / total));
             fprintf(f, "  buff_to_vga:          %lu (%u%%)\n", prof_vga_pit, (unsigned)((prof_vga_pit * 100) / total));
         }
+        fprintf(f, "  static rebuilds:      %lu\n", prof_static_rebuilds);
+        fprintf(f, "  VGA rect flushes:     %lu\n", prof_vga_rects);
+        fprintf(f, "  VGA bytes written:    %lu\n", prof_vga_bytes);
+        fprintf(f, "  sound disabled:       %u\n", (unsigned)sound_disabled);
         fprintf(f, "  Total PIT ticks sum:  %lu\n", total);
         fclose(f);
     }
@@ -2274,12 +2294,16 @@ static void paint_bg_to_buff(unsigned char attr, unsigned char cycle) {
  * each pixel via the surrounding char cell's attr_buff entry. Mirrors
  * the original game's final-frame paint (game_screen_draw_to_buffer
  * at $BE6B followed by buffer-to-screen copy). */
-static void buff_to_vga_strip(int y0, int h);
+static void buff_to_vga_rect_bytes(int y0, int h, int byte_lo, int byte_hi);
 
 static unsigned char bg_scr_buff[6144];
 static unsigned char bg_attr_buff[768];
-static unsigned char dirty_lines[PLAYFIELD_H];
-static unsigned char prev_dirty_lines[PLAYFIELD_H];
+#define DIRTY_NONE 0xFF
+#define DIRTY_SLOTS 2
+static unsigned char dirty_min_byte[DIRTY_SLOTS][PLAYFIELD_H];
+static unsigned char dirty_max_byte[DIRTY_SLOTS][PLAYFIELD_H];
+static unsigned char prev_dirty_min_byte[DIRTY_SLOTS][PLAYFIELD_H];
+static unsigned char prev_dirty_max_byte[DIRTY_SLOTS][PLAYFIELD_H];
 static int static_bg_dirty = 1;
 static int force_full_flush = 1;
 
@@ -2287,18 +2311,84 @@ static unsigned long prev_score = 0xFFFFFFFFUL;
 static unsigned long prev_high_score = 0xFFFFFFFFUL;
 static int prev_lives = -1;
 
-static void mark_dirty(int y_start, int height) {
-    int y;
-    int end = y_start + height;
-    if (y_start < 0) y_start = 0;
-    if (end > PLAYFIELD_H) end = PLAYFIELD_H;
-    for (y = y_start; y < end; y++) {
-        dirty_lines[y] = 1;
+static void clear_dirty_ranges(unsigned char mins[DIRTY_SLOTS][PLAYFIELD_H],
+                               unsigned char maxs[DIRTY_SLOTS][PLAYFIELD_H]) {
+    int s;
+    for (s = 0; s < DIRTY_SLOTS; s++) {
+        memset(mins[s], DIRTY_NONE, PLAYFIELD_H);
+        memset(maxs[s], 0, PLAYFIELD_H);
     }
 }
 
-static int sprite_height(unsigned int spr) {
-    return sprites_blob[spr + 1];
+static void mark_dirty_byte_row(unsigned char mins[DIRTY_SLOTS][PLAYFIELD_H],
+                                unsigned char maxs[DIRTY_SLOTS][PLAYFIELD_H],
+                                int y, int byte_lo, int byte_hi) {
+    int s;
+    int best_slot = 0;
+    int best_extra = 255;
+    for (s = 0; s < DIRTY_SLOTS; s++) {
+        if (mins[s][y] == DIRTY_NONE) {
+            mins[s][y] = (unsigned char)byte_lo;
+            maxs[s][y] = (unsigned char)byte_hi;
+            return;
+        }
+        if (byte_hi + 1 >= mins[s][y] && byte_lo <= maxs[s][y] + 1) {
+            if (byte_lo < mins[s][y]) mins[s][y] = (unsigned char)byte_lo;
+            if (byte_hi > maxs[s][y]) maxs[s][y] = (unsigned char)byte_hi;
+            return;
+        }
+    }
+    for (s = 0; s < DIRTY_SLOTS; s++) {
+        int lo = (byte_lo < mins[s][y]) ? byte_lo : mins[s][y];
+        int hi = (byte_hi > maxs[s][y]) ? byte_hi : maxs[s][y];
+        int extra = (hi - lo + 1) - (maxs[s][y] - mins[s][y] + 1);
+        if (extra < best_extra) {
+            best_extra = extra;
+            best_slot = s;
+        }
+    }
+    if (byte_lo < mins[best_slot][y]) mins[best_slot][y] = (unsigned char)byte_lo;
+    if (byte_hi > maxs[best_slot][y]) maxs[best_slot][y] = (unsigned char)byte_hi;
+}
+
+static void mark_dirty_bytes(int y_start, int height, int byte_lo, int byte_hi) {
+    int y;
+    int end = y_start + height;
+    if (byte_lo < 0) byte_lo = 0;
+    if (byte_hi > 31) byte_hi = 31;
+    if (byte_lo > byte_hi) return;
+    if (y_start < 0) y_start = 0;
+    if (end > PLAYFIELD_H) end = PLAYFIELD_H;
+    for (y = y_start; y < end; y++) {
+        mark_dirty_byte_row(dirty_min_byte, dirty_max_byte, y, byte_lo, byte_hi);
+    }
+}
+
+static void mark_dirty_rect_px(int x_start, int y_start, int width, int height) {
+    int x_end = x_start + width;
+    int byte_lo;
+    int byte_hi;
+    if (width <= 0 || height <= 0) return;
+    if (x_start < 0) x_start = 0;
+    if (x_end > PLAYFIELD_W) x_end = PLAYFIELD_W;
+    if (x_start >= x_end) return;
+    byte_lo = x_start >> 3;
+    byte_hi = (x_end - 1) >> 3;
+    mark_dirty_bytes(y_start, height, byte_lo, byte_hi);
+}
+
+static void mark_dirty_sprite_rect(unsigned int spr, int x, int y) {
+    mark_dirty_rect_px(x, y, (int)sprites_blob[spr] * 8, sprites_blob[spr + 1]);
+}
+
+static void mark_all_dirty(void) {
+    int y;
+    for (y = 0; y < PLAYFIELD_H; y++) {
+        dirty_min_byte[0][y] = 0;
+        dirty_max_byte[0][y] = 31;
+        dirty_min_byte[1][y] = DIRTY_NONE;
+        dirty_max_byte[1][y] = 0;
+    }
 }
 
 static void fast_memcpy(void *dest, const void *src, unsigned int n_bytes) {
@@ -2320,24 +2410,38 @@ static void fast_memcpy(void *dest, const void *src, unsigned int n_bytes) {
 }
 
 
-static void flush_dirty_to_vga(void) {
+static void flush_dirty_slot_to_vga(int slot) {
     int y;
     int start_y = -1;
+    int byte_lo = 0;
+    int byte_hi = 0;
     for (y = 0; y < PLAYFIELD_H; y++) {
-        if (dirty_lines[y]) {
+        if (dirty_min_byte[slot][y] != DIRTY_NONE) {
             if (start_y == -1) {
                 start_y = y;
+                byte_lo = dirty_min_byte[slot][y];
+                byte_hi = dirty_max_byte[slot][y];
+            } else if (dirty_min_byte[slot][y] < byte_lo || dirty_max_byte[slot][y] > byte_hi) {
+                buff_to_vga_rect_bytes(start_y, y - start_y, byte_lo, byte_hi);
+                start_y = y;
+                byte_lo = dirty_min_byte[slot][y];
+                byte_hi = dirty_max_byte[slot][y];
             }
         } else {
             if (start_y != -1) {
-                buff_to_vga_strip(start_y, y - start_y);
+                buff_to_vga_rect_bytes(start_y, y - start_y, byte_lo, byte_hi);
                 start_y = -1;
             }
         }
     }
     if (start_y != -1) {
-        buff_to_vga_strip(start_y, PLAYFIELD_H - start_y);
+        buff_to_vga_rect_bytes(start_y, PLAYFIELD_H - start_y, byte_lo, byte_hi);
     }
+}
+
+static void flush_dirty_to_vga(void) {
+    flush_dirty_slot_to_vga(0);
+    flush_dirty_slot_to_vga(1);
 }
 
 static void buff_to_vga(void) {
@@ -2471,9 +2575,27 @@ static void render_level_screen_static(unsigned char level_idx) {
 }
 
 static void build_static_background(unsigned char level_idx) {
+    prof_static_rebuilds++;
     render_level_screen_static(level_idx);
     fast_memcpy(bg_scr_buff, scr_buff, sizeof(bg_scr_buff));
     fast_memcpy(bg_attr_buff, attr_buff, sizeof(bg_attr_buff));
+}
+
+static void update_static_hud_top(unsigned char level_idx) {
+    unsigned char bg_attr = bg_attr_per_cycle[level_idx & 3];
+    unsigned char cycle   = (unsigned char)(level_idx & 3);
+    int y;
+    int cr;
+    (void)bg_attr;
+    paint_frame_to_buff(cycle, level_idx);
+    render_hud_to_buff();
+    restore_top_frame_center(cycle, level_idx);
+    for (y = 0; y < FRAME_TOP_H_PX; y++) {
+        fast_memcpy(&bg_scr_buff[y << 5], &scr_buff[y << 5], 32);
+    }
+    for (cr = 0; cr < FRAME_TOP_H_PX / 8; cr++) {
+        fast_memcpy(&bg_attr_buff[cr << 5], &attr_buff[cr << 5], 32);
+    }
 }
 
 static void render_level_screen(unsigned char level_idx) {
@@ -2481,7 +2603,7 @@ static void render_level_screen(unsigned char level_idx) {
     unsigned char cycle   = (unsigned char)(level_idx & 3);
 
     static_bg_dirty = 1;
-    memset(prev_dirty_lines, 0, sizeof(prev_dirty_lines));
+    clear_dirty_ranges(prev_dirty_min_byte, prev_dirty_max_byte);
     prev_score = 0xFFFFFFFFUL;
     prev_high_score = 0xFFFFFFFFUL;
     prev_lives = -1;
@@ -2715,24 +2837,21 @@ static void kbd_restore(void) {
 
 /* --- PC speaker sound (PIT channel 2, original-style envelopes) -------
  *
- * The original Spectrum routines do not program a timer. They toggle the
- * beeper bit, spin for a small B-counter, toggle it off, and spin again.
- * Pure port-bit flips are too short for QEMU's PC-speaker audio path to
- * sample reliably, while DOS millisecond delays stretch the effects.
- * Compromise: gate PIT channel 2 for the same short D/E envelope shape. */
+ * The Spectrum routines are CPU-timed beeper loops. A literal PC port
+ * that spins in the 50 Hz frame body makes audio steal frame time, so
+ * this backend latches a PIT channel-2 tone and lets `sound_tick`
+ * release it asynchronously on later PIT ticks. */
 /* Pause flag: while set, the per-frame body does no physics; only P
  * (toggle), ESC (quit), and ENTER (advance) are responded to. */
 static unsigned char paused = 0;
+static unsigned char sound_ticks_left = 0;
+static unsigned long sound_last_tick = 0;
 
 static void sound_silence(void) {
     _disable();
     outp(0x61, (unsigned char)(inp(0x61) & 0xFC));
     _enable();
-}
-
-static void sound_spin(unsigned int count) {
-    volatile unsigned int i;
-    for (i = 0; i < count; i++) (void)inp(0x61);
+    sound_ticks_left = 0;
 }
 
 static void sound_pit_set_period(unsigned int period) {
@@ -2756,58 +2875,50 @@ static void sound_gate_off(void) {
     _enable();
 }
 
-static void sound_beep_e(unsigned char e) {
-    unsigned int span = (unsigned int)e * 48u;
-    unsigned int gap = (unsigned int)e * 12u;
-    if (span == 0) span = 1;
-    if (gap == 0) gap = 1;
+static void sound_start_period(unsigned int period, unsigned char ticks) {
+    if (sound_disabled || ticks == 0) return;
+    sound_pit_set_period(period);
+    sound_gate_on();
+    sound_ticks_left = ticks;
+    sound_last_tick = pit_ticks();
+}
 
+static void sound_beep_e(unsigned char e) {
     /* Original period is proportional to E. PIT divisor ~= 1193180 /
      * (3500000 / (26*E)) = 8.86*E; use 9*E as the close integer form. */
-    sound_pit_set_period((unsigned int)e * 9u);
-    sound_gate_on();
-    sound_spin(span);
-    sound_gate_off();
-    sound_spin(gap);
+    sound_start_period((unsigned int)e * 9u, 1);
 }
 
 static void sound_beep2_bd(unsigned char b, unsigned char d) {
     unsigned char period = (unsigned char)(((unsigned int)b + (unsigned int)d) / 2u);
-    unsigned int hi = (unsigned int)b * 48u;
-    unsigned int lo = (unsigned int)d * 12u;
     if (period == 0) period = 1;
-    if (hi == 0) hi = 1;
-    if (lo == 0) lo = 1;
-
-    sound_pit_set_period((unsigned int)period * 9u);
-    sound_gate_on();
-    sound_spin(hi);
-    sound_gate_off();
-    sound_spin(lo);
+    sound_start_period((unsigned int)period * 9u, 1);
 }
 
 static void sound_beep_cont_d(unsigned char d, unsigned char e) {
-    while (d--) sound_beep_e(e);
+    (void)d;
+    sound_beep_e(e);
 }
 
 static void sound_beep_cont_de(unsigned char d, unsigned char e) {
-    while (d--) {
-        sound_beep_e(e);
-        e = (unsigned char)(e - 8);
-    }
+    (void)d;
+    sound_beep_e(e);
 }
 
 static void sound_play_lc122(unsigned char c, unsigned char e) {
-    while (c) {
-        unsigned char a = (unsigned char)(c ^ e);
-        unsigned char b = (unsigned char)((a << 1) & 0x0C);
-        unsigned char d = (unsigned char)((a << 1) & 0x0F);
-        sound_beep2_bd((unsigned char)(b + 0x08), d);
-        c--;
-    }
+    unsigned char a = (unsigned char)(c ^ e);
+    unsigned char b = (unsigned char)((a << 1) & 0x0C);
+    unsigned char d = (unsigned char)((a << 1) & 0x0F);
+    sound_beep2_bd((unsigned char)(b + 0x08), d);
 }
 
 static void sound_tick(void) {
+    unsigned long now;
+    if (sound_disabled || sound_ticks_left == 0) return;
+    now = pit_ticks();
+    if (now == sound_last_tick) return;
+    sound_last_tick = now;
+    if (--sound_ticks_left == 0) sound_gate_off();
 }
 
 /* --- Sound queue (port of sounds_queue at $C0B8 + play_sounds_queue) ---
@@ -2840,6 +2951,12 @@ static sound_slot_t snd_q[SQ_SLOTS];
 
 static void snd_q_push(unsigned char id) {
     int i;
+    if (sound_disabled) return;
+    if (id == SND_NORMAL_BRIK || id == SND_BAT_BEAT || id == SND_SHOT) {
+        for (i = 0; i < SQ_SLOTS; i++) {
+            if (snd_q[i].id == id) return;
+        }
+    }
     for (i = 0; i < SQ_SLOTS; i++) {
         if (snd_q[i].id == 0) {
             snd_q[i].id = id;
@@ -2931,7 +3048,7 @@ static int snd_tick_one(sound_slot_t *s) {
             unsigned int e = (((unsigned int)s->state >> 2) & 0x3Fu) + 0x20u;
             sound_beep_cont_de(0x02, (unsigned char)e);
             s->state++;
-            return 0;
+            return s->state == 0xA1;
         }
 
         case SND_BAT_RESIZE_2: {
@@ -2950,6 +3067,7 @@ static void snd_q_tick(void) {
     for (i = 0; i < SQ_SLOTS; i++) {
         if (snd_q[i].id == 0) continue;
         if (snd_tick_one(&snd_q[i])) snd_q[i].id = 0;
+        break;      /* PC speaker is one voice; avoid N port-programs/frame. */
     }
 }
 
@@ -3109,6 +3227,10 @@ static void buff_to_vga_rect_bytes(int y0, int h, int byte_lo, int byte_hi) {
     if (byte_hi > 31) byte_hi = 31;
     if (byte_lo > byte_hi) return;
     if (y_end > PLAYFIELD_H) y_end = PLAYFIELD_H;
+    if (y0 < 0) y0 = 0;
+    if (y0 >= y_end) return;
+    prof_vga_rects++;
+    prof_vga_bytes += (unsigned long)(y_end - y0) * (unsigned long)(byte_hi - byte_lo + 1) * 8UL;
     for (y = y0; y < y_end; y++) {
         unsigned char __far *dest = vga + (long)(BORDER_Y + y) * SCREEN_W
                                   + BORDER_X + byte_lo * 8;
@@ -3117,72 +3239,87 @@ static void buff_to_vga_rect_bytes(int y0, int h, int byte_lo, int byte_hi) {
         for (byte_col = byte_lo; byte_col <= byte_hi; byte_col++) {
             unsigned char b = scr_row[byte_col];
             unsigned char attr = attr_row[byte_col];
-            unsigned char ink = ink_table[attr];
-            unsigned char paper = paper_table[attr];
-            unsigned char diff = ink ^ paper;
+            if (paper_table[attr] == 0) {
+                const unsigned short *hi = vga_black_paper_nibble_words[ink_table[attr]][b >> 4];
+                const unsigned short *lo = vga_black_paper_nibble_words[ink_table[attr]][b & 0x0F];
+                _asm {
+                    les di, dest
+                    mov si, hi
+                    mov ax, [si]
+                    stosw
+                    mov ax, [si+2]
+                    stosw
+                    mov si, lo
+                    mov ax, [si]
+                    stosw
+                    mov ax, [si+2]
+                    stosw
+                    mov word ptr dest, di
+                }
+            } else {
+                unsigned char ink = ink_table[attr];
+                unsigned char paper = paper_table[attr];
+                unsigned char diff = ink ^ paper;
 
-            _asm {
-                les di, dest
-                mov ah, b
-                mov dh, paper
-                mov cl, diff
+                _asm {
+                    les di, dest
+                    mov ah, b
+                    mov dh, paper
+                    mov cl, diff
 
-                shl ah, 1
-                sbb al, al
-                and al, cl
-                xor al, dh
-                stosb
+                    shl ah, 1
+                    sbb al, al
+                    and al, cl
+                    xor al, dh
+                    stosb
 
-                shl ah, 1
-                sbb al, al
-                and al, cl
-                xor al, dh
-                stosb
+                    shl ah, 1
+                    sbb al, al
+                    and al, cl
+                    xor al, dh
+                    stosb
 
-                shl ah, 1
-                sbb al, al
-                and al, cl
-                xor al, dh
-                stosb
+                    shl ah, 1
+                    sbb al, al
+                    and al, cl
+                    xor al, dh
+                    stosb
 
-                shl ah, 1
-                sbb al, al
-                and al, cl
-                xor al, dh
-                stosb
+                    shl ah, 1
+                    sbb al, al
+                    and al, cl
+                    xor al, dh
+                    stosb
 
-                shl ah, 1
-                sbb al, al
-                and al, cl
-                xor al, dh
-                stosb
+                    shl ah, 1
+                    sbb al, al
+                    and al, cl
+                    xor al, dh
+                    stosb
 
-                shl ah, 1
-                sbb al, al
-                and al, cl
-                xor al, dh
-                stosb
+                    shl ah, 1
+                    sbb al, al
+                    and al, cl
+                    xor al, dh
+                    stosb
 
-                shl ah, 1
-                sbb al, al
-                and al, cl
-                xor al, dh
-                stosb
+                    shl ah, 1
+                    sbb al, al
+                    and al, cl
+                    xor al, dh
+                    stosb
 
-                shl ah, 1
-                sbb al, al
-                and al, cl
-                xor al, dh
-                stosb
+                    shl ah, 1
+                    sbb al, al
+                    and al, cl
+                    xor al, dh
+                    stosb
 
-                mov word ptr dest, di
+                    mov word ptr dest, di
+                }
             }
         }
     }
-}
-
-static void buff_to_vga_strip(int y0, int h) {
-    buff_to_vga_rect_bytes(y0, h, 0, 31);
 }
 
 /* DOS extended-key scancodes (after a leading 0 byte from getch). */
@@ -4590,7 +4727,10 @@ static void redraw_bat(unsigned char cycle, unsigned char bg_attr) {
     render_lives(cycle, bg_attr);
     buff_to_vga_rect_bytes(BAT_Y, BAT_H_PX, byte_lo, byte_hi - 1);
     for (y = BAT_Y; y < BAT_Y + BAT_H_PX; y++) {
-        prev_dirty_lines[y] = 1;
+        prev_dirty_min_byte[0][y] = (unsigned char)byte_lo;
+        prev_dirty_max_byte[0][y] = (unsigned char)(byte_hi - 1);
+        prev_dirty_min_byte[1][y] = DIRTY_NONE;
+        prev_dirty_max_byte[1][y] = 0;
     }
     remember_bat_draw_state();
 }
@@ -4608,11 +4748,16 @@ static void redraw_full_with_ball(unsigned char level_idx) {
     unsigned char cycle   = (unsigned char)(level_idx & 3);
     object_t *enemy = &objects[OBJ_ENEMY];
     int y, cr, i;
+    int score_dirty;
+    int lives_dirty;
+    int can_local_hud;
 
     prof_start();
 
-    if (force_full_flush || score != prev_score || high_score != prev_high_score
-        || lives != prev_lives || brick_flash_ticks > 0 || any_brick_hit_anim()) {
+    score_dirty = (score != prev_score || high_score != prev_high_score);
+    lives_dirty = (lives != prev_lives);
+    can_local_hud = (magnets_per_level[level_idx][0] == 0);
+    if (force_full_flush || lives_dirty || (score_dirty && !can_local_hud)) {
         static_bg_dirty = 1;
     }
 
@@ -4624,28 +4769,51 @@ static void redraw_full_with_ball(unsigned char level_idx) {
         prev_lives = lives;
         force_full_flush = 1;
     } else {
-        /* Restore only the lines touched by moving sprites last frame.
-         * Untouched lines still contain the cached static background. */
+        /* Restore only the byte ranges touched by moving sprites last
+         * frame. Untouched rows and columns retain the cached static
+         * background. */
         for (y = 0; y < PLAYFIELD_H; y++) {
-            if (prev_dirty_lines[y]) {
-                fast_memcpy(&scr_buff[y << 5], &bg_scr_buff[y << 5], 32);
+            int s;
+            for (s = 0; s < DIRTY_SLOTS; s++) {
+                if (prev_dirty_min_byte[s][y] != DIRTY_NONE) {
+                    unsigned char lo = prev_dirty_min_byte[s][y];
+                    unsigned char hi = prev_dirty_max_byte[s][y];
+                    fast_memcpy(&scr_buff[(y << 5) + lo],
+                                &bg_scr_buff[(y << 5) + lo],
+                                (unsigned int)(hi - lo + 1));
+                }
             }
         }
         for (cr = 0; cr < 24; cr++) {
-            int dirty = 0;
+            int byte_lo = 32;
+            int byte_hi = -1;
             int r;
             for (r = 0; r < 8; r++) {
-                if (prev_dirty_lines[(cr << 3) + r]) {
-                    dirty = 1;
-                    break;
+                int yy = (cr << 3) + r;
+                int s;
+                for (s = 0; s < DIRTY_SLOTS; s++) {
+                    if (prev_dirty_min_byte[s][yy] != DIRTY_NONE) {
+                        if (prev_dirty_min_byte[s][yy] < byte_lo)
+                            byte_lo = prev_dirty_min_byte[s][yy];
+                        if (prev_dirty_max_byte[s][yy] > byte_hi)
+                            byte_hi = prev_dirty_max_byte[s][yy];
+                    }
                 }
             }
-            if (dirty) {
-                fast_memcpy(&attr_buff[cr << 5], &bg_attr_buff[cr << 5], 32);
+            if (byte_hi >= byte_lo) {
+                fast_memcpy(&attr_buff[(cr << 5) + byte_lo],
+                            &bg_attr_buff[(cr << 5) + byte_lo],
+                            (unsigned int)(byte_hi - byte_lo + 1));
             }
         }
     }
-    memset(dirty_lines, 0, sizeof(dirty_lines));
+    clear_dirty_ranges(dirty_min_byte, dirty_max_byte);
+    if (!static_bg_dirty && score_dirty && can_local_hud) {
+        update_static_hud_top(level_idx);
+        prev_score = score;
+        prev_high_score = high_score;
+        mark_dirty_bytes(0, FRAME_TOP_H_PX, 0, 31);
+    }
     prof_bg_pit += prof_elapsed();
 
     /* The frame itself is static and baked into bg_scr_buff/bg_attr_buff. */
@@ -4653,11 +4821,15 @@ static void redraw_full_with_ball(unsigned char level_idx) {
 
     if (BALL_VISIBLE) {
         render_ball_to_buff(BALL_X, BALL_Y, bg_attr);
-        mark_dirty(BALL_Y, 12);
+        mark_dirty_rect_px(BALL_X, BALL_Y, 16, 12);
     }
     render_bat(cycle, bg_attr);
     render_running_dot();
-    mark_dirty(BAT_Y, 13);
+    {
+        int bat_x0, bat_x1;
+        bat_sprite_bounds(BAT_X, bat_extra_px, &bat_x0, &bat_x1);
+        mark_dirty_rect_px(bat_x0, BAT_Y, bat_x1 - bat_x0, 13);
+    }
     remember_bat_draw_state();
 
     /* Lives and HUD are static in the cached background and are rebuilt
@@ -4666,24 +4838,26 @@ static void redraw_full_with_ball(unsigned char level_idx) {
 
     render_brick_flash_to_buff();
     if (brick_flash_ticks) {
-        mark_dirty(brick_flash_y, 8);
+        mark_dirty_rect_px(brick_flash_x, brick_flash_y, 16, 8);
     }
     render_brick_hit_anim_to_buff();
     if (any_brick_hit_anim()) {
         for (i = 0; i < BRICK_HIT_ANIM_SLOTS; i++) {
             if (brick_hit_anim_ticks[i]) {
-                mark_dirty(32 + (int)brick_hit_anim_row[i] * 8, 8);
+                mark_dirty_rect_px(8 + (int)brick_hit_anim_col[i] * 16,
+                                   32 + (int)brick_hit_anim_row[i] * 8,
+                                   16, 8);
             }
         }
     }
 
     if (bomb_active) {
         blit_masked_to_scr_buff_ptr(spr_bomb_data, bomb_x, bomb_y);
-        mark_dirty(bomb_y, 12);
+        mark_dirty_rect_px(bomb_x, bomb_y, 16, 16);
     }
     if (pts_400_active) {
         blit_masked_to_scr_buff(pts_marker_spr, pts_400_x, pts_400_y);
-        mark_dirty(pts_400_y, sprite_height(pts_marker_spr));
+        mark_dirty_sprite_rect(pts_marker_spr, pts_400_x, pts_400_y);
     }
     if ((enemy->sprite_set & 0x7F) != 0 && !(enemy->sprite_set & 0x80)) {
         unsigned int spr;
@@ -4703,58 +4877,76 @@ static void redraw_full_with_ball(unsigned char level_idx) {
         blit_sprite_attrs_to_buff(enemy->x_coord, enemy->y_coord,
                                    spr_w_px, spr_h_px, bg_attr);
         blit_masked_to_scr_buff(spr, enemy->x_coord, enemy->y_coord);
-        mark_dirty(enemy->y_coord, spr_h_px);
+        mark_dirty_rect_px(enemy->x_coord, enemy->y_coord, spr_w_px, spr_h_px);
     }
     if (bonus_active) {
         unsigned int spr = spr_for_bonus(bonus_type);
         render_bonus_to_buff(bg_attr);
-        mark_dirty(bonus_y, sprite_height(spr));
+        mark_dirty_sprite_rect(spr, bonus_x, bonus_y);
     }
     render_bullet_to_buff();
     for (i = 0; i < N_BULLETS; i++) {
         if (bullet_active[i]) {
-            mark_dirty(bullet_y[i], 8);
+            mark_dirty_rect_px(bullet_x[i], bullet_y[i], 8, 8);
         }
     }
     if (any_bullet_blast()) {
         render_bullet_blast_to_buff();
         for (i = 0; i < N_BULLETS; i++) {
             if (bullet_blast_ticks[i]) {
-                mark_dirty(bullet_blast_y[i], 8);
+                mark_dirty_rect_px(bullet_blast_x[i], bullet_blast_y[i], 16, 8);
             }
         }
     }
     if (rocket_active) {
         unsigned int spr = current_rocket_spr();
         render_rocket_to_buff();
-        mark_dirty(rocket_y, sprite_height(spr));
+        mark_dirty_sprite_rect(spr, rocket_x, rocket_y);
     }
     if (ball2_active) {
         render_ball_to_buff(objects[OBJ_BALL_2].x_coord,
                             objects[OBJ_BALL_2].y_coord, bg_attr);
-        mark_dirty(objects[OBJ_BALL_2].y_coord, 12);
+        mark_dirty_rect_px(objects[OBJ_BALL_2].x_coord,
+                           objects[OBJ_BALL_2].y_coord, 16, 12);
     }
     if (ball3_active) {
         render_ball_to_buff(objects[OBJ_BALL_3].x_coord,
                             objects[OBJ_BALL_3].y_coord, bg_attr);
-        mark_dirty(objects[OBJ_BALL_3].y_coord, 12);
+        mark_dirty_rect_px(objects[OBJ_BALL_3].x_coord,
+                           objects[OBJ_BALL_3].y_coord, 16, 12);
     }
     restore_top_frame_center(cycle, level_idx);
-    mark_dirty(0, FRAME_TOP_H_PX);
     prof_bricks_pit += prof_elapsed();
 
     if (force_full_flush) {
         for (y = 0; y < PLAYFIELD_H; y++) {
-            prev_dirty_lines[y] = dirty_lines[y];
+            int s;
+            for (s = 0; s < DIRTY_SLOTS; s++) {
+                prev_dirty_min_byte[s][y] = dirty_min_byte[s][y];
+                prev_dirty_max_byte[s][y] = dirty_max_byte[s][y];
+            }
         }
-        memset(dirty_lines, 1, sizeof(dirty_lines));
+        mark_all_dirty();
         force_full_flush = 0;
     } else {
         /* Flush both the old sprite positions and the new sprite positions. */
         for (y = 0; y < PLAYFIELD_H; y++) {
-            int current_dirty = dirty_lines[y];
-            dirty_lines[y] = prev_dirty_lines[y] | current_dirty;
-            prev_dirty_lines[y] = current_dirty;
+            unsigned char current_min0 = dirty_min_byte[0][y];
+            unsigned char current_max0 = dirty_max_byte[0][y];
+            unsigned char current_min1 = dirty_min_byte[1][y];
+            unsigned char current_max1 = dirty_max_byte[1][y];
+            int s;
+            for (s = 0; s < DIRTY_SLOTS; s++) {
+                if (prev_dirty_min_byte[s][y] != DIRTY_NONE) {
+                    mark_dirty_byte_row(dirty_min_byte, dirty_max_byte, y,
+                                        prev_dirty_min_byte[s][y],
+                                        prev_dirty_max_byte[s][y]);
+                }
+            }
+            prev_dirty_min_byte[0][y] = current_min0;
+            prev_dirty_max_byte[0][y] = current_max0;
+            prev_dirty_min_byte[1][y] = current_min1;
+            prev_dirty_max_byte[1][y] = current_max1;
         }
     }
     flush_dirty_to_vga();
@@ -5057,7 +5249,7 @@ static int play_brik_anim(void) {
         unsigned long t;
         unsigned char frame = brik_anim_order[step];
         brik_anim_apply_frame(frame);
-        buff_to_vga_strip(32, 96);
+        buff_to_vga_rect_bytes(32, 96, 1, 30);
         if (frame == 4 && !ping_played) {
             sound_beep_cont_d(0x18, 0x30);      /* play_sound_metal_brik */
             ping_played = 1;
@@ -5807,6 +5999,9 @@ int main(void) {
      * user sees the natural ~4.5 Hz menu blink. */
     if (getenv("BATTYALL") != NULL) test_mode_pin_blink = 1;
     if (getenv("BATTY_START_LEVEL") != NULL) state = ST_LEVEL;
+    if (getenv("BATTY_NOSOUND") != NULL || getenv("BATTY_SOUND_OFF") != NULL
+        || getenv("BATTY_RENDER_PROFILE") != NULL)
+        sound_disabled = 1;
     set_mode(0x13);
     set_palette(zx_palette, 16);
     init_pal_tables();
