@@ -5,7 +5,11 @@
     "unit": "seconds"
   },
   "comparison": {
-    "aligned_start": false,
+    "aligned_start": true,
+    "capture_max_diff_pixels": {
+      "l3_initial": 2500,
+      "l3_after": 5000
+    },
     "required_probe_rows": [
       "bricks_quantity",
       "briks_data",
@@ -15,7 +19,7 @@
       "random_number",
       "round_number"
     ],
-    "note": "Stable probe-time rows are required to match, but captures and the opcode-landed ball/enemy object rows are still informational until the next pause/frame-step checkpoint removes runtime drift."
+    "note": "Stable probe rows are fail-gated. Captures use bounded diff ceilings until a second pause/frame-step checkpoint removes runtime drift."
   },
   "port": {
     "floppy": "build/batty-test.img",
@@ -27,6 +31,7 @@
     "boot_wait": 0.5,
     "setup": [
       {"op": "enter_cpu_step"},
+      {"op": "write_memory", "address": "0xBA6C", "bytes": ["0x00", "0x00", "0x00"]},
       {"op": "write_memory", "address": "0xB7EA", "bytes": ["0x02", "0x02"]},
       {"op": "write_memory", "address": "0x8E17", "bytes": ["0x8E", "0x49"]},
       {"op": "set_register", "register": "PC", "value": "0xBA24"},
@@ -50,10 +55,11 @@
     ]
   },
   "events": [
+    {"at": 0.5, "key": "enter", "kind": "tap", "note": "wake port from BATTY_REPLAY_WAIT_KEY pause"},
     {"at": 1.0, "key": "space", "kind": "tap", "note": "release ball"}
   ],
   "captures": [
-    {"at": 0.8, "name": "l3_initial", "roi": [8, 32, 248, 128]},
+    {"at": 0.1, "name": "l3_initial", "roi": [8, 32, 248, 128]},
     {"at": 13.0, "name": "l3_after", "roi": [8, 32, 248, 128]}
   ]
 }

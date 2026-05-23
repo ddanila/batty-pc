@@ -451,11 +451,18 @@ def compare_outputs(spec: ReplaySpec, port_dir: Path, original_dir: Path,
     original_state = read_probe_report(original_dir)
     common = sorted(set(port_state) & set(original_state))
     required_probe_rows = set(str(v) for v in spec.comparison.get("required_probe_rows", []))
+    required_captures = set(str(v) for v in spec.comparison.get("required_captures", []))
+    capture_max_diff_pixels = {
+        str(name): int(limit)
+        for name, limit in dict(spec.comparison.get("capture_max_diff_pixels", {})).items()
+    }
     summary = {
         "spec": spec.name,
         "aligned_start": aligned,
         "fail_on_diff": fail_on_diff,
         "required_probe_rows": sorted(required_probe_rows),
+        "required_captures": sorted(required_captures),
+        "capture_max_diff_pixels": capture_max_diff_pixels,
         "probe_rows": [],
         "port_only_probe_rows": sorted(set(port_state) - set(original_state)),
         "original_only_probe_rows": sorted(set(original_state) - set(port_state)),
@@ -503,7 +510,15 @@ def compare_outputs(spec: ReplaySpec, port_dir: Path, original_dir: Path,
         expected = read_indices(original_dir / f"{capture.name}.idx")
         diff, total, bounds = diff_capture(actual, expected, capture.roi)
         pct = 100.0 * diff / total
-        tag = "PASS" if diff == 0 else ("FAIL" if fail_on_diff else "INFO")
+        required = capture.name in required_captures
+        max_diff = capture_max_diff_pixels.get(capture.name)
+        over_limit = max_diff is not None and diff > max_diff
+        if diff == 0 or (max_diff is not None and not over_limit):
+            tag = "PASS"
+        elif fail_on_diff or required or over_limit:
+            tag = "FAIL"
+        else:
+            tag = "INFO"
         roi = f" roi={capture.roi}" if capture.roi else ""
         bounds_text = f" bounds={bounds}" if bounds else ""
         print(f"  {tag} {capture.name}: {diff}/{total} px differ ({pct:.2f}%){roi}{bounds_text}")
@@ -519,10 +534,12 @@ def compare_outputs(spec: ReplaySpec, port_dir: Path, original_dir: Path,
             "diff_pixels": diff,
             "total_pixels": total,
             "diff_percent": pct,
+            "required": required,
+            "max_diff_pixels": max_diff,
             "bounds": list(bounds) if bounds else None,
             "diff_artifact": artifact,
         })
-        if diff and fail_on_diff:
+        if diff and (fail_on_diff or required or over_limit):
             failures += 1
     compare_dir.mkdir(parents=True, exist_ok=True)
     summary_path = compare_dir / "summary.json"

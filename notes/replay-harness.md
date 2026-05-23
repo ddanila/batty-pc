@@ -18,6 +18,9 @@ Each replay declares:
   same gameplay state and can be treated as a parity gate,
 - `comparison.required_probe_rows`: optional state-probe rows that must
   exist on both sides and match even when capture diffs are only INFO.
+- `comparison.capture_max_diff_pixels`: optional per-capture pixel-diff
+  ceilings. Captures under the ceiling are treated as PASS; captures
+  over the ceiling fail the replay.
 
 The harness writes decoded palette-index buffers next to raw captures:
 
@@ -46,7 +49,7 @@ capture diff counts, mismatch bounds, and diff artifact paths.
 ```sh
 make replay-l3-entry            # fail-gated L3-entry pixel-exact parity
 make replay-l3-brick-flash      # port-side smoke
-make replay-l3-brick-flash-both # informational two-runner comparison
+make replay-l3-brick-flash-both # bounded two-runner gameplay gate
 ```
 
 `replay-l3-entry` is the first true parity gate. Both runners pause at
@@ -79,34 +82,23 @@ copy. The target sets
 port's RNG and bat/ball/enemy descriptors at L3 entry exactly match
 the original's probe at the same point.
 
-`replay-l3-brick-flash-both` also drives ZEsarUX and prints INFO diffs.
-Its stable probe rows are now a gate: RNG, counters, bat, brick-hit
-animation slots, and level-copy bytes must match, even though the later
-screenshots are still informational. This catches setup regressions
-without pretending the wall-clock captures are pixel-stable.
+`replay-l3-brick-flash-both` also drives ZEsarUX. Its stable probe rows
+are a gate: RNG, counters, bat, brick-hit animation slots, and
+level-copy bytes must match. Captures are not pixel-exact yet, but they
+now have explicit diff ceilings via `capture_max_diff_pixels`, so gross
+runtime drift or whole-playfield divergence fails the target.
 The original side starts from the tracked `20260513T202101Z` RAM
 snapshot converted to `.sna`, then uses ZRCP setup commands to poke
 the level and round counters to L3, pin `random_number` at `$8E17` to
-the same `8E49` the port forces, jump to `BA24`, and step the Z80 a
-fixed number of opcodes via the harness's `run` op (replaces the
-earlier wall-clock `sleep 2.0`, which let the original land at a
-non-deterministic PC because emulator speed varies). At one million
-opcodes the original ends up with RNG, counters, bat, brick-hit
-animation slots, and level-copy bytes that match the port's probe
-byte-for-byte, so those rows are required. Ball and enemy object rows
-remain useful diagnostics, but are not required: this opcode landing
-can still phase-shift them before the next capture. They become gate
-candidates once the next pause or frame-step checkpoint replaces this
-coarse opcode step.
-
-The harness still does not mark `comparison.aligned_start=true`, so
-`--fail-on-diff` remains refused. Captures continue to diverge:
-`l3_initial` ≈ 246 / 23040 px (1.07%) and `l3_after` ≈ 81%. Both diffs
-come from runtime drift in the wall-clock window between the probe and
-the screendump — QEMU and ZEsarUX advance at different effective rates,
-so even with identical L3-entry state the alien lands at a slightly
-different pixel position 0.8 s later and at a very different state
-13 s later (after the ball-release event). Use the generated
+the same `8E49` the port forces, NOP the `$BA6C` metal-brick shimmer
+call to match the static level-entry setup, jump to `BA24`, and step
+the Z80 a fixed number of opcodes via the harness's `run` op (replaces
+the earlier wall-clock `sleep 2.0`, which let the original land at a
+non-deterministic PC because emulator speed varies). The port uses
+`BATTY_REPLAY_WAIT_KEY=1`, captures `l3_initial` while paused, then
+wakes with ENTER before the SPACE release. The later `l3_after` capture
+still uses wall-clock scheduling and remains a bounded drift gate rather
+than a pixel-exact parity gate. Use the generated
 `build/replay/l3-brick-flash/compare/*-diff.png` files and printed
 `bounds=(x0, y0, x1, y1)` values to distinguish small phase drift from
 whole-playfield divergence while designing the next pause or frame-step
