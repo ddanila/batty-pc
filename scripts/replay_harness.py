@@ -575,7 +575,13 @@ def main() -> int:
         run_original(spec, original_dir, args.zesarux, args.zrcp_port)
     if args.compare:
         print("comparing port vs original")
-        return compare_outputs(spec, port_dir, original_dir, args.fail_on_diff)
+        failures = compare_outputs(spec, port_dir, original_dir, args.fail_on_diff)
+        # One-line summary on the last line so CI / humans can grep the
+        # final status without scanning the per-probe block above.
+        gated = "fail-gated" if args.fail_on_diff else "informational"
+        status = "PASS" if failures == 0 else f"FAIL ({failures} diff{'s' if failures != 1 else ''})"
+        print(f"{status} replay {spec.name} ({gated})")
+        return failures
     return 0
 
 
