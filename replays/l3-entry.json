@@ -18,6 +18,7 @@
     "boot_wait": 0.5,
     "setup": [
       {"op": "enter_cpu_step"},
+      {"op": "write_memory", "address": "0xBA6C", "bytes": ["0x00", "0x00", "0x00"]},
       {"op": "write_memory", "address": "0xB7EA", "bytes": ["0x02", "0x02"]},
       {"op": "write_memory", "address": "0x8E17", "bytes": ["0x8E", "0x49"]},
       {"op": "set_register", "register": "PC", "value": "0xBA24"},

@@ -58,8 +58,13 @@ inject the original's probed `$BA83` state into the port's bat / ball /
 enemy descriptors so the pause-time state matches byte-for-byte. The
 harness fires a single `at=0.1` capture while both sides are still
 paused, then an `at=0.5` `enter` tap wakes the port so QEMU can exit
-cleanly. `--fail-on-diff` returns 0 with `l3_entry: 0/23040 px differ`
-and `PASS` on every state-probe row.
+cleanly. The original setup NOPs the `$BA6C` call to
+`all_metal_briks_animation_snd`, matching the modded GT capture path and
+the port's static level-entry renderer; otherwise the original's
+pre-round metal-brick shimmer leaves a different lower brick band even
+though the probed object and level bytes match. `--fail-on-diff` returns
+0 with `l3_entry: 0/23040 px differ` and `PASS` on every state-probe
+row.
 
 `replay-l3-brick-flash` is a port-side smoke run. It validates replay
 timing, QEMU driving, and capture extraction. The Make target rebuilds
