@@ -402,6 +402,7 @@ static unsigned char level_attrs[ATTR_TOTAL_SIZE];
  * `briks_colors`, 1-indexed by the brick code's low nibble). */
 static unsigned char scr_buff[6144];
 static unsigned char attr_buff[768];
+static void fast_memcpy(void *dest, const void *src, unsigned int n_bytes);
 
 static const unsigned char spr_brik_1[16] = {
     0xFF, 0xFE, 0x80, 0x00, 0x80, 0x00, 0x80, 0x00,
@@ -1270,6 +1271,23 @@ static void paint_strip_to_buff(const unsigned char *pixels,
     int char_rows = rows_px / 8;
     int byte_col_off = x0_px / 8;
     int char_row_off = y0_px / 8;
+    if (x0_px >= 0 && y0_px >= 0
+        && byte_col_off + cols_bytes <= 32
+        && y0_px + rows_px <= PLAYFIELD_H
+        && char_row_off + char_rows <= ATTR_ROWS) {
+        int y;
+        for (y = 0; y < rows_px; y++) {
+            fast_memcpy(&scr_buff[(y0_px + y) * 32 + byte_col_off],
+                        &pixels[y * cols_bytes],
+                        (unsigned int)cols_bytes);
+        }
+        for (char_row = 0; char_row < char_rows; char_row++) {
+            fast_memcpy(&attr_buff[(char_row_off + char_row) * 32 + byte_col_off],
+                        &attrs[char_row * attr_stride],
+                        (unsigned int)cols_bytes);
+        }
+        return;
+    }
     for (char_row = 0; char_row < char_rows; char_row++) {
         for (char_col = 0; char_col < cols_bytes; char_col++) {
             int abs_col = byte_col_off + char_col;
@@ -1314,16 +1332,12 @@ static void restore_top_frame_center(unsigned char cycle, unsigned char level_id
     const unsigned char *base = frame_l1 + (unsigned int)cycle * FRAME_SIZE;
     const unsigned char *top_px = base;
     const unsigned char *lattr = level_attrs + (unsigned int)level_idx * ATTR_BAND_SIZE;
-    int y, cr, cc;
+    int y, cr;
     for (y = 0; y < FRAME_TOP_H_PX; y++) {
-        for (cc = 8; cc <= 10; cc++) {
-            scr_buff[y * 32 + cc] = top_px[y * 32 + cc];
-        }
+        fast_memcpy(&scr_buff[y * 32 + 8], &top_px[y * 32 + 8], 3);
     }
     for (cr = 0; cr < FRAME_TOP_H_PX / 8; cr++) {
-        for (cc = 8; cc <= 10; cc++) {
-            attr_buff[cr * 32 + cc] = lattr[cr * 32 + cc];
-        }
+        fast_memcpy(&attr_buff[cr * 32 + 8], &lattr[cr * 32 + 8], 3);
     }
 }
 
@@ -2150,7 +2164,7 @@ static void print_briks_c(const unsigned char *cells) {
  * paint_bg_to_buff already pre-filled the rest of the buffers. */
 static void print_border_shadow_c(void);
 static void render_brick_band(unsigned char level_idx) {
-    int char_row, char_col;
+    int lvl_row, lvl_col;
     const unsigned char *cells = live_level;
     const unsigned char *lattr = &level_attrs[(int)level_idx * ATTR_BAND_SIZE];
     unsigned char bg_attr = bg_attr_per_cycle[level_idx & 3];
@@ -2159,12 +2173,7 @@ static void render_brick_band(unsigned char level_idx) {
 
     /* Copy the per-level attrs into char rows 3..16 (the brick band,
      * including frame side strips and pre-dimmed shadow rows). */
-    for (char_row = 3; char_row < 17; char_row++) {
-        for (char_col = 0; char_col < 32; char_col++) {
-            attr_buff[char_row * 32 + char_col] =
-                lattr[char_row * ATTR_COLS + char_col];
-        }
-    }
+    fast_memcpy(&attr_buff[3 * 32], &lattr[3 * ATTR_COLS], 14 * 32);
 
     /* level_attrs.bin was captured with all bricks alive, so it carries
      * the brick colour in every brick cell. For cells whose brick is
@@ -2175,7 +2184,6 @@ static void render_brick_band(unsigned char level_idx) {
      * repaint its body attr after this cleanup; if not, the stale dimmed
      * shadow attr disappears with the destroyed brick. */
     {
-        int lvl_row, lvl_col;
         for (lvl_row = 0; lvl_row < LVL_ROWS; lvl_row++) {
             for (lvl_col = 0; lvl_col < LVL_COLS; lvl_col++) {
                 unsigned char cell = cells[lvl_row * LVL_COLS + lvl_col];
@@ -2294,7 +2302,6 @@ static int sprite_height(unsigned int spr) {
 }
 
 static void fast_memcpy(void *dest, const void *src, unsigned int n_bytes) {
-    unsigned int n_words = n_bytes >> 1;
     _asm {
         push es
         push di
@@ -2303,9 +2310,9 @@ static void fast_memcpy(void *dest, const void *src, unsigned int n_bytes) {
         mov es, ax
         mov di, dest
         mov si, src
-        mov cx, n_words
+        mov cx, n_bytes
         cld
-        rep movsw
+        rep movsb
         pop si
         pop di
         pop es
@@ -3864,21 +3871,21 @@ static void apply_replay_bat_object_override(void) {
     unsigned char bytes[sizeof(object_t)];
     if (replay_parse_hex_bytes(getenv("BATTY_REPLAY_BAT_OBJECT"),
                                bytes, (int)sizeof(bytes)) != 0) return;
-    memcpy(&objects[OBJ_BAT_1], bytes, sizeof(bytes));
+    fast_memcpy(&objects[OBJ_BAT_1], bytes, sizeof(bytes));
 }
 
 static void apply_replay_ball_object_override(void) {
     unsigned char bytes[sizeof(object_t)];
     if (replay_parse_hex_bytes(getenv("BATTY_REPLAY_BALL_OBJECT"),
                                bytes, (int)sizeof(bytes)) != 0) return;
-    memcpy(&objects[OBJ_BALL_1], bytes, sizeof(bytes));
+    fast_memcpy(&objects[OBJ_BALL_1], bytes, sizeof(bytes));
 }
 
 static void apply_replay_enemy_object_override(void) {
     unsigned char bytes[sizeof(object_t)];
     if (replay_parse_hex_bytes(getenv("BATTY_REPLAY_ENEMY_OBJECT"),
                                bytes, (int)sizeof(bytes)) != 0) return;
-    memcpy(&objects[OBJ_ENEMY], bytes, sizeof(bytes));
+    fast_memcpy(&objects[OBJ_ENEMY], bytes, sizeof(bytes));
 }
 
 /* prop_uneven / prop_even / prop_x_coord from $9F27. Fields:
@@ -5393,7 +5400,6 @@ static state_t run_level(void) {
     objects[OBJ_BAT_2].y_coord = BAT_Y_PX;
     BAT_PREV_X = BAT_X_INIT;
     for (;;) {
-        int k;
         unsigned char lvl_idx = (unsigned char)(round_number % N_LEVELS);
         current_level_idx_var = lvl_idx;
         i = lvl_idx;                                 /* keep `i` alias for the cycle / bg_attr code below */
@@ -5447,9 +5453,7 @@ static state_t run_level(void) {
          * 5984 — sounds in-flight at level entry shouldn't bleed into
          * the new round. */
         snd_q_silence_all();
-        for (k = 0; k < LVL_CELLS; k++) {
-            live_level[k] = levels[(int)i * LVL_CELLS + k];
-        }
+        fast_memcpy(live_level, &levels[(int)i * LVL_CELLS], LVL_CELLS);
         apply_replay_random_override();
         apply_replay_bat_object_override();
         apply_replay_ball_object_override();
