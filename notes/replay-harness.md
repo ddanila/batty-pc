@@ -80,7 +80,11 @@ copy. The target sets
 `BATTY_REPLAY_RANDOM=8E49`, `BATTY_REPLAY_BAT_OBJECT`,
 `BATTY_REPLAY_BALL_OBJECT`, and `BATTY_REPLAY_ENEMY_OBJECT` so the
 port's RNG and bat/ball/enemy descriptors at L3 entry exactly match
-the original's probe at the same point.
+the original's probe at the same point. The ball seed now relies on
+the descriptor's direction/speed and +03/+05 fractional bytes rather
+than the old `BATTY_REPLAY_BALL_VEL` integer-velocity override; that
+keeps the primary ball in play through this replay instead of dropping
+and respawning on the bat.
 
 `replay-l3-brick-flash-both` also drives ZEsarUX. It is a stable
 fail-gated replay, but not yet an exact moving-object parity replay.
@@ -112,12 +116,14 @@ checkpoint.
 
 ## Next required step
 
-Fix the seeded brick-collision geometry mismatch now surfaced by the
-stable gate: both runners destroy two `$13` bricks, but the DOS port
-marks row 5/6 col 6 while the original active level marks row 4 col 7
-and row 5 col 6. After that, promote `current_level_copy` and the
-relevant object row from INFO to required equality. Two plausible paths
-for the capture timing remain:
+Fix the remaining seeded brick-collision mask mismatch surfaced by the
+stable gate. The primary ball now uses descriptor direction/speed and
+stays in flight, but both runners still destroy different `$13` cells:
+the DOS port marks row 5/6 col 6 while the original active level marks
+row 4 col 7 and row 5 col 6. The next parity step is a closer port of
+`LAFFC`'s neighbor-bit direction mask and cell-selection priority, then
+promote `current_level_copy` and the relevant object row from INFO to
+required equality. Two plausible paths for the capture timing remain:
 
 - **Frame-step both sides.** Replace the harness's wall-clock `at`
   scheduling with explicit "step N PIT frames" / "step N Z80 frames"

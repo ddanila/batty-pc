@@ -31,6 +31,7 @@ def main() -> int:
     rng = probe.get("random_number")
     level = probe.get("current_level_copy", "")
     bonus = probe.get("bonus_state", "")
+    ball = probe.get("object_ball_1", "")
 
     if bricks >= 0x1A:
         raise SystemExit(f"FAIL: replay did not destroy any bricks; bricks_quantity={bricks:02X}")
@@ -42,8 +43,12 @@ def main() -> int:
         raise SystemExit("FAIL: replay level copy does not contain a destroyed $13 brick marker")
     if len(bonus) != 14:
         raise SystemExit(f"FAIL: malformed bonus_state probe: {bonus!r}")
+    if len(ball) != 44:
+        raise SystemExit(f"FAIL: malformed object_ball_1 probe: {ball!r}")
+    if ball.startswith("02008400A600"):
+        raise SystemExit("FAIL: replay ball respawned on the bat instead of staying in descriptor-motion play")
 
-    print(f"PASS midgame_brick_replay: bricks={bricks:02X}, score={score:06d}, rng={rng}, bonus_state={bonus}")
+    print(f"PASS midgame_brick_replay: bricks={bricks:02X}, score={score:06d}, rng={rng}, ball={ball[:12]}, bonus_state={bonus}")
     return 0
 
 

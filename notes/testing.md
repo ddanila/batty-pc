@@ -86,7 +86,10 @@ state test. It seeds L3 with an in-flight ball near destructible bricks,
 runs the DOS port through the replay harness, then checks the extracted
 post-run probe: brick count must drop below the seeded `$1A`, score must
 increase, RNG must advance, and the level copy must contain a destroyed
-`$13` brick marker. `make replay-l3-brick-flash-both` also runs the
+`$13` brick marker. It also guards the primary ball against the old
+integer-velocity failure mode where the replay dropped and respawned the
+ball at `$84,$A6` instead of keeping the seeded descriptor-motion ball in
+play. `make replay-l3-brick-flash-both` also runs the
 original side and is fail-gated on stable two-runner invariants: both
 runners must be at L3, both must reduce brick count to the same value,
 and both active level buffers must contain destroyed `$13` cells. Exact

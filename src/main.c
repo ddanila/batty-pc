@@ -598,9 +598,9 @@ static unsigned char bg_tile[BG_TILE_CYCLES * BG_TILE_SIZE];
 #define BALL_X_MAX   240        /* 256 - 8 - body 8 */
 /* Ball state - x/y now live in objects[OBJ_BALL_1].x_coord/y_coord
  * (the descriptor is the source of truth, mirroring the original's
- * IX-relative access). Sub-pixel motion (dx, dy) and the
- * stuck/visible flags stay as side state for now; full direction-
- * byte port from handling_ball is deferred. */
+ * IX-relative access). The primary ball uses the descriptor's
+ * direction/speed plus the +03/+05 fractional bytes for movement;
+ * the legacy integer deltas remain for the two extra balls. */
 static int ball_dx     = +BALL_SPEED;
 static int ball_dy     = -BALL_SPEED;
 static unsigned char ball_stuck   = 1;
@@ -1639,6 +1639,11 @@ static object_t objects[N_OBJECTS] = {
 #define BALL_SHOW()      (objects[OBJ_BALL_1].sprite_set = 0x02)
 #define BALL_HIDE()      (objects[OBJ_BALL_1].sprite_set = 0x82)
 
+static void ball_change_direction(unsigned char mask) {
+    object_t *b = &objects[OBJ_BALL_1];
+    b->dir = (unsigned char)(((b->dir ^ mask) + 1) & 0x3F);
+}
+
 /* --- Per-object handler dispatch (handling_object @ $9F54) ------------ */
 
 typedef void (*obj_handler_t)(object_t *obj);
@@ -1723,6 +1728,11 @@ static void enemy_dir_delta_q8(unsigned char dir, unsigned char speed,
     }
     *dx_q8 *= speed;
     *dy_q8 *= speed;
+}
+
+static void ball_dir_delta_q8(unsigned char dir, unsigned char speed,
+                              int *dx_q8, int *dy_q8) {
+    enemy_dir_delta_q8(dir, speed, dx_q8, dy_q8);
 }
 
 static void enemy_turn_towards_target(object_t *o) {
@@ -3837,25 +3847,53 @@ static void render_brick_flash_to_buff(void) {
 
 static int brick_collision(int prev_x, int prev_y, int new_x, int new_y) {
     int sz = eff_ball_size();
-    int cx = new_x + sz / 2;
-    int cy = new_y + sz / 2;
-    int col, row, brick_top, brick_bot, prev_cy, axis;
+    int body_h = BALL_H_PX;
+    int left = new_x;
+    int right = new_x + sz - 1;
+    int top = new_y;
+    int bottom = new_y + body_h - 1;
+    int col0, col1, row0, row1;
+    int col, row, r, c, brick_top, brick_bot, brick_left, brick_right, axis;
     unsigned char *cell;
-    if (cy < 32 || cy >= 32 + LVL_ROWS * 8) return 0;
-    if (cx < 8  || cx >= 8  + LVL_COLS * 16) return 0;
-    col = (cx - 8) / 16;
-    row = (cy - 32) / 8;
+    if (bottom < 32 || top >= 32 + LVL_ROWS * 8) return 0;
+    if (right < 8  || left >= 8  + LVL_COLS * 16) return 0;
+    col0 = (left < 8) ? 0 : (left - 8) / 16;
+    col1 = (right >= 8 + LVL_COLS * 16) ? LVL_COLS - 1 : (right - 8) / 16;
+    row0 = (top < 32) ? 0 : (top - 32) / 8;
+    row1 = (bottom >= 32 + LVL_ROWS * 8) ? LVL_ROWS - 1 : (bottom - 32) / 8;
+
+    row = -1;
+    col = -1;
+    for (r = row0; r <= row1 && row < 0; r++) {
+        for (c = col0; c <= col1; c++) {
+            unsigned char v = live_level[r * LVL_COLS + c];
+            if ((v & 0x80) == 0) {
+                row = r;
+                col = c;
+                break;
+            }
+        }
+    }
+    if (row < 0) return 0;
     cell = &live_level[row * LVL_COLS + col];
-    /* BIT 7 = no brick / destroyed: ball passes through. */
-    if (*cell & 0x80) return 0;
 
     /* Determine the bounce axis (1 = flip dy, 2 = flip dx) for both
      * the destructible and undestructible paths. */
     brick_top = 32 + row * 8;
     brick_bot = brick_top + 8;
-    prev_cy   = prev_y + sz / 2;
-    (void)prev_x;
-    axis = (prev_cy < brick_top || prev_cy >= brick_bot) ? 1 : 2;
+    brick_left = 8 + col * 16;
+    brick_right = brick_left + 16;
+    if (prev_y + body_h <= brick_top || prev_y >= brick_bot) {
+        axis = 1;
+    } else if (prev_x + sz <= brick_left || prev_x >= brick_right) {
+        axis = 2;
+    } else {
+        int overlap_x = (right < brick_right ? right : brick_right - 1)
+                      - (left > brick_left ? left : brick_left) + 1;
+        int overlap_y = (bottom < brick_bot ? bottom : brick_bot - 1)
+                      - (top > brick_top ? top : brick_top) + 1;
+        axis = (overlap_y <= overlap_x) ? 1 : 2;
+    }
 
     /* BIT 5 = undestructible: bounce, never destroy.
      * BIT 4 = "this hit destroys" (1-hit brick OR multi-hit's final
@@ -4531,6 +4569,7 @@ static void step_rocket(void) {
  * exits the bottom of the playfield it respawns stuck on the bat. */
 static void step_ball(void) {
     int next_x, next_y;
+    int dx_q8, dy_q8, next_x_q8, next_y_q8;
     int bat_left  = eff_bat_left();
     int bat_right = eff_bat_right();
     int bat_top   = BAT_Y;
@@ -4538,18 +4577,45 @@ static void step_ball(void) {
     if (ball_stuck) {
         BALL_X = BAT_X + stuck_offset_x;
         BALL_Y = BAT_Y - ball_sz;
+        objects[OBJ_BALL_1].x_coord_hi = 0;
+        objects[OBJ_BALL_1].y_coord_hi = 0;
         return;
     }
-    next_x = BALL_X + ball_dx;
-    next_y = BALL_Y + ball_dy;
-    /* Side walls: flip dx, preserving the magnitude the bat-deflection
-     * may have set (so a sharp angle survives wall bounces). */
+    ball_dir_delta_q8(objects[OBJ_BALL_1].dir, objects[OBJ_BALL_1].speed,
+                      &dx_q8, &dy_q8);
+    next_x_q8 = (((int)BALL_X) << 8) + objects[OBJ_BALL_1].x_coord_hi + dx_q8;
+    next_y_q8 = (((int)BALL_Y) << 8) + objects[OBJ_BALL_1].y_coord_hi + dy_q8;
+    next_x = next_x_q8 >> 8;
+    next_y = next_y_q8 >> 8;
+    ball_dx = (dx_q8 < 0) ? -1 : (dx_q8 > 0 ? 1 : 0);
+    ball_dy = (dy_q8 < 0) ? -1 : (dy_q8 > 0 ? 1 : 0);
+    /* Side walls: port the original change_direction masks. */
     {
         int x_max = PLAYFIELD_W - 8 - ball_sz;   /* 244 normal, 240 big */
-        if (next_x < BALL_X_MIN)        { next_x = BALL_X_MIN; ball_dx = -ball_dx; }
-        else if (next_x > x_max)        { next_x = x_max;      ball_dx = -ball_dx; }
+        if (next_x < BALL_X_MIN) {
+            next_x = BALL_X_MIN;
+            next_x_q8 = next_x << 8;
+            ball_change_direction(0x1F);
+            ball_dir_delta_q8(objects[OBJ_BALL_1].dir, objects[OBJ_BALL_1].speed,
+                              &dx_q8, &dy_q8);
+            ball_dx = (dx_q8 < 0) ? -1 : (dx_q8 > 0 ? 1 : 0);
+        } else if (next_x > x_max) {
+            next_x = x_max;
+            next_x_q8 = next_x << 8;
+            ball_change_direction(0x1F);
+            ball_dir_delta_q8(objects[OBJ_BALL_1].dir, objects[OBJ_BALL_1].speed,
+                              &dx_q8, &dy_q8);
+            ball_dx = (dx_q8 < 0) ? -1 : (dx_q8 > 0 ? 1 : 0);
+        }
     }
-    if (next_y < BALL_Y_TOP) { next_y = BALL_Y_TOP; ball_dy = +BALL_SPEED; }
+    if (next_y < BALL_Y_TOP) {
+        next_y = BALL_Y_TOP;
+        next_y_q8 = next_y << 8;
+        ball_change_direction(0x3F);
+        ball_dir_delta_q8(objects[OBJ_BALL_1].dir, objects[OBJ_BALL_1].speed,
+                          &dx_q8, &dy_q8);
+        ball_dy = (dy_q8 < 0) ? -1 : (dy_q8 > 0 ? 1 : 0);
+    }
     /* Bat top: ball moving down, ball overlaps bat in X. Use a 5-zone
      * deflection so the ball gains horizontal control from where the
      * player intercepts it - the classic brick-breaker mechanic. */
@@ -4568,21 +4634,26 @@ static void step_ball(void) {
             ball_stuck      = 1;
             stuck_ticks     = 0;
             ball_dy         = -BALL_SPEED;
+            objects[OBJ_BALL_1].dir = 0x20;
             /* Record the offset where the ball hit so the stuck-ball
              * tracker keeps it at the catch position as the bat slides. */
             stuck_offset_x  = next_x - BAT_X;
             BALL_X          = next_x;
             BALL_Y          = next_y;
+            objects[OBJ_BALL_1].x_coord_hi = 0;
+            objects[OBJ_BALL_1].y_coord_hi = 0;
             snd_q_push(SND_BAT_BEAT);
             return;
         }
         ball_dy = -BALL_SPEED;
         /* Same 5-zone split, normalised to the (possibly-bigger) bat span. */
-        if      (hit_x * 5 < span * 1) ball_dx = -2;
-        else if (hit_x * 5 < span * 2) ball_dx = -1;
-        else if (hit_x * 5 < span * 3) ball_dx = (ball_dx >= 0) ? +1 : -1;
-        else if (hit_x * 5 < span * 4) ball_dx = +1;
-        else                           ball_dx = +2;
+        if      (hit_x * 5 < span * 1) { ball_dx = -2; objects[OBJ_BALL_1].dir = 0x2C; }
+        else if (hit_x * 5 < span * 2) { ball_dx = -1; objects[OBJ_BALL_1].dir = 0x28; }
+        else if (hit_x * 5 < span * 3) { ball_dx = (ball_dx >= 0) ? +1 : -1; objects[OBJ_BALL_1].dir = (ball_dx >= 0) ? 0x18 : 0x28; }
+        else if (hit_x * 5 < span * 4) { ball_dx = +1; objects[OBJ_BALL_1].dir = 0x18; }
+        else                           { ball_dx = +2; objects[OBJ_BALL_1].dir = 0x14; }
+        ball_dir_delta_q8(objects[OBJ_BALL_1].dir, objects[OBJ_BALL_1].speed,
+                          &dx_q8, &dy_q8);
         snd_q_push(SND_BAT_BEAT);            /* ball-on-bat */
     }
     /* Past the bat (= primary ball lost). Original at LA27E_25 ($A4xx)
@@ -4609,11 +4680,20 @@ static void step_ball(void) {
      * the ball entered through; we reverse + unwind that axis. */
     {
         int hit = brick_collision(BALL_X, BALL_Y, next_x, next_y);
-        if (hit == 1)        { ball_dy = -ball_dy; next_y = BALL_Y; }
-        else if (hit == 2)   { ball_dx = -ball_dx; next_x = BALL_X; }
+        if (hit == 1) {
+            ball_change_direction(0x3F);
+            next_y = BALL_Y;
+            next_y_q8 = (((int)BALL_Y) << 8) + objects[OBJ_BALL_1].y_coord_hi;
+        } else if (hit == 2) {
+            ball_change_direction(0x1F);
+            next_x = BALL_X;
+            next_x_q8 = (((int)BALL_X) << 8) + objects[OBJ_BALL_1].x_coord_hi;
+        }
     }
     BALL_X = next_x;
     BALL_Y = next_y;
+    objects[OBJ_BALL_1].x_coord_hi = (unsigned char)(next_x_q8 & 0xFF);
+    objects[OBJ_BALL_1].y_coord_hi = (unsigned char)(next_y_q8 & 0xFF);
 }
 
 /* Step the secondary (multi-ball) one frame. Simpler than step_ball:

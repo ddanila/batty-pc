@@ -71,9 +71,13 @@ def main() -> int:
         raise SystemExit(f"FAIL: Makefile L3 replay ball object does not match JSON seed: {env_values[:2]}")
     if "BATTY_REPLAY_BALL_STUCK=0" not in makefile:
         raise SystemExit("FAIL: Makefile L3 replay must force BATTY_REPLAY_BALL_STUCK=0")
-    if "BATTY_REPLAY_BALL_VEL=0,-3" not in makefile:
-        raise SystemExit("FAIL: Makefile L3 replay must force BATTY_REPLAY_BALL_VEL=0,-3")
-    print("PASS l3_replay_seed_makefile: Makefile env matches JSON seed")
+    replay_lines = [
+        line for line in makefile.splitlines()
+        if line.startswith("\tBATTY_LEVEL=3") and "BATTY_REPLAY_BALL_OBJECT=" in line
+    ]
+    if any("BATTY_REPLAY_BALL_VEL=" in line for line in replay_lines):
+        raise SystemExit("FAIL: L3 replay must use the seeded object direction/speed, not an integer velocity override")
+    print("PASS l3_replay_seed_makefile: Makefile env uses JSON object direction/speed")
     return 0
 
 
