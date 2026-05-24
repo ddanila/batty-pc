@@ -74,7 +74,7 @@ BOX86_FDD_TYPE  ?= 35_2hd
 BOX86_ASSETPATH ?= /home/ddanila/fun/86Box/src/unix/assets
 BOX86_ROMPATH   ?= /home/ddanila/fun/86Box-roms
 
-.PHONY: all clean run run-86box profile-86box read-profile floppy assets help run-original run-original-cheat snapshot candidates regions test test-hud test-brick-flash test-rocket-bonus test-death-sparks test-midgame-brick-replay replay-l3-brick-flash replay-l3-brick-flash-both
+.PHONY: all clean run run-86box profile-86box read-profile floppy assets help run-original run-original-cheat snapshot candidates regions test test-hud test-brick-flash test-rocket-bonus test-death-sparks test-l3-replay-seed test-midgame-brick-replay replay-l3-brick-flash replay-l3-brick-flash-both
 
 all: $(EXE) $(ASSETS)
 
@@ -94,6 +94,7 @@ help:
 	@echo "  test-brick-flash  verify brick flash clears vs original L3 reference"
 	@echo "  test-rocket-bonus  verify rocket bonus cannot trigger no-ball death"
 	@echo "  test-death-sparks  verify bat death spark fanout mirrors original"
+	@echo "  test-l3-replay-seed  verify deterministic L3 replay seed/probes"
 	@echo "  test-midgame-brick-replay  fail-gate seeded L3 brick destruction replay"
 	@echo "  replay-l3-brick-flash       run the L3 replay against the DOS port"
 	@echo "  replay-l3-brick-flash-both  run DOS + original and print INFO diffs"
@@ -386,6 +387,9 @@ test-rocket-bonus:
 
 test-death-sparks:
 	python3 scripts/test_death_sparks.py
+
+test-l3-replay-seed:
+	python3 scripts/test_l3_replay_seed.py
 
 test-midgame-brick-replay: replay-l3-brick-flash
 	python3 scripts/test_midgame_brick_replay.py

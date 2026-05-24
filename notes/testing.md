@@ -72,6 +72,15 @@ reflection thresholds, especially the right wall clamp at `$F8 -
 spark_body_width`. It also checks the post-spark `pause_long B=$03`
 hold before the life is decremented and the bat respawns.
 
+`make test-l3-replay-seed` is a source-level guard for the deterministic
+L3 brick replay. It parses `replays/l3-brick-flash.json` and the
+Makefile env to keep the original and port seeds aligned: the ball
+descriptor must be 22 bytes, direction `$1F`, launch/stuck counter
+`$00`, Makefile `BATTY_REPLAY_BALL_OBJECT` must match the JSON seed,
+and the original dynamic probe must read active L3 data at `$6E43`.
+It also checks that `bricks_quantity` and original destroyed `$13`
+markers are fail-gated.
+
 `make test-midgame-brick-replay` is the first fail-gated dynamic replay
 state test. It seeds L3 with an in-flight ball near destructible bricks,
 runs the DOS port through the replay harness, then checks the extracted
