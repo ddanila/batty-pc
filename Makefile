@@ -74,7 +74,7 @@ BOX86_FDD_TYPE  ?= 35_2hd
 BOX86_ASSETPATH ?= /home/ddanila/fun/86Box/src/unix/assets
 BOX86_ROMPATH   ?= /home/ddanila/fun/86Box-roms
 
-.PHONY: all clean run run-86box profile-86box read-profile floppy assets help run-original run-original-cheat snapshot candidates regions test test-hud test-brick-flash test-rocket-bonus test-death-sparks replay-l3-brick-flash replay-l3-brick-flash-both
+.PHONY: all clean run run-86box profile-86box read-profile floppy assets help run-original run-original-cheat snapshot candidates regions test test-hud test-brick-flash test-rocket-bonus test-death-sparks test-midgame-brick-replay replay-l3-brick-flash replay-l3-brick-flash-both
 
 all: $(EXE) $(ASSETS)
 
@@ -94,6 +94,7 @@ help:
 	@echo "  test-brick-flash  verify brick flash clears vs original L3 reference"
 	@echo "  test-rocket-bonus  verify rocket bonus cannot trigger no-ball death"
 	@echo "  test-death-sparks  verify bat death spark fanout mirrors original"
+	@echo "  test-midgame-brick-replay  fail-gate seeded L3 brick destruction replay"
 	@echo "  replay-l3-brick-flash       run the L3 replay against the DOS port"
 	@echo "  replay-l3-brick-flash-both  run DOS + original and print INFO diffs"
 	@echo "  clean         remove build/"
@@ -298,6 +299,12 @@ $(TEST_FLOPPY_OUT): $(TEST_EXE) $(ASSETS) $(FLOPPY_SRC)
 	if [ -n "$$BATTY_REPLAY_BALL_OBJECT" ]; then \
 	    printf 'SET BATTY_REPLAY_BALL_OBJECT=%s\r\n' "$$BATTY_REPLAY_BALL_OBJECT" >> build/AUTOEXEC-T.BAT ; \
 	fi; \
+	if [ -n "$$BATTY_REPLAY_BALL_STUCK" ]; then \
+	    printf 'SET BATTY_REPLAY_BALL_STUCK=%s\r\n' "$$BATTY_REPLAY_BALL_STUCK" >> build/AUTOEXEC-T.BAT ; \
+	fi; \
+	if [ -n "$$BATTY_REPLAY_BALL_VEL" ]; then \
+	    printf 'SET BATTY_REPLAY_BALL_VEL=%s\r\n' "$$BATTY_REPLAY_BALL_VEL" >> build/AUTOEXEC-T.BAT ; \
+	fi; \
 	if [ -n "$$BATTY_REPLAY_ENEMY_OBJECT" ]; then \
 	    printf 'SET BATTY_REPLAY_ENEMY_OBJECT=%s\r\n' "$$BATTY_REPLAY_ENEMY_OBJECT" >> build/AUTOEXEC-T.BAT ; \
 	fi; \
@@ -380,14 +387,17 @@ test-rocket-bonus:
 test-death-sparks:
 	python3 scripts/test_death_sparks.py
 
+test-midgame-brick-replay: replay-l3-brick-flash
+	python3 scripts/test_midgame_brick_replay.py
+
 replay-l3-brick-flash:
 	rm -f $(TEST_FLOPPY_OUT)
-	BATTY_LEVEL=3 BATTY_START_LEVEL=1 BATTY_REPLAY_PROBE=1 BATTY_REPLAY_WAIT_KEY=1 BATTY_REPLAY_RANDOM=8E49 BATTY_REPLAY_BAT_OBJECT=01017400AD000000040DEFAE1C0A74AD040DF0008380 BATTY_REPLAY_BALL_OBJECT=02008000A7000803020CEEF0080780A7020C0000A18C BATTY_REPLAY_ENEMY_OBJECT=0905A4471B642D01030FDD74180CA41C030F30703100 $(MAKE) $(TEST_FLOPPY_OUT)
+	BATTY_LEVEL=3 BATTY_START_LEVEL=1 BATTY_REPLAY_PROBE=1 BATTY_REPLAY_WAIT_KEY=1 BATTY_REPLAY_RANDOM=8E49 BATTY_REPLAY_BAT_OBJECT=01017400AD000000040DEFAE1C0A74AD040DF0008380 BATTY_REPLAY_BALL_OBJECT=02006C004E001003020CEEF008076C4E020C0000A18C BATTY_REPLAY_BALL_STUCK=0 BATTY_REPLAY_BALL_VEL=0,-3 BATTY_REPLAY_ENEMY_OBJECT=0905A4471B642D01030FDD74180CA41C030F30703100 $(MAKE) $(TEST_FLOPPY_OUT)
 	python3 scripts/replay_harness.py replays/l3-brick-flash.json --side port
 
 replay-l3-brick-flash-both: $(ZESARUX)
 	rm -f $(TEST_FLOPPY_OUT)
-	BATTY_LEVEL=3 BATTY_START_LEVEL=1 BATTY_REPLAY_PROBE=1 BATTY_REPLAY_WAIT_KEY=1 BATTY_REPLAY_RANDOM=8E49 BATTY_REPLAY_BAT_OBJECT=01017400AD000000040DEFAE1C0A74AD040DF0008380 BATTY_REPLAY_BALL_OBJECT=02008000A7000803020CEEF0080780A7020C0000A18C BATTY_REPLAY_ENEMY_OBJECT=0905A4471B642D01030FDD74180CA41C030F30703100 $(MAKE) $(TEST_FLOPPY_OUT)
+	BATTY_LEVEL=3 BATTY_START_LEVEL=1 BATTY_REPLAY_PROBE=1 BATTY_REPLAY_WAIT_KEY=1 BATTY_REPLAY_RANDOM=8E49 BATTY_REPLAY_BAT_OBJECT=01017400AD000000040DEFAE1C0A74AD040DF0008380 BATTY_REPLAY_BALL_OBJECT=02006C004E001003020CEEF008076C4E020C0000A18C BATTY_REPLAY_BALL_STUCK=0 BATTY_REPLAY_BALL_VEL=0,-3 BATTY_REPLAY_ENEMY_OBJECT=0905A4471B642D01030FDD74180CA41C030F30703100 $(MAKE) $(TEST_FLOPPY_OUT)
 	python3 scripts/replay_harness.py replays/l3-brick-flash.json --side both --compare
 
 # L3-entry static parity gate. Both runners pause at main-loop entry, so

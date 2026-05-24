@@ -11,15 +11,11 @@
       "l3_after": 5000
     },
     "required_probe_rows": [
-      "bricks_quantity",
       "briks_data",
       "current_level",
-      "current_level_copy",
-      "object_bat_1",
-      "random_number",
       "round_number"
     ],
-    "note": "Stable probe rows are fail-gated. Captures use bounded diff ceilings until a second pause/frame-step checkpoint removes runtime drift."
+    "note": "Post-replay original/port state is informational except stable rows; the DOS port post-hit state is fail-gated by make test-midgame-brick-replay."
   },
   "port": {
     "floppy": "build/batty-test.img",
@@ -35,10 +31,20 @@
       {"op": "write_memory", "address": "0xB7EA", "bytes": ["0x02", "0x02"]},
       {"op": "write_memory", "address": "0x8E17", "bytes": ["0x8E", "0x49"]},
       {"op": "set_register", "register": "PC", "value": "0xBA24"},
-      {"op": "run", "opcodes": 1000000}
+      {"op": "run_until_pc", "pc": "0xBA83", "max_opcodes": 5000000},
+      {
+        "op": "write_memory",
+        "address": "0x9AD0",
+        "bytes": [
+          "0x02", "0x00", "0x6C", "0x00", "0x4E", "0x00", "0x10", "0x03",
+          "0x02", "0x0C", "0xEE", "0xF0", "0x08", "0x07", "0x6C", "0x4E",
+          "0x02", "0x0C", "0x00", "0x00", "0xA1", "0x8C"
+        ]
+      }
     ]
   },
   "state_probe": {
+    "original_timing": "after",
     "original": [
       {"name": "bricks_quantity", "address": "0xB7E9", "length": 1},
       {"name": "current_level", "address": "0xB7EA", "length": 1},
@@ -55,11 +61,11 @@
     ]
   },
   "events": [
-    {"at": 0.5, "key": "enter", "kind": "tap", "note": "wake port from BATTY_REPLAY_WAIT_KEY pause"},
-    {"at": 1.0, "key": "space", "kind": "tap", "note": "release ball"}
+    {"at": 3.0, "key": "enter", "kind": "resume", "note": "wake port from BATTY_REPLAY_WAIT_KEY and resume original CPU stepping"},
+    {"at": 3.5, "key": "space", "kind": "tap", "note": "release ball if the runner still has it latched to the bat"}
   ],
   "captures": [
     {"at": 0.1, "name": "l3_initial", "roi": [8, 32, 248, 128]},
-    {"at": 13.0, "name": "l3_after", "roi": [8, 32, 248, 128]}
+    {"at": 5.0, "name": "l3_after", "roi": [8, 32, 248, 128]}
   ]
 }

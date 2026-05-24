@@ -1193,7 +1193,7 @@ static unsigned char paper_pal(unsigned char attr) {
 
 static unsigned char ink_table[256];
 static unsigned char paper_table[256];
-static unsigned short vga_black_paper_nibble_words[16][16][2];
+static unsigned short vga_attr_nibble_words[128][16][2];
 
 static void init_pal_tables(void) {
     int i;
@@ -1201,15 +1201,17 @@ static void init_pal_tables(void) {
         ink_table[i] = ink_pal((unsigned char)i);
         paper_table[i] = paper_pal((unsigned char)i);
     }
-    for (i = 0; i < 16; i++) {
+    for (i = 0; i < 128; i++) {
         int n;
+        unsigned char ink = ink_table[i];
+        unsigned char paper = paper_table[i];
         for (n = 0; n < 16; n++) {
-            unsigned char p0 = (n & 8) ? (unsigned char)i : 0;
-            unsigned char p1 = (n & 4) ? (unsigned char)i : 0;
-            unsigned char p2 = (n & 2) ? (unsigned char)i : 0;
-            unsigned char p3 = (n & 1) ? (unsigned char)i : 0;
-            vga_black_paper_nibble_words[i][n][0] = (unsigned short)(p0 | ((unsigned short)p1 << 8));
-            vga_black_paper_nibble_words[i][n][1] = (unsigned short)(p2 | ((unsigned short)p3 << 8));
+            unsigned char p0 = (n & 8) ? ink : paper;
+            unsigned char p1 = (n & 4) ? ink : paper;
+            unsigned char p2 = (n & 2) ? ink : paper;
+            unsigned char p3 = (n & 1) ? ink : paper;
+            vga_attr_nibble_words[i][n][0] = (unsigned short)(p0 | ((unsigned short)p1 << 8));
+            vga_attr_nibble_words[i][n][1] = (unsigned short)(p2 | ((unsigned short)p3 << 8));
         }
     }
 }
@@ -2456,63 +2458,21 @@ static void buff_to_vga(void) {
         for (byte_col = 0; byte_col < 32; byte_col++) {
             unsigned char b = scr_row[byte_col];
             unsigned char attr = attr_row[byte_col];
-            unsigned char ink = ink_table[attr];
-            unsigned char paper = paper_table[attr];
-            unsigned char diff = ink ^ paper;
+            const unsigned short *hi = vga_attr_nibble_words[attr & 0x7F][b >> 4];
+            const unsigned short *lo = vga_attr_nibble_words[attr & 0x7F][b & 0x0F];
 
             _asm {
                 les di, dest
-                mov ah, b
-                mov dh, paper
-                mov cl, diff
-
-                shl ah, 1
-                sbb al, al
-                and al, cl
-                xor al, dh
-                stosb
-
-                shl ah, 1
-                sbb al, al
-                and al, cl
-                xor al, dh
-                stosb
-
-                shl ah, 1
-                sbb al, al
-                and al, cl
-                xor al, dh
-                stosb
-
-                shl ah, 1
-                sbb al, al
-                and al, cl
-                xor al, dh
-                stosb
-
-                shl ah, 1
-                sbb al, al
-                and al, cl
-                xor al, dh
-                stosb
-
-                shl ah, 1
-                sbb al, al
-                and al, cl
-                xor al, dh
-                stosb
-
-                shl ah, 1
-                sbb al, al
-                and al, cl
-                xor al, dh
-                stosb
-
-                shl ah, 1
-                sbb al, al
-                and al, cl
-                xor al, dh
-                stosb
+                mov si, hi
+                mov ax, [si]
+                stosw
+                mov ax, [si+2]
+                stosw
+                mov si, lo
+                mov ax, [si]
+                stosw
+                mov ax, [si+2]
+                stosw
 
                 mov word ptr dest, di
             }
@@ -3312,84 +3272,21 @@ static void buff_to_vga_rect_bytes(int y0, int h, int byte_lo, int byte_hi) {
         for (byte_col = byte_lo; byte_col <= byte_hi; byte_col++) {
             unsigned char b = scr_row[byte_col];
             unsigned char attr = attr_row[byte_col];
-            if (paper_table[attr] == 0) {
-                const unsigned short *hi = vga_black_paper_nibble_words[ink_table[attr]][b >> 4];
-                const unsigned short *lo = vga_black_paper_nibble_words[ink_table[attr]][b & 0x0F];
-                _asm {
-                    les di, dest
-                    mov si, hi
-                    mov ax, [si]
-                    stosw
-                    mov ax, [si+2]
-                    stosw
-                    mov si, lo
-                    mov ax, [si]
-                    stosw
-                    mov ax, [si+2]
-                    stosw
-                    mov word ptr dest, di
-                }
-            } else {
-                unsigned char ink = ink_table[attr];
-                unsigned char paper = paper_table[attr];
-                unsigned char diff = ink ^ paper;
-
-                _asm {
-                    les di, dest
-                    mov ah, b
-                    mov dh, paper
-                    mov cl, diff
-
-                    shl ah, 1
-                    sbb al, al
-                    and al, cl
-                    xor al, dh
-                    stosb
-
-                    shl ah, 1
-                    sbb al, al
-                    and al, cl
-                    xor al, dh
-                    stosb
-
-                    shl ah, 1
-                    sbb al, al
-                    and al, cl
-                    xor al, dh
-                    stosb
-
-                    shl ah, 1
-                    sbb al, al
-                    and al, cl
-                    xor al, dh
-                    stosb
-
-                    shl ah, 1
-                    sbb al, al
-                    and al, cl
-                    xor al, dh
-                    stosb
-
-                    shl ah, 1
-                    sbb al, al
-                    and al, cl
-                    xor al, dh
-                    stosb
-
-                    shl ah, 1
-                    sbb al, al
-                    and al, cl
-                    xor al, dh
-                    stosb
-
-                    shl ah, 1
-                    sbb al, al
-                    and al, cl
-                    xor al, dh
-                    stosb
-
-                    mov word ptr dest, di
-                }
+            const unsigned short *hi = vga_attr_nibble_words[attr & 0x7F][b >> 4];
+            const unsigned short *lo = vga_attr_nibble_words[attr & 0x7F][b & 0x0F];
+            _asm {
+                les di, dest
+                mov si, hi
+                mov ax, [si]
+                stosw
+                mov ax, [si+2]
+                stosw
+                mov si, lo
+                mov ax, [si]
+                stosw
+                mov ax, [si+2]
+                stosw
+                mov word ptr dest, di
             }
         }
     }
@@ -4092,6 +3989,26 @@ static void apply_replay_ball_object_override(void) {
     fast_memcpy(&objects[OBJ_BALL_1], bytes, sizeof(bytes));
 }
 
+static void apply_replay_ball_motion_override(void) {
+    const char *stuck = getenv("BATTY_REPLAY_BALL_STUCK");
+    const char *vel = getenv("BATTY_REPLAY_BALL_VEL");
+    if (stuck != NULL) {
+        ball_stuck = (unsigned char)(atoi(stuck) != 0);
+    }
+    if (vel != NULL) {
+        char *endp;
+        long dx = strtol(vel, &endp, 0);
+        if (endp != vel && *endp == ',') {
+            char *endp2;
+            long dy = strtol(endp + 1, &endp2, 0);
+            if (endp2 != endp + 1) {
+                ball_dx = (int)dx;
+                ball_dy = (int)dy;
+            }
+        }
+    }
+}
+
 static void apply_replay_enemy_object_override(void) {
     unsigned char bytes[sizeof(object_t)];
     if (replay_parse_hex_bytes(getenv("BATTY_REPLAY_ENEMY_OBJECT"),
@@ -4162,6 +4079,7 @@ static void write_replay_probe(void) {
     fprintf(f, "round_number=%02X\n", (unsigned)round_number);
     fprintf(f, "current_level=%02X\n", (unsigned)current_level_idx_var);
     fprintf(f, "bricks_quantity=%02X\n", (unsigned)live_bricks_remaining());
+    fprintf(f, "score=%06lu\n", score);
     fprintf(f, "random_number=%02X%02X\n", (unsigned)random_d, (unsigned)random_e);
     fprintf(f, "random_seed=%04X\n", random_seed_addr);
     fprintf(f, "object_ball_1=");
@@ -4176,6 +4094,13 @@ static void write_replay_probe(void) {
     for (i = 0; i < (int)sizeof(object_t); i++) {
         fprintf(f, "%02X", ((unsigned char *)&objects[OBJ_ENEMY])[i]);
     }
+    fprintf(f, "\nbonus_state=%02X%02X%02X%02X%02X%04X",
+            (unsigned)bonus_active,
+            (unsigned)bonus_type,
+            (unsigned)(bonus_x & 0xFF),
+            (unsigned)(bonus_y & 0xFF),
+            (unsigned)pts_400_active,
+            (unsigned)(pts_marker_spr & 0xFFFFu));
     write_replay_briks_data(f);
     fprintf(f, "\ncurrent_level_copy=");
     for (i = 0; i < LVL_CELLS; i++) fprintf(f, "%02X", live_level[i]);
@@ -5709,6 +5634,7 @@ static state_t run_level(void) {
         apply_replay_random_override();
         apply_replay_bat_object_override();
         apply_replay_ball_object_override();
+        apply_replay_ball_motion_override();
         apply_replay_enemy_object_override();
         write_replay_probe();
         render_level_screen(i);
@@ -5737,7 +5663,10 @@ static state_t run_level(void) {
 
             if (kbhit()) {
                 int k = getch();
-                if (k == KEY_ESC) return ST_QUIT;
+                if (k == KEY_ESC) {
+                    write_replay_probe();
+                    return ST_QUIT;
+                }
                 if (k == KEY_P_LOWER || k == KEY_P_UPPER
                     || k == '1' || k == '2' || k == '3' || k == '4') {
                     paused = !paused;

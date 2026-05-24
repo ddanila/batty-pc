@@ -59,6 +59,10 @@ Interpretation:
 - PC speaker effects no longer busy-wait in the 50 Hz frame body.
 - Brick destruction refreshes only the brick-band slice of the static
   background cache instead of rebuilding the whole static level image.
+- VGA byte expansion now uses an 8086-safe precomputed attribute/nibble
+  table: each Spectrum byte is emitted as four `stosw` writes instead of
+  per-pixel shift/mask logic. The table covers all non-FLASH attributes
+  in 8 KiB and intentionally avoids 386-only dword copies.
 - `make run` and `make run-86box` repack the floppy image every time so
   env-driven profile/sound flags do not go stale.
 

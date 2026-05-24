@@ -129,7 +129,7 @@ def validate_spec(spec: ReplaySpec) -> None:
     for event in spec.events:
         if event.key not in QEMU_KEY or event.key not in ZESARUX_KEY:
             raise ValueError(f"unsupported key {event.key!r}")
-        if event.kind not in ("tap", "hold"):
+        if event.kind not in ("tap", "hold", "resume"):
             raise ValueError(f"unsupported event kind {event.kind!r}")
 
 
@@ -346,7 +346,9 @@ def run_original(spec: ReplaySpec, out_dir: Path, zesarux: str, port: int) -> No
         zc.snapshot_load(str(Path(str(snapshot)).resolve()))
         time.sleep(boot_wait)
         apply_original_setup(zc, spec.original.get("setup", []))
-        run_original_state_probe(spec, out_dir, zc)
+        probe_timing = str(spec.state_probe.get("original_timing", "before"))
+        if probe_timing == "before":
+            run_original_state_probe(spec, out_dir, zc)
         actions = []
         for event in spec.events:
             actions.append(("event", event.at, event))
@@ -365,7 +367,10 @@ def run_original(spec: ReplaySpec, out_dir: Path, zesarux: str, port: int) -> No
                 time.sleep(delay)
             if kind == "event":
                 event = payload
-                zc.send_key_event(ZESARUX_KEY[event.key], True)
+                if event.kind == "resume":
+                    zc.exit_cpu_step()
+                else:
+                    zc.send_key_event(ZESARUX_KEY[event.key], True)
             elif kind == "release":
                 event = payload
                 zc.send_key_event(ZESARUX_KEY[event.key], False)
@@ -374,6 +379,10 @@ def run_original(spec: ReplaySpec, out_dir: Path, zesarux: str, port: int) -> No
                 scr = out_dir / f"{capture.name}.scr"
                 zc.save_screen(str(scr.resolve()))
                 write_indices(out_dir / f"{capture.name}.idx", decode_scr(scr.read_bytes()))
+        if probe_timing == "after":
+            run_original_state_probe(spec, out_dir, zc)
+        elif probe_timing != "before":
+            raise ValueError(f"unsupported original probe timing {probe_timing!r}")
     finally:
         zc.exit_emulator()
         try:

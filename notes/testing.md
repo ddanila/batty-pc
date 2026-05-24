@@ -72,6 +72,15 @@ reflection thresholds, especially the right wall clamp at `$F8 -
 spark_body_width`. It also checks the post-spark `pause_long B=$03`
 hold before the life is decremented and the bat respawns.
 
+`make test-midgame-brick-replay` is the first fail-gated dynamic replay
+state test. It seeds L3 with an in-flight ball near destructible bricks,
+runs the DOS port through the replay harness, then checks the extracted
+post-run probe: brick count must drop below the seeded `$1A`, score must
+increase, RNG must advance, and the level copy must contain a destroyed
+`$13` brick marker. `make replay-l3-brick-flash-both` also runs the
+original side for comparison, but those moving-object rows remain
+informational until the replay gains a frame-step synchronization point.
+
 `make test-hud` is a separate normal-build check because `make test`
 uses `BATTY_SCORELESS_HUD`. It boots the regular floppy to L1 and
 compares the stable original HUD regions (`1UP` / `HI` / `2UP`, player

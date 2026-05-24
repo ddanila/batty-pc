@@ -61,6 +61,11 @@ render_brick_flash    -> brick-destroyed flash (mid-game only)
 buff_to_vga           -> final scr/attr → VGA
 ```
 
+The VGA expansion path stays 8086-compatible. It precomputes
+`attr&$7F` + 4-bit pixel nibbles into 8 KiB of word pairs, then emits
+each Spectrum byte as four `stosw` writes in mode 13h. This keeps FLASH
+ignored as before and avoids 386-only dword copies.
+
 `paint_frame_to_buff` runs BEFORE sprites so they OR-blit cleanly over
 the frame. Bat + enemy cells force `bg_attr` via
 `blit_sprite_attrs_to_buff` so the sprite stays bg-coloured even when
