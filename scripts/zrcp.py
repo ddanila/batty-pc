@@ -164,8 +164,14 @@ class ZrcpClient:
     def set_breakpoint(self, index: int, condition: str) -> None:
         self.command(f"set-breakpoint {index} {condition}")
 
+    def clear_breakpoint(self, index: int) -> None:
+        self.command(f"set-breakpoint {index}")
+
     def enable_breakpoints(self) -> None:
         self.command("enable-breakpoints")
+
+    def disable_breakpoints(self) -> None:
+        self.command("disable-breakpoints", allow_error=True)
 
     def disassemble(self, address: int, lines: int = 1) -> str:
         return self.command(f"disassemble {address:04X}H {lines}")

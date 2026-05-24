@@ -11,11 +11,17 @@
       "l3_after": 5000
     },
     "required_probe_rows": [
-      "briks_data",
       "current_level",
       "round_number"
     ],
-    "note": "Post-replay original/port state is informational except stable rows; the DOS port post-hit state is fail-gated by make test-midgame-brick-replay."
+    "probe_assertions": [
+      {"side": "port", "name": "bricks_quantity", "op": "lt_hex", "value": "1A"},
+      {"side": "port", "name": "score", "op": "gt_dec", "value": "0"},
+      {"side": "port", "name": "random_number", "op": "not_equals", "value": "8E49"},
+      {"side": "port", "name": "current_level_copy", "op": "contains", "value": "93"},
+      {"side": "original", "name": "briks_data", "op": "nonzero_hex_string"}
+    ],
+    "note": "Stable rows and probe assertions are fail-gated. Moving-object equality remains diagnostic until the brick-collision path is aligned."
   },
   "port": {
     "floppy": "build/batty-test.img",

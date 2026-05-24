@@ -82,19 +82,25 @@ copy. The target sets
 port's RNG and bat/ball/enemy descriptors at L3 entry exactly match
 the original's probe at the same point.
 
-`replay-l3-brick-flash-both` also drives ZEsarUX. Its stable probe rows
-are a gate: RNG, counters, bat, brick-hit animation slots, and
-level-copy bytes must match. Captures are not pixel-exact yet, but they
-now have explicit diff ceilings via `capture_max_diff_pixels`, so gross
-runtime drift or whole-playfield divergence fails the target.
+`replay-l3-brick-flash-both` also drives ZEsarUX. It is a stable
+fail-gated replay, but not yet an exact moving-object parity replay.
+The gate compares stable rows (`current_level`, `round_number`) and
+evaluates side-specific probe assertions: the DOS port must destroy
+bricks, award score, advance RNG, and mark destroyed `$13` bricks in
+`current_level_copy`; the original must advance into a nonzero
+`briks_data` brick-interaction state. Moving-object rows and the exact
+brick outcome remain diagnostic because the current seed exposes the
+next real mismatch: the DOS port destroys bricks while the original is
+still in hard-brick animation.
 The original side starts from the tracked `20260513T202101Z` RAM
 snapshot converted to `.sna`, then uses ZRCP setup commands to poke
 the level and round counters to L3, pin `random_number` at `$8E17` to
 the same `8E49` the port forces, NOP the `$BA6C` metal-brick shimmer
-call to match the static level-entry setup, jump to `BA24`, and step
-the Z80 a fixed number of opcodes via the harness's `run` op (replaces
-the earlier wall-clock `sleep 2.0`, which let the original land at a
-non-deterministic PC because emulator speed varies). The port uses
+call to match the static level-entry setup, jump to `BA24`, and run to
+the `$BA83` main-loop breakpoint. The harness clears that temporary
+breakpoint and re-enters CPU-step immediately; otherwise the original
+either retraps at `$BA83` forever or drifts before the initial capture.
+The port uses
 `BATTY_REPLAY_WAIT_KEY=1`, captures `l3_initial` while paused, then
 wakes with ENTER before the SPACE release. The later `l3_after` capture
 still uses wall-clock scheduling and remains a bounded drift gate rather
@@ -106,9 +112,12 @@ checkpoint.
 
 ## Next required step
 
-Extend the pause-on-both-sides pattern to mid-gameplay captures so the
-brick-flash window (`l3_after` style) can be fail-gated too. Two
-plausible paths:
+Fix the seeded brick-collision mismatch now surfaced by the stable gate:
+the DOS port destroys two `$13` bricks while the original reaches a
+nonzero hard-brick animation state without lowering `bricks_quantity`.
+After that, promote `bricks_quantity`, `current_level_copy`, and the
+relevant object row from INFO to required equality. Two plausible paths
+for the capture timing remain:
 
 - **Frame-step both sides.** Replace the harness's wall-clock `at`
   scheduling with explicit "step N PIT frames" / "step N Z80 frames"

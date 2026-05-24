@@ -201,6 +201,36 @@ def read_probe_report(out_dir: Path) -> Dict[str, str]:
     return values
 
 
+def probe_assertion_passed(actual: str, assertion: Dict[str, object]) -> bool:
+    op = str(assertion.get("op", "equals"))
+    expected = str(assertion.get("value", ""))
+    if op == "equals":
+        return actual == expected
+    if op == "not_equals":
+        return actual != expected
+    if op == "contains":
+        return expected in actual
+    if op == "not_contains":
+        return expected not in actual
+    if op == "lt_hex":
+        return int(actual, 16) < int(expected, 16)
+    if op == "le_hex":
+        return int(actual, 16) <= int(expected, 16)
+    if op == "gt_hex":
+        return int(actual, 16) > int(expected, 16)
+    if op == "ge_hex":
+        return int(actual, 16) >= int(expected, 16)
+    if op == "gt_dec":
+        return int(actual, 10) > int(expected, 10)
+    if op == "nonzero_hex_string":
+        return any(ch != "0" for ch in actual)
+    raise ValueError(f"unsupported probe assertion op {op!r}")
+
+
+def preview_value(value: str, limit: int = 48) -> str:
+    return value if len(value) <= limit else value[:limit] + "..."
+
+
 def run_port_state_probe(spec: ReplaySpec, out_dir: Path) -> None:
     rows = []
     probe_file = spec.port.get("probe_file")
@@ -297,6 +327,9 @@ def apply_original_setup(zc: ZrcpClient, setup: Sequence[Dict[str, object]]) -> 
             zc.run(max_opcodes,
                    no_stop_on_data=True,
                    timeout=max(15.0, max_opcodes / 50000.0))
+            zc.clear_breakpoint(1)
+            zc.disable_breakpoints()
+            zc.enter_cpu_step()
             regs = zc.get_registers()
             actual_pc = regs.get("PC", -1)
             if actual_pc != target_pc:
@@ -473,6 +506,7 @@ def compare_outputs(spec: ReplaySpec, port_dir: Path, original_dir: Path,
         "required_captures": sorted(required_captures),
         "capture_max_diff_pixels": capture_max_diff_pixels,
         "probe_rows": [],
+        "probe_assertions": [],
         "port_only_probe_rows": sorted(set(port_state) - set(original_state)),
         "original_only_probe_rows": sorted(set(original_state) - set(port_state)),
         "captures": [],
@@ -496,8 +530,7 @@ def compare_outputs(spec: ReplaySpec, port_dir: Path, original_dir: Path,
                 # PASS lines only need name + value; dumping the value
                 # twice (especially long hex like current_level_copy)
                 # buries the actual signal in CI logs.
-                preview = port_val if len(port_val) <= 48 else port_val[:48] + "..."
-                print(f"    {tag} {name}: {preview}")
+                print(f"    {tag} {name}: {preview_value(port_val)}")
             else:
                 print(f"    {tag} {name}: port={port_val} original={orig_val}")
             if not same and (fail_on_diff or required):
@@ -514,6 +547,35 @@ def compare_outputs(spec: ReplaySpec, port_dir: Path, original_dir: Path,
             "original": original_state.get(name),
         })
         failures += 1
+    probe_assertions = spec.comparison.get("probe_assertions", [])
+    if probe_assertions:
+        print("  probe assertions")
+    for assertion in probe_assertions:
+        side = str(assertion["side"])
+        name = str(assertion["name"])
+        state = port_state if side == "port" else original_state if side == "original" else None
+        if state is None:
+            raise ValueError(f"unsupported probe assertion side {side!r}")
+        actual = state.get(name)
+        passed = actual is not None and probe_assertion_passed(actual, assertion)
+        op = str(assertion.get("op", "equals"))
+        expected = str(assertion.get("value", ""))
+        tag = "PASS" if passed else "FAIL"
+        if actual is None:
+            detail = "missing"
+        else:
+            detail = f"{preview_value(actual)} {op} {expected}".rstrip()
+        print(f"    {tag} {side}.{name}: {detail}")
+        summary["probe_assertions"].append({
+            "side": side,
+            "name": name,
+            "op": op,
+            "value": expected,
+            "actual": actual,
+            "match": passed,
+        })
+        if not passed:
+            failures += 1
     for capture in spec.captures:
         actual = read_indices(port_dir / f"{capture.name}.idx")
         expected = read_indices(original_dir / f"{capture.name}.idx")
@@ -587,7 +649,11 @@ def main() -> int:
         failures = compare_outputs(spec, port_dir, original_dir, args.fail_on_diff)
         # One-line summary on the last line so CI / humans can grep the
         # final status without scanning the per-probe block above.
-        gated = "fail-gated" if args.fail_on_diff else "informational"
+        has_gates = bool(args.fail_on_diff
+                         or spec.comparison.get("required_probe_rows")
+                         or spec.comparison.get("required_captures")
+                         or spec.comparison.get("probe_assertions"))
+        gated = "fail-gated" if has_gates else "informational"
         status = "PASS" if failures == 0 else f"FAIL ({failures} diff{'s' if failures != 1 else ''})"
         print(f"{status} replay {spec.name} ({gated})")
         return failures
