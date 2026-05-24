@@ -11,6 +11,7 @@
       "l3_after": 5000
     },
     "required_probe_rows": [
+      "bricks_quantity",
       "current_level",
       "round_number"
     ],
@@ -19,9 +20,10 @@
       {"side": "port", "name": "score", "op": "gt_dec", "value": "0"},
       {"side": "port", "name": "random_number", "op": "not_equals", "value": "8E49"},
       {"side": "port", "name": "current_level_copy", "op": "contains", "value": "93"},
+      {"side": "original", "name": "current_level_copy", "op": "contains", "value": "93"},
       {"side": "original", "name": "briks_data", "op": "nonzero_hex_string"}
     ],
-    "note": "Stable rows and probe assertions are fail-gated. Moving-object equality remains diagnostic until the brick-collision path is aligned."
+    "note": "Stable rows and probe assertions are fail-gated. The active L3 buffer is probed on the original side; exact destroyed-cell equality remains diagnostic until brick-collision geometry is aligned."
   },
   "port": {
     "floppy": "build/batty-test.img",
@@ -42,9 +44,9 @@
         "op": "write_memory",
         "address": "0x9AD0",
         "bytes": [
-          "0x02", "0x00", "0x6C", "0x00", "0x4E", "0x00", "0x10", "0x03",
+          "0x02", "0x00", "0x6C", "0x00", "0x4E", "0x00", "0x1F", "0x03",
           "0x02", "0x0C", "0xEE", "0xF0", "0x08", "0x07", "0x6C", "0x4E",
-          "0x02", "0x0C", "0x00", "0x00", "0xA1", "0x8C"
+          "0x02", "0x0C", "0x00", "0x00", "0x00", "0x8C"
         ]
       }
     ]
@@ -60,7 +62,7 @@
       {"name": "object_bat_1", "address": "0x9B54", "length": 22},
       {"name": "object_enemy", "address": "0x9B96", "length": 22},
       {"name": "briks_data", "address": "0xB6F4", "length": 35},
-      {"name": "current_level_copy", "address": "0x6100", "length": 180}
+      {"name": "current_level_copy", "address": "0x6E43", "length": 180}
     ],
     "port": [
       {"name": "level_entry", "source": "screen_hash", "capture": "l3_initial", "roi": [8, 32, 248, 128]}

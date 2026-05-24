@@ -78,11 +78,12 @@ runs the DOS port through the replay harness, then checks the extracted
 post-run probe: brick count must drop below the seeded `$1A`, score must
 increase, RNG must advance, and the level copy must contain a destroyed
 `$13` brick marker. `make replay-l3-brick-flash-both` also runs the
-original side and is now fail-gated on stable two-runner invariants:
-both runners must be at L3, the DOS port must destroy bricks, and the
-original must advance into a nonzero `briks_data` brick-interaction
-state. Exact moving-object rows remain informational because the current
-seed exposes a real collision-path mismatch rather than byte parity.
+original side and is fail-gated on stable two-runner invariants: both
+runners must be at L3, both must reduce brick count to the same value,
+and both active level buffers must contain destroyed `$13` cells. Exact
+moving-object rows and exact destroyed-cell positions remain
+informational because the current seed still exposes a collision-geometry
+mismatch rather than byte parity.
 
 `make test-hud` is a separate normal-build check because `make test`
 uses `BATTY_SCORELESS_HUD`. It boots the regular floppy to L1 and

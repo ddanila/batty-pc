@@ -84,14 +84,14 @@ the original's probe at the same point.
 
 `replay-l3-brick-flash-both` also drives ZEsarUX. It is a stable
 fail-gated replay, but not yet an exact moving-object parity replay.
-The gate compares stable rows (`current_level`, `round_number`) and
-evaluates side-specific probe assertions: the DOS port must destroy
-bricks, award score, advance RNG, and mark destroyed `$13` bricks in
-`current_level_copy`; the original must advance into a nonzero
-`briks_data` brick-interaction state. Moving-object rows and the exact
-brick outcome remain diagnostic because the current seed exposes the
-next real mismatch: the DOS port destroys bricks while the original is
-still in hard-brick animation.
+The gate compares stable rows (`bricks_quantity`, `current_level`,
+`round_number`) and evaluates side-specific probe assertions: the DOS
+port must award score, advance RNG, and mark destroyed `$13` bricks in
+`current_level_copy`; the original active L3 buffer at `$6E43` must also
+contain destroyed `$13` cells and a nonzero `briks_data` interaction
+state. Moving-object rows and the exact destroyed-cell positions remain
+diagnostic because the current seed exposes the next real mismatch:
+the two runners destroy the same count of bricks but not the same cells.
 The original side starts from the tracked `20260513T202101Z` RAM
 snapshot converted to `.sna`, then uses ZRCP setup commands to poke
 the level and round counters to L3, pin `random_number` at `$8E17` to
@@ -112,10 +112,10 @@ checkpoint.
 
 ## Next required step
 
-Fix the seeded brick-collision mismatch now surfaced by the stable gate:
-the DOS port destroys two `$13` bricks while the original reaches a
-nonzero hard-brick animation state without lowering `bricks_quantity`.
-After that, promote `bricks_quantity`, `current_level_copy`, and the
+Fix the seeded brick-collision geometry mismatch now surfaced by the
+stable gate: both runners destroy two `$13` bricks, but the DOS port
+marks row 5/6 col 6 while the original active level marks row 4 col 7
+and row 5 col 6. After that, promote `current_level_copy` and the
 relevant object row from INFO to required equality. Two plausible paths
 for the capture timing remain:
 
