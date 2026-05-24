@@ -2295,6 +2295,8 @@ static void paint_bg_to_buff(unsigned char attr, unsigned char cycle) {
  * the original game's final-frame paint (game_screen_draw_to_buffer
  * at $BE6B followed by buffer-to-screen copy). */
 static void buff_to_vga_rect_bytes(int y0, int h, int byte_lo, int byte_hi);
+static void paint_bg_window_to_buff(unsigned char attr, unsigned char cycle,
+                                    int y0, int h, int byte_lo, int byte_hi);
 
 static unsigned char bg_scr_buff[6144];
 static unsigned char bg_attr_buff[768];
@@ -2305,6 +2307,7 @@ static unsigned char dirty_max_byte[DIRTY_SLOTS][PLAYFIELD_H];
 static unsigned char prev_dirty_min_byte[DIRTY_SLOTS][PLAYFIELD_H];
 static unsigned char prev_dirty_max_byte[DIRTY_SLOTS][PLAYFIELD_H];
 static int static_bg_dirty = 1;
+static int static_bg_cache_dirty = 0;
 static int force_full_flush = 1;
 
 static unsigned long prev_score = 0xFFFFFFFFUL;
@@ -2579,6 +2582,75 @@ static void build_static_background(unsigned char level_idx) {
     render_level_screen_static(level_idx);
     fast_memcpy(bg_scr_buff, scr_buff, sizeof(bg_scr_buff));
     fast_memcpy(bg_attr_buff, attr_buff, sizeof(bg_attr_buff));
+    static_bg_cache_dirty = 0;
+}
+
+static void build_static_brick_band_cache(unsigned char level_idx) {
+    unsigned char bg_attr = bg_attr_per_cycle[level_idx & 3];
+    unsigned char cycle   = (unsigned char)(level_idx & 3);
+    int y;
+    int cr;
+
+    paint_bg_window_to_buff(bg_attr, cycle,
+                            BRICK_BAND_Y_TOP,
+                            BRICK_BAND_Y_BOT - BRICK_BAND_Y_TOP + 1,
+                            1, 30);
+    render_brick_band(level_idx);
+    for (y = BRICK_BAND_Y_TOP; y <= BRICK_BAND_Y_BOT; y++) {
+        fast_memcpy(&bg_scr_buff[(y << 5) + 1],
+                    &scr_buff[(y << 5) + 1],
+                    30);
+    }
+    for (cr = 3; cr <= 16; cr++) {
+        fast_memcpy(&bg_attr_buff[cr << 5], &attr_buff[cr << 5], 32);
+    }
+    static_bg_cache_dirty = 0;
+}
+
+static void mark_static_bg_cache_dirty(void) {
+    static_bg_cache_dirty = 1;
+}
+
+static void restore_prev_dirty_from_static_cache(void) {
+    int y;
+    int cr;
+    /* Restore only the byte ranges touched by moving sprites last
+     * frame. Untouched rows and columns retain the cached static
+     * background. */
+    for (y = 0; y < PLAYFIELD_H; y++) {
+        int s;
+        for (s = 0; s < DIRTY_SLOTS; s++) {
+            if (prev_dirty_min_byte[s][y] != DIRTY_NONE) {
+                unsigned char lo = prev_dirty_min_byte[s][y];
+                unsigned char hi = prev_dirty_max_byte[s][y];
+                fast_memcpy(&scr_buff[(y << 5) + lo],
+                            &bg_scr_buff[(y << 5) + lo],
+                            (unsigned int)(hi - lo + 1));
+            }
+        }
+    }
+    for (cr = 0; cr < 24; cr++) {
+        int byte_lo = 32;
+        int byte_hi = -1;
+        int r;
+        for (r = 0; r < 8; r++) {
+            int yy = (cr << 3) + r;
+            int s;
+            for (s = 0; s < DIRTY_SLOTS; s++) {
+                if (prev_dirty_min_byte[s][yy] != DIRTY_NONE) {
+                    if (prev_dirty_min_byte[s][yy] < byte_lo)
+                        byte_lo = prev_dirty_min_byte[s][yy];
+                    if (prev_dirty_max_byte[s][yy] > byte_hi)
+                        byte_hi = prev_dirty_max_byte[s][yy];
+                }
+            }
+        }
+        if (byte_hi >= byte_lo) {
+            fast_memcpy(&attr_buff[(cr << 5) + byte_lo],
+                        &bg_attr_buff[(cr << 5) + byte_lo],
+                        (unsigned int)(byte_hi - byte_lo + 1));
+        }
+    }
 }
 
 static void update_static_hud_top(unsigned char level_idx) {
@@ -2603,6 +2675,7 @@ static void render_level_screen(unsigned char level_idx) {
     unsigned char cycle   = (unsigned char)(level_idx & 3);
 
     static_bg_dirty = 1;
+    static_bg_cache_dirty = 0;
     clear_dirty_ranges(prev_dirty_min_byte, prev_dirty_max_byte);
     prev_score = 0xFFFFFFFFUL;
     prev_high_score = 0xFFFFFFFFUL;
@@ -3923,6 +3996,7 @@ static int brick_collision(int prev_x, int prev_y, int new_x, int new_y) {
         score += pts;
     }
     *cell |= 0x80;
+    mark_static_bg_cache_dirty();
     snd_q_push(SND_NORMAL_BRIK);            /* brick-break click */
     /* BIG_BALL (smash) bonus: ball ploughs through bricks rather
      * than bouncing — keep the bonus-spawn check below intact but
@@ -4354,6 +4428,7 @@ static void step_bullet_one(int b) {
                 if ((*cell & 0x0F) >= 6) pts *= 2;
                 score += pts;
                 *cell |= 0x80;
+                mark_static_bg_cache_dirty();
                 brick_flash_spawn(col, row);
                 try_spawn_bonus(col, row);
                 hit = 1;
@@ -4445,6 +4520,7 @@ static void award_left_bricks(void) {
             if ((*cell & 0x0F) >= 6) pts *= 2;
             score += pts;
             *cell |= 0x80;
+            mark_static_bg_cache_dirty();
         }
     }
 }
@@ -4513,6 +4589,7 @@ static void step_rocket(void) {
                     score += pts;
                 }
                 *cell |= 0x80;
+                mark_static_bg_cache_dirty();
                 brick_flash_spawn(c, r);
                 try_spawn_bonus(c, r);
                 killed_this_tick = 1;
@@ -4747,7 +4824,7 @@ static void redraw_full_with_ball(unsigned char level_idx) {
     unsigned char bg_attr = bg_attr_per_cycle[level_idx & 3];
     unsigned char cycle   = (unsigned char)(level_idx & 3);
     object_t *enemy = &objects[OBJ_ENEMY];
-    int y, cr, i;
+    int y, i;
     int score_dirty;
     int lives_dirty;
     int can_local_hud;
@@ -4768,44 +4845,11 @@ static void redraw_full_with_ball(unsigned char level_idx) {
         prev_high_score = high_score;
         prev_lives = lives;
         force_full_flush = 1;
+    } else if (static_bg_cache_dirty) {
+        build_static_brick_band_cache(level_idx);
+        restore_prev_dirty_from_static_cache();
     } else {
-        /* Restore only the byte ranges touched by moving sprites last
-         * frame. Untouched rows and columns retain the cached static
-         * background. */
-        for (y = 0; y < PLAYFIELD_H; y++) {
-            int s;
-            for (s = 0; s < DIRTY_SLOTS; s++) {
-                if (prev_dirty_min_byte[s][y] != DIRTY_NONE) {
-                    unsigned char lo = prev_dirty_min_byte[s][y];
-                    unsigned char hi = prev_dirty_max_byte[s][y];
-                    fast_memcpy(&scr_buff[(y << 5) + lo],
-                                &bg_scr_buff[(y << 5) + lo],
-                                (unsigned int)(hi - lo + 1));
-                }
-            }
-        }
-        for (cr = 0; cr < 24; cr++) {
-            int byte_lo = 32;
-            int byte_hi = -1;
-            int r;
-            for (r = 0; r < 8; r++) {
-                int yy = (cr << 3) + r;
-                int s;
-                for (s = 0; s < DIRTY_SLOTS; s++) {
-                    if (prev_dirty_min_byte[s][yy] != DIRTY_NONE) {
-                        if (prev_dirty_min_byte[s][yy] < byte_lo)
-                            byte_lo = prev_dirty_min_byte[s][yy];
-                        if (prev_dirty_max_byte[s][yy] > byte_hi)
-                            byte_hi = prev_dirty_max_byte[s][yy];
-                    }
-                }
-            }
-            if (byte_hi >= byte_lo) {
-                fast_memcpy(&attr_buff[(cr << 5) + byte_lo],
-                            &bg_attr_buff[(cr << 5) + byte_lo],
-                            (unsigned int)(byte_hi - byte_lo + 1));
-            }
-        }
+        restore_prev_dirty_from_static_cache();
     }
     clear_dirty_ranges(dirty_min_byte, dirty_max_byte);
     if (!static_bg_dirty && score_dirty && can_local_hud) {
@@ -5354,6 +5398,7 @@ static void dir_to_dxdy(unsigned char dir, unsigned char speed,
 }
 
 #define DEATH_SPARK_COUNT 10
+#define DEATH_SPARK_BODY_W 0x08
 typedef struct {
     int           active;          /* nonzero while still on screen */
     long          x_q88;           /* 24.8 fixed-point X */
@@ -5400,7 +5445,8 @@ static void redraw_with_death_sparks(unsigned char level_idx) {
  * lifetime; we play it as a separate phase, then return to the outer
  * run_level for the lives-- + respawn step. Mirrors the LBC10_3 spawn
  * loop: 10 sparks, dir = $1B + 5*i (mod 64), speed 2, starting at
- * (bat_center - 12 + 3*i, $AE), 5-frame decay with halving speed. */
+ * (bat_x + bat_body_width/2 - 12 + 3*i, $AE), 5-frame decay with
+ * halving speed. */
 /* Reset the primary ball + bat to fresh-life state. Mirror of
  * all_var_init at \$B7F8 (called from LB9E8_1 on each life-start in
  * the original): ball stuck on bat, bat.bonus_applied = \$FF (= no
@@ -5445,10 +5491,11 @@ static void respawn_primary_ball(void) {
 }
 
 static void play_bat_explosion(unsigned char level_idx) {
-    int bat_center = BAT_X + (BAT_W_BYTES * 8) / 2;
+    int bat_center = BAT_X + (int)objects[OBJ_BAT_1].w_body_px / 2;
     int x_start = bat_center - 12;
     unsigned char dir = 0x1B;
     unsigned long last;
+    unsigned long death_pause_start;
     int alive;
     int i;
     /* Mirror LBC10's `SET 7,(IX+\$00)` sweep over all 11 object slots —
@@ -5502,6 +5549,7 @@ static void play_bat_explosion(unsigned char level_idx) {
         for (i = 0; i < DEATH_SPARK_COUNT; i++) {
             int dx_q88, dy_q88;
             int xp, yp;
+            int right_x;
             if (!death_sparks[i].active) continue;
             dir_to_dxdy(death_sparks[i].dir, death_sparks[i].speed,
                          &dx_q88, &dy_q88);
@@ -5512,11 +5560,12 @@ static void play_bat_explosion(unsigned char level_idx) {
             /* Off the bottom = dead. Sides clamp the position so the
              * spark can keep ticking until its frame counter expires. */
             if (yp >= PLAYFIELD_H) { death_sparks[i].active = 0; continue; }
+            right_x = 0xF8 - DEATH_SPARK_BODY_W;
             if (xp < 8) {
                 death_sparks[i].x_q88 = 8L << 8;
                 death_sparks[i].dir = (unsigned char)(((death_sparks[i].dir ^ 0x1F) + 1) & 0x3F);
-            } else if (xp >= PLAYFIELD_W - 8) {
-                death_sparks[i].x_q88 = (long)(PLAYFIELD_W - 8) << 8;
+            } else if (xp > right_x) {
+                death_sparks[i].x_q88 = (long)right_x << 8;
                 death_sparks[i].dir = (unsigned char)(((death_sparks[i].dir ^ 0x1F) + 1) & 0x3F);
             }
             if (yp < 8) {
@@ -5542,6 +5591,17 @@ static void play_bat_explosion(unsigned char level_idx) {
         }
         redraw_with_death_sparks(level_idx);
     } while (alive);
+    /* Original LBC10 waits `pause_long B=$03` after the last spark
+     * object disappears, before lives-- and respawn/game-over. Since
+     * B=4 is 60 PIT ticks at the round banner, B=3 is 45 ticks. */
+    death_pause_start = pit_ticks();
+    while (pit_ticks() - death_pause_start < 45UL) {
+        sound_tick();
+        if (kbhit()) {
+            int k = getch();
+            if (k == KEY_ESC) break;
+        }
+    }
     snd_q_silence_all();
 }
 

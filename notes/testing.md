@@ -48,12 +48,14 @@ captures are pixel-identical via `BATTY_LEVEL=N` — see
 [`per-level-profile.md`](per-level-profile.md).
 
 `make test-brick-flash` drives a dynamic L3 gameplay path and fails if
-the bright-white brick destruction flash remains after it should clear.
-The stale-flash decision is reference-derived: the test compares each
-brick cell's bright-white coverage against the original-captured L3
-render in `build/level_gt/level_03.scr`, allowing only a small margin
-above the original brick art. That catches the dirty-line white-block
-failure without hard-coding that every white pixel is wrong.
+the bright-white brick destruction flash remains after it should clear,
+or if no brick-sized cell stays visibly removed after the hit. The
+stale-flash decision is reference-derived: the test compares each brick
+cell's bright-white coverage against the original-captured L3 render in
+`build/level_gt/level_03.scr`, allowing only a small margin above the
+original brick art. That catches the dirty-line white-block failure and
+the stale-static-background failure without hard-coding that every white
+pixel is wrong.
 
 `make test-rocket-bonus` is a source-level regression for the rocket /
 next-level bonus. The original main loop checks `object_rocket` before
@@ -61,6 +63,14 @@ next-level bonus. The original main loop checks `object_rocket` before
 all balls while the level-clear sequence runs without entering the
 bat-death path. The test fails if the port's no-ball death guard stops
 excluding `rocket_active`.
+
+`make test-death-sparks` is a source-level regression for the bat death
+fanout. It locks the port to the original `LBC10` spawn constants
+(`$1B` direction seed, `$05` direction step, `$AE` Y, speed `$02`,
+`bat_x + body_width/2 - $0C`, 3 px X spacing) and `bounce_wall`
+reflection thresholds, especially the right wall clamp at `$F8 -
+spark_body_width`. It also checks the post-spark `pause_long B=$03`
+hold before the life is decremented and the bat respawns.
 
 `make test-hud` is a separate normal-build check because `make test`
 uses `BATTY_SCORELESS_HUD`. It boots the regular floppy to L1 and

@@ -57,6 +57,8 @@ Interpretation:
 - Score/HUD changes are localized on non-magnet levels.
 - Intro brick shimmer flushes only brick-field byte columns.
 - PC speaker effects no longer busy-wait in the 50 Hz frame body.
+- Brick destruction refreshes only the brick-band slice of the static
+  background cache instead of rebuilding the whole static level image.
 - `make run` and `make run-86box` repack the floppy image every time so
   env-driven profile/sound flags do not go stale.
 
@@ -65,8 +67,6 @@ Interpretation:
 1. Localize lives changes the same way score changes are localized.
 2. Split magnet rendering from top HUD rows so score localization is safe on
    magnet levels too.
-3. Update destroyed brick cells directly in `bg_scr_buff` / `bg_attr_buff`
-   instead of relying on score-triggered static rebuilds.
-4. Reduce HUD/lives work inside dynamic frames, especially top-row restores.
-5. Continue optimizing `buff_to_vga_rect_bytes` if VGA bytes/frame remains
+3. Reduce HUD/lives work inside dynamic frames, especially top-row restores.
+4. Continue optimizing `buff_to_vga_rect_bytes` if VGA bytes/frame remains
    high after the composition work is reduced.

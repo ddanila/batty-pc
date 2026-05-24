@@ -54,7 +54,6 @@ early level-entry frames. It does not yet assert mid-game parity for:
 - brick destruction / bonus drop timing,
 - all bonus effects,
 - enemy/bomb behavior,
-- death animation,
 - level-clear/rocket flow.
 
 Adding short deterministic ZEsarUX-vs-QEMU gameplay traces would catch

@@ -4,7 +4,8 @@
 Drives the DOS build into L3, releases the ball, waits long enough for
 at least one brick interaction, then verifies that no solid bright-white
 flash rectangle remains in the brick grid after the flash animation
-should have restored the level background.
+should have restored the level background, and that at least one
+brick-sized cell remains visibly removed after the flash clears.
 
 The stale-flash check is anchored to the original-captured L3 render
 (`build/level_gt/level_03.scr`). A few bright pixels are normal in brick
@@ -25,6 +26,7 @@ BRICK_X0, BRICK_Y0 = 8, 32
 BRICK_W, BRICK_H = 16, 8
 BRIGHT_WHITE = (255, 255, 255)
 WHITE_MARGIN = 75
+DESTROYED_CELL_DIFF_MIN = 80
 
 
 def capture():
@@ -83,6 +85,24 @@ def stale_flash_cells(actual_idx, original_idx):
     return cells
 
 
+def changed_cells_by_cell(before_idx, after_idx):
+    cells = []
+    for r in range(ROWS):
+        for c in range(COLS):
+            x0 = BRICK_X0 + c * BRICK_W
+            y0 = BRICK_Y0 + r * BRICK_H
+            changed = 0
+            for y in range(y0, y0 + BRICK_H):
+                row = y * PLAYFIELD_W
+                for x in range(x0, x0 + BRICK_W):
+                    if PALETTE_RGB[before_idx[row + x]] != PALETTE_RGB[after_idx[row + x]]:
+                        changed += 1
+            if changed:
+                cells.append((r, c, changed))
+    cells.sort(key=lambda item: item[2], reverse=True)
+    return cells
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--expected-original", default="build/level_gt/level_03.scr",
@@ -96,13 +116,22 @@ def main():
     diff = brick_band_diff(initial, after)
     if diff == 0:
         raise SystemExit("FAIL: L3 brick band did not change; test did not exercise brick destruction")
+    changed_cells = changed_cells_by_cell(initial, after)
+    if not changed_cells or changed_cells[0][2] < DESTROYED_CELL_DIFF_MIN:
+        detail = ", ".join(
+            f"r{r}c{c}: {changed}" for r, c, changed in changed_cells[:5])
+        raise SystemExit(
+            "FAIL: no brick-sized cell stayed removed after the hit; "
+            f"largest cell diff {detail or 'none'}")
     stale = stale_flash_cells(after, original)
     if stale:
         detail = ", ".join(
             f"r{r}c{c}: actual {white}, original {ref}, allowed {allowed}"
             for r, c, white, ref, allowed in stale)
         raise SystemExit(f"FAIL: stale bright-white brick flash cells vs original L3 reference: {detail}")
+    top = ", ".join(f"r{r}c{c}: {changed}" for r, c, changed in changed_cells[:3])
     print(f"PASS brick_flash_cleanup: brick band changed by {diff} px; "
+          f"largest changed cells {top}; "
           f"no stale flash cells vs original L3 reference")
 
 
