@@ -116,6 +116,14 @@ movement reads `object_ball_1.dir/speed` but SPACE or timeout launch
 updates only the legacy integer `ball_dx/ball_dy` side state, and the
 16-bit DOS fixed-point overflow class where `x << 8` wraps for x >= 128.
 
+`make test-ball-left-wall-escape` covers a seeded primary-ball wall
+reflection case that is hard to reach reliably through normal input. It
+starts the ball near the left wall with an up-left descriptor and stops
+after 12 primary-ball steps via `BATTY_FRAME_PROBE=12`. The gate asserts
+that the ball has moved back into the field and no longer points left,
+catching descriptor-reflection regressions that can otherwise leave the
+ball jiggling between the wall and bat.
+
 ## Per-level testing via `BATTY_LEVEL` env
 
 ```sh

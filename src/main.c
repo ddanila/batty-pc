@@ -630,6 +630,9 @@ static unsigned char last_primary_launch_speed = 0;
 static unsigned int  launch_probe_frames = 0;
 static unsigned int  launch_probe_countdown = 0;
 static unsigned char launch_probe_active = 0;
+static unsigned int  frame_probe_frames = 0;
+static unsigned int  frame_probe_countdown = 0;
+static unsigned char frame_probe_active = 0;
 /* Offset from BAT_X where the ball sits while stuck. Defaults to
  * BALL_X_OFFSET_ON_BAT for the standard "ball respawns at bat
  * centre" cases (level entry, life lost). The CATCH bonus rewrites
@@ -1684,11 +1687,6 @@ static object_t objects[N_OBJECTS] = {
 static void ball_dir_delta_q8(unsigned char dir, unsigned char speed,
                               int *dx_q8, int *dy_q8);
 
-static void ball_change_direction(unsigned char mask) {
-    object_t *b = &objects[OBJ_BALL_1];
-    b->dir = (unsigned char)(((b->dir ^ mask) + 1) & 0x3F);
-}
-
 static void primary_ball_set_velocity(int dx, int dy) {
     ball_dx = dx;
     ball_dy = dy;
@@ -1827,6 +1825,17 @@ static void enemy_dir_delta_q8(unsigned char dir, unsigned char speed,
 static void ball_dir_delta_q8(unsigned char dir, unsigned char speed,
                               int *dx_q8, int *dy_q8) {
     enemy_dir_delta_q8(dir, speed, dx_q8, dy_q8);
+}
+
+static void ball_reflect_descriptor(int flip_x, int flip_y) {
+    int dx_q8, dy_q8;
+    unsigned char dir = objects[OBJ_BALL_1].dir;
+    if (flip_x) dir = (unsigned char)((0x3F - dir) & 0x3F);
+    if (flip_y) dir = (unsigned char)((0x1F - dir) & 0x3F);
+    objects[OBJ_BALL_1].dir = dir;
+    ball_dir_delta_q8(dir, objects[OBJ_BALL_1].speed, &dx_q8, &dy_q8);
+    ball_dx = (dx_q8 < 0) ? -1 : (dx_q8 > 0 ? 1 : 0);
+    ball_dy = (dy_q8 < 0) ? -1 : (dy_q8 > 0 ? 1 : 0);
 }
 
 static void enemy_turn_towards_target(object_t *o) {
@@ -4240,6 +4249,10 @@ static void write_replay_probe(void) {
             (unsigned)launch_probe_frames,
             (unsigned)launch_probe_countdown,
             (unsigned)launch_probe_active);
+    fprintf(f, "\nframe_probe_state=%04X%04X%02X",
+            (unsigned)frame_probe_frames,
+            (unsigned)frame_probe_countdown,
+            (unsigned)frame_probe_active);
     fprintf(f, "\nbonus_state=%02X%02X%02X%02X%02X%04X",
             (unsigned)bonus_active,
             (unsigned)bonus_type,
@@ -4704,26 +4717,17 @@ static void step_ball(void) {
         if (next_x < BALL_X_MIN) {
             next_x = BALL_X_MIN;
             next_x_q8 = (long)next_x << 8;
-            ball_change_direction(0x1F);
-            ball_dir_delta_q8(objects[OBJ_BALL_1].dir, objects[OBJ_BALL_1].speed,
-                              &dx_q8, &dy_q8);
-            ball_dx = (dx_q8 < 0) ? -1 : (dx_q8 > 0 ? 1 : 0);
+            ball_reflect_descriptor(1, 0);
         } else if (next_x > x_max) {
             next_x = x_max;
             next_x_q8 = (long)next_x << 8;
-            ball_change_direction(0x1F);
-            ball_dir_delta_q8(objects[OBJ_BALL_1].dir, objects[OBJ_BALL_1].speed,
-                              &dx_q8, &dy_q8);
-            ball_dx = (dx_q8 < 0) ? -1 : (dx_q8 > 0 ? 1 : 0);
+            ball_reflect_descriptor(1, 0);
         }
     }
     if (next_y < BALL_Y_TOP) {
         next_y = BALL_Y_TOP;
         next_y_q8 = (long)next_y << 8;
-        ball_change_direction(0x3F);
-        ball_dir_delta_q8(objects[OBJ_BALL_1].dir, objects[OBJ_BALL_1].speed,
-                          &dx_q8, &dy_q8);
-        ball_dy = (dy_q8 < 0) ? -1 : (dy_q8 > 0 ? 1 : 0);
+        ball_reflect_descriptor(0, 1);
     }
     /* Bat top: ball moving down, ball overlaps bat in X. Use a 5-zone
      * deflection so the ball gains horizontal control from where the
@@ -4790,11 +4794,11 @@ static void step_ball(void) {
     {
         int hit = brick_collision(BALL_X, BALL_Y, next_x, next_y);
         if (hit == 1) {
-            ball_change_direction(0x3F);
+            ball_reflect_descriptor(0, 1);
             next_y = BALL_Y;
             next_y_q8 = ((long)BALL_Y << 8) + objects[OBJ_BALL_1].y_coord_hi;
         } else if (hit == 2) {
-            ball_change_direction(0x1F);
+            ball_reflect_descriptor(1, 0);
             next_x = BALL_X;
             next_x_q8 = ((long)BALL_X << 8) + objects[OBJ_BALL_1].x_coord_hi;
         }
@@ -5756,6 +5760,10 @@ static state_t run_level(void) {
         launch_probe_frames = (p && *p) ? (unsigned int)atoi(p) : 0;
         launch_probe_countdown = 0;
         launch_probe_active = 0;
+        p = getenv("BATTY_FRAME_PROBE");
+        frame_probe_frames = (p && *p) ? (unsigned int)atoi(p) : 0;
+        frame_probe_countdown = frame_probe_frames;
+        frame_probe_active = (frame_probe_frames != 0) ? 1 : 0;
     }
 
     /* The original loops levels forever (increment_round_number at
@@ -6004,6 +6012,13 @@ static state_t run_level(void) {
                         if (launch_probe_active) {
                             if (launch_probe_countdown > 0) launch_probe_countdown--;
                             if (launch_probe_countdown == 0) {
+                                write_replay_probe();
+                                return ST_QUIT;
+                            }
+                        }
+                        if (frame_probe_active) {
+                            if (frame_probe_countdown > 0) frame_probe_countdown--;
+                            if (frame_probe_countdown == 0) {
                                 write_replay_probe();
                                 return ST_QUIT;
                             }

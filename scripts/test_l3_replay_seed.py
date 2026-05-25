@@ -64,17 +64,24 @@ def main() -> int:
     print("PASS l3_replay_seed_gate: two-runner brick state is fail-gated")
 
     makefile = MAKEFILE.read_text()
-    env_values = re.findall(r"BATTY_REPLAY_BALL_OBJECT=([0-9A-F]+)", makefile)
-    if not env_values:
-        raise SystemExit("FAIL: Makefile does not set BATTY_REPLAY_BALL_OBJECT for L3 replay")
-    if any(v != BALL_OBJECT_HEX for v in env_values[:2]):
-        raise SystemExit(f"FAIL: Makefile L3 replay ball object does not match JSON seed: {env_values[:2]}")
-    if "BATTY_REPLAY_BALL_STUCK=0" not in makefile:
-        raise SystemExit("FAIL: Makefile L3 replay must force BATTY_REPLAY_BALL_STUCK=0")
     replay_lines = [
         line for line in makefile.splitlines()
-        if line.startswith("\tBATTY_LEVEL=3") and "BATTY_REPLAY_BALL_OBJECT=" in line
+        if line.startswith("\tBATTY_LEVEL=3")
+        and "BATTY_REPLAY_BALL_OBJECT=" in line
+        and "BATTY_REPLAY_ENEMY_OBJECT=0905A447" in line
     ]
+    env_values = [
+        m.group(1)
+        for line in replay_lines
+        for m in [re.search(r"BATTY_REPLAY_BALL_OBJECT=([0-9A-F]+)", line)]
+        if m
+    ]
+    if not env_values:
+        raise SystemExit("FAIL: Makefile does not set BATTY_REPLAY_BALL_OBJECT for L3 replay")
+    if any(v != BALL_OBJECT_HEX for v in env_values):
+        raise SystemExit(f"FAIL: Makefile L3 replay ball object does not match JSON seed: {env_values}")
+    if "BATTY_REPLAY_BALL_STUCK=0" not in makefile:
+        raise SystemExit("FAIL: Makefile L3 replay must force BATTY_REPLAY_BALL_STUCK=0")
     if any("BATTY_REPLAY_BALL_VEL=" in line for line in replay_lines):
         raise SystemExit("FAIL: L3 replay must use the seeded object direction/speed, not an integer velocity override")
     print("PASS l3_replay_seed_makefile: Makefile env uses JSON object direction/speed")
