@@ -5572,7 +5572,10 @@ static const unsigned char dir_sin_tbl[17] = {
 };
 
 /* Port of hl_bc_calc_direction at $AD22 + the LAD13 speed multiply.
- * Returns 16-bit signed 8.8 fixed-point per-tick displacement. */
+ * LAD13 treats the direction-table byte as a magnitude, multiplies by
+ * speed, then two's-complement negates the product when the component's
+ * sign byte is $FF. Negative components are therefore `-magnitude`, not
+ * `magnitude - 256`. Returns signed 8.8 fixed-point displacement. */
 static void dir_to_dxdy(unsigned char dir, unsigned char speed,
                          int *out_dx, int *out_dy) {
     unsigned char q = dir & 0x30;
@@ -5582,9 +5585,9 @@ static void dir_to_dxdy(unsigned char dir, unsigned char speed,
     int hl, bc;
     switch (q) {
         case 0x00: hl = L;          bc = C;          break;   /* +x +y */
-        case 0x10: hl = C;          bc = L - 256;    break;   /* +x -y */
-        case 0x20: hl = L - 256;    bc = C - 256;    break;   /* -x -y */
-        default:   hl = C - 256;    bc = L;          break;   /* -x +y */
+        case 0x10: hl = C;          bc = -L;         break;   /* +x -y */
+        case 0x20: hl = -L;         bc = -C;         break;   /* -x -y */
+        default:   hl = -C;         bc = L;          break;   /* -x +y */
     }
     *out_dx = hl * (int)speed;
     *out_dy = bc * (int)speed;

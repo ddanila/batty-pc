@@ -69,8 +69,11 @@ fanout. It locks the port to the original `LBC10` spawn constants
 (`$1B` direction seed, `$05` direction step, `$AE` Y, speed `$02`,
 `bat_x + body_width/2 - $0C`, 3 px X spacing) and `bounce_wall`
 reflection thresholds, especially the right wall clamp at `$F8 -
-spark_body_width`. It also checks the post-spark `pause_long B=$03`
-hold before the life is decremented and the bat respawns.
+spark_body_width`. It also checks the `LAD13` signed direction math:
+negative components are table-byte magnitudes negated after speed
+multiplication, not `table_byte - 256`. Finally, it checks the post-spark
+`pause_long B=$03` hold before the life is decremented and the bat
+respawns.
 
 `make test-l3-replay-seed` is a source-level guard for the deterministic
 L3 brick replay. It parses `replays/l3-brick-flash.json` and the

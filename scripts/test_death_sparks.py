@@ -12,7 +12,7 @@ from pathlib import Path
 SRC = Path("src/main.c")
 
 
-def simulate_original(xs, frames=36):
+def simulate_original(xs, frames=36, direction_start=0x03):
     """Small model of LBC10 + handling_spark, used to document the right
     wall reflection that was easy to get wrong in the port."""
     sin = [0xFF, 0xFD, 0xFA, 0xF4, 0xE6, 0xE0, 0xD4, 0xC5,
@@ -26,18 +26,18 @@ def simulate_original(xs, frames=36):
         if q == 0x00:
             x, y = xx, yy
         elif q == 0x10:
-            x, y = yy, xx - 256
+            x, y = yy, -xx
         elif q == 0x20:
-            x, y = xx - 256, yy - 256
+            x, y = -xx, -yy
         else:
-            x, y = yy - 256, xx
+            x, y = -yy, xx
         return x * speed, y * speed
 
     out = []
     for start_x in xs:
         x = start_x << 8
         y = 0xAE << 8
-        direction = 0x03
+        direction = direction_start
         bounced = False
         for _ in range(frames):
             dx, dy = dxdy(direction, 2)
@@ -78,6 +78,13 @@ def main() -> int:
         raise SystemExit("FAIL: LBC10 spark speed $02 changed")
     if "death_sparks[i].x_q88         = (long)(x_start + i * 3) << 8" not in src:
         raise SystemExit("FAIL: LBC10 spark X spacing +3 changed")
+    if "bc = L - 256" in src or "hl = L - 256" in src or "bc = C - 256" in src or "hl = C - 256" in src:
+        raise SystemExit("FAIL: death spark direction math must negate table magnitudes, not subtract from 256")
+
+    compact_direction = compact[compact.find("staticvoiddir_to_dxdy"):compact.find("#defineDEATH_SPARK_COUNT")]
+    for needle in ("case0x10:hl=C;bc=-L;", "case0x20:hl=-L;bc=-C;", "default:hl=-C;bc=L;"):
+        if needle not in compact_direction:
+            raise SystemExit(f"FAIL: death spark direction quadrant does not mirror LAD13 magnitude negation: {needle}")
 
     spawn = "intbat_center=BAT_X+(int)objects[OBJ_BAT_1].w_body_px/2;"
     if spawn not in compact:
@@ -100,7 +107,11 @@ def main() -> int:
         raise SystemExit(f"FAIL: original right clamp model exceeded x=240: {edge}")
     if not any(bounced for _, _, bounced in edge):
         raise SystemExit("FAIL: original right clamp model did not exercise a bounce")
+    first = simulate_original([0x74], frames=2, direction_start=0x1B)[0]
+    if first[:2] != (0x75, 0x1B):
+        raise SystemExit(f"FAIL: original first-spark vector model drifted: {first}")
     print("PASS death_sparks_lbc10_spawn: count, X/Y seed, spacing, direction and speed mirror original")
+    print("PASS death_sparks_direction_math: negative components mirror LAD13 magnitude negation")
     print("PASS death_sparks_bounce_wall: right/left/top reflections mirror bounce_wall")
     print("PASS death_sparks_post_pause: LBC10 pause_long B=$03 before respawn is preserved")
     return 0
