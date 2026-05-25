@@ -2,7 +2,21 @@
 
 ## Current Profiling Workflow
 
-Use the render-only profile run when comparing renderer cost:
+Use the deterministic headless profile run when comparing renderer cost:
+
+```sh
+make profile-auto
+```
+
+`profile-auto` builds a normal floppy with `BATTY_RENDER_PROFILE=1`,
+`BATTY_START_LEVEL=1`, `BATTY_LEVEL=$(PROFILE_LEVEL)`, and
+`BATTY_PROFILE_AUTO_FRAMES=$(PROFILE_FRAMES)` injected into
+`AUTOEXEC.BAT`. The game starts directly in the level, exits after the
+requested number of rendered gameplay frames, writes `PROFILE.TXT`, and
+the Make target extracts it plus `build/profile-summary.json`. Defaults:
+level 3, 180 rendered frames, 25 seconds of QEMU wall-clock time.
+
+Use the manual 86Box run for spot checks on the IBM XT + VGA profile:
 
 ```sh
 make profile-86box
@@ -15,11 +29,40 @@ then read and analyze it:
 make read-profile
 ```
 
-`profile-86box` injects `BATTY_RENDER_PROFILE=1` into `AUTOEXEC.BAT`.
-The game treats that as a render-only profiling mode and disables sound, so
-PC-speaker I/O does not hide renderer costs.
+Both profile modes inject `BATTY_RENDER_PROFILE=1`. The game treats that
+as a render-only profiling mode and disables sound, so PC-speaker I/O
+does not hide renderer costs.
 
-## Latest Render-Only Result
+## Latest Automated Render-Only Result
+
+Captured on May 25, 2026 with the default deterministic QEMU profile:
+
+```sh
+make profile-auto
+```
+
+```text
+Profiling Report over 180 frames:
+  paint_bg_to_buff:     17142 (27%)
+  paint_frame_to_buff:  1296 (2%)
+  HUD / Lives:          12258 (19%)
+  render_brick_band:    9636 (15%)
+  buff_to_vga:          21536 (34%)
+  static rebuilds:      1
+  VGA rect flushes:     665
+  VGA bytes written:    498176
+  sound disabled:       1
+  Total PIT ticks sum:  61868
+```
+
+Analyzer summary:
+
+- Top bucket: `buff_to_vga` at 34.8%.
+- Background restore: 27.7%.
+- HUD/lives: 19.8%.
+- VGA output averages 3.69 rect flushes/frame and 2768 bytes/frame.
+
+## Latest Manual 86Box Render-Only Result
 
 Captured on May 24, 2026 after the dirty-rectangle and brick-animation
 passes, using the default `make profile-86box` 86Box target (`ibmxt`,
@@ -68,9 +111,10 @@ Interpretation:
 
 ## Next Likely Wins
 
-1. Localize lives changes the same way score changes are localized.
-2. Split magnet rendering from top HUD rows so score localization is safe on
+1. Reduce `buff_to_vga` bytes/frame and rect count. The automated profile
+   now makes this the top measured bucket.
+2. Split background restore further so the profiler can distinguish dirty
+   cache copy, top-frame repair, and moving-object composition.
+3. Localize lives changes the same way score changes are localized.
+4. Split magnet rendering from top HUD rows so score localization is safe on
    magnet levels too.
-3. Reduce HUD/lives work inside dynamic frames, especially top-row restores.
-4. Continue optimizing `buff_to_vga_rect_bytes` if VGA bytes/frame remains
-   high after the composition work is reduced.

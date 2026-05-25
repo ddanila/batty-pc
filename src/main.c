@@ -1225,6 +1225,7 @@ static unsigned long prof_frames_count = 0;
 static unsigned long prof_vga_rects = 0;
 static unsigned long prof_vga_bytes = 0;
 static unsigned long prof_static_rebuilds = 0;
+static unsigned long profile_auto_frames = 0;
 static int sound_disabled = 0;
 
 static unsigned short last_prof_tick = 0;
@@ -5996,6 +5997,12 @@ static state_t run_level(void) {
                 }
             }
 
+            if (profile_auto_frames != 0
+                && prof_frames_count >= profile_auto_frames) {
+                write_replay_probe();
+                return ST_QUIT;
+            }
+
             /* End-of-life conditions. */
             if (lives == 0) {
                 if (score > high_score) {
@@ -6067,6 +6074,13 @@ int main(void) {
      * against snap2. Plain `make run` floppy leaves it off and the
      * user sees the natural ~4.5 Hz menu blink. */
     if (getenv("BATTYALL") != NULL) test_mode_pin_blink = 1;
+    {
+        const char *p = getenv("BATTY_PROFILE_AUTO_FRAMES");
+        if (p != NULL && *p != '\0') {
+            profile_auto_frames = strtoul(p, NULL, 10);
+            if (profile_auto_frames != 0) state = ST_LEVEL;
+        }
+    }
     if (getenv("BATTY_START_LEVEL") != NULL) state = ST_LEVEL;
     if (getenv("BATTY_NOSOUND") != NULL || getenv("BATTY_SOUND_OFF") != NULL
         || getenv("BATTY_RENDER_PROFILE") != NULL)

@@ -3,14 +3,16 @@
 
 from __future__ import annotations
 
+import argparse
+import json
 import re
 import sys
 from pathlib import Path
 
 
-def read_text() -> str:
-    if len(sys.argv) > 1 and sys.argv[1] != "-":
-        return Path(sys.argv[1]).read_text(errors="replace")
+def read_text(path: str) -> str:
+    if path != "-":
+        return Path(path).read_text(errors="replace")
     return sys.stdin.read()
 
 
@@ -29,7 +31,13 @@ def frame_count(text: str) -> int | None:
 
 
 def main() -> int:
-    text = read_text()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("profile", nargs="?", default="-")
+    parser.add_argument("--json", type=Path, dest="json_out")
+    parser.add_argument("--min-frames", type=int, default=0)
+    args = parser.parse_args()
+
+    text = read_text(args.profile)
     buckets = {
         "paint_bg_to_buff": number_for("paint_bg_to_buff", text),
         "paint_frame_to_buff": number_for("paint_frame_to_buff", text),
@@ -49,6 +57,9 @@ def main() -> int:
 
     total = sum(present.values())
     ordered = sorted(present.items(), key=lambda item: item[1], reverse=True)
+    if args.min_frames and (frames is None or frames < args.min_frames):
+        print(f"FAIL: profile captured {frames or 0} frames, expected at least {args.min_frames}")
+        return 1
 
     print("\nAnalysis:")
     for name, value in ordered:
@@ -63,6 +74,30 @@ def main() -> int:
         print(f"  VGA rects/frame:     {vga_rects / max(frames or 1, 1):.2f}")
     if vga_bytes is not None:
         print(f"  VGA bytes/frame:     {vga_bytes / max(frames or 1, 1):.0f}")
+
+    if args.json_out is not None:
+        frame_div = max(frames or 1, 1)
+        summary = {
+            "frames": frames,
+            "total_pit_ticks": total,
+            "buckets": {
+                name: {
+                    "ticks": value,
+                    "pct": (value * 100.0 / total) if total else 0.0,
+                    "ticks_per_frame": value / frame_div,
+                }
+                for name, value in present.items()
+            },
+            "static_rebuilds": static_rebuilds,
+            "vga_rect_flushes": vga_rects,
+            "vga_bytes_written": vga_bytes,
+            "vga_rects_per_frame": (vga_rects / frame_div) if vga_rects is not None else None,
+            "vga_bytes_per_frame": (vga_bytes / frame_div) if vga_bytes is not None else None,
+            "top_bucket": ordered[0][0],
+        }
+        args.json_out.parent.mkdir(parents=True, exist_ok=True)
+        args.json_out.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")
+        print(f"  JSON summary:        {args.json_out}")
 
     top = ordered[0][0]
     print("\nNext target:")

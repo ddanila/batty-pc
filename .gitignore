@@ -21,6 +21,8 @@ build/test_brick_flash/
 build/replay/
 build/replay-smoke/
 build/86box/
+build/profile-*.log
+build/profile-summary.json
 build/exercise_bricks/
 build/exercise_ball/
 build/exercise_bonus/

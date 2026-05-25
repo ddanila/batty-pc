@@ -74,7 +74,11 @@ BOX86_FDD_TYPE  ?= 35_2hd
 BOX86_ASSETPATH ?= /home/ddanila/fun/86Box/src/unix/assets
 BOX86_ROMPATH   ?= /home/ddanila/fun/86Box-roms
 
-.PHONY: all clean run run-86box profile-86box read-profile floppy assets help run-original run-original-cheat snapshot candidates regions test test-hud test-brick-flash test-rocket-bonus test-death-sparks test-l3-replay-seed test-midgame-brick-replay replay-l3-brick-flash replay-l3-brick-flash-both
+PROFILE_LEVEL  ?= 3
+PROFILE_FRAMES ?= 180
+PROFILE_WAIT   ?= 25
+
+.PHONY: all clean run run-86box profile-auto profile-86box read-profile floppy assets help run-original run-original-cheat snapshot candidates regions test test-hud test-brick-flash test-rocket-bonus test-death-sparks test-l3-replay-seed test-midgame-brick-replay replay-l3-brick-flash replay-l3-brick-flash-both
 
 all: $(EXE) $(ASSETS)
 
@@ -85,6 +89,7 @@ help:
 	@echo "  floppy        pack $(EXE) + assets onto $(FLOPPY_OUT)"
 	@echo "  run           build the floppy and boot it in QEMU (our recreation)"
 	@echo "  run-86box     build the floppy and boot it in 86Box (IBM XT + VGA)"
+	@echo "  profile-auto  run deterministic headless QEMU render profile"
 	@echo "  profile-86box run 86Box with BATTY_RENDER_PROFILE=1 (sound off)"
 	@echo "  read-profile  extract and print PROFILE.TXT from $(FLOPPY_OUT)"
 	@echo "  run-original  boot the ORIGINAL batty.tap in ZEsarUX with ZRCP open"
@@ -254,6 +259,15 @@ $(FLOPPY_OUT): $(EXE) $(ASSETS) $(FLOPPY_SRC)
 	@if [ -n "$$BATTY_RENDER_PROFILE" ]; then \
 	    printf 'SET BATTY_RENDER_PROFILE=%s\r\n' "$$BATTY_RENDER_PROFILE" >> build/AUTOEXEC.BAT ; \
 	fi
+	@if [ -n "$$BATTY_PROFILE_AUTO_FRAMES" ]; then \
+	    printf 'SET BATTY_PROFILE_AUTO_FRAMES=%s\r\n' "$$BATTY_PROFILE_AUTO_FRAMES" >> build/AUTOEXEC.BAT ; \
+	fi
+	@if [ -n "$$BATTY_START_LEVEL" ]; then \
+	    printf 'SET BATTY_START_LEVEL=%s\r\n' "$$BATTY_START_LEVEL" >> build/AUTOEXEC.BAT ; \
+	fi
+	@if [ -n "$$BATTY_LEVEL" ]; then \
+	    printf 'SET BATTY_LEVEL=%s\r\n' "$$BATTY_LEVEL" >> build/AUTOEXEC.BAT ; \
+	fi
 	@printf 'BATTY\r\n' >> build/AUTOEXEC.BAT
 	mcopy -i $@ -o build/AUTOEXEC.BAT ::AUTOEXEC.BAT
 	@echo "Floppy ready: $@  (menu-only cycle)"
@@ -332,6 +346,13 @@ run-86box:
 	BOX86_ASSETPATH="$(BOX86_ASSETPATH)" \
 	BOX86_ROMPATH="$(BOX86_ROMPATH)" \
 	bash scripts/run_86box.sh $(FLOPPY_OUT)
+
+profile-auto:
+	rm -f $(FLOPPY_OUT)
+	BATTY_RENDER_PROFILE=1 BATTY_PROFILE_AUTO_FRAMES=$(PROFILE_FRAMES) BATTY_START_LEVEL=1 BATTY_LEVEL=$(PROFILE_LEVEL) $(MAKE) $(FLOPPY_OUT)
+	python3 scripts/run_profile_auto.py --floppy $(FLOPPY_OUT) --seconds $(PROFILE_WAIT)
+	$(MAKE) read-profile
+	python3 scripts/analyze_profile.py build/PROFILE.TXT --json build/profile-summary.json --min-frames $(PROFILE_FRAMES)
 
 profile-86box:
 	rm -f $(FLOPPY_OUT)
