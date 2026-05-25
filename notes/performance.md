@@ -11,10 +11,13 @@ make profile-auto
 `profile-auto` builds a normal floppy with `BATTY_RENDER_PROFILE=1`,
 `BATTY_START_LEVEL=1`, `BATTY_LEVEL=$(PROFILE_LEVEL)`, and
 `BATTY_PROFILE_AUTO_FRAMES=$(PROFILE_FRAMES)` injected into
-`AUTOEXEC.BAT`. The game starts directly in the level, exits after the
-requested number of rendered gameplay frames, writes `PROFILE.TXT`, and
-the Make target extracts it plus `build/profile-summary.json`. Defaults:
-level 3, 180 rendered frames, 25 seconds of QEMU wall-clock time.
+`AUTOEXEC.BAT`. The game starts directly in the level with a seeded
+moving primary ball, exits after the requested number of rendered gameplay
+frames, writes `PROFILE.TXT`, and the Make target extracts it plus
+`build/profile-summary.json`. Defaults: level 1, 180 rendered frames,
+25 seconds of QEMU wall-clock time.
+
+Use `PROFILE_LEVEL=3` for the busier brick/special-object stress case.
 
 Use the manual 86Box run for spot checks on the IBM XT + VGA profile:
 
@@ -35,7 +38,7 @@ does not hide renderer costs.
 
 ## Latest Automated Render-Only Result
 
-Captured on May 25, 2026 with the default deterministic QEMU profile:
+Captured on May 26, 2026 with the default deterministic QEMU profile:
 
 ```sh
 make profile-auto
@@ -43,24 +46,25 @@ make profile-auto
 
 ```text
 Profiling Report over 180 frames:
-  paint_bg_to_buff:     14746 (26%)
-  paint_frame_to_buff:  602 (1%)
-  HUD / Lives:          11256 (20%)
-  render_brick_band:    10150 (18%)
-  buff_to_vga:          17886 (32%)
-  static rebuilds:      1
-  VGA rect flushes:     674
-  VGA bytes written:    434888
+  paint_bg_to_buff:     13638 (29%)
+  paint_frame_to_buff:  388 (0%)
+  HUD / Lives:          8314 (18%)
+  render_brick_band:    8614 (18%)
+  buff_to_vga:          15062 (32%)
+  static rebuilds:      2
+  ball-only frames:     50
+  VGA rect flushes:     457
+  VGA bytes written:    390576
   sound disabled:       1
-  Total PIT ticks sum:  54640
+  Total PIT ticks sum:  46016
 ```
 
 Analyzer summary:
 
 - Top bucket: `buff_to_vga` at 32.7%.
-- Background restore: 27.0%.
-- HUD/lives: 20.6%.
-- VGA output averages 3.74 rect flushes/frame and 2416 bytes/frame.
+- Background restore: 29.6%.
+- Ball-only redraw path covered 50 frames (27.8%).
+- VGA output averages 2.54 rect flushes/frame and 2170 bytes/frame.
 
 ## Latest Manual 86Box Render-Only Result
 
@@ -110,6 +114,11 @@ Interpretation:
   frame when the bat is stationary. The bat is still composed into
   `scr_buff`, but VGA output is limited to the running-dot row unless
   the bat position, size, laser/gun frame, or fire animation changes.
+- Plain primary-ball motion can now use a ball-only dirty redraw: it
+  restores the previous dirty ball ranges, redraws only the new ball and
+  the bat running-dot row, and falls back to the full dynamic compose for
+  brick hits, HUD changes, bonuses, enemies, bullets, rockets, extra
+  balls, bat movement, and cache invalidations.
 - Static intro/title screens clear only the mode-13h border before
   blitting the 256x192 asset, and read screen assets in 16-row chunks
   instead of 192 single-row DOS reads. The 8 KiB random source table is

@@ -74,11 +74,13 @@ BOX86_FDD_TYPE  ?= 35_2hd
 BOX86_ASSETPATH ?= /home/ddanila/fun/86Box/src/unix/assets
 BOX86_ROMPATH   ?= /home/ddanila/fun/86Box-roms
 
-PROFILE_LEVEL  ?= 3
+PROFILE_LEVEL  ?= 1
 PROFILE_FRAMES ?= 180
 PROFILE_WAIT   ?= 25
+PROFILE_BALL_OBJECT ?= 02008000A0001802020C000008070000000000000080
+PROFILE_BALL_STUCK  ?= 0
 
-.PHONY: all clean run run-86box profile-auto profile-86box read-profile floppy assets help run-original run-original-cheat snapshot candidates regions test test-hud test-bat-redraw-window test-brick-flash test-rocket-bonus test-death-sparks test-normal-ball-launch test-ball-left-wall-escape test-l3-replay-seed test-midgame-brick-replay replay-l3-brick-flash replay-l3-brick-flash-both
+.PHONY: all clean run run-86box profile-auto profile-86box read-profile floppy assets help run-original run-original-cheat snapshot candidates regions test test-hud test-bat-redraw-window test-ball-dirty-redraw test-brick-flash test-rocket-bonus test-death-sparks test-normal-ball-launch test-ball-left-wall-escape test-l3-replay-seed test-midgame-brick-replay replay-l3-brick-flash replay-l3-brick-flash-both
 
 all: $(EXE) $(ASSETS)
 
@@ -97,6 +99,7 @@ help:
 	@echo "  regions       static scan of main blob -> build/regions.{txt,blockdef}"
 	@echo "  candidates    render bytedata regions as PNGs -> assets/candidates/"
 	@echo "  test-brick-flash  verify brick flash clears vs original L3 reference"
+	@echo "  test-ball-dirty-redraw  verify ball-only dirty redraw vs full baseline"
 	@echo "  test-rocket-bonus  verify rocket bonus cannot trigger no-ball death"
 	@echo "  test-death-sparks  verify bat death spark fanout mirrors original"
 	@echo "  test-l3-replay-seed  verify deterministic L3 replay seed/probes"
@@ -268,6 +271,12 @@ $(FLOPPY_OUT): $(EXE) $(ASSETS) $(FLOPPY_SRC)
 	@if [ -n "$$BATTY_LEVEL" ]; then \
 	    printf 'SET BATTY_LEVEL=%s\r\n' "$$BATTY_LEVEL" >> build/AUTOEXEC.BAT ; \
 	fi
+	@if [ -n "$$BATTY_REPLAY_BALL_OBJECT" ]; then \
+	    printf 'SET BATTY_REPLAY_BALL_OBJECT=%s\r\n' "$$BATTY_REPLAY_BALL_OBJECT" >> build/AUTOEXEC.BAT ; \
+	fi
+	@if [ -n "$$BATTY_REPLAY_BALL_STUCK" ]; then \
+	    printf 'SET BATTY_REPLAY_BALL_STUCK=%s\r\n' "$$BATTY_REPLAY_BALL_STUCK" >> build/AUTOEXEC.BAT ; \
+	fi
 	@printf 'BATTY\r\n' >> build/AUTOEXEC.BAT
 	mcopy -i $@ -o build/AUTOEXEC.BAT ::AUTOEXEC.BAT
 	@echo "Floppy ready: $@  (menu-only cycle)"
@@ -338,8 +347,14 @@ $(TEST_FLOPPY_OUT): $(TEST_EXE) $(ASSETS) $(FLOPPY_SRC)
 	if [ -n "$$BATTY_FRAME_PROBE" ]; then \
 	    printf 'SET BATTY_FRAME_PROBE=%s\r\n' "$$BATTY_FRAME_PROBE" >> build/AUTOEXEC-T.BAT ; \
 	fi; \
+	if [ -n "$$BATTY_VISUAL_PROBE_FRAMES" ]; then \
+	    printf 'SET BATTY_VISUAL_PROBE_FRAMES=%s\r\n' "$$BATTY_VISUAL_PROBE_FRAMES" >> build/AUTOEXEC-T.BAT ; \
+	fi; \
 	if [ -n "$$BATTY_FORCE_BAT_FULL_REDRAW" ]; then \
 	    printf 'SET BATTY_FORCE_BAT_FULL_REDRAW=%s\r\n' "$$BATTY_FORCE_BAT_FULL_REDRAW" >> build/AUTOEXEC-T.BAT ; \
+	fi; \
+	if [ -n "$$BATTY_FORCE_BALL_FULL_REDRAW" ]; then \
+	    printf 'SET BATTY_FORCE_BALL_FULL_REDRAW=%s\r\n' "$$BATTY_FORCE_BALL_FULL_REDRAW" >> build/AUTOEXEC-T.BAT ; \
 	fi; \
 	printf 'BATTY\r\n' >> build/AUTOEXEC-T.BAT
 	mcopy -i $@ -o build/AUTOEXEC-T.BAT ::AUTOEXEC.BAT
@@ -364,7 +379,7 @@ run-86box:
 
 profile-auto:
 	rm -f $(FLOPPY_OUT)
-	BATTY_RENDER_PROFILE=1 BATTY_PROFILE_AUTO_FRAMES=$(PROFILE_FRAMES) BATTY_START_LEVEL=1 BATTY_LEVEL=$(PROFILE_LEVEL) $(MAKE) $(FLOPPY_OUT)
+	BATTY_RENDER_PROFILE=1 BATTY_PROFILE_AUTO_FRAMES=$(PROFILE_FRAMES) BATTY_START_LEVEL=1 BATTY_LEVEL=$(PROFILE_LEVEL) BATTY_REPLAY_BALL_OBJECT=$(PROFILE_BALL_OBJECT) BATTY_REPLAY_BALL_STUCK=$(PROFILE_BALL_STUCK) $(MAKE) $(FLOPPY_OUT)
 	python3 scripts/run_profile_auto.py --floppy $(FLOPPY_OUT) --seconds $(PROFILE_WAIT)
 	$(MAKE) read-profile
 	python3 scripts/analyze_profile.py build/PROFILE.TXT --json build/profile-summary.json --min-frames $(PROFILE_FRAMES)
@@ -417,6 +432,9 @@ test-hud: $(FLOPPY_OUT)
 
 test-bat-redraw-window:
 	python3 scripts/test_bat_redraw_window.py
+
+test-ball-dirty-redraw:
+	python3 scripts/test_ball_dirty_redraw.py
 
 test-brick-flash: $(TEST_FLOPPY_OUT)
 	python3 scripts/test_brick_flash.py

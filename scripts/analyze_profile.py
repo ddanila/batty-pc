@@ -47,6 +47,7 @@ def main() -> int:
     }
     frames = frame_count(text)
     static_rebuilds = number_for("static rebuilds", text)
+    ball_only_frames = number_for("ball-only frames", text)
     vga_rects = number_for("VGA rect flushes", text)
     vga_bytes = number_for("VGA bytes written", text)
 
@@ -70,6 +71,9 @@ def main() -> int:
         print(f"  frames:              {frames}")
     if static_rebuilds is not None:
         print(f"  static rebuilds:     {static_rebuilds}")
+    if ball_only_frames is not None:
+        pct = (ball_only_frames * 100.0 / frames) if frames else 0.0
+        print(f"  ball-only frames:    {ball_only_frames} ({pct:.1f}%)")
     if vga_rects is not None:
         print(f"  VGA rects/frame:     {vga_rects / max(frames or 1, 1):.2f}")
     if vga_bytes is not None:
@@ -89,6 +93,12 @@ def main() -> int:
                 for name, value in present.items()
             },
             "static_rebuilds": static_rebuilds,
+            "ball_only_frames": ball_only_frames,
+            "ball_only_frame_pct": (
+                (ball_only_frames * 100.0 / frames)
+                if ball_only_frames is not None and frames
+                else None
+            ),
             "vga_rect_flushes": vga_rects,
             "vga_bytes_written": vga_bytes,
             "vga_rects_per_frame": (vga_rects / frame_div) if vga_rects is not None else None,

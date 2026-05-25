@@ -633,6 +633,9 @@ static unsigned char launch_probe_active = 0;
 static unsigned int  frame_probe_frames = 0;
 static unsigned int  frame_probe_countdown = 0;
 static unsigned char frame_probe_active = 0;
+static unsigned int  visual_probe_frames = 0;
+static unsigned int  visual_probe_countdown = 0;
+static unsigned char visual_probe_active = 0;
 /* Offset from BAT_X where the ball sits while stuck. Defaults to
  * BALL_X_OFFSET_ON_BAT for the standard "ball respawns at bat
  * centre" cases (level entry, life lost). The CATCH bonus rewrites
@@ -1269,8 +1272,10 @@ static unsigned long prof_frames_count = 0;
 static unsigned long prof_vga_rects = 0;
 static unsigned long prof_vga_bytes = 0;
 static unsigned long prof_static_rebuilds = 0;
+static unsigned long prof_ball_only_frames = 0;
 static unsigned long profile_auto_frames = 0;
 static unsigned char force_bat_full_redraw = 0;
+static unsigned char force_ball_full_redraw = 0;
 static unsigned char suppress_no_ball_death = 0;
 static int sound_disabled = 0;
 
@@ -1318,6 +1323,7 @@ static void write_profile_report(void) {
             fprintf(f, "  buff_to_vga:          %lu (%u%%)\n", prof_vga_pit, (unsigned)((prof_vga_pit * 100) / total));
         }
         fprintf(f, "  static rebuilds:      %lu\n", prof_static_rebuilds);
+        fprintf(f, "  ball-only frames:     %lu\n", prof_ball_only_frames);
         fprintf(f, "  VGA rect flushes:     %lu\n", prof_vga_rects);
         fprintf(f, "  VGA bytes written:    %lu\n", prof_vga_bytes);
         fprintf(f, "  sound disabled:       %u\n", (unsigned)sound_disabled);
@@ -4940,6 +4946,28 @@ static void redraw_bat(unsigned char cycle, unsigned char bg_attr) {
 
 static void render_hud_to_buff(void);
 
+static void carry_dirty_with_previous(void) {
+    int y;
+    for (y = 0; y < PLAYFIELD_H; y++) {
+        unsigned char current_min0 = dirty_min_byte[0][y];
+        unsigned char current_max0 = dirty_max_byte[0][y];
+        unsigned char current_min1 = dirty_min_byte[1][y];
+        unsigned char current_max1 = dirty_max_byte[1][y];
+        int s;
+        for (s = 0; s < DIRTY_SLOTS; s++) {
+            if (prev_dirty_min_byte[s][y] != DIRTY_NONE) {
+                mark_dirty_byte_row(dirty_min_byte, dirty_max_byte, y,
+                                    prev_dirty_min_byte[s][y],
+                                    prev_dirty_max_byte[s][y]);
+            }
+        }
+        prev_dirty_min_byte[0][y] = current_min0;
+        prev_dirty_max_byte[0][y] = current_max0;
+        prev_dirty_min_byte[1][y] = current_min1;
+        prev_dirty_max_byte[1][y] = current_max1;
+    }
+}
+
 /* Full-frame compose. Walks the same scr_buff -> attr_buff -> VGA
  * path as the original (game_screen_draw_to_buffer @ $BE6B):
  *   - paint bg + bricks + bat + lives into scr_buff/attr_buff
@@ -5112,29 +5140,56 @@ static void redraw_full_with_ball(unsigned char level_idx) {
         force_full_flush = 0;
     } else {
         /* Flush both the old sprite positions and the new sprite positions. */
-        for (y = 0; y < PLAYFIELD_H; y++) {
-            unsigned char current_min0 = dirty_min_byte[0][y];
-            unsigned char current_max0 = dirty_max_byte[0][y];
-            unsigned char current_min1 = dirty_min_byte[1][y];
-            unsigned char current_max1 = dirty_max_byte[1][y];
-            int s;
-            for (s = 0; s < DIRTY_SLOTS; s++) {
-                if (prev_dirty_min_byte[s][y] != DIRTY_NONE) {
-                    mark_dirty_byte_row(dirty_min_byte, dirty_max_byte, y,
-                                        prev_dirty_min_byte[s][y],
-                                        prev_dirty_max_byte[s][y]);
-                }
-            }
-            prev_dirty_min_byte[0][y] = current_min0;
-            prev_dirty_max_byte[0][y] = current_max0;
-            prev_dirty_min_byte[1][y] = current_min1;
-            prev_dirty_max_byte[1][y] = current_max1;
-        }
+        carry_dirty_with_previous();
     }
     flush_dirty_to_vga();
     prof_vga_pit += prof_elapsed();
 
     prof_frames_count++;
+}
+
+static int can_redraw_ball_only(int bat_moved) {
+    if (force_ball_full_redraw || force_bat_full_redraw) return 0;
+    if (bat_moved) return 0;
+    if (!BALL_VISIBLE || ball_stuck) return 0;
+    if (static_bg_dirty || static_bg_cache_dirty || force_full_flush) return 0;
+    if (score != prev_score || high_score != prev_high_score || lives != prev_lives) return 0;
+    if (bonus_active || pts_400_active || bomb_active || rocket_active) return 0;
+    if (objects[OBJ_ENEMY].sprite_set != 0) return 0;
+    if (any_bullet_active() || any_bullet_blast()) return 0;
+    if (brick_flash_ticks || any_brick_hit_anim()) return 0;
+    if (ball2_active || ball3_active) return 0;
+    if (big_ball_active()) return 0;
+    if (bat_extra_px != bat_extra_tgt || bat_fire_anim_ticks) return 0;
+    return 1;
+}
+
+static void redraw_ball_only(unsigned char level_idx) {
+    unsigned char bg_attr = bg_attr_per_cycle[level_idx & 3];
+    unsigned char cycle = (unsigned char)(level_idx & 3);
+    int bat_x0, bat_x1;
+
+    prof_start();
+    restore_prev_dirty_from_static_cache();
+    clear_dirty_ranges(dirty_min_byte, dirty_max_byte);
+    prof_bg_pit += prof_elapsed();
+
+    render_ball_to_buff(BALL_X, BALL_Y, bg_attr);
+    mark_dirty_rect_px(BALL_X, BALL_Y, 16, 12);
+    bat_sprite_bounds(BAT_X, bat_extra_px, &bat_x0, &bat_x1);
+    paint_bg_window_to_buff(bg_attr, cycle, BAT_Y + 6, 1,
+                            bat_x0 >> 3, (bat_x1 - 1) >> 3);
+    render_bat(cycle, bg_attr);
+    render_running_dot();
+    mark_dirty_rect_px(bat_x0, BAT_Y + 6, bat_x1 - bat_x0, 1);
+    prof_bricks_pit += prof_elapsed();
+
+    carry_dirty_with_previous();
+    flush_dirty_to_vga();
+    prof_vga_pit += prof_elapsed();
+
+    prof_frames_count++;
+    prof_ball_only_frames++;
 }
 
 /* Render a short string of N character codes via draw_glyph, anchored
@@ -5772,6 +5827,10 @@ static state_t run_level(void) {
         frame_probe_frames = (p && *p) ? (unsigned int)atoi(p) : 0;
         frame_probe_countdown = frame_probe_frames;
         frame_probe_active = (frame_probe_frames != 0) ? 1 : 0;
+        p = getenv("BATTY_VISUAL_PROBE_FRAMES");
+        visual_probe_frames = (p && *p) ? (unsigned int)atoi(p) : 0;
+        visual_probe_countdown = visual_probe_frames;
+        visual_probe_active = (visual_probe_frames != 0) ? 1 : 0;
     }
 
     /* The original loops levels forever (increment_round_number at
@@ -5881,6 +5940,7 @@ static state_t run_level(void) {
             unsigned long now;
             int ball_moved = 0;
             int bat_moved  = 0;
+            int frame_ticked = 0;
 
             if (kbhit()) {
                 int k = getch();
@@ -5975,6 +6035,7 @@ static state_t run_level(void) {
             }
             if (now != last_tick) {
                 last_tick = now;
+                frame_ticked = 1;
                 /* Per-frame keyboard polling - mirrors
                  * get_left_player_ctrl_state ($A161) which reads the
                  * keyboard half-row IN A,($FE) and updates
@@ -6136,12 +6197,28 @@ static state_t run_level(void) {
             }
 
             if (ball_moved) {
-                redraw_full_with_ball(i);
+                if (can_redraw_ball_only(bat_moved)) {
+                    redraw_ball_only(i);
+                } else {
+                    redraw_full_with_ball(i);
+                }
             } else if (bat_moved) {
                 redraw_bat(cycle, bg_attr);
                 if (BALL_VISIBLE && ball_stuck) {
                     BALL_X = BAT_X + BALL_X_OFFSET_ON_BAT;
                     render_ball(BALL_X, BALL_Y, bg_attr);
+                }
+            }
+
+            if (visual_probe_active && frame_ticked) {
+                if (visual_probe_countdown > 0) visual_probe_countdown--;
+                if (visual_probe_countdown == 0) {
+                    write_replay_probe();
+                    while (!kbhit()) {
+                        sound_tick();
+                    }
+                    (void)getch();
+                    return ST_QUIT;
                 }
             }
 
@@ -6223,6 +6300,7 @@ int main(void) {
      * user sees the natural ~4.5 Hz menu blink. */
     if (getenv("BATTYALL") != NULL) test_mode_pin_blink = 1;
     if (getenv("BATTY_FORCE_BAT_FULL_REDRAW") != NULL) force_bat_full_redraw = 1;
+    if (getenv("BATTY_FORCE_BALL_FULL_REDRAW") != NULL) force_ball_full_redraw = 1;
     if (getenv("BATTY_SUPPRESS_NO_BALL_DEATH") != NULL) suppress_no_ball_death = 1;
     {
         const char *p = getenv("BATTY_PROFILE_AUTO_FRAMES");

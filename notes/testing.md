@@ -110,6 +110,14 @@ byte-window repaint and once with `BATTY_FORCE_BAT_FULL_REDRAW=1`.
 The gate compares the bat band, catching stale pixels from a too-tight
 bat refresh window without requiring a hand-authored expected screen.
 
+`make test-ball-dirty-redraw` covers the primary-ball-only dirty redraw
+path. It seeds a ball in open play, halts after 12 rendered frames via
+`BATTY_VISUAL_PROBE_FRAMES=12`, and compares the whole playfield against
+a forced full-redraw baseline using `BATTY_FORCE_BALL_FULL_REDRAW=1`.
+That catches stale old-ball pixels and missing new-ball pixels while
+keeping brick hits, HUD updates, bonuses, enemies, bullets, rockets, and
+extra balls on the conservative full-compose path.
+
 `make test-normal-ball-launch` covers the regular player launch path
 that the seeded L3 replay does not exercise. It boots directly into L1,
 uses `BATTY_REPLAY_WAIT_KEY=1` to pause after level entry, presses SPACE,
