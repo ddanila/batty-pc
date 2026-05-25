@@ -19,6 +19,7 @@ build/test_visual/
 build/test_hud/
 build/test_bat_redraw_window/
 build/test_ball_dirty_redraw/
+build/test_ball_object_dirty_redraw/
 build/test_brick_flash/
 build/test_normal_ball_launch/
 build/test_ball_left_wall_escape/

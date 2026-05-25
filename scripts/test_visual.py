@@ -168,9 +168,11 @@ def lint_moving_object_attrs(src_path: Path) -> int:
 
     Approved callers: render_bat (forces bg_attr to keep the bat
     bg-coloured when it slides into a side-strip cell), the alien
-    block in redraw_full_with_ball (same idea for UFO/bird).
+    blocks in redraw_full_with_ball and render_enemy_to_buff_and_mark
+    (same idea for UFO/bird).
     """
-    APPROVED_CALLERS = {'render_bat', 'redraw_full_with_ball'}
+    APPROVED_CALLERS = {'render_bat', 'redraw_full_with_ball',
+                        'render_enemy_to_buff_and_mark'}
     text = src_path.read_text()
     lines = text.split('\n')
     fails = []

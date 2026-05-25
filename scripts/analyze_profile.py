@@ -47,7 +47,18 @@ def main() -> int:
     }
     frames = frame_count(text)
     static_rebuilds = number_for("static rebuilds", text)
+    full_dynamic_frames = number_for("full dynamic frames", text)
     ball_only_frames = number_for("ball-only frames", text)
+    ball_object_frames = number_for("ball-object frames", text)
+    ball_blockers = {
+        "bat": number_for("ball block bat", text),
+        "static": number_for("ball block static", text),
+        "HUD": number_for("ball block HUD", text),
+        "objects": number_for("ball block objects", text),
+        "bricks": number_for("ball block bricks", text),
+        "balls": number_for("ball block balls", text),
+        "bat FX": number_for("ball block bat FX", text),
+    }
     vga_rects = number_for("VGA rect flushes", text)
     vga_bytes = number_for("VGA bytes written", text)
 
@@ -71,9 +82,20 @@ def main() -> int:
         print(f"  frames:              {frames}")
     if static_rebuilds is not None:
         print(f"  static rebuilds:     {static_rebuilds}")
+    if full_dynamic_frames is not None:
+        pct = (full_dynamic_frames * 100.0 / frames) if frames else 0.0
+        print(f"  full dynamic frames: {full_dynamic_frames} ({pct:.1f}%)")
     if ball_only_frames is not None:
         pct = (ball_only_frames * 100.0 / frames) if frames else 0.0
         print(f"  ball-only frames:    {ball_only_frames} ({pct:.1f}%)")
+    if ball_object_frames is not None:
+        pct = (ball_object_frames * 100.0 / frames) if frames else 0.0
+        print(f"  ball-object frames:  {ball_object_frames} ({pct:.1f}%)")
+    present_blockers = {k: v for k, v in ball_blockers.items() if v is not None and v}
+    if present_blockers:
+        print("  ball dirty blockers:")
+        for name, value in sorted(present_blockers.items(), key=lambda item: item[1], reverse=True):
+            print(f"    {name:8s} {value}")
     if vga_rects is not None:
         print(f"  VGA rects/frame:     {vga_rects / max(frames or 1, 1):.2f}")
     if vga_bytes is not None:
@@ -93,12 +115,25 @@ def main() -> int:
                 for name, value in present.items()
             },
             "static_rebuilds": static_rebuilds,
+            "full_dynamic_frames": full_dynamic_frames,
+            "full_dynamic_frame_pct": (
+                (full_dynamic_frames * 100.0 / frames)
+                if full_dynamic_frames is not None and frames
+                else None
+            ),
             "ball_only_frames": ball_only_frames,
             "ball_only_frame_pct": (
                 (ball_only_frames * 100.0 / frames)
                 if ball_only_frames is not None and frames
                 else None
             ),
+            "ball_object_frames": ball_object_frames,
+            "ball_object_frame_pct": (
+                (ball_object_frames * 100.0 / frames)
+                if ball_object_frames is not None and frames
+                else None
+            ),
+            "ball_dirty_blockers": ball_blockers,
             "vga_rect_flushes": vga_rects,
             "vga_bytes_written": vga_bytes,
             "vga_rects_per_frame": (vga_rects / frame_div) if vga_rects is not None else None,

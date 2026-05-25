@@ -46,24 +46,37 @@ make profile-auto
 
 ```text
 Profiling Report over 180 frames:
-  paint_bg_to_buff:     13638 (29%)
-  paint_frame_to_buff:  388 (0%)
-  HUD / Lives:          8314 (18%)
-  render_brick_band:    8614 (18%)
-  buff_to_vga:          15062 (32%)
+  paint_bg_to_buff:     13760 (29%)
+  paint_frame_to_buff:  250 (0%)
+  HUD / Lives:          4394 (9%)
+  render_brick_band:    12254 (26%)
+  buff_to_vga:          16448 (34%)
   static rebuilds:      2
+  full dynamic frames:  61
   ball-only frames:     50
+  ball-object frames:   69
+  ball block bat:       0
+  ball block static:    2
+  ball block HUD:       3
+  ball block objects:   3
+  ball block bricks:    3
+  ball block balls:     57
+  ball block bat FX:    0
   VGA rect flushes:     457
   VGA bytes written:    390576
   sound disabled:       1
-  Total PIT ticks sum:  46016
+  Total PIT ticks sum:  47106
 ```
 
 Analyzer summary:
 
-- Top bucket: `buff_to_vga` at 32.7%.
-- Background restore: 29.6%.
+- Top bucket: `buff_to_vga` at 34.9%.
+- Background restore: 29.2%.
+- Full dynamic redraw now covers 61 frames (33.9%).
 - Ball-only redraw path covered 50 frames (27.8%).
+- Ball+simple-object redraw path covered 69 frames (38.3%).
+- Remaining ball dirty blockers are mostly multi-ball / big-ball style
+  ball state (57 frames).
 - VGA output averages 2.54 rect flushes/frame and 2170 bytes/frame.
 
 ## Latest Manual 86Box Render-Only Result
@@ -119,6 +132,11 @@ Interpretation:
   the bat running-dot row, and falls back to the full dynamic compose for
   brick hits, HUD changes, bonuses, enemies, bullets, rockets, extra
   balls, bat movement, and cache invalidations.
+- Primary-ball motion with simple moving objects can now also avoid full
+  dynamic compose. The dirty-object path redraws the primary ball, bat
+  running-dot row, enemy, falling bonus, and +400 marker, while still
+  falling back for bombs, rockets, bullets, brick animations, extra balls,
+  HUD changes, bat motion, and cache invalidations.
 - Static intro/title screens clear only the mode-13h border before
   blitting the 256x192 asset, and read screen assets in 16-row chunks
   instead of 192 single-row DOS reads. The 8 KiB random source table is
@@ -131,8 +149,11 @@ Interpretation:
 
 1. Reduce `buff_to_vga` bytes/frame and rect count. The automated profile
    now makes this the top measured bucket.
-2. Split background restore further so the profiler can distinguish dirty
+2. Add a multi-ball / big-ball dirty redraw tier. The current default
+   profile still records 57 ball-state blockers after the simple-object
+   path.
+3. Split background restore further so the profiler can distinguish dirty
    cache copy, top-frame repair, and moving-object composition.
-3. Localize lives changes the same way score changes are localized.
-4. Split magnet rendering from top HUD rows so score localization is safe on
+4. Localize lives changes the same way score changes are localized.
+5. Split magnet rendering from top HUD rows so score localization is safe on
    magnet levels too.

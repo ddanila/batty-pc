@@ -121,6 +121,12 @@ That catches stale old-ball pixels and missing new-ball pixels while
 keeping brick hits, HUD updates, bonuses, enemies, bullets, rockets, and
 extra balls on the conservative full-compose path.
 
+`make test-ball-object-dirty-redraw` covers the next dirty redraw tier:
+primary ball plus simple moving objects. It seeds a UFO/bird object and
+compares the dirty-object renderer against the same forced full-redraw
+baseline. Bombs, rockets, bullets, brick animations, extra balls, HUD
+changes, and bat motion are still excluded from this path.
+
 `make test-normal-ball-launch` covers the regular player launch path
 that the seeded L3 replay does not exercise. It boots directly into L1,
 uses `BATTY_REPLAY_WAIT_KEY=1` to pause after level entry, presses SPACE,

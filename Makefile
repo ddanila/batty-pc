@@ -80,7 +80,7 @@ PROFILE_WAIT   ?= 25
 PROFILE_BALL_OBJECT ?= 02008000A0001802020C000008070000000000000080
 PROFILE_BALL_STUCK  ?= 0
 
-.PHONY: all clean run run-86box profile-auto profile-86box read-profile floppy assets help run-original run-original-cheat snapshot candidates regions test test-hud test-bat-redraw-window test-ball-dirty-redraw test-brick-flash test-rocket-bonus test-death-sparks test-normal-ball-launch test-ball-left-wall-escape test-l3-replay-seed test-midgame-brick-replay replay-l3-brick-flash replay-l3-brick-flash-both
+.PHONY: all clean run run-86box profile-auto profile-86box read-profile floppy assets help run-original run-original-cheat snapshot candidates regions test test-hud test-bat-redraw-window test-ball-dirty-redraw test-ball-object-dirty-redraw test-brick-flash test-rocket-bonus test-death-sparks test-normal-ball-launch test-ball-left-wall-escape test-l3-replay-seed test-midgame-brick-replay replay-l3-brick-flash replay-l3-brick-flash-both
 
 all: $(EXE) $(ASSETS)
 
@@ -100,6 +100,7 @@ help:
 	@echo "  candidates    render bytedata regions as PNGs -> assets/candidates/"
 	@echo "  test-brick-flash  verify brick flash clears vs original L3 reference"
 	@echo "  test-ball-dirty-redraw  verify ball-only dirty redraw vs full baseline"
+	@echo "  test-ball-object-dirty-redraw  verify ball+enemy dirty redraw vs full baseline"
 	@echo "  test-rocket-bonus  verify rocket bonus cannot trigger no-ball death"
 	@echo "  test-death-sparks  verify bat death spark fanout mirrors original"
 	@echo "  test-l3-replay-seed  verify deterministic L3 replay seed/probes"
@@ -435,6 +436,9 @@ test-bat-redraw-window:
 
 test-ball-dirty-redraw:
 	python3 scripts/test_ball_dirty_redraw.py
+
+test-ball-object-dirty-redraw:
+	python3 scripts/test_ball_object_dirty_redraw.py
 
 test-brick-flash: $(TEST_FLOPPY_OUT)
 	python3 scripts/test_brick_flash.py

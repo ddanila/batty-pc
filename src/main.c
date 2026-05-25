@@ -1272,7 +1272,16 @@ static unsigned long prof_frames_count = 0;
 static unsigned long prof_vga_rects = 0;
 static unsigned long prof_vga_bytes = 0;
 static unsigned long prof_static_rebuilds = 0;
+static unsigned long prof_full_dynamic_frames = 0;
 static unsigned long prof_ball_only_frames = 0;
+static unsigned long prof_ball_object_frames = 0;
+static unsigned long prof_ball_dirty_block_bat = 0;
+static unsigned long prof_ball_dirty_block_static = 0;
+static unsigned long prof_ball_dirty_block_hud = 0;
+static unsigned long prof_ball_dirty_block_objects = 0;
+static unsigned long prof_ball_dirty_block_bricks = 0;
+static unsigned long prof_ball_dirty_block_balls = 0;
+static unsigned long prof_ball_dirty_block_bat_fx = 0;
 static unsigned long profile_auto_frames = 0;
 static unsigned char force_bat_full_redraw = 0;
 static unsigned char force_ball_full_redraw = 0;
@@ -1323,7 +1332,16 @@ static void write_profile_report(void) {
             fprintf(f, "  buff_to_vga:          %lu (%u%%)\n", prof_vga_pit, (unsigned)((prof_vga_pit * 100) / total));
         }
         fprintf(f, "  static rebuilds:      %lu\n", prof_static_rebuilds);
+        fprintf(f, "  full dynamic frames:  %lu\n", prof_full_dynamic_frames);
         fprintf(f, "  ball-only frames:     %lu\n", prof_ball_only_frames);
+        fprintf(f, "  ball-object frames:   %lu\n", prof_ball_object_frames);
+        fprintf(f, "  ball block bat:       %lu\n", prof_ball_dirty_block_bat);
+        fprintf(f, "  ball block static:    %lu\n", prof_ball_dirty_block_static);
+        fprintf(f, "  ball block HUD:       %lu\n", prof_ball_dirty_block_hud);
+        fprintf(f, "  ball block objects:   %lu\n", prof_ball_dirty_block_objects);
+        fprintf(f, "  ball block bricks:    %lu\n", prof_ball_dirty_block_bricks);
+        fprintf(f, "  ball block balls:     %lu\n", prof_ball_dirty_block_balls);
+        fprintf(f, "  ball block bat FX:    %lu\n", prof_ball_dirty_block_bat_fx);
         fprintf(f, "  VGA rect flushes:     %lu\n", prof_vga_rects);
         fprintf(f, "  VGA bytes written:    %lu\n", prof_vga_bytes);
         fprintf(f, "  sound disabled:       %u\n", (unsigned)sound_disabled);
@@ -5146,22 +5164,93 @@ static void redraw_full_with_ball(unsigned char level_idx) {
     prof_vga_pit += prof_elapsed();
 
     prof_frames_count++;
+    prof_full_dynamic_frames++;
 }
 
-static int can_redraw_ball_only(int bat_moved) {
-    if (force_ball_full_redraw || force_bat_full_redraw) return 0;
-    if (bat_moved) return 0;
-    if (!BALL_VISIBLE || ball_stuck) return 0;
-    if (static_bg_dirty || static_bg_cache_dirty || force_full_flush) return 0;
-    if (score != prev_score || high_score != prev_high_score || lives != prev_lives) return 0;
-    if (bonus_active || pts_400_active || bomb_active || rocket_active) return 0;
-    if (objects[OBJ_ENEMY].sprite_set != 0) return 0;
+#define BALL_DIRTY_BLOCK_BAT      0x0001
+#define BALL_DIRTY_BLOCK_STATIC   0x0002
+#define BALL_DIRTY_BLOCK_HUD      0x0004
+#define BALL_DIRTY_BLOCK_OBJECTS  0x0008
+#define BALL_DIRTY_BLOCK_BRICKS   0x0010
+#define BALL_DIRTY_BLOCK_BALLS    0x0020
+#define BALL_DIRTY_BLOCK_BAT_FX   0x0040
+#define BALL_DIRTY_BLOCK_FORCED   0x0080
+
+static unsigned int ball_dirty_blockers(int bat_moved) {
+    unsigned int blockers = 0;
+    if (force_ball_full_redraw || force_bat_full_redraw) blockers |= BALL_DIRTY_BLOCK_FORCED;
+    if (bat_moved) blockers |= BALL_DIRTY_BLOCK_BAT;
+    if (!BALL_VISIBLE || ball_stuck) blockers |= BALL_DIRTY_BLOCK_BALLS;
+    if (static_bg_dirty || static_bg_cache_dirty || force_full_flush) blockers |= BALL_DIRTY_BLOCK_STATIC;
+    if (score != prev_score || high_score != prev_high_score || lives != prev_lives) blockers |= BALL_DIRTY_BLOCK_HUD;
+    if (bonus_active || pts_400_active || bomb_active || rocket_active) blockers |= BALL_DIRTY_BLOCK_OBJECTS;
+    if (objects[OBJ_ENEMY].sprite_set != 0) blockers |= BALL_DIRTY_BLOCK_OBJECTS;
+    if (any_bullet_active() || any_bullet_blast()) blockers |= BALL_DIRTY_BLOCK_OBJECTS;
+    if (brick_flash_ticks || any_brick_hit_anim()) blockers |= BALL_DIRTY_BLOCK_BRICKS;
+    if (ball2_active || ball3_active || big_ball_active()) blockers |= BALL_DIRTY_BLOCK_BALLS;
+    if (bat_extra_px != bat_extra_tgt || bat_fire_anim_ticks) blockers |= BALL_DIRTY_BLOCK_BAT_FX;
+    return blockers;
+}
+
+static void prof_note_ball_dirty_blockers(unsigned int blockers) {
+    if (blockers & (BALL_DIRTY_BLOCK_BAT | BALL_DIRTY_BLOCK_FORCED))
+        prof_ball_dirty_block_bat++;
+    if (blockers & BALL_DIRTY_BLOCK_STATIC)
+        prof_ball_dirty_block_static++;
+    if (blockers & BALL_DIRTY_BLOCK_HUD)
+        prof_ball_dirty_block_hud++;
+    if (blockers & BALL_DIRTY_BLOCK_OBJECTS)
+        prof_ball_dirty_block_objects++;
+    if (blockers & BALL_DIRTY_BLOCK_BRICKS)
+        prof_ball_dirty_block_bricks++;
+    if (blockers & BALL_DIRTY_BLOCK_BALLS)
+        prof_ball_dirty_block_balls++;
+    if (blockers & BALL_DIRTY_BLOCK_BAT_FX)
+        prof_ball_dirty_block_bat_fx++;
+}
+
+static int can_redraw_ball_with_simple_objects(unsigned int blockers) {
+    if ((blockers & ~BALL_DIRTY_BLOCK_OBJECTS) != 0) return 0;
+    if (!bonus_active && !pts_400_active && objects[OBJ_ENEMY].sprite_set == 0) return 0;
+    if (bomb_active || rocket_active) return 0;
     if (any_bullet_active() || any_bullet_blast()) return 0;
-    if (brick_flash_ticks || any_brick_hit_anim()) return 0;
-    if (ball2_active || ball3_active) return 0;
-    if (big_ball_active()) return 0;
-    if (bat_extra_px != bat_extra_tgt || bat_fire_anim_ticks) return 0;
     return 1;
+}
+
+static void render_enemy_to_buff_and_mark(unsigned char bg_attr) {
+    object_t *enemy = &objects[OBJ_ENEMY];
+    unsigned int spr;
+    int spr_w_px, spr_h_px;
+    if ((enemy->sprite_set & 0x7F) == 0 || (enemy->sprite_set & 0x80)) return;
+    if ((enemy->sprite_set & 0x7F) == 0x0A) {
+        unsigned char frame = enemy->sprite_num;
+        if (frame >= BLAST_FRAMES) frame = BLAST_FRAMES - 1;
+        spr = spr_blast_frames[frame];
+    } else {
+        unsigned char frame = enemy->sprite_num % 3;
+        spr = (enemy->sprite_set == 0x09)
+            ? spr_bird_frames[frame]
+            : spr_ufo_frames[frame];
+    }
+    spr_w_px = sprites_blob[spr] * 8;
+    spr_h_px = sprites_blob[spr + 1];
+    blit_sprite_attrs_to_buff(enemy->x_coord, enemy->y_coord,
+                              spr_w_px, spr_h_px, bg_attr);
+    blit_masked_to_scr_buff(spr, enemy->x_coord, enemy->y_coord);
+    mark_dirty_rect_px(enemy->x_coord, enemy->y_coord, spr_w_px, spr_h_px);
+}
+
+static void render_simple_objects_to_buff_and_mark(unsigned char bg_attr) {
+    if (pts_400_active) {
+        blit_masked_to_scr_buff(pts_marker_spr, pts_400_x, pts_400_y);
+        mark_dirty_sprite_rect(pts_marker_spr, pts_400_x, pts_400_y);
+    }
+    render_enemy_to_buff_and_mark(bg_attr);
+    if (bonus_active) {
+        unsigned int spr = spr_for_bonus(bonus_type);
+        render_bonus_to_buff(bg_attr);
+        mark_dirty_sprite_rect(spr, bonus_x, bonus_y);
+    }
 }
 
 static void redraw_ball_only(unsigned char level_idx) {
@@ -5190,6 +5279,35 @@ static void redraw_ball_only(unsigned char level_idx) {
 
     prof_frames_count++;
     prof_ball_only_frames++;
+}
+
+static void redraw_ball_with_simple_objects(unsigned char level_idx) {
+    unsigned char bg_attr = bg_attr_per_cycle[level_idx & 3];
+    unsigned char cycle = (unsigned char)(level_idx & 3);
+    int bat_x0, bat_x1;
+
+    prof_start();
+    restore_prev_dirty_from_static_cache();
+    clear_dirty_ranges(dirty_min_byte, dirty_max_byte);
+    prof_bg_pit += prof_elapsed();
+
+    render_ball_to_buff(BALL_X, BALL_Y, bg_attr);
+    mark_dirty_rect_px(BALL_X, BALL_Y, 16, 12);
+    bat_sprite_bounds(BAT_X, bat_extra_px, &bat_x0, &bat_x1);
+    paint_bg_window_to_buff(bg_attr, cycle, BAT_Y + 6, 1,
+                            bat_x0 >> 3, (bat_x1 - 1) >> 3);
+    render_bat(cycle, bg_attr);
+    render_running_dot();
+    mark_dirty_rect_px(bat_x0, BAT_Y + 6, bat_x1 - bat_x0, 1);
+    render_simple_objects_to_buff_and_mark(bg_attr);
+    prof_bricks_pit += prof_elapsed();
+
+    carry_dirty_with_previous();
+    flush_dirty_to_vga();
+    prof_vga_pit += prof_elapsed();
+
+    prof_frames_count++;
+    prof_ball_object_frames++;
 }
 
 /* Render a short string of N character codes via draw_glyph, anchored
@@ -6200,9 +6318,13 @@ static state_t run_level(void) {
             }
 
             if (ball_moved) {
-                if (can_redraw_ball_only(bat_moved)) {
+                unsigned int blockers = ball_dirty_blockers(bat_moved);
+                if (blockers == 0) {
                     redraw_ball_only(i);
+                } else if (can_redraw_ball_with_simple_objects(blockers)) {
+                    redraw_ball_with_simple_objects(i);
                 } else {
+                    prof_note_ball_dirty_blockers(blockers);
                     redraw_full_with_ball(i);
                 }
             } else if (bat_moved) {
