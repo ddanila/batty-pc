@@ -326,6 +326,9 @@ $(TEST_FLOPPY_OUT): $(TEST_EXE) $(ASSETS) $(FLOPPY_SRC)
 	if [ -n "$$BATTY_REPLAY_WAIT_KEY" ]; then \
 	    printf 'SET BATTY_REPLAY_WAIT_KEY=%s\r\n' "$$BATTY_REPLAY_WAIT_KEY" >> build/AUTOEXEC-T.BAT ; \
 	fi; \
+	if [ -n "$$BATTY_LAUNCH_FRAMES" ]; then \
+	    printf 'SET BATTY_LAUNCH_FRAMES=%s\r\n' "$$BATTY_LAUNCH_FRAMES" >> build/AUTOEXEC-T.BAT ; \
+	fi; \
 	printf 'BATTY\r\n' >> build/AUTOEXEC-T.BAT
 	mcopy -i $@ -o build/AUTOEXEC-T.BAT ::AUTOEXEC.BAT
 	@echo "Test floppy ready: $@  (full 4-state cycle)"
@@ -411,7 +414,7 @@ test-death-sparks:
 
 test-normal-ball-launch:
 	rm -f $(TEST_FLOPPY_OUT)
-	BATTY_START_LEVEL=1 BATTY_REPLAY_PROBE=1 BATTY_REPLAY_WAIT_KEY=1 $(MAKE) $(TEST_FLOPPY_OUT)
+	BATTY_START_LEVEL=1 BATTY_REPLAY_PROBE=1 BATTY_REPLAY_WAIT_KEY=1 BATTY_LAUNCH_FRAMES=12 $(MAKE) $(TEST_FLOPPY_OUT)
 	python3 scripts/test_normal_ball_launch.py
 
 test-l3-replay-seed:

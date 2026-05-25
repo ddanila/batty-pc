@@ -627,6 +627,9 @@ static unsigned char last_primary_launch_x = 0;
 static unsigned char last_primary_launch_y = 0;
 static unsigned char last_primary_launch_dir = 0;
 static unsigned char last_primary_launch_speed = 0;
+static unsigned int  launch_probe_frames = 0;
+static unsigned int  launch_probe_countdown = 0;
+static unsigned char launch_probe_active = 0;
 /* Offset from BAT_X where the ball sits while stuck. Defaults to
  * BALL_X_OFFSET_ON_BAT for the standard "ball respawns at bat
  * centre" cases (level entry, life lost). The CATCH bonus rewrites
@@ -1678,6 +1681,9 @@ static object_t objects[N_OBJECTS] = {
 #define BALL_SHOW()      (objects[OBJ_BALL_1].sprite_set = 0x02)
 #define BALL_HIDE()      (objects[OBJ_BALL_1].sprite_set = 0x82)
 
+static void ball_dir_delta_q8(unsigned char dir, unsigned char speed,
+                              int *dx_q8, int *dy_q8);
+
 static void ball_change_direction(unsigned char mask) {
     object_t *b = &objects[OBJ_BALL_1];
     b->dir = (unsigned char)(((b->dir ^ mask) + 1) & 0x3F);
@@ -1700,12 +1706,36 @@ static void primary_ball_set_velocity(int dx, int dy) {
     }
 }
 
+static void primary_ball_launch_from_bat(void) {
+    unsigned char dir;
+    int launch_offset = stuck_offset_x - 4;
+    if (launch_offset < 0) launch_offset = 0;
+    /* Original LA27E_15 derives the release direction from the stuck
+     * bat offset, with $30 remapped to $34. The first movement step can
+     * still resolve against the bat and produce the actual upward
+     * trajectory; skipping that step was what made launch drift from
+     * the Spectrum behavior. */
+    dir = (unsigned char)((launch_offset + 0x24) & 0x3F);
+    if (dir == 0x30) dir = 0x34;
+    ball_dir_delta_q8(dir, BALL_SPEED, &ball_dx, &ball_dy);
+    ball_dx = (ball_dx < 0) ? -1 : (ball_dx > 0 ? 1 : 0);
+    ball_dy = (ball_dy < 0) ? -1 : (ball_dy > 0 ? 1 : 0);
+    objects[OBJ_BALL_1].dir = dir;
+    objects[OBJ_BALL_1].speed = BALL_SPEED;
+    objects[OBJ_BALL_1].x_coord_hi = 0;
+    objects[OBJ_BALL_1].y_coord_hi = 0;
+}
+
 static void record_primary_launch(void) {
     last_primary_launch_valid = 1;
     last_primary_launch_x = BALL_X;
     last_primary_launch_y = BALL_Y;
     last_primary_launch_dir = objects[OBJ_BALL_1].dir;
     last_primary_launch_speed = objects[OBJ_BALL_1].speed;
+    if (launch_probe_frames != 0) {
+        launch_probe_countdown = launch_probe_frames;
+        launch_probe_active = 1;
+    }
 }
 
 /* --- Per-object handler dispatch (handling_object @ $9F54) ------------ */
@@ -1830,7 +1860,8 @@ static void enemy_target_away_from_margins(object_t *o) {
  * of patrolling only along the top edge. */
 static void bomb_appear(object_t *o);     /* forward decl */
 static void handling_bird_obj(object_t *o) {
-    int dx_q8, dy_q8, nx_q8, ny_q8;
+    int dx_q8, dy_q8;
+    long nx_q8, ny_q8;
     int nx, ny;
     /* Port of the entry slide at $A9BC line 3429-3433:
      *   LD A,(IX+$04); CP $08; JR NC,LA9BC_0; INC (IX+$04); RET
@@ -1848,25 +1879,25 @@ static void handling_bird_obj(object_t *o) {
     if ((o->misc_12 & 0x3F) == 0) enemy_pick_new_target(o);
     if ((o->misc_12 & 0x03) == 0) enemy_turn_towards_target(o);
     enemy_dir_delta_q8(o->dir, o->speed, &dx_q8, &dy_q8);
-    nx_q8 = ((int)o->x_coord << 8) + o->x_coord_hi + dx_q8;
-    ny_q8 = ((int)o->y_coord << 8) + o->y_coord_hi + dy_q8;
-    nx = nx_q8 >> 8;
-    ny = ny_q8 >> 8;
+    nx_q8 = ((long)o->x_coord << 8) + o->x_coord_hi + dx_q8;
+    ny_q8 = ((long)o->y_coord << 8) + o->y_coord_hi + dy_q8;
+    nx = (int)(nx_q8 >> 8);
+    ny = (int)(ny_q8 >> 8);
     if (nx < 8) {
-        nx = 8; nx_q8 = nx << 8;
+        nx = 8; nx_q8 = (long)nx << 8;
         o->dir = (unsigned char)((0x20 - o->dir) & 0x3F);
         o->x_coord = (unsigned char)nx;
         o->y_coord = (unsigned char)ny;
         enemy_target_away_from_margins(o);
     } else if (nx >= PLAYFIELD_W - 8 - (int)o->w_body_px) {
-        nx = PLAYFIELD_W - 8 - (int)o->w_body_px; nx_q8 = nx << 8;
+        nx = PLAYFIELD_W - 8 - (int)o->w_body_px; nx_q8 = (long)nx << 8;
         o->dir = (unsigned char)((0x20 - o->dir) & 0x3F);
         o->x_coord = (unsigned char)nx;
         o->y_coord = (unsigned char)ny;
         enemy_target_away_from_margins(o);
     }
     if (ny < 8) {
-        ny = 8; ny_q8 = ny << 8;
+        ny = 8; ny_q8 = (long)ny << 8;
         o->dir = (unsigned char)((0x40 - o->dir) & 0x3F);
         o->x_coord = (unsigned char)nx;
         o->y_coord = (unsigned char)ny;
@@ -4205,6 +4236,10 @@ static void write_replay_probe(void) {
             (unsigned)last_primary_launch_y,
             (unsigned)last_primary_launch_dir,
             (unsigned)last_primary_launch_speed);
+    fprintf(f, "\nlaunch_probe_state=%04X%04X%02X",
+            (unsigned)launch_probe_frames,
+            (unsigned)launch_probe_countdown,
+            (unsigned)launch_probe_active);
     fprintf(f, "\nbonus_state=%02X%02X%02X%02X%02X%04X",
             (unsigned)bonus_active,
             (unsigned)bonus_type,
@@ -4642,7 +4677,8 @@ static void step_rocket(void) {
  * exits the bottom of the playfield it respawns stuck on the bat. */
 static void step_ball(void) {
     int next_x, next_y;
-    int dx_q8, dy_q8, next_x_q8, next_y_q8;
+    int dx_q8, dy_q8;
+    long next_x_q8, next_y_q8;
     int bat_left  = eff_bat_left();
     int bat_right = eff_bat_right();
     int bat_top   = BAT_Y;
@@ -4656,10 +4692,10 @@ static void step_ball(void) {
     }
     ball_dir_delta_q8(objects[OBJ_BALL_1].dir, objects[OBJ_BALL_1].speed,
                       &dx_q8, &dy_q8);
-    next_x_q8 = (((int)BALL_X) << 8) + objects[OBJ_BALL_1].x_coord_hi + dx_q8;
-    next_y_q8 = (((int)BALL_Y) << 8) + objects[OBJ_BALL_1].y_coord_hi + dy_q8;
-    next_x = next_x_q8 >> 8;
-    next_y = next_y_q8 >> 8;
+    next_x_q8 = ((long)BALL_X << 8) + objects[OBJ_BALL_1].x_coord_hi + dx_q8;
+    next_y_q8 = ((long)BALL_Y << 8) + objects[OBJ_BALL_1].y_coord_hi + dy_q8;
+    next_x = (int)(next_x_q8 >> 8);
+    next_y = (int)(next_y_q8 >> 8);
     ball_dx = (dx_q8 < 0) ? -1 : (dx_q8 > 0 ? 1 : 0);
     ball_dy = (dy_q8 < 0) ? -1 : (dy_q8 > 0 ? 1 : 0);
     /* Side walls: port the original change_direction masks. */
@@ -4667,14 +4703,14 @@ static void step_ball(void) {
         int x_max = PLAYFIELD_W - 8 - ball_sz;   /* 244 normal, 240 big */
         if (next_x < BALL_X_MIN) {
             next_x = BALL_X_MIN;
-            next_x_q8 = next_x << 8;
+            next_x_q8 = (long)next_x << 8;
             ball_change_direction(0x1F);
             ball_dir_delta_q8(objects[OBJ_BALL_1].dir, objects[OBJ_BALL_1].speed,
                               &dx_q8, &dy_q8);
             ball_dx = (dx_q8 < 0) ? -1 : (dx_q8 > 0 ? 1 : 0);
         } else if (next_x > x_max) {
             next_x = x_max;
-            next_x_q8 = next_x << 8;
+            next_x_q8 = (long)next_x << 8;
             ball_change_direction(0x1F);
             ball_dir_delta_q8(objects[OBJ_BALL_1].dir, objects[OBJ_BALL_1].speed,
                               &dx_q8, &dy_q8);
@@ -4683,7 +4719,7 @@ static void step_ball(void) {
     }
     if (next_y < BALL_Y_TOP) {
         next_y = BALL_Y_TOP;
-        next_y_q8 = next_y << 8;
+        next_y_q8 = (long)next_y << 8;
         ball_change_direction(0x3F);
         ball_dir_delta_q8(objects[OBJ_BALL_1].dir, objects[OBJ_BALL_1].speed,
                           &dx_q8, &dy_q8);
@@ -4756,11 +4792,11 @@ static void step_ball(void) {
         if (hit == 1) {
             ball_change_direction(0x3F);
             next_y = BALL_Y;
-            next_y_q8 = (((int)BALL_Y) << 8) + objects[OBJ_BALL_1].y_coord_hi;
+            next_y_q8 = ((long)BALL_Y << 8) + objects[OBJ_BALL_1].y_coord_hi;
         } else if (hit == 2) {
             ball_change_direction(0x1F);
             next_x = BALL_X;
-            next_x_q8 = (((int)BALL_X) << 8) + objects[OBJ_BALL_1].x_coord_hi;
+            next_x_q8 = ((long)BALL_X << 8) + objects[OBJ_BALL_1].x_coord_hi;
         }
     }
     BALL_X = next_x;
@@ -5715,6 +5751,12 @@ static state_t run_level(void) {
     bat_extra_tgt = 0;
     paused = 0;
     high_score_beaten_this_game = 0;
+    {
+        const char *p = getenv("BATTY_LAUNCH_FRAMES");
+        launch_probe_frames = (p && *p) ? (unsigned int)atoi(p) : 0;
+        launch_probe_countdown = 0;
+        launch_probe_active = 0;
+    }
 
     /* The original loops levels forever (increment_round_number at
      * $BBE0 wraps current_level_number_1up at 15 → 0 while
@@ -5871,17 +5913,8 @@ static state_t run_level(void) {
                         ball_stuck   = 0;
                         stuck_ticks  = 0;
                         snd_q_push(SND_BALL_START); /* descending launch blip */
-                        /* Shallow launch angle (|dx| < |dy|) so the ball
-                         * traverses each brick row across multiple cols
-                         * - lots of L1's bricks would otherwise be missed
-                         * by a 45-deg deterministic launch from the bat's
-                         * default x. Aimed AWAY from the nearest wall. */
-                        {
-                            int bat_centre = BAT_X + (BAT_W_BYTES * 8) / 2;
-                            primary_ball_set_velocity((bat_centre < PLAYFIELD_W / 2) ? +1 : -1,
-                                                      -BALL_SPEED);
-                            record_primary_launch();
-                        }
+                        primary_ball_launch_from_bat();
+                        record_primary_launch();
                     }
                     /* If the bat carries the LASER bonus and a free
                      * bullet slot exists, also fire one from the bat
@@ -5960,10 +5993,7 @@ static state_t run_level(void) {
                     if (stuck_ticks >= STUCK_TIMEOUT) {
                         ball_stuck = 0;          /* auto-launch */
                         snd_q_push(SND_BALL_START);
-                        /* Pick an initial direction toward the centre. */
-                        int bat_centre = BAT_X + (BAT_W_BYTES * 8) / 2;
-                        primary_ball_set_velocity((bat_centre < PLAYFIELD_W / 2) ? +1 : -1,
-                                                  -BALL_SPEED);
+                        primary_ball_launch_from_bat();
                         record_primary_launch();
                     }
                 } else if (BALL_VISIBLE) {
@@ -5971,6 +6001,13 @@ static state_t run_level(void) {
                     if (!slow_skip) {
                         step_ball();
                         ball_moved = 1;
+                        if (launch_probe_active) {
+                            if (launch_probe_countdown > 0) launch_probe_countdown--;
+                            if (launch_probe_countdown == 0) {
+                                write_replay_probe();
+                                return ST_QUIT;
+                            }
+                        }
                     }
                 }
                 step_bonus();

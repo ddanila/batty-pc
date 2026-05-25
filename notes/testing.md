@@ -107,12 +107,14 @@ excluded because `HISCORE.DAT` can vary between local runs.
 `make test-normal-ball-launch` covers the regular player launch path
 that the seeded L3 replay does not exercise. It boots directly into L1,
 uses `BATTY_REPLAY_WAIT_KEY=1` to pause after level entry, presses SPACE,
-exits cleanly, then reads `PROBE.TXT`. The gate asserts that the normal
-launch recorded a descriptor direction/speed at the on-bat position and
-that the post-launch ball is no longer stuck. This catches regressions
-where primary-ball movement reads `object_ball_1.dir/speed` but SPACE or
-timeout launch updates only the legacy integer `ball_dx/ball_dy` side
-state.
+and uses `BATTY_LAUNCH_FRAMES=12` to stop after exactly 12 primary-ball
+steps before reading `PROBE.TXT`. The gate asserts that the normal launch
+records the original bat-derived `$34` descriptor direction at the
+on-bat position, then resolves into an up/right trajectory rather than
+wrapping to the upper-left. This catches regressions where primary-ball
+movement reads `object_ball_1.dir/speed` but SPACE or timeout launch
+updates only the legacy integer `ball_dx/ball_dy` side state, and the
+16-bit DOS fixed-point overflow class where `x << 8` wraps for x >= 128.
 
 ## Per-level testing via `BATTY_LEVEL` env
 

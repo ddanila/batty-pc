@@ -4,7 +4,8 @@
 The L3 replay seeds object_ball_1 directly, so it does not exercise the
 ordinary level-entry state where SPACE converts a stuck ball into an
 in-flight primary ball. This test boots directly into L1, presses SPACE,
-waits briefly, exits cleanly, and inspects PROBE.TXT from the floppy.
+lets the deterministic launch-probe hook stop after 12 ball frames, and
+inspects PROBE.TXT from the floppy.
 """
 
 from __future__ import annotations
@@ -42,14 +43,18 @@ def read_probe_from_floppy() -> dict[str, str]:
 
 def main() -> int:
     OUT.mkdir(parents=True, exist_ok=True)
+    subprocess.run(
+        ["mdel", "-i", str(FLOPPY), "::PROBE.TXT"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
     script = [
         "SLEEP 9.0",
         "sendkey ret",
         "SLEEP 0.3",
         "sendkey spc",
-        "SLEEP 0.35",
-        "sendkey esc",
-        "SLEEP 0.5",
+        "SLEEP 1.5",
     ]
     run_qemu(FLOPPY, script, OUT / "qemu.log")
 
@@ -75,14 +80,16 @@ def main() -> int:
         raise SystemExit("FAIL: normal SPACE launch did not record a launch")
     if (launch_x, launch_y) != (0x84, 0xA6):
         raise SystemExit(f"FAIL: normal launch started from unexpected position: x=${launch_x:02X} y=${launch_y:02X}")
-    if launch_dir not in (0x1B, 0x24):
-        raise SystemExit(f"FAIL: normal SPACE launch direction not initialized: dir=${launch_dir:02X}")
+    if launch_dir != 0x34:
+        raise SystemExit(f"FAIL: normal SPACE launch direction not initialized from bat state: dir=${launch_dir:02X}")
     if launch_speed != 0x02:
         raise SystemExit(f"FAIL: normal SPACE launch speed not initialized: speed=${launch_speed:02X}")
     if (x, y) == (0x84, 0xA6):
         raise SystemExit("FAIL: normal SPACE launch left the ball stuck on the bat")
-    if y >= 0xA0:
-        raise SystemExit(f"FAIL: normal SPACE launch did not move upward enough: y=${y:02X}")
+    if x <= launch_x:
+        raise SystemExit(f"FAIL: normal SPACE launch veered toward the upper-left: x=${x:02X}")
+    if y >= 0xA0 or y < 0x80:
+        raise SystemExit(f"FAIL: normal SPACE launch sampled unexpected vertical position after 12 frames: y=${y:02X}")
     if speed != 0x02:
         raise SystemExit(f"FAIL: normal SPACE launch corrupted speed after release: speed=${speed:02X}")
 
