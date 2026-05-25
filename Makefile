@@ -78,7 +78,7 @@ PROFILE_LEVEL  ?= 3
 PROFILE_FRAMES ?= 180
 PROFILE_WAIT   ?= 25
 
-.PHONY: all clean run run-86box profile-auto profile-86box read-profile floppy assets help run-original run-original-cheat snapshot candidates regions test test-hud test-brick-flash test-rocket-bonus test-death-sparks test-l3-replay-seed test-midgame-brick-replay replay-l3-brick-flash replay-l3-brick-flash-both
+.PHONY: all clean run run-86box profile-auto profile-86box read-profile floppy assets help run-original run-original-cheat snapshot candidates regions test test-hud test-brick-flash test-rocket-bonus test-death-sparks test-normal-ball-launch test-l3-replay-seed test-midgame-brick-replay replay-l3-brick-flash replay-l3-brick-flash-both
 
 all: $(EXE) $(ASSETS)
 
@@ -408,6 +408,11 @@ test-rocket-bonus:
 
 test-death-sparks:
 	python3 scripts/test_death_sparks.py
+
+test-normal-ball-launch:
+	rm -f $(TEST_FLOPPY_OUT)
+	BATTY_START_LEVEL=1 BATTY_REPLAY_PROBE=1 BATTY_REPLAY_WAIT_KEY=1 $(MAKE) $(TEST_FLOPPY_OUT)
+	python3 scripts/test_normal_ball_launch.py
 
 test-l3-replay-seed:
 	python3 scripts/test_l3_replay_seed.py

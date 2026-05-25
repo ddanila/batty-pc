@@ -622,6 +622,11 @@ static unsigned char bg_tile[BG_TILE_CYCLES * BG_TILE_SIZE];
 static int ball_dx     = +BALL_SPEED;
 static int ball_dy     = -BALL_SPEED;
 static unsigned char ball_stuck   = 1;
+static unsigned char last_primary_launch_valid = 0;
+static unsigned char last_primary_launch_x = 0;
+static unsigned char last_primary_launch_y = 0;
+static unsigned char last_primary_launch_dir = 0;
+static unsigned char last_primary_launch_speed = 0;
 /* Offset from BAT_X where the ball sits while stuck. Defaults to
  * BALL_X_OFFSET_ON_BAT for the standard "ball respawns at bat
  * centre" cases (level entry, life lost). The CATCH bonus rewrites
@@ -1676,6 +1681,31 @@ static object_t objects[N_OBJECTS] = {
 static void ball_change_direction(unsigned char mask) {
     object_t *b = &objects[OBJ_BALL_1];
     b->dir = (unsigned char)(((b->dir ^ mask) + 1) & 0x3F);
+}
+
+static void primary_ball_set_velocity(int dx, int dy) {
+    ball_dx = dx;
+    ball_dy = dy;
+    objects[OBJ_BALL_1].speed = BALL_SPEED;
+    objects[OBJ_BALL_1].x_coord_hi = 0;
+    objects[OBJ_BALL_1].y_coord_hi = 0;
+    if (dy < 0) {
+        if (dx < 0)      objects[OBJ_BALL_1].dir = 0x24;
+        else if (dx > 0) objects[OBJ_BALL_1].dir = 0x1B;
+        else             objects[OBJ_BALL_1].dir = 0x20;
+    } else if (dy > 0) {
+        if (dx < 0)      objects[OBJ_BALL_1].dir = 0x3B;
+        else if (dx > 0) objects[OBJ_BALL_1].dir = 0x04;
+        else             objects[OBJ_BALL_1].dir = 0x00;
+    }
+}
+
+static void record_primary_launch(void) {
+    last_primary_launch_valid = 1;
+    last_primary_launch_x = BALL_X;
+    last_primary_launch_y = BALL_Y;
+    last_primary_launch_dir = objects[OBJ_BALL_1].dir;
+    last_primary_launch_speed = objects[OBJ_BALL_1].speed;
 }
 
 /* --- Per-object handler dispatch (handling_object @ $9F54) ------------ */
@@ -4078,8 +4108,7 @@ static void apply_replay_ball_motion_override(void) {
             char *endp2;
             long dy = strtol(endp + 1, &endp2, 0);
             if (endp2 != endp + 1) {
-                ball_dx = (int)dx;
-                ball_dy = (int)dy;
+                primary_ball_set_velocity((int)dx, (int)dy);
             }
         }
     }
@@ -4170,6 +4199,12 @@ static void write_replay_probe(void) {
     for (i = 0; i < (int)sizeof(object_t); i++) {
         fprintf(f, "%02X", ((unsigned char *)&objects[OBJ_ENEMY])[i]);
     }
+    fprintf(f, "\nnormal_launch_state=%02X%02X%02X%02X%02X",
+            (unsigned)last_primary_launch_valid,
+            (unsigned)last_primary_launch_x,
+            (unsigned)last_primary_launch_y,
+            (unsigned)last_primary_launch_dir,
+            (unsigned)last_primary_launch_speed);
     fprintf(f, "\nbonus_state=%02X%02X%02X%02X%02X%04X",
             (unsigned)bonus_active,
             (unsigned)bonus_type,
@@ -5530,8 +5565,7 @@ static void respawn_primary_ball(void) {
      * $A6` at the FIRE-launch path. Using eff_ball_size (= 8 width)
      * for the Y offset was 1 px too high. */
     BALL_Y = BAT_Y - BALL_H_PX;
-    ball_dx = +BALL_SPEED;
-    ball_dy = -BALL_SPEED;
+    primary_ball_set_velocity(+1, -BALL_SPEED);
     objects[OBJ_BAT_1].bonus_applied = 0xFF;
     objects[OBJ_BAT_2].bonus_applied = 0xFF;
     big_bat_ticks  = 0;
@@ -5724,8 +5758,7 @@ static state_t run_level(void) {
         BALL_X        = BAT_X + BALL_X_OFFSET_ON_BAT;
         BALL_Y        = BAT_Y - BALL_H_PX;
         stuck_ticks   = 0;                /* counts up while waiting for launch */
-        ball_dx       = +BALL_SPEED;
-        ball_dy       = -BALL_SPEED;
+        primary_ball_set_velocity(+1, -BALL_SPEED);
         bonus_active   = 0;
         bomb_active        = 0;
         bullet_active[0]      = 0;
@@ -5845,8 +5878,9 @@ static state_t run_level(void) {
                          * default x. Aimed AWAY from the nearest wall. */
                         {
                             int bat_centre = BAT_X + (BAT_W_BYTES * 8) / 2;
-                            ball_dx = (bat_centre < PLAYFIELD_W / 2) ? +1 : -1;
-                            ball_dy = -BALL_SPEED;
+                            primary_ball_set_velocity((bat_centre < PLAYFIELD_W / 2) ? +1 : -1,
+                                                      -BALL_SPEED);
+                            record_primary_launch();
                         }
                     }
                     /* If the bat carries the LASER bonus and a free
@@ -5928,8 +5962,9 @@ static state_t run_level(void) {
                         snd_q_push(SND_BALL_START);
                         /* Pick an initial direction toward the centre. */
                         int bat_centre = BAT_X + (BAT_W_BYTES * 8) / 2;
-                        ball_dx = (bat_centre < PLAYFIELD_W / 2) ? +1 : -1;
-                        ball_dy = -BALL_SPEED;
+                        primary_ball_set_velocity((bat_centre < PLAYFIELD_W / 2) ? +1 : -1,
+                                                  -BALL_SPEED);
+                        record_primary_launch();
                     }
                 } else if (BALL_VISIBLE) {
                     int slow_skip = (slow_ticks > 0) && ((now & 1) == 0);

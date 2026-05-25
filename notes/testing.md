@@ -104,6 +104,16 @@ compares the stable original HUD regions (`1UP` / `HI` / `2UP`, player
 `20260513T202101Z` capture. The high-score digits are intentionally
 excluded because `HISCORE.DAT` can vary between local runs.
 
+`make test-normal-ball-launch` covers the regular player launch path
+that the seeded L3 replay does not exercise. It boots directly into L1,
+uses `BATTY_REPLAY_WAIT_KEY=1` to pause after level entry, presses SPACE,
+exits cleanly, then reads `PROBE.TXT`. The gate asserts that the normal
+launch recorded a descriptor direction/speed at the on-bat position and
+that the post-launch ball is no longer stuck. This catches regressions
+where primary-ball movement reads `object_ball_1.dir/speed` but SPACE or
+timeout launch updates only the legacy integer `ball_dx/ball_dy` side
+state.
+
 ## Per-level testing via `BATTY_LEVEL` env
 
 ```sh
