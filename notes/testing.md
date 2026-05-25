@@ -64,6 +64,12 @@ all balls while the level-clear sequence runs without entering the
 bat-death path. The test fails if the port's no-ball death guard stops
 excluding `rocket_active`.
 
+`make test-rocket-flight-redraw` is a visual regression for the caught
+rocket path. It seeds an already-attached rocket, lets `handling_rocket`
+lift the bat for 18 rendered frames, and compares normal dirty redraw
+against a forced full-flush baseline. It catches stale bat/rocket pixels
+left behind when the bat's Y coordinate changes during level clear.
+
 `make test-death-sparks` is a source-level regression for the bat death
 fanout. It locks the port to the original `LBC10` spawn constants
 (`$1B` direction seed, `$05` direction step, `$AE` Y, speed `$02`,

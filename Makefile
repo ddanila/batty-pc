@@ -80,7 +80,7 @@ PROFILE_WAIT   ?= 25
 PROFILE_BALL_OBJECT ?= 02008000A0001802020C000008070000000000000080
 PROFILE_BALL_STUCK  ?= 0
 
-.PHONY: all clean run run-86box profile-auto profile-86box read-profile floppy assets help run-original run-original-cheat snapshot candidates regions test test-hud test-bat-redraw-window test-ball-dirty-redraw test-ball-object-dirty-redraw test-brick-flash test-rocket-bonus test-death-sparks test-normal-ball-launch test-ball-left-wall-escape test-l3-replay-seed test-midgame-brick-replay replay-l3-brick-flash replay-l3-brick-flash-both
+.PHONY: all clean run run-86box profile-auto profile-86box read-profile floppy assets help run-original run-original-cheat snapshot candidates regions test test-hud test-bat-redraw-window test-ball-dirty-redraw test-ball-object-dirty-redraw test-rocket-flight-redraw test-brick-flash test-rocket-bonus test-death-sparks test-normal-ball-launch test-ball-left-wall-escape test-l3-replay-seed test-midgame-brick-replay replay-l3-brick-flash replay-l3-brick-flash-both
 
 all: $(EXE) $(ASSETS)
 
@@ -101,6 +101,7 @@ help:
 	@echo "  test-brick-flash  verify brick flash clears vs original L3 reference"
 	@echo "  test-ball-dirty-redraw  verify ball-only dirty redraw vs full baseline"
 	@echo "  test-ball-object-dirty-redraw  verify ball+enemy dirty redraw vs full baseline"
+	@echo "  test-rocket-flight-redraw  verify rocket-lifted bat redraw vs full baseline"
 	@echo "  test-rocket-bonus  verify rocket bonus cannot trigger no-ball death"
 	@echo "  test-death-sparks  verify bat death spark fanout mirrors original"
 	@echo "  test-l3-replay-seed  verify deterministic L3 replay seed/probes"
@@ -339,6 +340,9 @@ $(TEST_FLOPPY_OUT): $(TEST_EXE) $(ASSETS) $(FLOPPY_SRC)
 	if [ -n "$$BATTY_REPLAY_ENEMY_OBJECT" ]; then \
 	    printf 'SET BATTY_REPLAY_ENEMY_OBJECT=%s\r\n' "$$BATTY_REPLAY_ENEMY_OBJECT" >> build/AUTOEXEC-T.BAT ; \
 	fi; \
+	if [ -n "$$BATTY_REPLAY_ROCKET_ACTIVE" ]; then \
+	    printf 'SET BATTY_REPLAY_ROCKET_ACTIVE=%s\r\n' "$$BATTY_REPLAY_ROCKET_ACTIVE" >> build/AUTOEXEC-T.BAT ; \
+	fi; \
 	if [ -n "$$BATTY_REPLAY_WAIT_KEY" ]; then \
 	    printf 'SET BATTY_REPLAY_WAIT_KEY=%s\r\n' "$$BATTY_REPLAY_WAIT_KEY" >> build/AUTOEXEC-T.BAT ; \
 	fi; \
@@ -356,6 +360,9 @@ $(TEST_FLOPPY_OUT): $(TEST_EXE) $(ASSETS) $(FLOPPY_SRC)
 	fi; \
 	if [ -n "$$BATTY_FORCE_BALL_FULL_REDRAW" ]; then \
 	    printf 'SET BATTY_FORCE_BALL_FULL_REDRAW=%s\r\n' "$$BATTY_FORCE_BALL_FULL_REDRAW" >> build/AUTOEXEC-T.BAT ; \
+	fi; \
+	if [ -n "$$BATTY_FORCE_FULL_FLUSH_EACH_FRAME" ]; then \
+	    printf 'SET BATTY_FORCE_FULL_FLUSH_EACH_FRAME=%s\r\n' "$$BATTY_FORCE_FULL_FLUSH_EACH_FRAME" >> build/AUTOEXEC-T.BAT ; \
 	fi; \
 	printf 'BATTY\r\n' >> build/AUTOEXEC-T.BAT
 	mcopy -i $@ -o build/AUTOEXEC-T.BAT ::AUTOEXEC.BAT
@@ -439,6 +446,9 @@ test-ball-dirty-redraw:
 
 test-ball-object-dirty-redraw:
 	python3 scripts/test_ball_object_dirty_redraw.py
+
+test-rocket-flight-redraw:
+	python3 scripts/test_rocket_flight_redraw.py
 
 test-brick-flash: $(TEST_FLOPPY_OUT)
 	python3 scripts/test_brick_flash.py

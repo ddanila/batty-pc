@@ -1018,6 +1018,7 @@ static int big_bat_active(void);     /* forward — defined below */
 static int           bat_extra_px    = 0;
 static int           bat_extra_tgt   = 0;
 static int           bat_draw_extra_px = 0;
+static int           bat_draw_y = BAT_Y_PX;
 static unsigned char bat_draw_bonus_applied = 0xFF;
 static unsigned char bat_draw_fire_ticks = 0;
 
@@ -1285,6 +1286,7 @@ static unsigned long prof_ball_dirty_block_bat_fx = 0;
 static unsigned long profile_auto_frames = 0;
 static unsigned char force_bat_full_redraw = 0;
 static unsigned char force_ball_full_redraw = 0;
+static unsigned char force_full_flush_each_frame = 0;
 static unsigned char suppress_no_ball_death = 0;
 static int sound_disabled = 0;
 
@@ -2099,6 +2101,7 @@ static void bat_sprite_bounds(int x, int extra, int *x0, int *x1) {
 static void remember_bat_draw_state(void) {
     BAT_PREV_X = BAT_X;
     bat_draw_extra_px = bat_extra_px;
+    bat_draw_y = BAT_Y;
     bat_draw_bonus_applied = objects[OBJ_BAT_1].bonus_applied;
     bat_draw_fire_ticks = bat_fire_anim_ticks;
 }
@@ -2752,6 +2755,29 @@ static void restore_prev_dirty_from_static_cache(void) {
                         &bg_attr_buff[(cr << 5) + byte_lo],
                         (unsigned int)(byte_hi - byte_lo + 1));
         }
+    }
+}
+
+static void restore_static_cache_rect_bytes(int y_start, int height,
+                                            int byte_lo, int byte_hi) {
+    int y;
+    int cr;
+    int y_end = y_start + height;
+    if (byte_lo < 0) byte_lo = 0;
+    if (byte_hi > 31) byte_hi = 31;
+    if (byte_lo > byte_hi) return;
+    if (y_start < 0) y_start = 0;
+    if (y_end > PLAYFIELD_H) y_end = PLAYFIELD_H;
+    if (y_start >= y_end) return;
+    for (y = y_start; y < y_end; y++) {
+        fast_memcpy(&scr_buff[(y << 5) + byte_lo],
+                    &bg_scr_buff[(y << 5) + byte_lo],
+                    (unsigned int)(byte_hi - byte_lo + 1));
+    }
+    for (cr = y_start >> 3; cr <= (y_end - 1) >> 3; cr++) {
+        fast_memcpy(&attr_buff[(cr << 5) + byte_lo],
+                    &bg_attr_buff[(cr << 5) + byte_lo],
+                    (unsigned int)(byte_hi - byte_lo + 1));
     }
 }
 
@@ -4191,6 +4217,21 @@ static void apply_replay_enemy_object_override(void) {
     fast_memcpy(&objects[OBJ_ENEMY], bytes, sizeof(bytes));
 }
 
+static void apply_replay_rocket_override(void) {
+    if (getenv("BATTY_REPLAY_ROCKET_ACTIVE") == NULL) return;
+    rocket_active = 1;
+    rocket_clear_completed = 0;
+    set_rocket_bonus_sprite_height(ROCKET_H_PX);
+    rocket_x = BAT_X + 4;
+    if (bat_extra_px >= BAT_BIG_EXTRA_PX) rocket_x += 8;
+    rocket_y = BAT_Y + 6;
+    rocket_acc = 0;
+    rocket_frac = 0;
+    rocket_counter = 0;
+    BALL_HIDE();
+    ball_stuck = 0;
+}
+
 /* prop_uneven / prop_even / prop_x_coord from $9F27. Fields:
  *   +0 type ($09=bird, $08=UFO)
  *   +1 misc_12
@@ -5008,6 +5049,7 @@ static void redraw_full_with_ball(unsigned char level_idx) {
     lives_dirty = (lives != prev_lives);
     can_local_hud = (magnets_per_level[level_idx][0] == 0);
     bat_full_dirty = (BAT_X != BAT_PREV_X)
+                  || (BAT_Y != bat_draw_y)
                   || (bat_extra_px != bat_draw_extra_px)
                   || (objects[OBJ_BAT_1].bonus_applied != bat_draw_bonus_applied)
                   || (bat_fire_anim_ticks != bat_draw_fire_ticks);
@@ -5043,6 +5085,15 @@ static void redraw_full_with_ball(unsigned char level_idx) {
     if (BALL_VISIBLE) {
         render_ball_to_buff(BALL_X, BALL_Y, bg_attr);
         mark_dirty_rect_px(BALL_X, BALL_Y, 16, 12);
+    }
+    if (bat_full_dirty) {
+        int old_x0, old_x1;
+        int byte_lo, byte_hi;
+        bat_sprite_bounds(BAT_PREV_X, bat_draw_extra_px, &old_x0, &old_x1);
+        byte_lo = old_x0 >> 3;
+        byte_hi = (old_x1 - 1) >> 3;
+        restore_static_cache_rect_bytes(bat_draw_y, 13, byte_lo, byte_hi);
+        mark_dirty_rect_px(old_x0, bat_draw_y, old_x1 - old_x0, 13);
     }
     render_bat(cycle, bg_attr);
     render_running_dot();
@@ -6037,6 +6088,7 @@ static state_t run_level(void) {
         apply_replay_ball_object_override();
         apply_replay_ball_motion_override();
         apply_replay_enemy_object_override();
+        apply_replay_rocket_override();
         write_replay_probe();
         render_level_screen(i);
         if (show_round_banner((unsigned int)round_number + 1)) return ST_QUIT;
@@ -6316,6 +6368,9 @@ static state_t run_level(void) {
             if (force_bat_full_redraw && bat_moved) {
                 ball_moved = 1;
             }
+            if (force_full_flush_each_frame && ball_moved) {
+                force_full_flush = 1;
+            }
 
             if (ball_moved) {
                 unsigned int blockers = ball_dirty_blockers(bat_moved);
@@ -6426,6 +6481,7 @@ int main(void) {
     if (getenv("BATTYALL") != NULL) test_mode_pin_blink = 1;
     if (getenv("BATTY_FORCE_BAT_FULL_REDRAW") != NULL) force_bat_full_redraw = 1;
     if (getenv("BATTY_FORCE_BALL_FULL_REDRAW") != NULL) force_ball_full_redraw = 1;
+    if (getenv("BATTY_FORCE_FULL_FLUSH_EACH_FRAME") != NULL) force_full_flush_each_frame = 1;
     if (getenv("BATTY_SUPPRESS_NO_BALL_DEATH") != NULL) suppress_no_ball_death = 1;
     {
         const char *p = getenv("BATTY_PROFILE_AUTO_FRAMES");
