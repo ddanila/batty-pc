@@ -78,7 +78,7 @@ PROFILE_LEVEL  ?= 3
 PROFILE_FRAMES ?= 180
 PROFILE_WAIT   ?= 25
 
-.PHONY: all clean run run-86box profile-auto profile-86box read-profile floppy assets help run-original run-original-cheat snapshot candidates regions test test-hud test-brick-flash test-rocket-bonus test-death-sparks test-normal-ball-launch test-ball-left-wall-escape test-l3-replay-seed test-midgame-brick-replay replay-l3-brick-flash replay-l3-brick-flash-both
+.PHONY: all clean run run-86box profile-auto profile-86box read-profile floppy assets help run-original run-original-cheat snapshot candidates regions test test-hud test-bat-redraw-window test-brick-flash test-rocket-bonus test-death-sparks test-normal-ball-launch test-ball-left-wall-escape test-l3-replay-seed test-midgame-brick-replay replay-l3-brick-flash replay-l3-brick-flash-both
 
 all: $(EXE) $(ASSETS)
 
@@ -317,6 +317,12 @@ $(TEST_FLOPPY_OUT): $(TEST_EXE) $(ASSETS) $(FLOPPY_SRC)
 	if [ -n "$$BATTY_REPLAY_BALL_STUCK" ]; then \
 	    printf 'SET BATTY_REPLAY_BALL_STUCK=%s\r\n' "$$BATTY_REPLAY_BALL_STUCK" >> build/AUTOEXEC-T.BAT ; \
 	fi; \
+	if [ -n "$$BATTY_HIDE_BALL" ]; then \
+	    printf 'SET BATTY_HIDE_BALL=%s\r\n' "$$BATTY_HIDE_BALL" >> build/AUTOEXEC-T.BAT ; \
+	fi; \
+	if [ -n "$$BATTY_SUPPRESS_NO_BALL_DEATH" ]; then \
+	    printf 'SET BATTY_SUPPRESS_NO_BALL_DEATH=%s\r\n' "$$BATTY_SUPPRESS_NO_BALL_DEATH" >> build/AUTOEXEC-T.BAT ; \
+	fi; \
 	if [ -n "$$BATTY_REPLAY_BALL_VEL" ]; then \
 	    printf 'SET BATTY_REPLAY_BALL_VEL=%s\r\n' "$$BATTY_REPLAY_BALL_VEL" >> build/AUTOEXEC-T.BAT ; \
 	fi; \
@@ -331,6 +337,9 @@ $(TEST_FLOPPY_OUT): $(TEST_EXE) $(ASSETS) $(FLOPPY_SRC)
 	fi; \
 	if [ -n "$$BATTY_FRAME_PROBE" ]; then \
 	    printf 'SET BATTY_FRAME_PROBE=%s\r\n' "$$BATTY_FRAME_PROBE" >> build/AUTOEXEC-T.BAT ; \
+	fi; \
+	if [ -n "$$BATTY_FORCE_BAT_FULL_REDRAW" ]; then \
+	    printf 'SET BATTY_FORCE_BAT_FULL_REDRAW=%s\r\n' "$$BATTY_FORCE_BAT_FULL_REDRAW" >> build/AUTOEXEC-T.BAT ; \
 	fi; \
 	printf 'BATTY\r\n' >> build/AUTOEXEC-T.BAT
 	mcopy -i $@ -o build/AUTOEXEC-T.BAT ::AUTOEXEC.BAT
@@ -405,6 +414,9 @@ test:
 
 test-hud: $(FLOPPY_OUT)
 	python3 scripts/test_hud.py --floppy $(FLOPPY_OUT)
+
+test-bat-redraw-window:
+	python3 scripts/test_bat_redraw_window.py
 
 test-brick-flash: $(TEST_FLOPPY_OUT)
 	python3 scripts/test_brick_flash.py

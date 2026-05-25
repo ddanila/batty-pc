@@ -104,6 +104,12 @@ compares the stable original HUD regions (`1UP` / `HI` / `2UP`, player
 `20260513T202101Z` capture. The high-score digits are intentionally
 excluded because `HISCORE.DAT` can vary between local runs.
 
+`make test-bat-redraw-window` covers the narrow bat-only refresh path.
+It runs the same hidden-ball bat movement twice: once with the normal
+byte-window repaint and once with `BATTY_FORCE_BAT_FULL_REDRAW=1`.
+The gate compares the bat band, catching stale pixels from a too-tight
+bat refresh window without requiring a hand-authored expected screen.
+
 `make test-normal-ball-launch` covers the regular player launch path
 that the seeded L3 replay does not exercise. It boots directly into L1,
 uses `BATTY_REPLAY_WAIT_KEY=1` to pause after level entry, presses SPACE,

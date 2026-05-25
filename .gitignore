@@ -17,6 +17,7 @@ assets/random_seed.bin
 # Keep snapshots/ since they're laboriously captured by hand.
 build/test_visual/
 build/test_hud/
+build/test_bat_redraw_window/
 build/test_brick_flash/
 build/test_normal_ball_launch/
 build/test_ball_left_wall_escape/

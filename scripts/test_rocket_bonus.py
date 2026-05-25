@@ -19,7 +19,7 @@ SRC = Path("src/main.c")
 def main() -> int:
     src = SRC.read_text()
     compact = "".join(src.split())
-    guard = "if(!rocket_active&&!rocket_clear_completed&&!BALL_VISIBLE&&!ball2_active&&!ball3_active)"
+    guard = "if(!rocket_active&&!rocket_clear_completed&&!suppress_no_ball_death&&!BALL_VISIBLE&&!ball2_active&&!ball3_active)"
     if guard not in compact:
         raise SystemExit(f"FAIL: missing rocket-safe no-ball death guard: {guard}")
     idx = compact.find(guard)

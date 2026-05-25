@@ -1270,6 +1270,8 @@ static unsigned long prof_vga_rects = 0;
 static unsigned long prof_vga_bytes = 0;
 static unsigned long prof_static_rebuilds = 0;
 static unsigned long profile_auto_frames = 0;
+static unsigned char force_bat_full_redraw = 0;
+static unsigned char suppress_no_ball_death = 0;
 static int sound_disabled = 0;
 
 static unsigned short last_prof_tick = 0;
@@ -4152,6 +4154,10 @@ static void apply_replay_ball_motion_override(void) {
             }
         }
     }
+    if (getenv("BATTY_HIDE_BALL") != NULL) {
+        BALL_HIDE();
+        ball_stuck = 0;
+    }
 }
 
 static void apply_replay_enemy_object_override(void) {
@@ -4910,6 +4916,8 @@ static void redraw_bat(unsigned char cycle, unsigned char bg_attr) {
     if (new_x1 > old_x1) old_x1 = new_x1;
     byte_lo = old_x0 >> 3;
     byte_hi = (old_x1 + 7) >> 3;
+    byte_lo--;
+    byte_hi++;
     if (byte_lo < 0) byte_lo = 0;
     if (byte_hi > 32) byte_hi = 32;
     if (byte_lo >= byte_hi) return;
@@ -6054,6 +6062,7 @@ static state_t run_level(void) {
                  * state must not cost a life. */
                 if (!rocket_active
                     && !rocket_clear_completed
+                    && !suppress_no_ball_death
                     && !BALL_VISIBLE
                     && !ball2_active
                     && !ball3_active) {
@@ -6121,6 +6130,9 @@ static state_t run_level(void) {
 
             if (BAT_X != BAT_PREV_X) {
                 bat_moved = 1;
+            }
+            if (force_bat_full_redraw && bat_moved) {
+                ball_moved = 1;
             }
 
             if (ball_moved) {
@@ -6210,6 +6222,8 @@ int main(void) {
      * against snap2. Plain `make run` floppy leaves it off and the
      * user sees the natural ~4.5 Hz menu blink. */
     if (getenv("BATTYALL") != NULL) test_mode_pin_blink = 1;
+    if (getenv("BATTY_FORCE_BAT_FULL_REDRAW") != NULL) force_bat_full_redraw = 1;
+    if (getenv("BATTY_SUPPRESS_NO_BALL_DEATH") != NULL) suppress_no_ball_death = 1;
     {
         const char *p = getenv("BATTY_PROFILE_AUTO_FRAMES");
         if (p != NULL && *p != '\0') {
