@@ -43,24 +43,24 @@ make profile-auto
 
 ```text
 Profiling Report over 180 frames:
-  paint_bg_to_buff:     17142 (27%)
-  paint_frame_to_buff:  1296 (2%)
-  HUD / Lives:          12258 (19%)
-  render_brick_band:    9636 (15%)
-  buff_to_vga:          21536 (34%)
+  paint_bg_to_buff:     14746 (26%)
+  paint_frame_to_buff:  602 (1%)
+  HUD / Lives:          11256 (20%)
+  render_brick_band:    10150 (18%)
+  buff_to_vga:          17886 (32%)
   static rebuilds:      1
-  VGA rect flushes:     665
-  VGA bytes written:    498176
+  VGA rect flushes:     674
+  VGA bytes written:    434888
   sound disabled:       1
-  Total PIT ticks sum:  61868
+  Total PIT ticks sum:  54640
 ```
 
 Analyzer summary:
 
-- Top bucket: `buff_to_vga` at 34.8%.
-- Background restore: 27.7%.
-- HUD/lives: 19.8%.
-- VGA output averages 3.69 rect flushes/frame and 2768 bytes/frame.
+- Top bucket: `buff_to_vga` at 32.7%.
+- Background restore: 27.0%.
+- HUD/lives: 20.6%.
+- VGA output averages 3.74 rect flushes/frame and 2416 bytes/frame.
 
 ## Latest Manual 86Box Render-Only Result
 
@@ -106,6 +106,15 @@ Interpretation:
   table: each Spectrum byte is emitted as four `stosw` writes instead of
   per-pixel shift/mask logic. The table covers all non-FLASH attributes
   in 8 KiB and intentionally avoids 386-only dword copies.
+- Moving-object redraws no longer flush the full bat footprint every
+  frame when the bat is stationary. The bat is still composed into
+  `scr_buff`, but VGA output is limited to the running-dot row unless
+  the bat position, size, laser/gun frame, or fire animation changes.
+- Static intro/title screens clear only the mode-13h border before
+  blitting the 256x192 asset, and read screen assets in 16-row chunks
+  instead of 192 single-row DOS reads. The 8 KiB random source table is
+  loaded into far heap so the 4 KiB chunk buffer does not overflow the
+  small-model DGROUP limit.
 - `make run` and `make run-86box` repack the floppy image every time so
   env-driven profile/sound flags do not go stale.
 

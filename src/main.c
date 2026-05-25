@@ -14,6 +14,7 @@
 #include <conio.h>
 #include <dos.h>
 #include <i86.h>
+#include <malloc.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -70,20 +71,37 @@ static void fill(int x, int y, int w, int h, unsigned char c) {
     }
 }
 
-/* Stream a 256x192 8bpp asset straight into VGA. 192 reads of 256 B —
- * keeps the small-model near-data segment unburdened. */
+#define SCREEN_CHUNK_ROWS 16
+static unsigned char screen_chunk[SCREEN_CHUNK_ROWS * PLAYFIELD_W];
+
+static void clear_playfield_border(void) {
+    fill(0, 0, SCREEN_W, BORDER_Y, COL_BORDER);
+    fill(0, BORDER_Y + PLAYFIELD_H, SCREEN_W,
+         SCREEN_H - BORDER_Y - PLAYFIELD_H, COL_BORDER);
+    fill(0, BORDER_Y, BORDER_X, PLAYFIELD_H, COL_BORDER);
+    fill(BORDER_X + PLAYFIELD_W, BORDER_Y,
+         SCREEN_W - BORDER_X - PLAYFIELD_W, PLAYFIELD_H, COL_BORDER);
+}
+
+/* Stream a 256x192 8bpp asset straight into VGA. Read 16 scanlines per
+ * DOS call to keep floppy/stdio overhead down on XT-class machines
+ * while avoiding a full 48 KiB near-data buffer. */
 static int blit_screen(const char *path) {
     FILE *f = fopen(path, "rb");
     int y;
-    unsigned char row_buf[PLAYFIELD_W];
     if (!f) return -1;
-    for (y = 0; y < PLAYFIELD_H; y++) {
-        if (fread(row_buf, 1, PLAYFIELD_W, f) != PLAYFIELD_W) {
+    for (y = 0; y < PLAYFIELD_H; y += SCREEN_CHUNK_ROWS) {
+        int r;
+        int rows = SCREEN_CHUNK_ROWS;
+        if (y + rows > PLAYFIELD_H) rows = PLAYFIELD_H - y;
+        if (fread(screen_chunk, PLAYFIELD_W, rows, f) != (size_t)rows) {
             fclose(f);
             return -2;
         }
-        _fmemcpy(vga + (long)(BORDER_Y + y) * SCREEN_W + BORDER_X,
-                 row_buf, PLAYFIELD_W);
+        for (r = 0; r < rows; r++) {
+            _fmemcpy(vga + (long)(BORDER_Y + y + r) * SCREEN_W + BORDER_X,
+                     &screen_chunk[r * PLAYFIELD_W], PLAYFIELD_W);
+        }
     }
     fclose(f);
     return 0;
@@ -92,7 +110,7 @@ static int blit_screen(const char *path) {
 /* Repaint the border + blit one named asset. On asset-missing, paint
  * the playfield magenta so the failure is unmistakable in QEMU. */
 static void show(const char *path) {
-    fill(0, 0, SCREEN_W, SCREEN_H, COL_BORDER);
+    clear_playfield_border();
     if (blit_screen(path) != 0) {
         fill(BORDER_X, BORDER_Y, PLAYFIELD_W, PLAYFIELD_H, 3 /* magenta */);
     }
@@ -673,7 +691,7 @@ static int           ball3_dy     = -BALL_SPEED;
  * the original program so bonuses / bombs / enemies consume the same
  * byte-stream shape as the Spectrum game. */
 #define RANDOM_ROM_SIZE 0x2000
-static unsigned char random_rom[RANDOM_ROM_SIZE];
+static unsigned char __far *random_rom = NULL;
 static unsigned char random_e = 0x17;
 static unsigned char random_d = 0x8E;
 static unsigned int  random_seed_addr = 0x8000;
@@ -986,6 +1004,8 @@ static int big_bat_active(void);     /* forward — defined below */
 static int           bat_extra_px    = 0;
 static int           bat_extra_tgt   = 0;
 static int           bat_draw_extra_px = 0;
+static unsigned char bat_draw_bonus_applied = 0xFF;
+static unsigned char bat_draw_fire_ticks = 0;
 
 /* "+400" floating-marker state spawned on bonus catch (port of
  * sprite_set $0B transition at $A6BA + handling_400pts at $A58D).
@@ -1164,9 +1184,22 @@ static int load_sprites(const char *path) {
 
 static int load_random_rom(const char *path) {
     FILE *f = fopen(path, "rb");
+    unsigned int off = 0;
     if (!f) return -1;
-    if (fread(random_rom, 1, sizeof(random_rom), f) != sizeof(random_rom)) {
-        fclose(f); return -2;
+    if (random_rom == NULL) {
+        random_rom = _fmalloc(RANDOM_ROM_SIZE);
+        if (random_rom == NULL) {
+            fclose(f); return -3;
+        }
+    }
+    while (off < RANDOM_ROM_SIZE) {
+        unsigned int n = RANDOM_ROM_SIZE - off;
+        if (n > sizeof(screen_chunk)) n = sizeof(screen_chunk);
+        if (fread(screen_chunk, 1, n, f) != n) {
+            fclose(f); return -2;
+        }
+        _fmemcpy(random_rom + off, screen_chunk, n);
+        off += n;
     }
     fclose(f);
     return 0;
@@ -1970,6 +2003,8 @@ static void bat_sprite_bounds(int x, int extra, int *x0, int *x1) {
 static void remember_bat_draw_state(void) {
     BAT_PREV_X = BAT_X;
     bat_draw_extra_px = bat_extra_px;
+    bat_draw_bonus_applied = objects[OBJ_BAT_1].bonus_applied;
+    bat_draw_fire_ticks = bat_fire_anim_ticks;
 }
 
 /* Two pixels that walk back and forth along the bat — the original's
@@ -3974,7 +4009,9 @@ static unsigned char ctrl_btns_pressed_value(void) {
 }
 
 static unsigned int next_random(void) {
-    unsigned char src = random_rom[random_seed_addr & (RANDOM_ROM_SIZE - 1)];
+    unsigned char src = (random_rom != NULL)
+        ? random_rom[random_seed_addr & (RANDOM_ROM_SIZE - 1)]
+        : 0;
     random_e = (unsigned char)(random_e + src + 0x05 + ctrl_btns_pressed_value());
     random_d = (unsigned char)(random_d + (unsigned char)(~src) + 0x16
                                + (unsigned char)random_seed_addr);
@@ -4834,12 +4871,17 @@ static void redraw_full_with_ball(unsigned char level_idx) {
     int score_dirty;
     int lives_dirty;
     int can_local_hud;
+    int bat_full_dirty;
 
     prof_start();
 
     score_dirty = (score != prev_score || high_score != prev_high_score);
     lives_dirty = (lives != prev_lives);
     can_local_hud = (magnets_per_level[level_idx][0] == 0);
+    bat_full_dirty = (BAT_X != BAT_PREV_X)
+                  || (bat_extra_px != bat_draw_extra_px)
+                  || (objects[OBJ_BAT_1].bonus_applied != bat_draw_bonus_applied)
+                  || (bat_fire_anim_ticks != bat_draw_fire_ticks);
     if (force_full_flush || lives_dirty || (score_dirty && !can_local_hud)) {
         static_bg_dirty = 1;
     }
@@ -4876,9 +4918,16 @@ static void redraw_full_with_ball(unsigned char level_idx) {
     render_bat(cycle, bg_attr);
     render_running_dot();
     {
-        int bat_x0, bat_x1;
+        int bat_x0, bat_x1, old_x0, old_x1;
         bat_sprite_bounds(BAT_X, bat_extra_px, &bat_x0, &bat_x1);
-        mark_dirty_rect_px(bat_x0, BAT_Y, bat_x1 - bat_x0, 13);
+        if (bat_full_dirty) {
+            bat_sprite_bounds(BAT_PREV_X, bat_draw_extra_px, &old_x0, &old_x1);
+            if (old_x0 < bat_x0) bat_x0 = old_x0;
+            if (old_x1 > bat_x1) bat_x1 = old_x1;
+            mark_dirty_rect_px(bat_x0, BAT_Y, bat_x1 - bat_x0, 13);
+        } else {
+            mark_dirty_rect_px(bat_x0, BAT_Y + 6, bat_x1 - bat_x0, 1);
+        }
     }
     remember_bat_draw_state();
 
