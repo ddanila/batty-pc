@@ -80,7 +80,7 @@ PROFILE_WAIT   ?= 25
 PROFILE_BALL_OBJECT ?= 02008000A0001802020C000008070000000000000080
 PROFILE_BALL_STUCK  ?= 0
 
-.PHONY: all clean run run-86box profile-auto profile-86box read-profile floppy assets help run-original run-original-cheat snapshot candidates regions test test-hud test-bat-redraw-window test-ball-dirty-redraw test-ball-object-dirty-redraw test-rocket-flight-redraw test-brick-flash test-rocket-bonus test-death-sparks test-normal-ball-launch test-ball-left-wall-escape test-l3-replay-seed test-midgame-brick-replay replay-l3-brick-flash replay-l3-brick-flash-both
+.PHONY: all clean run run-86box profile-auto profile-86box read-profile floppy assets help run-original run-original-cheat snapshot candidates regions test test-hud test-bat-redraw-window test-ball-dirty-redraw test-ball-object-dirty-redraw test-rocket-flight-redraw test-rocket-completion-no-ball test-round-banner-border test-brick-flash test-rocket-bonus test-death-sparks test-normal-ball-launch test-ball-left-wall-escape test-l3-replay-seed test-midgame-brick-replay replay-l3-brick-flash replay-l3-brick-flash-both
 
 all: $(EXE) $(ASSETS)
 
@@ -102,6 +102,8 @@ help:
 	@echo "  test-ball-dirty-redraw  verify ball-only dirty redraw vs full baseline"
 	@echo "  test-ball-object-dirty-redraw  verify ball+enemy dirty redraw vs full baseline"
 	@echo "  test-rocket-flight-redraw  verify rocket-lifted bat redraw vs full baseline"
+	@echo "  test-rocket-completion-no-ball  verify rocket clear redraw hides balls"
+	@echo "  test-round-banner-border  verify original round-window black top band"
 	@echo "  test-rocket-bonus  verify rocket bonus cannot trigger no-ball death"
 	@echo "  test-death-sparks  verify bat death spark fanout mirrors original"
 	@echo "  test-l3-replay-seed  verify deterministic L3 replay seed/probes"
@@ -355,6 +357,12 @@ $(TEST_FLOPPY_OUT): $(TEST_EXE) $(ASSETS) $(FLOPPY_SRC)
 	if [ -n "$$BATTY_VISUAL_PROBE_FRAMES" ]; then \
 	    printf 'SET BATTY_VISUAL_PROBE_FRAMES=%s\r\n' "$$BATTY_VISUAL_PROBE_FRAMES" >> build/AUTOEXEC-T.BAT ; \
 	fi; \
+	if [ -n "$$BATTY_HOLD_ROUND_BANNER" ]; then \
+	    printf 'SET BATTY_HOLD_ROUND_BANNER=%s\r\n' "$$BATTY_HOLD_ROUND_BANNER" >> build/AUTOEXEC-T.BAT ; \
+	fi; \
+	if [ -n "$$BATTY_HOLD_ROCKET_CLEAR" ]; then \
+	    printf 'SET BATTY_HOLD_ROCKET_CLEAR=%s\r\n' "$$BATTY_HOLD_ROCKET_CLEAR" >> build/AUTOEXEC-T.BAT ; \
+	fi; \
 	if [ -n "$$BATTY_FORCE_BAT_FULL_REDRAW" ]; then \
 	    printf 'SET BATTY_FORCE_BAT_FULL_REDRAW=%s\r\n' "$$BATTY_FORCE_BAT_FULL_REDRAW" >> build/AUTOEXEC-T.BAT ; \
 	fi; \
@@ -449,6 +457,12 @@ test-ball-object-dirty-redraw:
 
 test-rocket-flight-redraw:
 	python3 scripts/test_rocket_flight_redraw.py
+
+test-rocket-completion-no-ball:
+	python3 scripts/test_rocket_completion_no_ball.py
+
+test-round-banner-border:
+	python3 scripts/test_round_banner_border.py
 
 test-brick-flash: $(TEST_FLOPPY_OUT)
 	python3 scripts/test_brick_flash.py

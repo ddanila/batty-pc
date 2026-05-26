@@ -70,6 +70,20 @@ lift the bat for 18 rendered frames, and compares normal dirty redraw
 against a forced full-flush baseline. It catches stale bat/rocket pixels
 left behind when the bat's Y coordinate changes during level clear.
 
+`make test-rocket-completion-no-ball` covers the next frame in that same
+path: the rocket has left the playfield, the remaining bricks are
+awarded, and the level-clear pause is about to begin. The port holds the
+frame via `BATTY_HOLD_ROCKET_CLEAR` and compares the old bat/ball band
+against a forced full-flush baseline, catching the regression where the
+primary ball briefly reappeared after rocket flight completed.
+
+`make test-round-banner-border` covers the "PLAYER 1 / ROUND NN" black
+window. The original clears the 80x32 pixel window from coordinate
+`$A458`, which maps to playfield x=88 with the top row at y=133 after
+the upward `dec_scr_line` loop. The test holds the banner via
+`BATTY_HOLD_ROUND_BANNER` and asserts that the top band is black, so the
+window cannot slide down and lose its top edge again.
+
 `make test-death-sparks` is a source-level regression for the bat death
 fanout. It locks the port to the original `LBC10` spawn constants
 (`$1B` direction seed, `$05` direction step, `$AE` Y, speed `$02`,

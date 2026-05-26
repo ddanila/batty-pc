@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""Regression check for brick-destruction flash cleanup.
+"""Regression check for brick-destruction cleanup.
 
 Drives the DOS build into L3, releases the ball, waits long enough for
 at least one brick interaction, then verifies that no solid bright-white
-flash rectangle remains in the brick grid after the flash animation
-should have restored the level background, and that at least one
+flash rectangle remains in the brick grid, and that at least one
 brick-sized cell remains visibly removed after the flash clears.
 
 The stale-flash check is anchored to the original-captured L3 render
@@ -27,6 +26,19 @@ BRICK_W, BRICK_H = 16, 8
 BRIGHT_WHITE = (255, 255, 255)
 WHITE_MARGIN = 75
 DESTROYED_CELL_DIFF_MIN = 80
+
+
+def source_guard():
+    src = Path("src/main.c").read_text()
+    forbidden = [
+        "attr_buff[char_row * 32 + col_byte]     = 0x47",
+        "scr_buff[y * 32 + col_byte]     = 0xFF",
+        "scr_buff[y * 32 + col_byte + 1] = 0xFE",
+    ]
+    if any(needle in src for needle in forbidden):
+        raise SystemExit("FAIL: brick destruction must not paint the invented bright-white flash")
+    if "mark_dirty_rect_px(brick_flash_x - 1, brick_flash_y - 1, 18, 10)" not in src:
+        raise SystemExit("FAIL: destroyed brick dirty rect must include print_one_brik_buf's 18x10 footprint")
 
 
 def capture():
@@ -109,6 +121,7 @@ def main():
                     help="original-captured L3 reference screen")
     args = ap.parse_args()
 
+    source_guard()
     capture()
     initial = ppm_inner_to_indices(OUT / "l3_initial.ppm")
     after = ppm_inner_to_indices(OUT / "l3_after.ppm")

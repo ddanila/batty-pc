@@ -737,13 +737,11 @@ static void ball_delta_from_dir(unsigned char dir, int *dx, int *dy) {
     }
 }
 
-/* Brick destruction flash — a solid bright-white 16x8 rectangle
- * painted at the destroyed cell for a few ticks before the cell
- * fully disappears. Makes a brick popping feel less abrupt. We
- * only track the most-recent destruction; if multiple cells go
- * down in one tick (rocket sweep), the flash lands on the last
- * one. */
-#define BRICK_FLASH_TICKS 4
+/* Brick destruction dirty marker. The original remove path restores
+ * background/window data; it does not paint a bright-white replacement
+ * block. Keep the most recent cell live for a couple of ticks only so
+ * dirty redraw includes print_one_brik_buf's wider 18x10 footprint. */
+#define BRICK_FLASH_TICKS 2
 static unsigned char brick_flash_ticks = 0;
 static int           brick_flash_x     = 0;
 static int           brick_flash_y     = 0;
@@ -3965,9 +3963,9 @@ static void try_spawn_bonus(int col, int row) {
     }
 }
 
-/* Spawn the brick destruction flash at a level-grid cell. Replaces
- * a popping brick with a bright-white solid rectangle for
- * BRICK_FLASH_TICKS ticks. Only one flash visible at a time. */
+/* Track the destroyed brick cell long enough to dirty its full original
+ * blit footprint. print_one_brik_buf writes one row above, one row below,
+ * and one pixel into neighbouring byte columns. */
 static void brick_flash_spawn(int col, int row) {
     brick_flash_x = 8 + col * 16;
     brick_flash_y = 32 + row * 8;
@@ -3978,29 +3976,12 @@ static void step_brick_flash(void) {
     if (brick_flash_ticks) brick_flash_ticks--;
 }
 
-/* Paint the flash: scr_buff bytes set solid for 7 rows (matching
- * the original spr_brik_5 pattern: 0xFF/0xFE per row + 1 blank
- * trailing row); attr_buff at the brick's two char cells overridden
- * to bright white. Runs after render_brick_band so it sits on top
- * of the bg pattern that would otherwise show through a destroyed
- * cell. */
+/* No visual flash here. The original destruction path leaves the brick
+ * absent after background recovery; this marker exists only for dirty
+ * rectangle scheduling. */
 static void render_brick_flash_to_buff(void) {
-    int col_byte, char_row, r;
-    if (!brick_flash_ticks) return;
-    col_byte = brick_flash_x >> 3;       /* brick spans col_byte and col_byte+1 */
-    char_row = brick_flash_y >> 3;
-    if (col_byte < 0 || col_byte + 1 >= 32) return;
-    if (char_row < 0 || char_row >= ATTR_ROWS) return;
-    for (r = 0; r < 7; r++) {
-        int y = brick_flash_y + r;
-        if (y < 0 || y >= PLAYFIELD_H) continue;
-        scr_buff[y * 32 + col_byte]     = 0xFF;
-        scr_buff[y * 32 + col_byte + 1] = 0xFE;
-    }
-    /* Last row left blank for the inter-brick gap, matching the
-     * destroyed brick's footprint exactly. */
-    attr_buff[char_row * 32 + col_byte]     = 0x47;
-    attr_buff[char_row * 32 + col_byte + 1] = 0x47;
+    (void)brick_flash_x;
+    (void)brick_flash_y;
 }
 
 static int brick_collision(int prev_x, int prev_y, int new_x, int new_y) {
@@ -5117,7 +5098,7 @@ static void redraw_full_with_ball(unsigned char level_idx) {
 
     render_brick_flash_to_buff();
     if (brick_flash_ticks) {
-        mark_dirty_rect_px(brick_flash_x, brick_flash_y, 16, 8);
+        mark_dirty_rect_px(brick_flash_x - 1, brick_flash_y - 1, 18, 10);
     }
     render_brick_hit_anim_to_buff();
     if (any_brick_hit_anim()) {
@@ -5684,7 +5665,7 @@ static int play_brik_anim(void) {
 static int show_round_banner(unsigned int round_num_display) {
     int round_num = (int)round_num_display;
     int banner_x = BORDER_X + 88;
-    int banner_y = BORDER_Y + 141;
+    int banner_y = BORDER_Y + 133;
     int text_x   = BORDER_X + 96;
     unsigned long start;
     unsigned char round_codes[8];
@@ -5709,6 +5690,12 @@ static int show_round_banner(unsigned int round_num_display) {
         draw_text(text_x + 7 * 8, BORDER_Y + 143, 15, &one, 1);
     }
     draw_text(text_x, BORDER_Y + 158, 15, round_codes, 8);
+
+    if (getenv("BATTY_HOLD_ROUND_BANNER") != NULL) {
+        while (!kbhit()) sound_tick();
+        if (getch() == 27) return 1;
+        return 0;
+    }
 
     start = pit_ticks();
     while (pit_ticks() - start < 60UL) {
@@ -6448,6 +6435,15 @@ static state_t run_level(void) {
              * player until the bricks are gone. */
             if (live_bricks_remaining() == 0) {
                 rocket_clear_completed = 0;
+                BALL_HIDE();
+                ball2_active = 0;
+                ball3_active = 0;
+                force_full_flush = 1;
+                redraw_full_with_ball(i);
+                if (getenv("BATTY_HOLD_ROCKET_CLEAR") != NULL) {
+                    while (!kbhit()) sound_tick();
+                    if (getch() == KEY_ESC) return ST_QUIT;
+                }
                 /* Original's LBBFB_0 pauses ~0.6 s (pause_long B=2)
                  * before the next level's setup — let the player see
                  * the cleared brick zone briefly. Just `CALL Z,
