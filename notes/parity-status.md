@@ -73,6 +73,23 @@ and `laffc-decode.md` for the detailed trail.
   straddle logic, but for a narrow bullet moving straight up this only
   differs at sub-cell boundaries (would need a bullet-specific snapshot
   to gate; negligible).
+- **Death sparks** (bat explosion on ball loss) — byte-exact vs
+  `handling_spark` ($A8D2) + the `LBC10_3` spawn loop. Spawn: 10 sparks
+  (`B=$0A`), x = `bat_1.x + width/2 - $0C` then `+3` per spark, y=`$AE`,
+  dir = `$1B` then `+5 & $3F` per spark, speed `$02`, body width `$08`,
+  `(IX+$14)`/`(IX+$15)` (duration_base / frame_ticks) = `$18`,
+  sprite_num 0 — all matched in `play_bat_explosion`. Per-frame
+  (`handling_spark`): motion via `LAD69` (= `dir_to_dxdy`), deactivate at
+  `y >= $C0` (=`PLAYFIELD_H` 192), `bounce_wall` (top/left clamp `<$08`,
+  right clamp to `$F8 - width` when `x+width >= $F9`), reflect via
+  `change_direction` = `(dir ^ B) + 1 & $3F` with `B=$3F` for top and
+  `B=$1F` for left/right, and the decay timer `DEC (IX+$15); on 0 ->
+  advance frame, $14 >>= 1, $15 = $14 + 1; die at frame 4` — all matched
+  in the port's death-spark loop (verified by code-comparison; the recent
+  "Fix death spark direction math" commit's `change_direction` B-mask
+  reflect is correct). Single-player only: the original's `LBC10_4`
+  2-player branch (shift 5 sparks by `bat_2.x - bat_1.x` when
+  `game_mode==2`) has no port equivalent — out of scope (port is 1P).
 - **Regression guards** — `make test-laffc-ball-frame1` (ZEsarUX-free)
   locks the L3 frame-1 ball to the Spectrum probe; the 5-checkpoint +
   per-level static suite (`make test`) stays green.
