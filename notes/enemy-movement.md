@@ -191,12 +191,23 @@ original's `handling_bird` calls `LAD69` — the same `hl_bc_calc_direction`
 as the ball — so the bird should use `dir_to_dxdy`. Fixed (removed
 `enemy_dir_delta_q8` + its table).
 
-Result: the enemy now **descends** (dir $10: x constant, y 5->8->12->16),
-**steers** (dir $10->$12 as it turns), and with the byte-exact RNG
-(flag-ON, seeded 460D/962C) **repicks target to 0x2B->0x2C — matching the
-original's 0x2C.** So byte-exact enemy targeting is essentially achieved;
-the residual is just the documented one-frame RNG offset and exact repick
-frame. The byte-exact L3 ball gate and all `make test` states still pass
+Result: the enemy now **descends** correctly (dir $10: x constant,
+y 5->8->12->16) and **steers** — a real gameplay-visible motion bug fixed.
+
+CORRECTION (over-claimed): byte-exact enemy *targeting* is NOT achieved.
+A closer look (flag-ON, seeded 460D/962C) shows the target THRASHES, not
+matches: f14=0x36, f16=0x2B, f18=0x36, f20=0x2C, with dir oscillating
+(0x0F/0x11/0x0E/0x13). The original has a STABLE target (0x2C) and smooth
+steering. The earlier "repicks to 0x2C" was a coincidental single frame.
+So under flag-ON the enemy repicks far too often — the target is changing
+every ~2 frames even though dir (~0x10) is nowhere near it, so it's not an
+arrival-repick (delta==0); the cause is unknown and needs a flag-ON MWA
+trace of writes to $9BAA (like trace_enemy_target.py) to find what repicks
+it. Until then flag-ON is NOT correct for the enemy and must not become
+the default. The SHIPPED game (flag-OFF, motion fixed) roams fine; only
+the flag-ON per-frame-RNG path thrashes.
+
+The byte-exact L3 ball gate and all `make test` states still pass
 (the corrected descent doesn't interfere with the ball or the captured
 frames). This was also a real gameplay-visible bug fix: enemies were
 flying the wrong axis in normal play.

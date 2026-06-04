@@ -1318,10 +1318,13 @@ static unsigned char use_laffc = 1;
  * reproduces the original's $8D48 sequence EXACTLY (offset by the one
  * frame the original doesn't tick at its snapshot start); the byte-exact
  * L3 ball gate stays byte-exact with the flag ON. NOT YET the default
- * because the RNG-*dependent* behaviour (enemy targets, bonus drops,
- * magnets) has no byte-exact gate of its own — the ball gate is
- * RNG-independent, so it can't prove those. Ready to flip once such a
- * gate (e.g. flag-on enemy target == original) is in place. */
+ * because the RNG-*dependent* behaviour has no byte-exact gate of its own
+ * (the ball gate is RNG-independent), AND flag-ON currently makes the
+ * enemy target THRASH (oscillates frame-to-frame) instead of holding a
+ * stable target like the original — so the per-frame RNG + enemy repick
+ * interact wrongly. Flipping is BLOCKED until that's diagnosed/fixed (see
+ * notes/enemy-movement.md, notes/rng-model.md). Flag OFF (default) roams
+ * fine; only the experimental flag-ON path thrashes. */
 static unsigned char rng_perframe = 0;
 static unsigned char suppress_no_ball_death = 0;
 static int sound_disabled = 0;

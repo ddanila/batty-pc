@@ -110,14 +110,17 @@ enemy don't perturb the ball. And the port's RNG init (`random_e=$17`,
 from a clean start too. So flag ON is the validated-correct model and
 flipping the default is the natural culmination (BATTY_LAFFC pattern).
 
-NOT flipped yet, deliberately: the ball gate is RNG-*independent*, so it
-cannot prove the RNG-*dependent* behaviour (enemy targets, bonus drops,
-magnets). The discipline is validate-then-flip; the last risky flip
-(shimmer phase) regressed. The flip is ready once an RNG-dependent gate
-exists — e.g. a flag-on test asserting the enemy target reaches `0x2C`
-(its captured value) from the seeded L3 state. Building that gate (around
-the documented one-frame offset) is the next concrete step before the
-default flips. Resolving it (skip the port's first-frame tick, or seed to the
+NOT flipped — and a blocker found: the ball gate is RNG-*independent*, so
+it cannot prove the RNG-*dependent* behaviour. When checked, flag-ON makes
+the **enemy target THRASH** (0x36/0x2B/0x36/0x2C frame-to-frame, dir
+oscillating) instead of holding a stable target like the original — see
+notes/enemy-movement.md. So flag-ON, while the RNG *walk* is byte-exact,
+is NOT behaviour-correct for the enemy yet; the per-frame RNG + the enemy
+repick interact wrongly (the target changes ~every 2 frames with no
+apparent arrival). Flipping the default is BLOCKED until that thrashing is
+diagnosed (flag-ON MWA trace of $9BAA writes) and fixed. The shipped
+default (flag-OFF) enemy roams fine; only the experimental flag-ON path
+thrashes, so nothing user-facing regresses. Resolving it (skip the port's first-frame tick, or seed to the
 original's f0 pre-tick value) would make RNG-dependent reads — enemy
 targets, bonus drops — frame-exact. Note the L3 seed value `0x460D` is the
 snapshot's, not the env `8E49` (which wrote the wrong address `$8E17`).
