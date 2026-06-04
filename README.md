@@ -68,8 +68,11 @@ The resolved parity history is documented in
 | Pause banner (P toggles, ENTER dismisses)    | ✓ |
 | Magnets (level decorations + ON/OFF blink)   | ✓ `render_magnets` (`notes/per-level-profile.md`) |
 | Headless visual regression (5 checkpoints + per-level) | ✓ `make test`, `BATTY_LEVEL=N make test` (`notes/testing.md`) |
+| Frame-step parity gate (port vs ZEsarUX, frame-by-frame) | ✓ `make capture-timeline-both` (`notes/replay-harness.md`) |
+| Real `handling_ball` 64-direction q8.8 motion | ✓ exact `dir_to_dxdy` (LAD69 X/Y cross + fraction); byte-exact vs Spectrum (probed) |
+| `LAFFC` brick collision (cell / axis / position) | ✓ byte-exact behind `BATTY_LAFFC=1`; gate-validated 40 frames; default still `brick_collision` pending multi-scenario validation (`notes/laffc-decode.md`) |
+| Brick-hit shimmer frame-exactness            | open — collision is byte-exact; the cyan hit-shimmer pixel pattern still differs (cosmetic, shared by both collision paths) |
 | 2-player mode (`game_mode == 2`)             | open — selectable from menu, not wired into run loop |
-| Real `handling_ball` 64-direction motion     | open — port uses integer dx/dy + 5-zone deflection |
 | Frame ornament from `spr_bord_*` primitives  | open — currently bundles a captured `frame_l1.bin` |
 
 ## Quick build / run
