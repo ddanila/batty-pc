@@ -502,3 +502,33 @@ exercise collision); `test-laffc-ball-frame1` extended to gate frames
 1/5/40/100/150. The shipping game's primary-ball brick collision is now
 byte-exact with the Spectrum on the validated trajectory; the only
 frame-by-frame residual left is the cosmetic brick-hit shimmer render.
+
+### Update 17 (2026-06-04): the residual is the periodic metal shimmer, definitively
+
+Pinned down the sole remaining frame-by-frame residual (~185 px at the
+central brick cluster, e.g. cells col6/7 row5/6):
+
+- It is **not the collision** — the ball object is byte-exact f1..f150
+  and the port/original brick grids are byte-identical (same cells
+  destroyed at the same frames).
+- It is **not a destruction flash** — `render_brick_flash_to_buff` is a
+  no-op in the port (it draws nothing), so destroyed bricks are removed
+  cleanly on both sides.
+- The differing pixels are **cyan (palette 5/D)** while those bricks are
+  white/magenta at rest — i.e. a shimmer overlay. Since 0x13 bricks
+  destroy on first hit (no hit-shimmer) and the grids agree, this is the
+  **periodic metal-brick shimmer** (`all_metal_briks` / `metal_brik_anim`,
+  the cyan animation the original plays on certain bricks every few
+  frames during gameplay), running with an RNG/phase the port does not
+  replicate. This is the same cosmetic shimmer flagged at the start of
+  the parity work, now isolated from the (solved) collision.
+
+Conclusion: **gameplay parity (ball motion + brick collision) is
+byte-exact and shipping by default.** The only frame-by-frame visual
+residual is this cosmetic periodic metal shimmer — orthogonal to
+gameplay, RNG/phase-driven, and the same on both collision paths. The
+authoritative parity gate is the object-level `make
+test-laffc-ball-frame1` (green, byte-exact); the pixel gate carries the
+cosmetic shimmer. Closing the shimmer would need porting `all_metal_briks`
+with the original's exact per-frame RNG/phase — a self-contained cosmetic
+task, not gameplay parity.
