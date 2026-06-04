@@ -156,6 +156,26 @@ and `laffc-decode.md` for the detailed trail.
   500000/750000 as 6-digit BCD scores) match the port's
   `live_add_thresholds[]` exactly. Catch bonuses add +400, the score
   bonus +5000 (see "Bonus catch mechanics" above).
+- **Ball speed-up + SLOW** (gameplay difficulty curve) — IMPLEMENTED
+  this pass to match `handling_ball` `LA27E_22` + `get_bonus` `LA67B_7`.
+  The ball now ACCELERATES over a level: a shared `ball_speed_ramp`
+  counter (= the original's per-ball `object+$13`) increments once per
+  frame when `(pit_frame_counter & 7) == 0` (the original's
+  `counter_misc & 7` 8-frame cadence), and at `$94` (148) it resets and
+  every active ball's `speed` byte increments, capped at `$06` — so speed
+  climbs `$02 → $06`, one step per ~1184 frames (~24 s). `speed` already
+  drives `dir_to_dxdy`'s q8.8 magnitude, so this directly changes motion.
+  **SLOW** ($04) now resets all ball speeds to `$02` (the original
+  `LD (object_ball_N+$07),$02`) WITHOUT touching the ramp counter, so it
+  naturally wears off as the speed climbs back — replacing the old
+  permanent `slow_ticks` half-frame skip. The SLOW re-roll reject now
+  checks `primary ball speed <= base` (= the original's "a ball is already
+  at $02"). `ball_speed_ramp` resets to 0 on every life/level/game init,
+  and launch/respawn set `speed = BALL_SPEED ($02)`, so each life starts
+  slow with no carry-over. Byte-safe for the gates (first `speed++` is at
+  frame ~1184, far past the 150-frame ball gate); verified green:
+  `test-laffc-ball-frame1` (5 checkpoints), `make test` (5 states + 2
+  lints), `test-bat-deflection` (14/14).
 - **Regression guards** — `make test-laffc-ball-frame1` (ZEsarUX-free)
   locks the L3 frame-1 ball to the Spectrum probe; the 5-checkpoint +
   per-level static suite (`make test`) stays green.

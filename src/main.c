@@ -996,13 +996,18 @@ static volatile unsigned long pit_frame_counter;
 static unsigned char random_hi(unsigned int r) { return (unsigned char)(r >> 8); }
 static unsigned char random_lo(unsigned int r) { return (unsigned char)r; }
 extern unsigned char round_number;
-/* SLOW is permanent within a life in the original — ball speed is
- * set at $A67B_7 and not auto-restored. all_var_init at level/life
- * entry resets ball speed back to $03 (= our BALL_SPEED). Earlier
- * port auto-expired SLOW after 5 sec, which made the bonus
- * pointless. Setting effectively-forever so respawn_primary_ball /
- * level entry are the only way out, matching the original. */
-#define SLOW_DURATION     0xFFFFu
+/* Ball speed model (handling_ball LA27E_22 / get_bonus LA67B_7):
+ * the original ball ACCELERATES over a level. A per-ball counter
+ * (object+$13) increments when (counter_misc & 7) == 0 — every 8
+ * frames — and when it reaches $94 (148) it resets and the speed byte
+ * (+$07) increments, capped at $06. So speed climbs $02 -> $06, one
+ * step per ~1184 frames (~24 s). SLOW ($04) just sets all ball speeds
+ * back to $02 (it does NOT touch the ramp counter), so it naturally
+ * wears off as the speed ramps back up. We model this with the shared
+ * ball_speed_ramp counter + the per-frame ball_speed_ramp_tick(), and
+ * SLOW resets objects[].speed to BALL_SPEED. (Earlier port used a
+ * fixed speed + a permanent slow_ticks frame-skip — the ball never
+ * sped up and SLOW lasted the whole life.) */
 /* BIG_BAT is permanent in the original — handling_bat_no_transform
  * keys off bat.bonus_applied == \$00, with no auto-expire. The bat
  * stays wide until another bonus is caught or the ball is lost.
@@ -1018,7 +1023,10 @@ static int           bonus_y = 0;
 static unsigned char bonus_type   = 0;
 static unsigned char bonus_active = 0;
 static motion_acc_t  bonus_motion = {0, 0};
-static unsigned int  slow_ticks      = 0;
+/* Shared ball speed-up ramp counter (= the original's per-ball
+ * object+$13). Bumps every active ball's speed at $94; see the model
+ * comment above and ball_speed_ramp_tick(). */
+static unsigned int  ball_speed_ramp = 0;
 static unsigned int  big_bat_ticks   = 0;
 static unsigned int  big_ball_ticks  = 0;
 static int big_ball_active(void);    /* forward — defined below */
@@ -3679,7 +3687,14 @@ static void bonus_apply(unsigned char type) {
              * bat doesn't track it. */
             objects[OBJ_BAT_1].bonus_applied = 0xFF;
             objects[OBJ_BAT_2].bonus_applied = 0xFF;
-            slow_ticks = SLOW_DURATION;
+            /* Original LA67B_7: SLOW sets ALL ball speeds to $02 (the
+             * minimum) — `LD A,$02; LD (object_ball_1+$07),A` etc. It
+             * does NOT reset the speed-up ramp counter, so the ball
+             * starts climbing back toward $06 from the next $94 tick
+             * (SLOW wears off). */
+            objects[OBJ_BALL_1].speed = BALL_SPEED;
+            objects[OBJ_BALL_2].speed = BALL_SPEED;
+            objects[OBJ_BALL_3].speed = BALL_SPEED;
             break;
         case BONUS_TYPE_BIG_BAT:  big_bat_ticks  = BIG_BAT_DURATION;
                                   bat_extra_tgt  = BAT_BIG_EXTRA_PX;
@@ -3874,7 +3889,6 @@ static int eff_ball_size(void) { return BALL_W_PX; }
  * any active effect timers. */
 static void step_bonus(void) {
     int bat_left, bat_right;
-    if (slow_ticks    > 0) slow_ticks--;
     if (big_bat_ticks > 0) {
         big_bat_ticks--;
         if (big_bat_ticks == 0 || !big_bat_active()) {
@@ -4037,7 +4051,10 @@ static void try_spawn_bonus(int col, int row) {
          * bonus ~4x rarer in late levels (port of $9D6F's CP $06 /
          * JR C / AND $C0 / JR NZ chain). */
         if (code == 0x02 && (ball2_active || ball3_active)) continue;
-        if (code == 0x04 && slow_ticks > 0) continue;
+        /* Original generate_new_bonus re-rolls SLOW if a ball is already
+         * at the minimum speed $02 (it checks object_ball_N+$07 == $02).
+         * With the speed-ramp model, that's `primary ball speed <= base`. */
+        if (code == 0x04 && objects[OBJ_BALL_1].speed <= BALL_SPEED) continue;
         if (code == 0x05 && life_dropped_this_round) continue;
         if (code == 0x06 && rocket_active) continue;
         if (code == 0x06 && round_number >= 6
@@ -5096,6 +5113,23 @@ static unsigned char bat_deflect_dir(unsigned char dir, int offset,
 
 /* Step the ball one frame: handle wall + bat collisions. If the ball
  * exits the bottom of the playfield it respawns stuck on the bat. */
+/* Port of handling_ball LA27E_22 ($A6F2): advance the ball speed-up
+ * ramp once per frame. With C = counter_misc, object+$13 increments
+ * when (counter_misc & 7) == 0 (the block is only reached when
+ * counter_misc & 3 == 0), and at $94 it resets and speed (+$07)
+ * increments, capped at $06. We use one shared counter that bumps
+ * every active ball — all balls share the counter_misc phase and the
+ * TRIPLE_BALL spawn copies the primary's (already-ramped) speed, so
+ * they stay in step. Called once per frame during active play. */
+static void ball_speed_ramp_tick(void) {
+    if ((pit_frame_counter & 7UL) != 0) return;
+    if (++ball_speed_ramp != 0x94) return;
+    ball_speed_ramp = 0;
+    if (objects[OBJ_BALL_1].speed < 6) objects[OBJ_BALL_1].speed++;
+    if (ball2_active && objects[OBJ_BALL_2].speed < 6) objects[OBJ_BALL_2].speed++;
+    if (ball3_active && objects[OBJ_BALL_3].speed < 6) objects[OBJ_BALL_3].speed++;
+}
+
 static void step_ball(void) {
     int next_x, next_y;
     int dx_q8, dy_q8;
@@ -6271,7 +6305,7 @@ static void respawn_primary_ball(void) {
     objects[OBJ_BAT_2].bonus_applied = 0xFF;
     big_bat_ticks  = 0;
     big_ball_ticks = 0;
-    slow_ticks     = 0;
+    ball_speed_ramp = 0;     /* fresh life: ball restarts at base speed */
     bat_extra_tgt  = 0;
     bullet_cooldown = 0;       /* fresh life — no stale fire cooldown */
     /* Original LBC10 clears flag_extra_life on every life-loss (line
@@ -6409,7 +6443,7 @@ static state_t run_level(void) {
     lives = LIVES_INIT;
     live_adds_awarded = 0;
     bonus_active = 0;
-    slow_ticks = 0;
+    ball_speed_ramp = 0;
     big_bat_ticks = 0;
     big_ball_ticks = 0;
     bat_extra_px = 0;
@@ -6509,7 +6543,7 @@ static state_t run_level(void) {
         ball3_active   = 0;
         objects[OBJ_BALL_3].sprite_set = 0x82;
         pts_400_active = 0;
-        slow_ticks     = 0;
+        ball_speed_ramp = 0;
         big_bat_ticks  = 0;
         big_ball_ticks = 0;
         /* flag_extra_life is NOT cleared at level entry in original —
@@ -6725,23 +6759,25 @@ static state_t run_level(void) {
                         record_primary_launch();
                     }
                 } else if (BALL_VISIBLE) {
-                    int slow_skip = (slow_ticks > 0) && ((now & 1) == 0);
-                    if (!slow_skip) {
-                        step_ball();
-                        ball_moved = 1;
-                        if (launch_probe_active) {
-                            if (launch_probe_countdown > 0) launch_probe_countdown--;
-                            if (launch_probe_countdown == 0) {
-                                write_replay_probe();
-                                return ST_QUIT;
-                            }
+                    /* SLOW is now a ball-speed reset ($02), not a
+                     * frame-skip — handling_ball runs every frame in the
+                     * original; the speed byte (via dir_to_dxdy magnitude)
+                     * is what changes. So the ball always steps here. */
+                    ball_speed_ramp_tick();
+                    step_ball();
+                    ball_moved = 1;
+                    if (launch_probe_active) {
+                        if (launch_probe_countdown > 0) launch_probe_countdown--;
+                        if (launch_probe_countdown == 0) {
+                            write_replay_probe();
+                            return ST_QUIT;
                         }
-                        if (frame_probe_active) {
-                            if (frame_probe_countdown > 0) frame_probe_countdown--;
-                            if (frame_probe_countdown == 0) {
-                                write_replay_probe();
-                                return ST_QUIT;
-                            }
+                    }
+                    if (frame_probe_active) {
+                        if (frame_probe_countdown > 0) frame_probe_countdown--;
+                        if (frame_probe_countdown == 0) {
+                            write_replay_probe();
+                            return ST_QUIT;
                         }
                     }
                 }
@@ -6756,16 +6792,12 @@ static state_t run_level(void) {
                 if (bat_fire_anim_ticks) bat_fire_anim_ticks--;
                 if (bullet_cooldown >= 2) bullet_cooldown -= 2;     /* SUB \$02 / frame */
                 else bullet_cooldown = 0;
-                /* SLOW affects ALL balls in the original (sets ball_1/2/3
-                 * speed bytes simultaneously) — mirror by gating extras
-                 * on the same slow_skip half-frame the primary uses. */
-                {
-                    int extras_slow_skip = (slow_ticks > 0) && ((now & 1) == 0);
-                    if (!extras_slow_skip) {
-                        step_ball2();
-                        step_ball3();
-                    }
-                }
+                /* SLOW affects ALL balls in the original (sets the
+                 * ball_1/2/3 speed bytes to $02 simultaneously); now
+                 * modeled via the speed byte, so the extras simply step
+                 * every frame too (their speed magnitude reflects SLOW). */
+                step_ball2();
+                step_ball3();
                 /* Mirror LBAED's ordering: object_rocket is checked
                  * before balls_quantity, and an active rocket jumps to
                  * the rocket loop instead of LBC10's bat-explosion

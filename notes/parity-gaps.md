@@ -70,31 +70,13 @@ Several paths use gameplay-equivalent but not byte-exact motion:
   the note.
 - big-bat resize timing is matched visually but not a literal port of
   the original bit-gated state machine.
-- **progressive ball speed-up + SLOW semantics** (gameplay, now fully
-  decoded). The original ball ACCELERATES over a level: in `handling_ball`
-  at `LA27E_22`, with `C = counter_misc`, `ball+$13` increments when
-  `(counter_misc & $07) == 0` (every 8 frames — the block is only reached
-  when `counter_misc & $03 == 0`), and when `ball+$13` reaches `$94` (148)
-  it resets and `speed++` capped at `$06`. So the ball speed climbs `$02 →
-  $06`, one step every ~1184 frames (~24 s at 50 fps), per ball
-  (each ball runs `handling_ball`). **SLOW** ($04, `LA67B_7`) just sets all
-  ball speeds back to `$02` (`LD (object_ball_N+$07),$02`) — it is NOT a
-  timed effect; it simply resets the climb, so SLOW naturally **wears off**
-  as the speed ramps back up.
-  The port instead uses a **fixed `BALL_SPEED = $02`** (never incremented)
-  plus a **separate `slow_ticks` frame-skip** for SLOW (modeled as
-  permanent via `SLOW_DURATION = 0xFFFF`). Consequences: (a) the port's
-  ball never gets faster within a level (the original ramps to 2× base —
-  a real difficulty/feel difference on long levels), and (b) SLOW in the
-  port is a half-rate frame-skip that lasts the whole life rather than a
-  speed reset that wears off. This is byte-safe for the 150-frame
-  `test-laffc-ball-frame1` gate (the first `speed++` is at frame ~1184,
-  far beyond it), so it can't be validated by that gate — a long-horizon
-  trace would be needed. Faithfully porting it means switching the ball to
-  the original's single variable-`speed` model ($02–$06) driving
-  `dir_to_dxdy`'s magnitude, with the `ball+$13`/`$94` ramp counter and
-  SLOW resetting `speed` to `$02` (replacing the frame-skip) — a focused
-  ball-speed refactor, deferred as a deliberate sub-project.
+- **progressive ball speed-up + SLOW semantics** — DONE (2026-06-05; see
+  parity-status.md "Ball speed-up + SLOW"). The port now models the
+  original's accelerating ball (`$02 → $06` via the `ball+$13`/`$94` ramp
+  counter on the 8-frame `counter_misc & 7` cadence) and SLOW as a
+  ball-speed reset to `$02` (wears off as the speed climbs back), replacing
+  the old fixed-speed + permanent-frame-skip approximation. All gates stay
+  green (byte-exact ball gate, 5 visual states, 14/14 bat deflection).
 - **enemy sprite animation / facing** (cosmetic). The enemy *motion*,
   *steering* (`LAA7D`), *brick collision* (`LAFFC`), *margins*, and *bomb
   drop* (`bomb_appear`, see parity-status.md) are all ported faithfully,
