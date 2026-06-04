@@ -712,3 +712,28 @@ Net: the bat-deflection avenue is, concretely and after multiple
 attempts, blocked behind a real gameplay-capture effort — same wall as
 multi-ball and non-L3. The shipped byte-exact-on-L3 gameplay parity
 (motion + brick collision) stands as the delivered milestone.
+
+### Update 25 (2026-06-04): launch deflection VALIDATED via the round-init state
+
+The `l3-entry` setup (round-init, no ball poke) leaves a **coherent**
+stuck ball on the bat — usable, unlike the hung bat-bounce poke (U22).
+Used it to validate a bat-related deflection: the level-entry
+**auto-launch direction**.
+
+- Original (l3-entry, frame ~195, past the 192-frame auto-launch): stuck
+  ball at x=128 (offset 12 on the bat at x=116), launches **dir 0x34**.
+- Port (L3 entry, default stuck ball, auto-launch): launches **dir 0x34**.
+
+So the launch deflection **matches the Spectrum** — another bat-related
+behaviour confirmed byte-correct, joining motion + brick collision.
+
+Open sub-finding: the port's stuck-ball offset is 16 (x=132) vs the
+original's 12 (x=128) — a 4 px difference, with the original settling
+132→128 in frame 1 while the port stays at 132. The auto-launch dir is
+the same (0x34) for both offsets, and the static state4 test passes (the
+port matches the GT's rendered stuck position), so this is likely a
+frame-phase sampling difference ($BA83 loop-top vs the port's visual-
+probe phase) rather than a real position gap — confirm with a same-phase
+capture before treating it as a bug. Method note: usable validation
+states CAN be reached from the round-init (`l3-entry`) without a new
+snapshot; the hang (U22) was specific to incoherent hand-pokes.
