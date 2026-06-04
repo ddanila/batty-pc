@@ -45,24 +45,27 @@ metal_brik_anim:
 shimmers forever** (cycling those 8 brick appearances, 2 ticks each). That
 permanent cycle is what the earlier notes saw as a "constant animation".
 
-## Port status + implementation path
+## Port status — FIXED (was: stopped after one pass)
 
-The port has the scaffolding stubbed: `brick_flash_*` slot vars and
-`render_brick_flash_to_buff()` — currently a no-op (`(void)` casts). To
-close the residual:
+The port already had the system (`brick_hit_anim`: 5 slots, the
+`{2,6,3,7,4,5,5,1}` `anim_brik` order, per-frame render into `scr_buff`,
+registered from the undestructible/multi-hit paths in `brick_hit_resolve`)
+— so it was NOT a no-op (the no-op `render_brick_flash` is the separate
+destruction marker). The bug was **timing**: `step_brick_hit_anim` freed
+the slot once `tick > BRICK_HIT_ANIM_TICKS` (16), so the shimmer played a
+single 8-frame pass and stopped. The original never stops: the counter
+only wraps `(c+1) & $0F` and the slot is freed solely when the brick cell
+gets bit 7 (destroyed).
 
-1. Replace the single `brick_flash` slot with **5 shimmer slots** (col,
-   row, counter), registered when the ball bounces off an undestructible
-   brick (the `BIT 5` / undestructible branch in `brick_hit_resolve` /
-   the LAFFC undestructible path).
-2. Each frame, for each active slot, draw `anim_brik[(counter+1)&$FE >>1]`
-   — i.e. the brick sprite `{2,6,3,7,4,5,5,1}[frame]` — at the brick's
-   cell, then `counter = (counter+1) & $0F`. The port already renders
-   brick sprites, so this reuses the existing brick blit at the cell xy.
-3. Never free the slot (metal cell never destroyed); 5 slots cap matches
-   the original (first 5 hit metal bricks shimmer).
+Fixed `step_brick_hit_anim` to **cycle the counter forever** (wrap 1..16)
+and free a slot only when its cell is destroyed (bit 7) or gone — so a hit
+metal brick (never destructible) sparkles permanently, and a multi-hit
+brick shimmers until its final hit, matching `metal_brik_anim`.
 
-This is a self-contained render feature (no gameplay effect, no RNG, no
-collision change), so it won't touch the byte-exact ball gate; it only
-needs its own visual check against a ZEsarUX L3 capture. Scoped as the
-next implementation step.
+Self-contained render change (no gameplay/RNG/collision effect):
+byte-exact L3 ball gate still byte-exact, `make test` still
+pixel-identical. The dedicated `test-brick-flash` visual check is
+currently blocked by an unrelated harness issue (QEMU returns a 720x400
+screenshot vs the script's expected 640x400), so the looping shimmer
+hasn't been pixel-diffed against ZEsarUX yet — that capture is the
+remaining confirmation.

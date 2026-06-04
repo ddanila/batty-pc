@@ -5940,9 +5940,24 @@ static void step_brick_hit_anim(void) {
     int i;
     for (i = 0; i < BRICK_HIT_ANIM_SLOTS; i++) {
         if (!brick_hit_anim_ticks[i]) continue;
-        if (++brick_hit_anim_ticks[i] > BRICK_HIT_ANIM_TICKS) {
-            brick_hit_anim_ticks[i] = 0;
+        /* Free the slot only when the brick is destroyed (cell bit 7) —
+         * metal_brik_anim's `BIT 7,(HL) -> mark slot free`. An
+         * undestructible (metal) brick is never destroyed, so it
+         * shimmers PERMANENTLY once hit; a multi-hit brick shimmers until
+         * its final hit sets bit 7. */
+        {
+            int col = brick_hit_anim_col[i];
+            int row = brick_hit_anim_row[i];
+            if (row >= LVL_ROWS || col >= LVL_COLS
+                || (live_level[row * LVL_COLS + col] & 0x80)) {
+                brick_hit_anim_ticks[i] = 0;
+                continue;
+            }
         }
+        /* Cycle the 8-frame (x2-tick) counter forever instead of stopping
+         * after one pass — matches the original counter `(c+1) & $0F`. */
+        if (++brick_hit_anim_ticks[i] > BRICK_HIT_ANIM_TICKS)
+            brick_hit_anim_ticks[i] = 1;
     }
 }
 
