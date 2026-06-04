@@ -190,6 +190,21 @@ and `laffc-decode.md` for the detailed trail.
   ground-truth capture. With this, ALL 11 object handlers
   ($01–$0B: bat, ball, screen-elements, bonus, bullet, rocket, spark,
   ufo, bird, blast, 400pts) have been surveyed against the disasm.
+- **SMASH bonus** ($07, `spr_bonus_smash` → the port's BIG_BALL) — the
+  last un-verified bonus effect, confirmed faithful. (1) **Bigger ball**:
+  renders `SPR_BIG_BALL` with the enlarged collision body. (2)
+  **Plough-through**: `laffc_collision`/`brick_hit_resolve` sets `axis = 0`
+  when `big_ball_active()` (= bat `bonus_applied == $07`), so the ball
+  destroys the brick and does NOT bounce — the destroyed cell (`|= $80`)
+  also makes the `brick_collision` fallback return 0, so no stray bounce.
+  Matches the original `LAFFC_32 → LAFFC_38/_39` (destroy without reflect,
+  keep trajectory). (3) **Duration**: original `smash_counter` increments
+  only on EVEN `counter_misc` (`RRA; JR C`) and expires at `$F8` (248) ≈
+  496 frames; the port's `big_ball_ticks` decrements every other tick from
+  `BIG_BALL_DURATION = 0xF8`, clearing `bonus_applied → $FF` on expiry —
+  matching. With this, ALL bonus effects are verified ($00 BIG bat
+  [resize approx], $01 LASER, $02 TRIPLE, $03 MAGNET, $04 SLOW, $05 LIFE,
+  $06 ROCKET, $07 SMASH, $08 +5000, $09 KILL_ALIENS).
 - **Regression guards** — `make test-laffc-ball-frame1` (ZEsarUX-free)
   locks the L3 frame-1 ball to the Spectrum probe; the 5-checkpoint +
   per-level static suite (`make test`) stays green.
