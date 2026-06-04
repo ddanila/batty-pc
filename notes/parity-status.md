@@ -112,6 +112,27 @@ and `laffc-decode.md` for the detailed trail.
   the `unsigned char` BAT_X can't wrap), so the bat rests exactly at the
   margin like the original. Clamp targets verified equal: left `$08`,
   right `248 - body_w` (= 220 for the 28-px body).
+- **Bonus economy** (drop rate + type distribution) — byte-exact vs
+  `generate_new_bonus` ($9D5A) + the LAFFC brick-destroy drop gate.
+  (1) **Drop gate**: a brick drops a bonus iff `(random_number+$01 & $0F)
+  < 5` (= 5/16 ≈ 31%; original `AND $0F; CP $05; CALL C,set_bonus`),
+  read-current — the port matches via `rng_sample` (no RNG advance).
+  (2) **Table selection**: `round_number_1up < 6 → bonus_table_first`,
+  else `bonus_table_second` (original `CP $06; JR C`), matched by the
+  port's `round_number >= 6 ? second : first`. (3) **Tables**: both
+  32-byte tables match the original byte-for-byte (the original `LDIR`s
+  only the first 16 into `bonus_table_current` and indexes with `& $0F`,
+  so the upper 16 are vestigial in both; the port keeps them for
+  fidelity). (4) **Type pick**: re-rolls via `random_generate` each retry,
+  `idx = (rng_hi & $0F)`; rejects a pick equal to `current_bonus` — and
+  `current_bonus` is set from `object_bat_1+$14` (= `bat.bonus_applied`)
+  at $9D5A, so the port's `code == bat.bonus_applied` reject is
+  byte-faithful, NOT an approximation. Per-type rejects (TRIPLE if >1
+  ball, SLOW if a ball is already slowest, LIFE if dropped this round,
+  ROCKET if active + the round-6 `& $C0` rarity gate) all mirror the
+  original. Minor: the port caps the retry loop at 16 (the original loops
+  until a valid pick); with the populated tables this effectively always
+  succeeds.
 - **Regression guards** — `make test-laffc-ball-frame1` (ZEsarUX-free)
   locks the L3 frame-1 ball to the Spectrum probe; the 5-checkpoint +
   per-level static suite (`make test`) stays green.

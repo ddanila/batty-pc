@@ -4019,10 +4019,13 @@ static void try_spawn_bonus(int col, int row) {
         unsigned char idx = (unsigned char)(random_hi(rnd) & 0x0F);
         unsigned char code = tbl[idx];
         unsigned char mapped;
-        /* Original generate_new_bonus at $9DFE re-rolls when the picked
-         * bonus matches the bat's currently-applied bonus (= LASER /
-         * CATCH / KILL_ALIENS — the ones tracked in bat.bonus_applied).
-         * Prevents back-to-back duplicates of the same bat effect. */
+        /* Original generate_new_bonus re-rolls when the picked bonus
+         * equals `current_bonus`. The setup at $9D5A sets
+         * `current_bonus = (object_bat_1+$14)` (= bat.bonus_applied) just
+         * before generating (the 2-player path uses object_bat_2+$14), so
+         * comparing to bat.bonus_applied here is byte-faithful, not an
+         * approximation. Prevents back-to-back duplicates of the same bat
+         * effect. */
         if (code == objects[OBJ_BAT_1].bonus_applied) continue;
         /* Per-type exclusions from L9D5A_2..L9D5A_9:
          *   $02 (TRIPLE_BALL): skip if extra balls already in play
