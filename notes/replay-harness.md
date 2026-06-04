@@ -131,6 +131,24 @@ required equality. Two plausible paths for the capture timing remain:
   on each side. Requires a port-side PIT-tick step hook (pause, run
   N frames, pause again) and a matching ZEsarUX breakpoint on the
   Z80 frame-interrupt vector.
+
+  **Port side landed (2026-06-04).** `BATTY_VISUAL_PROBE_FRAMES` now
+  accepts a comma-separated list of *ascending absolute frame indices*
+  (e.g. `30,60,90`) instead of a single count. The port runs to each
+  checkpoint in turn, writes `PROBE.TXT`, then halts on `kbhit()` so
+  the harness can grab a deterministic, drift-free capture; the wake
+  key resumes play toward the next checkpoint, and the port quits after
+  the last one so QEMU exits cleanly. A single value (`90`) reproduces
+  the original single-shot behaviour exactly, so existing callers are
+  unaffected (the 5-checkpoint + per-level static regression still
+  passes). Values not strictly greater than their predecessor are
+  dropped, and the list is capped at `VISUAL_PROBE_MAX` (16) entries.
+  This is the port half of the frame-step sweep: a single boot can now
+  yield a *timeline* of byte-deterministic mid-game frames rather than
+  one capture-and-quit. Still open: a `replay_harness.py` capture mode
+  that sends one wake key per checkpoint and screenshots between them,
+  and the matching ZEsarUX frame-interrupt breakpoint so the original
+  side steps the same frame counts.
 - **Trampoline pauses between captures.** Reuse the existing
   `BATTY_REPLAY_WAIT_KEY` mechanism but rearm the port for a second
   pause at a known game-state point (e.g. after the first brick hit),

@@ -633,7 +633,16 @@ static unsigned char launch_probe_active = 0;
 static unsigned int  frame_probe_frames = 0;
 static unsigned int  frame_probe_countdown = 0;
 static unsigned char frame_probe_active = 0;
-static unsigned int  visual_probe_frames = 0;
+/* Deterministic mid-game capture checkpoints. BATTY_VISUAL_PROBE_FRAMES
+ * is a comma-separated list of ascending absolute frame indices; the
+ * port runs to each in turn, halts (so the harness can grab a drift-free
+ * capture), resumes on a key, and quits after the last. A single value
+ * reproduces the original single-shot behaviour. This is the port side
+ * of the frame-step parity sweep (see notes/replay-harness.md). */
+#define VISUAL_PROBE_MAX 16
+static unsigned int  visual_probe_list[VISUAL_PROBE_MAX];
+static unsigned char visual_probe_count = 0;
+static unsigned char visual_probe_index = 0;
 static unsigned int  visual_probe_countdown = 0;
 static unsigned char visual_probe_active = 0;
 /* Offset from BAT_X where the ball sits while stuck. Defaults to
@@ -5987,9 +5996,27 @@ static state_t run_level(void) {
         frame_probe_countdown = frame_probe_frames;
         frame_probe_active = (frame_probe_frames != 0) ? 1 : 0;
         p = getenv("BATTY_VISUAL_PROBE_FRAMES");
-        visual_probe_frames = (p && *p) ? (unsigned int)atoi(p) : 0;
-        visual_probe_countdown = visual_probe_frames;
-        visual_probe_active = (visual_probe_frames != 0) ? 1 : 0;
+        visual_probe_count = 0;
+        visual_probe_index = 0;
+        if (p && *p) {
+            /* Comma-separated ascending absolute frame indices. Values
+             * not strictly greater than the previous one are dropped so
+             * the per-checkpoint countdown deltas stay positive. */
+            unsigned int prev = 0;
+            while (*p && visual_probe_count < VISUAL_PROBE_MAX) {
+                unsigned int v;
+                while (*p == ',' || *p == ' ') p++;
+                if (*p == '\0') break;
+                v = (unsigned int)atoi(p);
+                if (v > prev) {
+                    visual_probe_list[visual_probe_count++] = v;
+                    prev = v;
+                }
+                while (*p && *p != ',') p++;
+            }
+        }
+        visual_probe_active = (visual_probe_count != 0) ? 1 : 0;
+        visual_probe_countdown = visual_probe_active ? visual_probe_list[0] : 0;
     }
 
     /* The original loops levels forever (increment_round_number at
@@ -6380,12 +6407,24 @@ static state_t run_level(void) {
             if (visual_probe_active && frame_ticked) {
                 if (visual_probe_countdown > 0) visual_probe_countdown--;
                 if (visual_probe_countdown == 0) {
+                    /* Reached a checkpoint: write the probe, then halt so
+                     * the harness can grab a deterministic capture. The
+                     * wake key resumes play toward the next checkpoint;
+                     * after the final one we quit so QEMU exits cleanly.
+                     * A single-value probe has count==1 and quits here,
+                     * exactly as the original single-shot path did. */
                     write_replay_probe();
                     while (!kbhit()) {
                         sound_tick();
                     }
                     (void)getch();
-                    return ST_QUIT;
+                    visual_probe_index++;
+                    if (visual_probe_index >= visual_probe_count) {
+                        return ST_QUIT;
+                    }
+                    visual_probe_countdown =
+                        visual_probe_list[visual_probe_index]
+                        - visual_probe_list[visual_probe_index - 1];
                 }
             }
 
