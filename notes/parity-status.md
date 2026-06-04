@@ -67,6 +67,26 @@ and `laffc-decode.md` for the detailed trail.
    side aligned-seed recipe per scenario (as `replay-l3-brick-flash`
    does for L3). This is the substantive next investment.
 
+## "Construct scenarios from the existing snapshot" — investigated, not viable
+
+To validate the next items (bat deflection, etc.) I tried building new
+test states by re-poking the ball in the L3 snapshot. Findings (2026-06-04):
+
+- The **raw** L3 snapshot (`20260513T202101Z`) has no usable ball — all
+  three ball objects read placeholder `(x=2,y=2)`. The only coherent ball
+  state is the carefully-built 22-byte `l3-brick-flash` `$9AD0` poke.
+- Modifying that poke by even 3 bytes (x/y/dir, to drop the ball onto the
+  bat) makes the original **hang** in an interrupt-disabled loop — the
+  object state is no longer coherent.
+
+So validation scenarios **cannot** be synthesized cheaply from the
+existing snapshot. New scenarios (ball-onto-bat, multi-ball, other
+levels) require either a **real captured snapshot** at that moment or a
+fully coherent hand-built 22-byte descriptor — i.e. driving the original
+(ZRCP input) into the desired state and dumping RAM. That capture +
+port-seed-alignment pipeline is the substantive unblock for all remaining
+items, and is a deliberate project to greenlight, not an autonomous step.
+
 ## Bottom line
 
 The hard core of the parity goal — exact ball motion and brick collision
