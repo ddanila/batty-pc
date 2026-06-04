@@ -71,6 +71,17 @@ read-current consumers converted first: in L3 the ball is breaking bricks,
 so bonus-drop RNG consumers fire and shift `random_number` between frames;
 until they read-current too, the enemy's repick value won't match.
 
+## Spawn heading fixed (dir/target = $10)
+
+`enemy_prepare` ($9EAA) sets the spawned enemy's `dir` (+$06) AND target
+(+$14) to **$10 unconditionally** — it always enters heading straight
+down, then steers. The port had derived `dir = (r & 1) ? 0x38 : 0x08`
+from the spawn random, putting the enemy on a diagonal it never has on
+the Spectrum. Fixed to `dir = 0x10`, `bonus_applied = 0x10` (ground truth
+confirms frame-0 dir = 0x10). Both gates stay green (the enemy isn't in
+the byte-exact ball path or the captured visual states). The spawn x is
+`prop_x_coord[random_number & 3]` = {64,168,64,168}, read-current.
+
 ## Port status
 
 `handling_bird_obj` already matches the cadence (turn every 4 frames,

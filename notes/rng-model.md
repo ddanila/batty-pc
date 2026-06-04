@@ -77,10 +77,14 @@ Kept on `next_random()` (advance — original `CALL random_generate` first):
 - bonus TYPE pick (`generate_new_bonus`: re-`CALL`s `random_generate` each
   retry, so each iteration advances)
 
-Still to classify/convert: alien-blast sound noise tone (~3298), the 400pts
-marker X-drift (`$3030`, ~3931), `enemy_prepare` spawn (`~4572`). These fire
-rarely (ball-lost / marker spawn / enemy spawn) so they pollute the enemy
-sequence less, but are needed for full byte-exactness.
+- `enemy_prepare` spawn X (`$9EAA`: `LD A,(random_number)/AND $03`, no
+  advance) — read-current. (Same edit also fixed the spawn dir/target to
+  $10, see notes/enemy-movement.md.)
+
+Still to classify/convert: alien-blast sound noise tone (~3298) and the
+400pts marker X-drift (`$3030`, ~3931). Both fire rarely (ball-lost /
+marker spawn) so they pollute the enemy sequence little, but are needed
+for full byte-exactness before the flag-on enemy acceptance test.
 
 ## Alignment plan (deliberate; not a single safe edit)
 

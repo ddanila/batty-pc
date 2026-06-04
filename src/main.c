@@ -4569,12 +4569,18 @@ static void enemy_prepare(void) {
     e->speed = prop[5];
     e->sprite_num = 0;
     e->y_coord = 0;
-    r = (unsigned char)(random_lo(next_random()) & 3);
+    /* Original enemy_prepare ($9EAA): x = prop_x_coord[random_number & 3]
+     * (read-current, no advance -> rng_sample), then dir = $10 and
+     * target (+$14) = $10 UNCONDITIONALLY. The enemy spawns heading
+     * straight down and steers from there (ground truth: frame-0 dir =
+     * 0x10). The port had derived dir from `r` (0x38/0x08), which spawned
+     * it on a diagonal it never has on the Spectrum. */
+    r = (unsigned char)(random_lo(rng_sample()) & 3);
     e->x_coord = prop_x_coord[r];
     e->x_coord_hi = 0;
     e->y_coord_hi = 0;
-    e->dir = (r & 1) ? 0x38 : 0x08;   /* down-left / down-right */
-    e->bonus_applied = e->dir;
+    e->dir = 0x10;             /* LD (IX+$06),$10 */
+    e->bonus_applied = 0x10;   /* LD (IX+$14),$10 — initial target */
 }
 
 /* Port of kill_enemy_by_bat at $A4B8 / kill_enemy at $A4C4. AABB check
