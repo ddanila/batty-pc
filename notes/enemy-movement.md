@@ -92,6 +92,27 @@ the byte-exact ball path or the captured visual states). The spawn x is
   target` now repicks when `dir == target` (LAA7D_1), reading the current
   RNG low byte (`random_e & 0x3F`) without advancing — faithful to LAA7D.
 
+## Turn cadence now gates on the GLOBAL frame counter
+
+The original gates the steer on the global `counter_misc`
+(`LD A,(counter_misc); AND $03; CALL Z,LAA7D`), so every enemy turns on
+the same global 4-frame phase. The port gated on the per-object
+`o->misc_12 & 3`, whose phase is spawn-relative (and whose object byte
+`+$12` is the *sprite address* in the original, not a turn counter). Fixed
+to gate on `pit_frame_counter & 3` (the port's per-frame PIT counter = the
+original's `counter_misc`); `misc_12` still drives the sprite animation.
+
+## Enemy seed for the flag-on acceptance test
+
+L3 enemy at frame 0 (probed, 22 bytes):
+`0900A80001001001030FDA35180C00000000F0701000`
+(type $09 bird, x=$A8=168, y=1, dir=$10, speed=1, target +$14=$10). Seed
+via `BATTY_REPLAY_ENEMY_OBJECT` with `BATTY_RNG_PERFRAME=1` + RNG 8E49 to
+run the acceptance test (expect target -> 0x2C at frame ~10). NOTE: the
+seeded `+$12` is the original's sprite-addr high byte, which the port reads
+as `misc_12`; with the cadence now on `pit_frame_counter` that no longer
+affects steering, but seeded byte semantics still need care.
+
 ## Still approximate / not byte-exact
 
 - **RNG model.** The original advances `random_number` every frame (a

@@ -989,6 +989,10 @@ static unsigned char map_orig_to_our_bonus(unsigned char code) {
 /* Forward decls - defined below in the enemy section. */
 static unsigned int next_random(void);
 static unsigned int rng_sample(void);   /* defined later; used by enemy steering */
+/* Global per-frame counter (PIT IRQ; = the original's counter_misc).
+ * Forward declaration: the definition (with init) is near the IRQ setup;
+ * the enemy steering reads it for its global 4-frame turn cadence. */
+static volatile unsigned long pit_frame_counter;
 static unsigned char random_hi(unsigned int r) { return (unsigned char)(r >> 8); }
 static unsigned char random_lo(unsigned int r) { return (unsigned char)r; }
 extern unsigned char round_number;
@@ -1968,10 +1972,16 @@ static void handling_bird_obj(object_t *o) {
     o->misc_12++;
     o->sprite_num = (unsigned char)((o->misc_12 >> 2) % 3);
     bomb_appear(o);
-    /* LAA7D is called every 4 frames (counter_misc & 3 == 0); it also
-     * handles target refresh on arrival, so no separate timer-based pick
-     * (the old `misc_12 & 0x3F` random re-target was not in the original). */
-    if ((o->misc_12 & 0x03) == 0) enemy_turn_towards_target(o);
+    /* Steer every 4 frames. The original gates on the GLOBAL counter_misc
+     * (`LD A,(counter_misc); AND $03; CALL Z,LAA7D`), not a per-object
+     * counter, so all enemies turn on the same global 4-frame phase. Use
+     * the port's per-frame counter (pit_frame_counter, = the original's
+     * counter_misc) instead of o->misc_12, whose phase was spawn-relative
+     * (and whose object byte +$12 is the sprite address in the original,
+     * not a turn counter). LAA7D also refreshes the target on arrival, so
+     * there is no separate timer-based random re-target. */
+    if (((unsigned long)pit_frame_counter & 0x03UL) == 0)
+        enemy_turn_towards_target(o);
     enemy_dir_delta_q8(o->dir, o->speed, &dx_q8, &dy_q8);
     nx_q8 = ((long)o->x_coord << 8) + o->x_coord_hi + dx_q8;
     ny_q8 = ((long)o->y_coord << 8) + o->y_coord_hi + dy_q8;
