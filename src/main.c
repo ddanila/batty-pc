@@ -1883,13 +1883,20 @@ static void ball_dir_delta_q8(unsigned char dir, unsigned char speed,
     dir_to_dxdy(dir, speed, dx_q8, dy_q8);
 }
 
-static void ball_reflect_descriptor(int flip_x, int flip_y) {
-    int dx_q8, dy_q8;
-    unsigned char dir = objects[OBJ_BALL_1].dir;
+/* Wall reflect for ANY ball object: flip the 6-bit dir about the X and/or
+ * Y axis (the original's wall-bounce dir mapping). Shared by the primary
+ * and (once unified) the multi-ball secondaries. */
+static void reflect_obj_dir(object_t *o, int flip_x, int flip_y) {
+    unsigned char dir = o->dir;
     if (flip_x) dir = (unsigned char)((0x3F - dir) & 0x3F);
     if (flip_y) dir = (unsigned char)((0x1F - dir) & 0x3F);
-    objects[OBJ_BALL_1].dir = dir;
-    ball_dir_delta_q8(dir, objects[OBJ_BALL_1].speed, &dx_q8, &dy_q8);
+    o->dir = dir;
+}
+static void ball_reflect_descriptor(int flip_x, int flip_y) {
+    int dx_q8, dy_q8;
+    reflect_obj_dir(&objects[OBJ_BALL_1], flip_x, flip_y);
+    ball_dir_delta_q8(objects[OBJ_BALL_1].dir, objects[OBJ_BALL_1].speed,
+                      &dx_q8, &dy_q8);
     ball_dx = (dx_q8 < 0) ? -1 : (dx_q8 > 0 ? 1 : 0);
     ball_dy = (dy_q8 < 0) ? -1 : (dy_q8 > 0 ? 1 : 0);
 }
@@ -4057,7 +4064,7 @@ static void render_brick_flash_to_buff(void) {
 }
 
 static int brick_hit_resolve(int col, int row, int axis);
-static int laffc_collision(int prev_x, int prev_y, int new_x, int new_y);
+static int laffc_collision(object_t *o, int prev_x, int prev_y, int new_x, int new_y);
 
 static int brick_collision(int prev_x, int prev_y, int new_x, int new_y) {
     int sz = eff_ball_size();
@@ -4178,8 +4185,7 @@ static unsigned char laffc_change_dir(unsigned char dir, unsigned char mask) {
  * penetration-depth corner case (LAFFC_21-25) and exact change_direction
  * masks are still approximated by brick_hit_resolve's axis reflect;
  * refined in later iterations against the frame-step gate. */
-static int laffc_collision(int prev_x, int prev_y, int new_x, int new_y) {
-    object_t *o = &objects[OBJ_BALL_1];
+static int laffc_collision(object_t *o, int prev_x, int prev_y, int new_x, int new_y) {
     int h = o->h_body_px;
     unsigned char dir = o->dir;
     int row = -1, Hy = 0, col = 0, Lx = 0x08, mask, rem = 0;
@@ -5219,7 +5225,7 @@ static void step_ball(void) {
              * a brick it failed to resolve (e.g. an unported two-cell
              * straddle on a layout other than L3). On L3 LAFFC handles the
              * hit, so the fallback never triggers and parity is unchanged. */
-            hit = laffc_collision(BALL_X, BALL_Y, next_x, next_y);
+            hit = laffc_collision(&objects[OBJ_BALL_1], BALL_X, BALL_Y, next_x, next_y);
             if (hit == 0) hit = brick_collision(BALL_X, BALL_Y, next_x, next_y);
         } else {
             hit = brick_collision(BALL_X, BALL_Y, next_x, next_y);

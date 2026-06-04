@@ -186,12 +186,31 @@ non-magnet path is byte-identical and `make test` is unaffected).
 3. Unify the multi-ball secondaries (`step_extra_ball`) onto the exact
    q8.8 + LAFFC + LAB1F model — see the blocker below.
 
-## Multi-ball secondaries — partial fix + capture blocker
+## Multi-ball secondaries — unification IN PROGRESS
 
 `step_extra_ball` (the TRIPLE_BALL extras, `object_ball_2/3` @ $9AE6/$9AFC)
 still uses integer motion + the 5-zone deflection, where the original runs
-the *same* `handling_ball` (q8.8 + LAFFC + LAB1F) for every ball. Two
-parts:
+the *same* `handling_ball` (q8.8 + LAFFC + LAB1F) for every ball. Unifying
+it onto the validated primary code (correct by construction — one
+`handling_ball` for all balls) is now underway:
+
+- **Spawn already correct:** the TRIPLE_BALL spawn already derives the
+  extras' directions (`ball2_dir`/`ball3_dir` via the `q|$08/$0C/$04`
+  logic = the original `$080C` table) — the hard part is done; it just
+  also converts them to the legacy integer `ball2_dx/dy`.
+- **Step 1 DONE (enabling refactor, zero behaviour change, ball gate
+  byte-exact):** generalized `laffc_collision` to take an `object_t *o`
+  (was hardcoded `OBJ_BALL_1`), and extracted `reflect_obj_dir(o,flip_x,
+  flip_y)` from `ball_reflect_descriptor`. Both now work for any ball.
+- **Remaining:** rewrite `step_extra_ball` to mirror `step_ball` — store
+  the dir in `objects[obj_idx].dir` at spawn, move via `dir_to_dxdy` +
+  q8.8 (`x/y_coord_hi`), wall-bounce via `reflect_obj_dir`, brick via
+  `laffc_collision(o,…)`, bat via `bat_deflect_dir` — and drop the integer
+  `ball2_dx/dy` model. Validate via the liveness sweep + the (unaffected)
+  primary ball gate; byte-exact is correct-by-construction (no multi-ball
+  reference needed since it reuses the validated primary path).
+
+Two earlier parts:
 
 - **Done now:** the secondaries' bat-contact Y geometry had the same
   width-vs-height bug as the primary (fired at `next_y + 8 >= bat_top`,
