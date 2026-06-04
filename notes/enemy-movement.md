@@ -113,6 +113,45 @@ seeded `+$12` is the original's sprite-addr high byte, which the port reads
 as `misc_12`; with the cadence now on `pit_frame_counter` that no longer
 affects steering, but seeded byte semantics still need care.
 
+## Flag-on acceptance test — run, does NOT yet match byte-exact
+
+Seeded the L3 enemy + `BATTY_RNG_PERFRAME=1` + RNG 8E49 and probed
+`object_enemy`:
+
+```
+frame 8 : x=168 y=8 dir=0x10 target=0x10   (matches: descending straight)
+frame 11: x=171 y=8 dir=0x10 target=0x03   (orig repicks 0x2C, port 0x03)
+frame 14: x=174 y=8 dir=0x0F target=0x03
+```
+
+Two residual discrepancies, both needing deeper investigation:
+
+1. **RNG value at repick.** The on-arrival repick reads `0x03`, not the
+   original's `0x2C`. So the per-frame tick + read-current model does not
+   reproduce the original's `random_number` at that frame. Likely causes:
+   the port's per-frame-tick *count* differs from the original's
+   `counter_misc` at the seeded start (frame-origin phase), and/or the L3
+   bonus-drop TYPE pick (which legitimately advances) fires on different
+   frames than the original because earlier RNG already diverged. The
+   seed-walk being aligned by design is necessary but not sufficient — the
+   *number of advances before the read* must also match.
+2. **Seeded-enemy motion.** y sticks at 8 while x drifts ~+1/frame, unlike
+   the captured original (clean descent y=1->27). The port's own
+   enemy_prepare-spawned enemy descends fine; this looks like a seeding
+   artifact (the 22-byte seed carries object-internal fields whose port
+   semantics differ — e.g. the sprite-addr bytes the port reads as
+   misc_*), not a steering bug, but it means a *seeded* trajectory isn't a
+   clean reference.
+
+Conclusion: the enemy steering is now a faithful STRUCTURAL port (spawn
+$10, bit-5 turn, global 4-frame cadence, refresh-on-arrival, read-current
+RNG) — visually correct — but BYTE-EXACT enemy targets are not yet
+achieved. Closing the gap needs frame-by-frame RNG-evolution comparison
+(port vs original `random_number`) to find where the advance count
+diverges, plus a clean enemy reference that doesn't depend on seeding
+port-divergent object bytes. That is a dedicated debugging effort, not a
+quick edit.
+
 ## Still approximate / not byte-exact
 
 - **RNG model.** The original advances `random_number` every frame (a
