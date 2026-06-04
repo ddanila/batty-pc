@@ -228,15 +228,32 @@ byte-exact. So there's an unexplained cross-binary non-determinism in the
 RNG-dependent state (the ball can't expose it; only RNG-dependent objects
 do). Within one binary it's deterministic (3 identical f16 runs → 0x08).
 
+Root cause of the cross-binary variance (diagnosed): the RNG is
+deterministic from the seed (f0 == seed), so the variance is NOT in the
+RNG values. It's the cadence PHASE — the enemy turn/repick is gated on the
+GLOBAL `pit_frame_counter`, which counts from boot and so includes the
+(binary-dependent) boot-tick count. A different boot length shifts which
+play-frame `pit_frame_counter & 3 == 0` lands on, so the arrival-repick
+fires on a different play-frame and reads the (deterministic) RNG at a
+different point → a different target. The ball is immune: it's
+RNG-independent and its motion advances per play-frame, not per pit-phase.
+
+This is a TEST-COMPARISON non-determinism, NOT a real-play bug:
+`pit_frame_counter` is the faithful analog of the original's global
+`counter_misc`, and it's deterministic per binary (a real user runs one
+binary). Switching the cadence to a play-relative counter would make tests
+reproducible but would be LESS faithful (the original's counter is global),
+so the right fix is harness-side (control/normalise the boot-tick phase
+for the comparison), not a port change.
+
 Conclusion (enemy/RNG thread): the enemy MOTION fix and the byte-exact RNG
 WALK are solid, shipped, and validated; the enemy STEERING is correct
-(stable target, `LAA7D_1` repick-on-arrival, deterministic per binary);
-flag-ON is the validated-correct model. But byte-exact enemy-TARGET
-*gating* — and hence the confident flag-ON default flip — is blocked by
-this cross-binary harness non-determinism, which needs a controlled,
-deterministically-frame-aligned harness (a single multi-frame-probing run
-with a fixed release frame) to resolve. That's a deliberate test-infra
-effort, deferred; the shipped default (flag-OFF) is unaffected.
+(stable target, `LAA7D_1` repick-on-arrival, deterministic per binary,
+faithful global cadence); flag-ON is the validated-correct model. Byte-exact
+enemy-TARGET *gating* — and the confident flag-ON default flip — is blocked
+by the boot-tick cadence-phase variance, a test-harness limitation needing
+a boot-normalised / fixed-phase comparison run (a deliberate test-infra
+effort, deferred). The shipped default (flag-OFF) is unaffected.
 (Earlier mistaken analysis kept below for the record.)
 
 - **Clobber ruled out:** `bonus_applied` is only written by the bat-bonus
