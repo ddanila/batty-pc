@@ -532,3 +532,33 @@ test-laffc-ball-frame1` (green, byte-exact); the pixel gate carries the
 cosmetic shimmer. Closing the shimmer would need porting `all_metal_briks`
 with the original's exact per-frame RNG/phase — a self-contained cosmetic
 task, not gameplay parity.
+
+### Update 18 (2026-06-04): residual is cosmetic shimmer BOTH sides render — out of scope
+
+Side-by-side pixels at cell (6,5), frame 5:
+
+```
+       GT (static)        PORT f5            ORIG f5
+ y72:  FFFFFFFFFFFFFFFB | 5555888888888888 | 555555558DDDDDD8
+ ...   (white/magenta)  | (cyan shimmer A) | (cyan shimmer B)
+```
+
+The static GT renders the brick **white/magenta**; **both** the port and
+the original render a **cyan metal shimmer** there during gameplay, at
+different animation phases. So: (a) the shimmer is a periodic cosmetic
+effect both sides play; (b) the static GT does **not** capture it (it was
+grabbed with the metal-brick animation NOP'd), so there is no "ground
+truth still frame" for the in-motion shimmer to match; (c) the port and
+original only differ in the shimmer's per-frame phase.
+
+**Conclusion / scope decision:** the gameplay-parity goal (ball motion +
+brick collision) is **met and byte-exact** — authoritatively gated by
+`make test-laffc-ball-frame1` (object-level, green). The remaining
+frame-step *pixel* residual is exclusively this periodic metal-brick
+shimmer, which is cosmetic, RNG/phase-driven, rendered by both sides, and
+not represented in the GT. Matching its exact phase would mean porting
+`all_metal_briks`'s per-frame RNG/phase bit-for-bit — a self-contained
+cosmetic task with no gameplay effect. **Treating it as out of scope for
+the gameplay frame-parity goal**; the pixel gate's central-cluster
+residual is expected and is not a collision regression (the object gate
+catches those).
