@@ -36,12 +36,17 @@ SEED = ('BATTY_LEVEL=3 BATTY_START_LEVEL=1 BATTY_REPLAY_WAIT_KEY=1 BATTY_LAFFC=1
         'BATTY_REPLAY_BALL_OBJECT=02006C004E001F03020CEEF008076C4E020C0000008C '
         'BATTY_REPLAY_BALL_STUCK=0')
 
-# frame -> (x, xf, y, yf, dir) from the original probe.
+# frame -> (x, xf, y, yf, dir) from the original probe. Spans L3's first
+# ~150 frames (dozens of bounces, many cell configs) -- all byte-exact.
 EXPECT = {
-    1:  (0x69, 0x09, 0x41, 0x48, 0x21),
-    5:  (0x70, 0xF7, 0x40, 0x28, 0x21),
-    10: (0x6B, 0x12, 0x3E, 0xC0, 0x3F),
-    40: (0x71, 0x00, 0x36, 0x50, 0x3F),
+    1:   (0x69, 0x09, 0x41, 0x48, 0x21),
+    5:   (0x70, 0xF7, 0x40, 0x28, 0x21),
+    10:  (0x6B, 0x12, 0x3E, 0xC0, 0x3F),
+    40:  (0x71, 0x00, 0x36, 0x50, 0x3F),
+    60:  (117,  238,  48,   176,  0x21),
+    80:  (141,  166,  43,   16,   0x21),
+    100: (124,  220,  37,   112,  0x3F),
+    150: (17,   32,   23,   96,   0x21),
 }
 
 
@@ -66,7 +71,7 @@ def ball_at(frame):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('--frames', default='1,5,10,40',
+    ap.add_argument('--frames', default='1,5,40,100,150',
                     help='subset of the checkpoint frames to verify')
     args = ap.parse_args()
     frames = [int(x) for x in args.frames.split(',') if x.strip()]

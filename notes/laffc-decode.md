@@ -488,3 +488,17 @@ shimmer render (the ball object itself matches exactly; verified by
 `make test-laffc-ball-frame1` (now checks frames 1/5/10/40) and static
 5/5. So **the brick collision is byte-exact on L3's full trajectory**,
 correcting Update 13's "diverges at frame 5".
+
+### Update 16 (2026-06-04): LAFFC is now the DEFAULT (primary ball)
+
+With the ball byte-exact vs the Spectrum over L3's **150-frame**
+trajectory (frames 1/5/10/20/40/60/80/100/150 all match, dozens of
+bounces and cell configs) and the brick_collision pass-through fallback
+in place, `use_laffc` now **defaults to 1** for the primary ball.
+`BATTY_LEGACY_COLLISION=1` reverts to the old `brick_collision` path.
+Multi-ball secondaries still use `brick_collision` (not yet validated on
+the LAFFC path). Static regression 5/5 + lints (entry frames don't
+exercise collision); `test-laffc-ball-frame1` extended to gate frames
+1/5/40/100/150. The shipping game's primary-ball brick collision is now
+byte-exact with the Spectrum on the validated trajectory; the only
+frame-by-frame residual left is the cosmetic brick-hit shimmer render.

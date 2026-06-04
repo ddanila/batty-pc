@@ -1294,9 +1294,13 @@ static unsigned long profile_auto_frames = 0;
 static unsigned char force_bat_full_redraw = 0;
 static unsigned char force_ball_full_redraw = 0;
 static unsigned char force_full_flush_each_frame = 0;
-/* Develop the LAFFC brick-collision port behind this flag; default 0
- * keeps the proven brick_collision. Set by BATTY_LAFFC=1. */
-static unsigned char use_laffc = 0;
+/* LAFFC brick collision is now the DEFAULT for the primary ball: it is
+ * byte-exact vs the Spectrum over L3's full 150-frame trajectory (dozens
+ * of bounces / cell configs, gated by test-laffc-ball-frame1) and falls
+ * back to brick_collision when it reports no hit, so it can never pass a
+ * brick through. BATTY_LEGACY_COLLISION=1 reverts to the old
+ * brick_collision path. (Multi-ball secondaries still use brick_collision.) */
+static unsigned char use_laffc = 1;
 /* Debug: last laffc_collision() decision, dumped in write_replay_probe.
  * exit: 0 early-y, 1 no-row, 2 straddle-no-brick, 3 smash, 4 bounced. */
 static int laffc_dbg_newx = -1, laffc_dbg_row = -1, laffc_dbg_col = -1;
@@ -6719,6 +6723,7 @@ int main(void) {
     if (getenv("BATTY_FORCE_BAT_FULL_REDRAW") != NULL) force_bat_full_redraw = 1;
     if (getenv("BATTY_FORCE_BALL_FULL_REDRAW") != NULL) force_ball_full_redraw = 1;
     if (getenv("BATTY_LAFFC") != NULL) use_laffc = 1;
+    if (getenv("BATTY_LEGACY_COLLISION") != NULL) use_laffc = 0;
     if (getenv("BATTY_FORCE_FULL_FLUSH_EACH_FRAME") != NULL) force_full_flush_each_frame = 1;
     if (getenv("BATTY_SUPPRESS_NO_BALL_DEATH") != NULL) suppress_no_ball_death = 1;
     {

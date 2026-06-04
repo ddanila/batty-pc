@@ -70,7 +70,7 @@ The resolved parity history is documented in
 | Headless visual regression (5 checkpoints + per-level) | ✓ `make test`, `BATTY_LEVEL=N make test` (`notes/testing.md`) |
 | Frame-step parity gate (port vs ZEsarUX, frame-by-frame) | ✓ `make capture-timeline-both` (`notes/replay-harness.md`) |
 | Real `handling_ball` 64-direction q8.8 motion | ✓ exact `dir_to_dxdy` (LAD69 X/Y cross + fraction); byte-exact vs Spectrum (probed) |
-| `LAFFC` brick collision (cell / axis / position) | ✓ byte-exact behind `BATTY_LAFFC=1`; gate-validated 40 frames; default still `brick_collision` pending multi-scenario validation (`notes/laffc-decode.md`) |
+| `LAFFC` brick collision (cell / axis / position) | ✓ **default** (primary ball); byte-exact vs Spectrum over L3's 150-frame trajectory, `make test-laffc-ball-frame1`; `BATTY_LEGACY_COLLISION=1` reverts to `brick_collision` (`notes/laffc-decode.md`) |
 | Brick-hit shimmer frame-exactness            | open — collision is byte-exact; the cyan hit-shimmer pixel pattern still differs (cosmetic, shared by both collision paths) |
 | 2-player mode (`game_mode == 2`)             | open — selectable from menu, not wired into run loop |
 | Frame ornament from `spr_bord_*` primitives  | open — currently bundles a captured `frame_l1.bin` |
