@@ -363,3 +363,24 @@ that exercises an unported edge case. That is bounded and still wants
 per-level original snapshots or a port-side multi-level sanity sweep
 (ball stays in play, bricks decrease) before flipping. Until then the
 default stays `brick_collision`; the fallback is in place for the flip.
+
+### Update 11 (2026-06-04): sanity sweep FAILS L1 — flip blocked, edge case real
+
+`make test-laffc-levels-sane` (`scripts/test_laffc_levels_sane.py`) runs
+each level headlessly for N frames under both collision paths (static
+bat) and compares bricks destroyed. **L1 FAILS:** over 500 frames
+`brick_collision` destroys 10 bricks (ball actively bouncing, y≈98) but
+**LAFFC destroys 0** (ball falling/respawning, y≈166). The fallback rules
+out pass-through, so LAFFC is **bouncing *wrong*** on L1's brick
+neighbourhood — an edge case the L3 trajectory never exercises — and the
+ball dies without playing.
+
+So LAFFC is byte-exact on L3 but **not yet correct on other layouts**;
+the default flip is correctly blocked (it would break L1). The wrong-
+bounce risk I flagged is real, and the sweep now catches it. **Next for
+the flip:** debug the L1 divergence (almost certainly the unported
+two-cell straddle / `IY` adjustment LAFFC_5-6, or the fully-enclosed
+default-vertical fallback), port it, and re-run `test-laffc-levels-sane`
+until all levels pass — then flip with the L3 byte-exact gate +
+per-level sanity both green. `test-laffc-ball-frame1` (L3) still PASS;
+default unchanged.

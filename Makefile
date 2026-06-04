@@ -525,6 +525,14 @@ test-laffc-ball-frame1:
 	    BATTY_VISUAL_PROBE_FRAMES=1 $(MAKE) $(TEST_FLOPPY_OUT)
 	python3 scripts/test_laffc_ball_frame1.py --floppy $(TEST_FLOPPY_OUT)
 
+# Multi-level sanity sweep: LAFFC must play comparably to brick_collision
+# on every level (no level where LAFFC destroys ~no bricks while
+# brick_collision plays). Must pass before flipping the default to LAFFC.
+SANE_LEVELS ?= 1,5,10,15
+SANE_FRAMES ?= 500
+test-laffc-levels-sane:
+	python3 scripts/test_laffc_levels_sane.py --levels $(SANE_LEVELS) --frames $(SANE_FRAMES)
+
 test-hud: $(FLOPPY_OUT)
 	python3 scripts/test_hud.py --floppy $(FLOPPY_OUT)
 
