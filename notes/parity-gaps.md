@@ -15,6 +15,14 @@ Several paths use gameplay-equivalent but not byte-exact motion:
   q8.8 subpixel coordinates, but target selection/collision steering is
   still simplified versus `LAA7B`, brick/ball collision, and
   `check_margins`,
+- **brick/ball collision** is the active parity target: the frame-step
+  gate (`make capture-timeline-both`) isolates a ~212 px frame-1 residual
+  to the ball-vs-brick bounce. The port's `brick_collision` picks the
+  first non-destroyed cell in scan order + an overlap-axis rule, while
+  the original `LAFFC` finds the cell at the ball's position, builds a
+  neighbour-bit solidity mask, gates it by ball direction, and bounces
+  off the shallower-penetrated solid side. Full decode + port plan in
+  `notes/laffc-decode.md`.
 - big-bat resize timing is matched visually but not a literal port of
   the original bit-gated state machine.
 
