@@ -230,9 +230,43 @@ yf=72 — a byte-exact ball match.
 
 **Gate (LAFFC, frames 0/1/3/5): 0 / 188 / 188 / 339** vs `brick_collision`
 0 / 212 / 333 / 494 — the LAFFC path now beats the approximation on
-*every* frame, and the ball is exact. The remaining residual is no longer
-the ball: at frame 1 its bounds `(104,72,127,86)` sit *below* the ball
-(y=65) in the brick rows — it is the **destroyed-brick cell** differing
-("same count, different cells"). Next: port the two-cell straddle / `IY`
-adjustment (LAFFC_5-6) so the bounce destroys the same cell the original
-does, then flip the default from `brick_collision` to LAFFC.
+*every* frame, and the ball is exact.
+
+### Update 6 (2026-06-04): MILESTONE — collision byte-exact; residual is the hit shimmer
+
+Per-cell analysis of the frame-1 residual: **exactly one cell differs**,
+col6 row5 — the cell the ball hits — and it differs with *mixed* pixels
+(both port-brick/orig-empty and port-empty/orig-brick). If the two sides
+had destroyed *different* cells there would be two differing cells; one
+cell with mixed pixels means they hit the **same** cell and render its
+post-hit state differently. Dumping the cell's 16×8 pixels confirms it:
+**both sides draw a cyan metal-brick shimmer there, but at different
+animation frames.**
+
+So the LAFFC collision is now **byte-exact** — ball position (x,y,
+fraction), direction, hit cell, and bounce axis all match the Spectrum
+(verified by `--probe-ball` + `PROBE.TXT`). The "two-cell straddle" port
+is NOT needed for this trajectory (same cell hit). The only residual is
+the **brick-hit shimmer animation**, and it is **shared by both
+collision paths** (both go through `brick_hit_anim` via
+`brick_hit_resolve`), so it is orthogonal to the LAFFC work.
+
+**Root of the shimmer mismatch.** The original per-hit shimmer
+`metal_brik_anim` (`$B6A9`) reads a **sliding 16-byte window into the
+`anim_brik` buffer**, advanced **2 bytes per frame** by a per-slot
+counter at `briks_data IY+$00` that increments (`INC A; AND $0F`) every
+frame (`fill_briks_data` calls it per active slot). The port's
+`brick_hit_anim` instead picks **discrete frames** from
+`brik_anim_sprites[]` via `brik_anim_order = {1,5,2,6,3,4,4,0}` (that
+order is the *level-entry reveal* `play_brik_anim` sequence, not the
+per-hit one) indexed by `(tick-1)>>1`. Different sprite mechanism →
+different shimmer pattern.
+
+**Next:** port `metal_brik_anim`'s sliding-window-into-`anim_brik`,
+per-slot frame counter (increment each frame, slot freed when the cell's
+bit7 sets) to `brick_hit_anim`'s render, replacing the
+`brik_anim_order`/discrete-frame approximation. That should drive the
+LAFFC gate residual toward 0 (frames 3/5 too — they are the same shimmer
+on later-hit bricks), after which the default can flip from
+`brick_collision` to the byte-exact LAFFC path. The shimmer fix benefits
+the default path as well.

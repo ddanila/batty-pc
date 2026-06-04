@@ -15,14 +15,21 @@ Several paths use gameplay-equivalent but not byte-exact motion:
   q8.8 subpixel coordinates, but target selection/collision steering is
   still simplified versus `LAA7B`, brick/ball collision, and
   `check_margins`,
-- **brick/ball collision** is the active parity target: the frame-step
-  gate (`make capture-timeline-both`) isolates a ~212 px frame-1 residual
-  to the ball-vs-brick bounce. The port's `brick_collision` picks the
-  first non-destroyed cell in scan order + an overlap-axis rule, while
-  the original `LAFFC` finds the cell at the ball's position, builds a
-  neighbour-bit solidity mask, gates it by ball direction, and bounces
-  off the shallower-penetrated solid side. Full decode + port plan in
+- **brick/ball collision** — a byte-exact `LAFFC` port now exists behind
+  `BATTY_LAFFC=1` (cell-find + neighbour-open-face mask + direction gate +
+  `change_direction` reflect + fraction-preserving cell-edge snap +
+  penetration corner case). Verified via the frame-step gate + ball
+  probes: ball position/fraction/direction and the hit cell/axis match
+  the Spectrum exactly. It beats the default `brick_collision` on every
+  measured frame. Default still `brick_collision` pending broader-scenario
+  validation before the flip. Full decode + status in
   `notes/laffc-decode.md`.
+- **brick-hit shimmer** is now the remaining frame-step residual (shared
+  by both collision paths via `brick_hit_anim`). The original
+  `metal_brik_anim` (`$B6A9`) slides a 16-byte window into `anim_brik`
+  (2 bytes/frame, per-slot counter); the port uses discrete reordered
+  frames. Porting the sliding-window shimmer is the next gate-closing
+  step (see `notes/laffc-decode.md` Update 6).
 - big-bat resize timing is matched visually but not a literal port of
   the original bit-gated state machine.
 
