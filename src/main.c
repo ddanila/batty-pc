@@ -5049,18 +5049,26 @@ static void step_ball(void) {
          * resting ball then snaps to $A6 = bat_top - 7 = 166. See
          * notes/bat-deflection.md. */
         next_y  = bat_top - BALL_H_PX;
-        /* If the bat is carrying the CATCH bonus (matches the original's
-         * BAT+$14 = $03), the ball sticks on contact and waits for SPACE
-         * to release. Otherwise bounce with 5-zone deflection. */
-        if (objects[OBJ_BAT_1].bonus_applied == 0x03) {
+        /* MAGNET/CATCH bonus (original BAT+$14 == $03, LAB1F_1..3): the
+         * ball sticks on contact and waits for FIRE to release. Only a
+         * NORMAL-width bat catches (the original gates on width $1C; a
+         * big bat falls through to the normal deflection). The caught
+         * offset is QUANTIZED: offset = ball_x - bat_x, clamped >=0, then
+         * `& 0xFC` (multiple of 4) and clamped to 0x18 - so the rest x
+         * (= bat_x + offset) and the launch direction derived from it
+         * match the Spectrum (probed: ball_x 133 -> offset 0x10 -> rest
+         * x 132). The original then snaps the ball to y=$A7=167. */
+        if (objects[OBJ_BAT_1].bonus_applied == 0x03 && bat_extra_px == 0) {
+            int off = next_x - BAT_X;
+            if (off < 0) off = 0;
+            off &= 0xFC;
+            if (off >= 0x19) off = 0x18;
+            stuck_offset_x  = off;
             ball_stuck      = 1;
             stuck_ticks     = 0;
             ball_dy         = -BALL_SPEED;
             objects[OBJ_BALL_1].dir = 0x20;
-            /* Record the offset where the ball hit so the stuck-ball
-             * tracker keeps it at the catch position as the bat slides. */
-            stuck_offset_x  = next_x - BAT_X;
-            BALL_X          = next_x;
+            BALL_X          = BAT_X + off;
             BALL_Y          = next_y;
             objects[OBJ_BALL_1].x_coord_hi = 0;
             objects[OBJ_BALL_1].y_coord_hi = 0;

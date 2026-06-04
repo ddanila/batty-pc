@@ -32,10 +32,15 @@ Several paths use gameplay-equivalent but not byte-exact motion:
   byte-exact L3 gate is unchanged. The "needs a ball-onto-bat scenario"
   blocker was solved by *repositioning the coherent `l3-brick-flash`
   ball* (no new snapshot) — `scripts/capture_bat_deflection.py`.
-  Remaining: the MAGNET catch branch (bonus $03) is still simplified, and
-  the multi-ball secondaries (`step_extra_ball`) still use the 5-zone
-  split on integer motion (no multi-ball ground truth yet). Full decode +
-  validation in `notes/bat-deflection.md`.
+  The MAGNET catch branch (bonus $03, `LAB1F_1..3`) is also ported: the
+  caught offset is quantized (`& 0xFC`, clamp 0x18) and gated on a normal
+  bat, so the rest position (x=132 for a centre drop) and the derived
+  launch match the Spectrum (validated in `make test-bat-deflection`).
+  Remaining: the held-ball rest y is 1px off ($A6 vs $A7, cosmetic), the
+  catch->release launch isn't yet gate-verified, and the multi-ball
+  secondaries (`step_extra_ball`) still use the 5-zone split on integer
+  motion (no multi-ball ground truth yet). Full decode + validation in
+  `notes/bat-deflection.md`.
 - **brick-hit shimmer** is now the remaining frame-step residual (shared
   by both collision paths via `brick_hit_anim`). The original
   `metal_brik_anim` (`$B6A9`) slides a 16-byte window into `anim_brik`

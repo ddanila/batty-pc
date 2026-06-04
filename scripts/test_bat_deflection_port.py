@@ -60,14 +60,25 @@ def ball_object_hex(start_x: int, indir: int) -> str:
     return a.hex().upper()
 
 
-def dir_at(start_x: int, indir: int, frame: int) -> int:
+# MAGNET/CATCH bonus ($03 at bat +$14): a normal bat catches the ball at
+# a quantized offset. Bat hex below has +$14 (byte 20) = 0x03. The caught
+# ball must rest at x = bat_x(116) + (ball_x-116 & 0xFC clamped 0x18).
+# Captured: center drop -> caught x=132 (offset 0x10).
+BAT_OBJECT_CATCH = "01017400AD000000040DEFAE1C0A74AD040DF0000380"
+CATCH_CASES = [
+    # (start_x, incoming_dir, probe_frame, expected_rest_x)
+    (126, 0x0C, 11, 132),
+]
+
+
+def _probe_ball(start_x, indir, frame, bat_obj):
     Path(FLOPPY).unlink(missing_ok=True)
     probe = Path("build/PROBE_laffc.txt")
     probe.unlink(missing_ok=True)
     env = (
         f"BATTY_LEVEL=3 BATTY_START_LEVEL=1 BATTY_REPLAY_WAIT_KEY=1 "
         f"BATTY_LAFFC=1 BATTY_REPLAY_PROBE=1 BATTY_REPLAY_RANDOM=8E49 "
-        f"BATTY_REPLAY_BAT_OBJECT={BAT_OBJECT} BATTY_REPLAY_BALL_STUCK=0 "
+        f"BATTY_REPLAY_BAT_OBJECT={bat_obj} BATTY_REPLAY_BALL_STUCK=0 "
         f"BATTY_REPLAY_BALL_OBJECT={ball_object_hex(start_x, indir)} "
         f"BATTY_VISUAL_PROBE_FRAMES={frame}"
     )
@@ -79,11 +90,19 @@ def dir_at(start_x: int, indir: int, frame: int) -> int:
     subprocess.run(["mcopy", "-n", "-i", FLOPPY, "::PROBE.TXT", str(probe)],
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     if not probe.exists():
-        return -1
+        return None
     m = re.search(r"object_ball_1=([0-9A-Fa-f]+)", probe.read_text())
-    if not m:
-        return -1
-    return bytes.fromhex(m.group(1))[6]
+    return bytes.fromhex(m.group(1)) if m else None
+
+
+def dir_at(start_x: int, indir: int, frame: int) -> int:
+    b = _probe_ball(start_x, indir, frame, BAT_OBJECT)
+    return b[6] if b else -1
+
+
+def catch_rest_x(start_x: int, indir: int, frame: int) -> int:
+    b = _probe_ball(start_x, indir, frame, BAT_OBJECT_CATCH)
+    return b[2] if b else -1
 
 
 def main() -> int:
@@ -104,9 +123,20 @@ def main() -> int:
         if not ok:
             fails += 1
 
+    # MAGNET catch: the quantized caught offset must match the Spectrum.
+    if not want:
+        for sx, indir, frame, exp_x in CATCH_CASES:
+            got_x = catch_rest_x(sx, indir, frame)
+            ok = got_x == exp_x
+            print(f"  catch in=0x{indir:02X} start_x={sx}: rest_x={got_x} "
+                  f"[{'PASS' if ok else f'FAIL exp {exp_x}'}]")
+            if not ok:
+                fails += 1
+        cases = cases + CATCH_CASES
+
     if fails == 0:
         print(f"PASS bat_deflection: port LAB1F matches Spectrum ground "
-              f"truth at {len(cases)} (dir,position) cases")
+              f"truth at {len(cases)} cases (incl. MAGNET catch)")
     else:
         print(f"FAIL bat_deflection: {fails}/{len(cases)} cases diverged")
     return fails

@@ -139,12 +139,32 @@ Y test; the fix uses the ball **height** (`BALL_H_PX` = 7) and a strict
 `>` so it fires at `next_y + 7 > bat_top(173)` ⟺ `ball_y >= 167`, exactly
 matching the Spectrum. The rest-snap is `$A6 = bat_top - 7 = 166`.
 
+## MAGNET catch (bonus $03) — ported + validated
+
+`LAB1F_1..3`: when the bat carries bonus $03 (MAGNET/CATCH) AND is normal
+width ($1C), the ball sticks instead of bouncing. The caught offset is
+QUANTIZED: `offset = ball_x - bat_x`, clamped `>=0`, then `& 0xFC`
+(multiple of 4) and clamped to `0x18`; the ball is parked at `bat_x +
+offset`, `y = $A7 = 167`, and marked caught. The quantized offset is what
+the launch direction is later derived from, so matching it makes the
+catch->launch cycle parity-correct.
+
+Captured ground truth (`replays/l3-bat-catch.json`, bat +$14 poked to
+$03): a centre drop is caught at **x=132** (ball_x 133 -> offset
+`0x11 & 0xFC = 0x10` -> rest x `116+16 = 132`), `y=167`. The port now
+quantizes the offset and gates on normal width (a big bat falls through
+to the normal deflection, per the original); validated by the catch case
+in `make test-bat-deflection` (caught rest x = 132). Residual: the port
+parks the held ball at y=166 vs the original's $A7=167 (1px, cosmetic,
+entangled with the shared stuck-ball tracker — left as a follow-up).
+
 ## Next steps
 
-1. Extend the gate to more incoming dirs (0x04, 0x14, 0x18, 0x1C) — the
-   capture harness and port test already parameterize on it.
-2. Port the MAGNET catch branch (bonus $03) faithfully (the port keeps a
-   simplified catch today; LAB1F has the exact offset-quantize logic).
+1. Match the held-ball rest y to $A7 (167) — needs untangling the shared
+   stuck-ball tracker (used by level-start and catch).
+2. Validate the catch->FIRE-release launch direction against the original
+   (needs driving the release; the launch code is already validated for
+   the level-start case).
 3. Apply the exact deflection to the multi-ball secondaries
    (`step_extra_ball`), which still use the 5-zone split on integer
    motion — needs a multi-ball reference (no ground truth yet).
