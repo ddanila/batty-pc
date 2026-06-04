@@ -1,5 +1,16 @@
 # Seeded L3-entry render gap (frame-step gate triage)
 
+> **RESOLVED 2026-06-04.** The whole ≈1568 px "gap" below was a
+> `compare_timelines.py` bug: it diffed raw palette indices, counting
+> visually-identical bright-black (8) vs black (0) pixels as
+> differences. Fixed to compare in RGB palette space (matching
+> `test_visual.py`). With that, frame 0 is **0 px** (clean aligned
+> start) and the residual is a small, localized, growing ball-physics
+> signal — the gate works. The seed, `play_brik_anim`, and the magnet
+> band were all red herrings (bright-black/black noise). The historical
+> investigation below is kept for the record. See the RESOLVED entry in
+> `notes/replay-harness.md`.
+
 ## Symptom
 
 The frame-step parity gate (`make capture-timeline-both`,

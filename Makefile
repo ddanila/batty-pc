@@ -487,8 +487,8 @@ L3_SEED_ENV = BATTY_LEVEL=3 BATTY_START_LEVEL=1 BATTY_REPLAY_RANDOM=8E49 \
 # as frame 0, byte-aligned with the original's post-setup $BA83.
 capture-timeline-both: $(ZESARUX)
 	@rm -f $(TEST_FLOPPY_OUT)
-	@$(L3_SEED_ENV) BATTY_REPLAY_WAIT_KEY=1 BATTY_VISUAL_PROBE_FRAMES=$(TL_FRAMES) \
-	    $(MAKE) $(TEST_FLOPPY_OUT)
+	@$(L3_SEED_ENV) BATTY_REPLAY_WAIT_KEY=1 \
+	    BATTY_VISUAL_PROBE_FRAMES=$(TL_FRAMES) $(MAKE) $(TEST_FLOPPY_OUT)
 	python3 scripts/capture_frame_timeline.py --floppy $(TEST_FLOPPY_OUT) \
 	    --frames $(TL_FRAMES) --wait-key --out build/tl_port
 	python3 scripts/capture_frame_timeline_original.py --snapshot $(SNAPSHOT) \

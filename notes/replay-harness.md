@@ -248,14 +248,37 @@ required equality. Two plausible paths for the capture timing remain:
   (and the original) does not. The diff is structured along brick rows
   (per-row bands of ≈6–26 px with spikes of 90–164 px at row
   boundaries), i.e. a brick-field render/state difference, not a compact
-  ball/enemy sprite. This is *upstream* of `handling_ball`: the
-  frame-step gate can't isolate ball physics until the seeded-entry
-  render matches. The per-level static test passes L3 at 0 px because it
-  uses the **default stuck-ball** entry, not the brick-flash seed — so
-  the discrepancy is specific to the in-flight-ball + enemy seed. See
-  `notes/seeded-l3-entry-triage.md` for the next step: bisect which seed
-  field (ENEMY_OBJECT? in-flight ball? a metal-brick anim state) the
-  port paints differently from the original at frame 0.
+  ball/enemy sprite.
+
+  **RESOLVED — it was a comparison bug, the gate works (2026-06-04).**
+  The ≈1568 px above was an artifact of `compare_timelines.py` diffing
+  **raw palette indices** instead of **RGB palette space**: bright-black
+  (index 8) and non-bright black (index 0) both render as `(0,0,0)` but
+  are different indices, so the whole black background counted as a diff.
+  `test_visual.py` / `replay_harness.py` always compared in RGB space
+  (where the two blacks are equal); `compare_timelines.py` now does too
+  (`_IDX_RGB` mapping). With that fixed, the bisection findings above
+  collapse: the seed, the metal-brick reveal (`play_brik_anim` ends on
+  the same pixels — `BATTY_SKIP_BRIK_ANIM` had zero effect and was
+  dropped), and the magnet band were all bright-black/black noise, not
+  real divergence.
+
+  The frame-step gate (`make capture-timeline-both`, with `--wait-key`
+  aligned start) now reports, in RGB space, port vs original:
+
+  - **frame 0: 0 / 23040 px — PASS** (clean byte-aligned start),
+  - frame 1: 363 px, frame 3: 473 px, frame 5: 653 px — a small,
+    **growing residual localized to bounds ≈(88–191, 32–89)**, the upper
+    brick/ball region (the magnet band y=104–128 is clean).
+
+  That growing, localized residual is exactly the `handling_ball` /
+  `LAFFC` ball-physics divergence the whole sweep was built to isolate:
+  the port's 5-zone/integer ball motion vs the original's 64-direction
+  q8.8 motion, diverging frame by frame from an identical start. The
+  gate "FAILs" at `--max-diff 0` by design — that number IS the parity
+  signal to drive to zero by porting the exact ball motion. The
+  milestone (a frame-exact port-vs-original gameplay gate with a 0 px
+  aligned start) is reached. See `notes/seeded-l3-entry-triage.md`.
 - **Trampoline pauses between captures.** Reuse the existing
   `BATTY_REPLAY_WAIT_KEY` mechanism but rearm the port for a second
   pause at a known game-state point (e.g. after the first brick hit),

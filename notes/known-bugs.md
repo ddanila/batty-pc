@@ -14,11 +14,15 @@ band. State probes show the port RNG diverged (`random_number
 port=A187` vs `original=8E49`) and `object_enemy` / `object_ball_1` /
 `object_bat_1` differ.
 
-Root-cause trail and the two candidate fixes are in
-`notes/seeded-l3-entry-triage.md`: the entry-path `render_level_screen`
--> `render_magnets` -> `next_random` consumption desyncs the port RNG
-from the original's pinned 8E49 (the original's metal-brick shimmer is
-NOP'd via the `$BA6C` setup poke), and `play_brik_anim` leaves a
-transient reveal-animation frame at the WAIT_KEY pause instead of the
-settled brick field. Discovered while building the frame-step parity
-gate (iter 2026-06-04); blocks that gate's aligned start.
+The frame-step gate (`make capture-timeline-both`) reaches a **0 px
+aligned start** (RGB space) comparing the port against the *snapshot*
+original via the same `l3-brick-flash` setup, so the brick/magnet render
+is NOT regressed. That points the `replay-l3-entry` failure at its
+**live-tape-boot original's capture state/timing**: the probe RNG
+divergence (`A187` vs `8E49`) suggests the live original advanced its
+RNG differently than the snapshot path before the breakpoint capture.
+Next: compare the `replay-l3-entry` original capture against the
+snapshot-original timeline at frame 0 to localize whether it is an
+RNG-pin gap in the live setup or a genuine capture-phase offset.
+Discovered/triaged while building the frame-step parity gate
+(iter 2026-06-04).

@@ -24,9 +24,16 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from test_visual import PLAYFIELD_W, PLAYFIELD_H
+from test_visual import PLAYFIELD_W, PLAYFIELD_H, PALETTE_RGB
 
 NPX = PLAYFIELD_W * PLAYFIELD_H
+
+# Compare in RGB palette space, matching test_visual.py / replay_harness.py:
+# bright-black (index 8) and non-bright black (index 0) both render as
+# (0,0,0), so they must count as equal. Map each palette index to its RGB
+# and compare those, not the raw index (which over-counts visually
+# identical pixels — e.g. the whole black background as 8-vs-0 noise).
+_IDX_RGB = [PALETTE_RGB[i] for i in range(16)]
 
 
 def load_idx(path: Path) -> bytes:
@@ -49,7 +56,7 @@ def diff_bounds(a: bytes, b: bytes, roi=None):
         base = y * PLAYFIELD_W
         for x in range(rx0, rx1):
             i = base + x
-            if a[i] != b[i]:
+            if a[i] != b[i] and _IDX_RGB[a[i]] != _IDX_RGB[b[i]]:
                 count += 1
                 bx0 = min(bx0, x); by0 = min(by0, y)
                 bx1 = max(bx1, x); by1 = max(by1, y)
