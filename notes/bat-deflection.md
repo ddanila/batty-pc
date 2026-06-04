@@ -202,13 +202,18 @@ it onto the validated primary code (correct by construction — one
   byte-exact):** generalized `laffc_collision` to take an `object_t *o`
   (was hardcoded `OBJ_BALL_1`), and extracted `reflect_obj_dir(o,flip_x,
   flip_y)` from `ball_reflect_descriptor`. Both now work for any ball.
-- **Remaining:** rewrite `step_extra_ball` to mirror `step_ball` — store
-  the dir in `objects[obj_idx].dir` at spawn, move via `dir_to_dxdy` +
-  q8.8 (`x/y_coord_hi`), wall-bounce via `reflect_obj_dir`, brick via
-  `laffc_collision(o,…)`, bat via `bat_deflect_dir` — and drop the integer
-  `ball2_dx/dy` model. Validate via the liveness sweep + the (unaffected)
-  primary ball gate; byte-exact is correct-by-construction (no multi-ball
-  reference needed since it reuses the validated primary path).
+- **DONE:** `step_extra_ball` now mirrors `step_ball` — stores the dir in
+  `objects[obj_idx].dir` (+ ball_1's speed, zeroed q8.8) at spawn, moves
+  via `dir_to_dxdy` + q8.8 (`x/y_coord_hi`), wall-bounces via
+  `reflect_obj_dir`, bricks via `laffc_collision(o,…)`, deflects via
+  `bat_deflect_dir`; the integer `ball2_dx/dy` + 5-zone model is gone
+  (only the stuck/catch + life-decrement paths are omitted, as the
+  original does for extras). Validated: build clean, primary ball gate
+  byte-exact (the shared LAFFC preserved it), liveness sweep LIVE on
+  L1/5/10/15. Byte-exact is correct-by-construction — the extras now run
+  the SAME validated `handling_ball` path as the primary, which is what
+  the original does (one handling_ball for all balls). So multi-ball
+  secondaries now move/bounce/deflect exactly like the original.
 
 Two earlier parts:
 

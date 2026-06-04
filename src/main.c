@@ -3805,11 +3805,21 @@ static void bonus_apply(unsigned char type) {
                 objects[OBJ_BALL_2].sprite_set = 0x02;
                 objects[OBJ_BALL_2].x_coord = BALL_X;
                 objects[OBJ_BALL_2].y_coord = BALL_Y;
+                /* Unified extras read dir/speed/q8.8 from the object (the
+                 * original copies ball_1's speed + a derived dir). */
+                objects[OBJ_BALL_2].dir = ball2_dir;
+                objects[OBJ_BALL_2].speed = objects[OBJ_BALL_1].speed;
+                objects[OBJ_BALL_2].x_coord_hi = 0;
+                objects[OBJ_BALL_2].y_coord_hi = 0;
                 ball_delta_from_dir(ball2_dir, &ball2_dx, &ball2_dy);
                 ball3_active = 1;
                 objects[OBJ_BALL_3].sprite_set = 0x02;
                 objects[OBJ_BALL_3].x_coord = BALL_X;
                 objects[OBJ_BALL_3].y_coord = BALL_Y;
+                objects[OBJ_BALL_3].dir = ball3_dir;
+                objects[OBJ_BALL_3].speed = objects[OBJ_BALL_1].speed;
+                objects[OBJ_BALL_3].x_coord_hi = 0;
+                objects[OBJ_BALL_3].y_coord_hi = 0;
                 ball_delta_from_dir(ball3_dir, &ball3_dx, &ball3_dy);
                 snd_q_push(SND_TRIPLE_BALL);
             }
@@ -5261,76 +5271,71 @@ static void step_ball(void) {
  * no stuck phase, no life decrement on bottom-exit — the slot just
  * deactivates. Bat bounce reuses the same 5-zone deflection. Wall +
  * brick collision shared with step_ball semantics. */
-/* Shared step routine for the two extra balls spawned by the
- * TRIPLE_BALL bonus. Reads/writes the per-ball velocity through the
- * pointers in_dx/in_dy and the active flag in_active, and the position
- * via the object table at obj_idx. Logic is identical to step_ball
- * minus the catch-bonus and life-decrement paths. */
+/* Step an extra (TRIPLE_BALL) ball. UNIFIED with the primary: the
+ * original runs ONE handling_ball for every ball, so the extras now use
+ * the exact same q8.8 + dir motion (dir_to_dxdy), wall reflect
+ * (reflect_obj_dir), brick collision (LAFFC), and bat deflection (LAB1F /
+ * bat_deflect_dir) as step_ball — reading dir/q8.8 from the object table.
+ * Only the primary's stuck/catch and life-decrement paths are omitted (an
+ * extra just deactivates off the bottom). The legacy integer in_dx/in_dy
+ * are no longer used. Correct by construction (reuses the byte-exact
+ * primary path); validated by the liveness sweep + the primary ball gate
+ * (unaffected). */
 static void step_extra_ball(unsigned char *in_active,
                              int *in_dx, int *in_dy,
                              unsigned char obj_idx) {
-    int next_x, next_y;
+    object_t *o = &objects[obj_idx];
+    int next_x, next_y, dx_q8, dy_q8, hit;
+    long next_x_q8, next_y_q8;
     int bat_left  = eff_bat_left();
     int bat_right = eff_bat_right();
     int bat_top   = BAT_Y;
     int ball_sz   = eff_ball_size();
-    int bx, by;
-    int dx, dy;
+    int x_max     = PLAYFIELD_W - 8 - ball_sz;
+    (void)in_dx; (void)in_dy;          /* legacy integer deltas unused now */
     if (!*in_active) return;
-    bx = objects[obj_idx].x_coord;
-    by = objects[obj_idx].y_coord;
-    dx = *in_dx;
-    dy = *in_dy;
-    next_x = bx + dx;
-    next_y = by + dy;
-    {
-        int x_max = PLAYFIELD_W - 8 - ball_sz;
-        if (next_x < BALL_X_MIN)        { next_x = BALL_X_MIN; dx = -dx; }
-        else if (next_x > x_max)        { next_x = x_max;      dx = -dx; }
-    }
-    if (next_y < BALL_Y_TOP) { next_y = BALL_Y_TOP; dy = +BALL_SPEED; }
-    /* Bat bounce. The Y geometry mirrors the primary ball's validated
-     * LAB1F contact: fire on Y overlap (ball_y >= 167 ⟺ next_y + 7 >
-     * bat_top) and rest at $A6 = bat_top - 7 (height, not the width
-     * eff_ball_size = 8). The original runs one LAB1F for every ball, so
-     * this is correct by construction. The deflection itself still uses
-     * the 5-zone approximation here (the secondaries use integer motion,
-     * not the q8.8 + dir model, so bat_deflect_dir can't drop in until
-     * they're unified — blocked on a multi-ball reference, see
-     * notes/bat-deflection.md). */
-    if (dy > 0
+    ball_dir_delta_q8(o->dir, o->speed, &dx_q8, &dy_q8);
+    next_x_q8 = ((long)o->x_coord << 8) + o->x_coord_hi + dx_q8;
+    next_y_q8 = ((long)o->y_coord << 8) + o->y_coord_hi + dy_q8;
+    next_x = (int)(next_x_q8 >> 8);
+    next_y = (int)(next_y_q8 >> 8);
+    if (next_x < BALL_X_MIN)  { next_x = BALL_X_MIN; next_x_q8 = (long)next_x << 8; reflect_obj_dir(o, 1, 0); }
+    else if (next_x > x_max)  { next_x = x_max;      next_x_q8 = (long)next_x << 8; reflect_obj_dir(o, 1, 0); }
+    if (next_y < BALL_Y_TOP)  { next_y = BALL_Y_TOP; next_y_q8 = (long)next_y << 8; reflect_obj_dir(o, 0, 1); }
+    /* Bat: LAB1F contact (ball_y >= 167) + exact deflection. No catch. */
+    if (dy_q8 > 0
         && next_y + BALL_H_PX > bat_top
         && next_y < bat_top
         && next_x + ball_sz > bat_left
         && next_x < bat_right) {
-        int hit_x = (next_x + ball_sz / 2) - bat_left;
-        int span  = bat_right - bat_left;
-        next_y  = bat_top - BALL_H_PX;
-        dy = -BALL_SPEED;
-        if      (hit_x * 5 < span * 1) dx = -2;
-        else if (hit_x * 5 < span * 2) dx = -1;
-        else if (hit_x * 5 < span * 3) dx = (dx >= 0) ? +1 : -1;
-        else if (hit_x * 5 < span * 4) dx = +1;
-        else                           dx = +2;
+        next_y = bat_top - BALL_H_PX;
+        o->dir = bat_deflect_dir(o->dir, next_x + 3 - BAT_X, bat_extra_px != 0);
         snd_q_push(SND_BAT_BEAT);
     }
-    /* Off-the-bottom: deactivate without life penalty. Threshold matches
-     * the primary ball (Y >= 192 = $C0). */
-    if (next_y >= PLAYFIELD_H) {
+    if (next_y >= PLAYFIELD_H) {        /* off the bottom: deactivate */
         *in_active = 0;
-        objects[obj_idx].sprite_set = 0x82;
+        o->sprite_set = 0x82;
         return;
     }
-    /* Brick collision identical to ball1 — same brick_collision call. */
-    {
-        int hit = brick_collision(bx, by, next_x, next_y);
-        if (hit == 1)        { dy = -dy; next_y = by; }
-        else if (hit == 2)   { dx = -dx; next_x = bx; }
+    hit = laffc_collision(o, o->x_coord, o->y_coord, next_x, next_y);
+    if (hit == 0) hit = brick_collision(o->x_coord, o->y_coord, next_x, next_y);
+    if (hit == 3) {
+        next_x_q8 = ((long)o->x_coord << 8) | (next_x_q8 & 0xFF);
+        next_y_q8 = ((long)o->y_coord << 8) | (next_y_q8 & 0xFF);
+        next_x = o->x_coord; next_y = o->y_coord;
+    } else if (hit == 1) {
+        reflect_obj_dir(o, 0, 1);
+        next_y = o->y_coord;
+        next_y_q8 = ((long)o->y_coord << 8) + o->y_coord_hi;
+    } else if (hit == 2) {
+        reflect_obj_dir(o, 1, 0);
+        next_x = o->x_coord;
+        next_x_q8 = ((long)o->x_coord << 8) + o->x_coord_hi;
     }
-    objects[obj_idx].x_coord = (unsigned char)next_x;
-    objects[obj_idx].y_coord = (unsigned char)next_y;
-    *in_dx = dx;
-    *in_dy = dy;
+    o->x_coord = (unsigned char)next_x;
+    o->y_coord = (unsigned char)next_y;
+    o->x_coord_hi = (unsigned char)(next_x_q8 & 0xFF);
+    o->y_coord_hi = (unsigned char)(next_y_q8 & 0xFF);
 }
 
 static void step_ball2(void) {
