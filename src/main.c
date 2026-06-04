@@ -5191,15 +5191,23 @@ static void step_extra_ball(unsigned char *in_active,
         else if (next_x > x_max)        { next_x = x_max;      dx = -dx; }
     }
     if (next_y < BALL_Y_TOP) { next_y = BALL_Y_TOP; dy = +BALL_SPEED; }
-    /* Bat bounce: same 5-zone deflection as the primary ball. */
+    /* Bat bounce. The Y geometry mirrors the primary ball's validated
+     * LAB1F contact: fire on Y overlap (ball_y >= 167 ⟺ next_y + 7 >
+     * bat_top) and rest at $A6 = bat_top - 7 (height, not the width
+     * eff_ball_size = 8). The original runs one LAB1F for every ball, so
+     * this is correct by construction. The deflection itself still uses
+     * the 5-zone approximation here (the secondaries use integer motion,
+     * not the q8.8 + dir model, so bat_deflect_dir can't drop in until
+     * they're unified — blocked on a multi-ball reference, see
+     * notes/bat-deflection.md). */
     if (dy > 0
-        && next_y + ball_sz >= bat_top
+        && next_y + BALL_H_PX > bat_top
         && next_y < bat_top
         && next_x + ball_sz > bat_left
         && next_x < bat_right) {
         int hit_x = (next_x + ball_sz / 2) - bat_left;
         int span  = bat_right - bat_left;
-        next_y  = bat_top - ball_sz;
+        next_y  = bat_top - BALL_H_PX;
         dy = -BALL_SPEED;
         if      (hit_x * 5 < span * 1) dx = -2;
         else if (hit_x * 5 < span * 2) dx = -1;

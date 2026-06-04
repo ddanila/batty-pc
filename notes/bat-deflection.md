@@ -176,6 +176,32 @@ doesn't yet distinguish; left as a 1px cosmetic follow-up.
 2. Validate the catch->FIRE-release launch direction against the original
    (needs driving the release; the launch code is already validated for
    the level-start case).
-3. Apply the exact deflection to the multi-ball secondaries
-   (`step_extra_ball`), which still use the 5-zone split on integer
-   motion — needs a multi-ball reference (no ground truth yet).
+3. Unify the multi-ball secondaries (`step_extra_ball`) onto the exact
+   q8.8 + LAFFC + LAB1F model — see the blocker below.
+
+## Multi-ball secondaries — partial fix + capture blocker
+
+`step_extra_ball` (the TRIPLE_BALL extras, `object_ball_2/3` @ $9AE6/$9AFC)
+still uses integer motion + the 5-zone deflection, where the original runs
+the *same* `handling_ball` (q8.8 + LAFFC + LAB1F) for every ball. Two
+parts:
+
+- **Done now:** the secondaries' bat-contact Y geometry had the same
+  width-vs-height bug as the primary (fired at `next_y + 8 >= bat_top`,
+  rested at `bat_top - 8` = 165). Fixed to mirror the validated primary
+  (`next_y + 7 > bat_top` ⟺ ball_y >= 167, rest `bat_top - 7` = $A6).
+  Correct by construction (one LAB1F for all balls); the deflection table
+  itself still needs the motion-model unification below.
+- **Blocked:** porting the full exact model needs a captured secondary
+  reference, and the repositioning trick that unblocked the primary does
+  NOT extend to the secondaries. Activating `object_ball_2` by poking its
+  descriptor (`+00=$02`) — even with `balls_quantity` ($5CD9) set to 2 —
+  yields **incoherent** motion (probed: +39 px in one frame, speed
+  flipping 3->2, then frozen at the bottom edge). The engine only treats
+  ball_2/3 as live balls after the full `bonus_triple_ball` spawn
+  sequence (`LA7A6`): it sets `balls_quantity=3`, derives ball2/ball3
+  directions from ball_1's `+$06` via the `$080C`/`$040C`/`$0408` DE
+  table, copies ball_1's properties (`+$00=$02`, `+$11=0`, speed, etc.)
+  into the slots. So a faithful multi-ball capture must replay that spawn
+  sequence, not just poke a descriptor. That replication is the next
+  investment to unblock secondary-ball validation.
