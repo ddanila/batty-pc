@@ -322,3 +322,25 @@ up-bounce cell/axis, `change_direction`, and the fraction-preserving
 cell-edge snap — so any regression flips a byte and fails. PASS as of
 this commit. Fast guard; the full frame-step gate (`gate-laffc-long`)
 remains the visual/long-horizon check.
+
+### Update 9 (2026-06-04): frame-1 residual is the damaged-brick render, not the shimmer
+
+Probed the original `briks_data` ($B6F4, the per-hit shimmer slots) across
+frames via the reliable tool: slot 0 is **empty at the frame-1 capture
+and only populates at frame 2**, even though the ball is already bounced
+(dir 0x21, y=65) at frame 1. The frame-step captures sit at the `$BA83`
+loop top, so the `briks_data` shimmer animation shows up one capture after
+the bounce. Therefore the cyan difference at the frame-1 hit cell is **not
+the `briks_data`/`metal_brik_anim` shimmer** — it is the **damaged
+multi-hit brick render** (the bit-4-set "this brick has been hit"
+appearance, the README's "damage dim"), a separate sub-system from the
+shimmer animation. So the earlier shimmer-sprite hunt was aimed one layer
+off: the remaining residual is the **bit-4 damaged-brick pixels/attr**
+diverging between `print_one_brik_buf` (port) and `print_briks` (original)
+for a just-hit brick, plus, one frame later, the `briks_data` shimmer.
+
+Ball motion + collision stay byte-exact (locked by
+`test-laffc-ball-frame1`). The remaining gate residual is purely these
+brick *render* details (damaged-brick frame, then shimmer) — cosmetic,
+shared by both collision paths, and the precise next target if/when the
+shimmer/damage rendering is taken on.
