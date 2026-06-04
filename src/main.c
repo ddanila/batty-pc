@@ -1301,10 +1301,6 @@ static unsigned char force_full_flush_each_frame = 0;
  * brick through. BATTY_LEGACY_COLLISION=1 reverts to the old
  * brick_collision path. (Multi-ball secondaries still use brick_collision.) */
 static unsigned char use_laffc = 1;
-/* Debug: last laffc_collision() decision, dumped in write_replay_probe.
- * exit: 0 early-y, 1 no-row, 2 straddle-no-brick, 3 smash, 4 bounced. */
-static int laffc_dbg_newx = -1, laffc_dbg_row = -1, laffc_dbg_col = -1;
-static int laffc_dbg_mask = -1, laffc_dbg_gated = -1, laffc_dbg_exit = -1;
 static unsigned char suppress_no_ball_death = 0;
 static int sound_disabled = 0;
 
@@ -4149,8 +4145,6 @@ static int laffc_collision(int prev_x, int prev_y, int new_x, int new_y) {
     unsigned char dir = o->dir;
     int row = -1, Hy = 0, col = 0, Lx = 0x08, mask, rem = 0;
     (void)prev_x; (void)prev_y;
-    laffc_dbg_newx = new_x; laffc_dbg_row = -1; laffc_dbg_col = -1;
-    laffc_dbg_mask = -1; laffc_dbg_gated = -1; laffc_dbg_exit = 0;
     /* phase 1: early exits (ball below / above the brick band) */
     if (new_y >= 0x80) return 0;
     if (new_y + h < 0x20) return 0;
@@ -4167,7 +4161,6 @@ static int laffc_collision(int prev_x, int prev_y, int new_x, int new_y) {
             Cv += 8;
         }
     }
-    laffc_dbg_exit = 1;
     if (row < 0) return 0;
     /* phase 3: find the column (LAFFC_4) */
     {
@@ -4176,7 +4169,6 @@ static int laffc_collision(int prev_x, int prev_y, int new_x, int new_y) {
         while (a >= 0x10 && col < LVL_COLS - 1) { a -= 0x10; col++; Lx += 0x10; }
         rem = a;   /* X penetration within the cell, 0..15 */
     }
-    laffc_dbg_row = row; laffc_dbg_col = col;
     /* phase 4 head (LAFFC_5-6): land (row,col)/(Lx,Hy) on the SOLID cell
      * the ball body overlaps. The body straddles into the next COLUMN
      * when it crosses the cell's right edge (rem + width >= 16, not at the
@@ -4201,10 +4193,9 @@ static int laffc_collision(int prev_x, int prev_y, int new_x, int new_y) {
                 col++; Lx += 0x10; landed = 1;
             }
         }
-        if (!landed) { laffc_dbg_exit = 2; return 0; }
+        if (!landed) return 0;
     }
 #undef LAFFC_SOLID
-    laffc_dbg_col = col;
     /* phase 4: open-face mask (bit0 L, 1 R, 2 U, 3 D). LAFFC clears a bit
      * when that neighbour is SOLID or past a playfield edge, so a set bit
      * = an OPEN (empty/destroyed) face the ball can reflect off. */
@@ -4216,7 +4207,6 @@ static int laffc_collision(int prev_x, int prev_y, int new_x, int new_y) {
     if (Hy >= 0x21 && LAFFC_EMPTY(row - 1, col)) mask |= 4;
     if (Hy <  0x78 && LAFFC_EMPTY(row + 1, col)) mask |= 8;
 #undef LAFFC_EMPTY
-    laffc_dbg_mask = mask;
     /* phase 5: gate by direction (LAFFC_13..17). Leaves at most one of
      * {left,right} and one of {up,down}. */
     if (dir < 0x20) mask &= ~8; else mask &= ~4;
@@ -4234,11 +4224,9 @@ static int laffc_collision(int prev_x, int prev_y, int new_x, int new_y) {
         if (ypen >= xpen) mask &= ~0x0C;   /* horizontal bounce */
         else              mask &= ~0x03;   /* vertical bounce */
     }
-    laffc_dbg_gated = mask;
     /* phase 6: resolve the hit cell (destroy / half-hit / shimmer). SMASH
      * (big-ball) returns 0 = plough through: cell destroyed, no bounce. */
-    if (brick_hit_resolve(col, row, 1) == 0) { laffc_dbg_exit = 3; return 0; }
-    laffc_dbg_exit = 4;
+    if (brick_hit_resolve(col, row, 1) == 0) return 0;
     /* Reflect via change_direction and snap the ball to the cell edge of
      * the chosen open face (LAFFC_26-29). $1F flips horizontal, $3F
      * vertical. The non-snapped axis advances to the new position. */
@@ -4499,9 +4487,7 @@ static void write_replay_probe(void) {
     write_replay_briks_data(f);
     fprintf(f, "\ncurrent_level_copy=");
     for (i = 0; i < LVL_CELLS; i++) fprintf(f, "%02X", live_level[i]);
-    fprintf(f, "\nlaffc_dbg=newx=%d row=%d col=%d mask=%d gated=%d exit=%d\n",
-            laffc_dbg_newx, laffc_dbg_row, laffc_dbg_col,
-            laffc_dbg_mask, laffc_dbg_gated, laffc_dbg_exit);
+    fprintf(f, "\n");
     fclose(f);
 }
 
