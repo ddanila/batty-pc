@@ -478,11 +478,16 @@ TL_FRAMES ?= 1,3,5
 TL_CMP_FRAMES ?= 0,1,3,5
 TL_ROI    ?= 8,32,248,128
 TL_MAXDIFF ?= 0
+# No enemy seed: the l3-brick-flash original (snapshot + setup) has no
+# active enemy in these frames (its probed enemy descriptor is inactive),
+# so seeding one on the port just paints an enemy the original lacks from
+# frame 1 on — a confounder. Dropping it leaves a clean ball/brick-
+# collision signal: frame-1 ROI diff falls 363 -> 212 px and collapses to
+# a compact box around the ball (was two clusters, ball + spurious enemy).
 L3_SEED_ENV = BATTY_LEVEL=3 BATTY_START_LEVEL=1 BATTY_REPLAY_RANDOM=8E49 \
 	BATTY_REPLAY_BAT_OBJECT=01017400AD000000040DEFAE1C0A74AD040DF0008380 \
 	BATTY_REPLAY_BALL_OBJECT=02006C004E001F03020CEEF008076C4E020C0000008C \
-	BATTY_REPLAY_BALL_STUCK=0 \
-	BATTY_REPLAY_ENEMY_OBJECT=0905A4471B642D01030FDD74180CA41C030F30703100
+	BATTY_REPLAY_BALL_STUCK=0
 # WAIT_KEY pauses the port at main-loop entry; --wait-key captures that
 # as frame 0, byte-aligned with the original's post-setup $BA83.
 capture-timeline-both: $(ZESARUX)

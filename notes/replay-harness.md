@@ -279,6 +279,28 @@ required equality. Two plausible paths for the capture timing remain:
   signal to drive to zero by porting the exact ball motion. The
   milestone (a frame-exact port-vs-original gameplay gate with a 0 px
   aligned start) is reached. See `notes/seeded-l3-entry-triage.md`.
+
+  **Gate cleaned to isolate ball/brick collision (2026-06-04).** The
+  residual had two x-clusters: the ball (x≈108, from the seed's
+  `BALL_OBJECT` x=$6C) and a second at x≈164. The second was the port's
+  seeded `ENEMY_OBJECT` painting an enemy the original snapshot does not
+  have active in these frames (its probed enemy descriptor is inactive,
+  and frame 0 stays 0 px with the seed removed). Dropping
+  `BATTY_REPLAY_ENEMY_OBJECT` from `L3_SEED_ENV` removed that confounder:
+
+  - frame 1: 363 → **212** px, bounds collapse to a compact box at the
+    ball `(104,65,127,89)`,
+  - frame 3: 473 → 333, frame 5: 653 → 494.
+
+  The remaining residual is purely the ball interacting with nearby
+  bricks, growing frame by frame from the 0 px start — a clean
+  `handling_ball` / `LAFFC` signal. Pixel classification of the residual
+  is mostly *both-sides-ink, different colour* plus presence diffs, i.e.
+  a brick near the ball changes on one side and not the other: the ball
+  starts at y=$4E (78) already inside the brick band, so the divergence
+  is **brick-collision cell/timing** (the port's `brick_collision` vs the
+  original `LAFFC` neighbour-bit mask), not ball *motion* (now exact via
+  `dir_to_dxdy`). Porting `LAFFC` is the next step to drive 212→0.
 - **Trampoline pauses between captures.** Reuse the existing
   `BATTY_REPLAY_WAIT_KEY` mechanism but rearm the port for a second
   pause at a known game-state point (e.g. after the first brick hit),
