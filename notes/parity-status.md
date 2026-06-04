@@ -23,11 +23,17 @@ and `laffc-decode.md` for the detailed trail.
   `dir_to_dxdy` with the `LAD69` X/Y cross and fraction-preserving
   cell-edge snap. Ball x / y / fraction / direction match the Spectrum
   exactly (probe-confirmed).
-- **Brick collision** — `LAFFC` port (cell-find, open-face neighbour
-  mask, direction gate, `change_direction` reflect, penetration corner
-  case) behind `BATTY_LAFFC=1`. On L3 the hit cell, bounce axis, snapped
-  position, and direction are all byte-exact; stable over 40 frames
-  (`make gate-laffc-long`).
+- **Brick collision** — `LAFFC` port (cell-find incl. the LAFFC_5-6
+  down/down-right straddle, open-face neighbour mask, direction gate,
+  `change_direction` reflect, penetration corner case). **Now the DEFAULT
+  for the primary ball.** Byte-exact vs the Spectrum over L3's full
+  150-frame trajectory — hit cell, axis, snapped position, direction, and
+  q8.8 fraction all match at frames 1/5/10/20/40/60/80/100/150
+  (`make test-laffc-ball-frame1`). `BATTY_LEGACY_COLLISION=1` reverts to
+  the old `brick_collision` (revert **verified**: it diverges from the
+  byte-exact path, as expected). Multi-ball secondaries still use
+  `brick_collision` (integer motion, not yet ported to the q8.8 + LAFFC
+  model — would need a multi-ball original snapshot to validate).
 - **Regression guards** — `make test-laffc-ball-frame1` (ZEsarUX-free)
   locks the L3 frame-1 ball to the Spectrum probe; the 5-checkpoint +
   per-level static suite (`make test`) stays green.
