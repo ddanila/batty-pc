@@ -456,6 +456,17 @@ capture-timeline:
 	    $(MAKE) $(TEST_FLOPPY_OUT)
 	python3 scripts/capture_frame_timeline.py --floppy $(TEST_FLOPPY_OUT) --frames $(FRAMES)
 
+# Original (ZEsarUX) side of the frame-step sweep: frame-step the Z80 the
+# same checkpoint frame counts and dump each .scr, so the two timelines
+# diff frame-for-frame. SNAPSHOT is a tracked mid-game .sna.
+SNAPSHOT ?= build/snapshots/20260513T202101Z.sna
+SETUP_REPLAY ?= replays/l3-brick-flash.json
+TL_FRAMES_ORIG ?= 0,5,10
+capture-timeline-original: $(ZESARUX)
+	python3 scripts/capture_frame_timeline_original.py \
+	    --snapshot $(SNAPSHOT) --frames $(TL_FRAMES_ORIG) --zesarux $(ZESARUX) \
+	    --setup-from-replay $(SETUP_REPLAY) --require-motion
+
 test-hud: $(FLOPPY_OUT)
 	python3 scripts/test_hud.py --floppy $(FLOPPY_OUT)
 

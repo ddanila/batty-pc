@@ -161,11 +161,36 @@ required equality. Two plausible paths for the capture timing remain:
   steps the exact frame delta between halts (`--require-motion` makes
   that a hard assertion; a static ball-on-bat scene is otherwise valid).
 
-  Still open: the original side. A matching ZEsarUX driver must step the
-  Z80 the same frame counts (breakpoint on the frame-interrupt vector,
-  or `run N frames`) and dump each `.scr`, so the two timelines can be
-  diffed frame-for-frame. That promotes the sweep from a port-side
-  regression baseline to a true original-vs-port gameplay parity gate.
+  **Original side landed (2026-06-04).**
+  `scripts/capture_frame_timeline_original.py` frame-steps the Z80 in
+  ZEsarUX the same checkpoint frame counts and dumps each `.scr`. Frame
+  boundary: the main-loop top `LB9E8_2 = $BA83` is reached once per
+  50 Hz frame, so "advance one frame" == run until PC hits `$BA83`
+  again; to count N frames it steps one opcode off `$BA83` (so the
+  breakpoint doesn't retrap at zero opcodes) and runs until it re-traps,
+  N times. `--setup-from-replay <spec.json>` reuses
+  `replay_harness.apply_original_setup` to poke level/RNG and jump into
+  active play first (the raw L3 `.sna` free-runs through the IM1 vector
+  `$0038` but never reaches `$BA83` and stays visually static until the
+  `$BA24` setup runs). `make capture-timeline-original` runs it against
+  the tracked L3 snapshot with the `l3-brick-flash` setup and
+  `--require-motion`; verified the timeline advances (≈600–800 px over
+  the first 5 frames, then ≈220 px over the next 5).
+
+  Both halves now exist. **Open: start-frame alignment.** The
+  original-side per-step pixel deltas vary run-to-run (e.g. frame 0→5
+  measured 775 px then 663 px on consecutive runs). The frame *stepping*
+  is deterministic — N frames is always N `$BA83` trips — so the
+  variance is in *where frame 0 lands* relative to the ball's sub-frame
+  state after the wall-clock `boot_wait` + setup. Before the two
+  timelines can be diffed as a parity gate, both sides must start from a
+  byte-identical object state on the same frame (as `replay-l3-entry`
+  already achieves for its single paused capture). Pinning that — drive
+  the original setup to a fixed `$BA83` trip count rather than a
+  wall-clock settle, and seed the port with the same probed descriptors
+  — is the next step, after which a frame-by-frame `.idx` diff of the
+  two timelines becomes the real gameplay parity gate that unblocks
+  porting `handling_ball`'s exact 64-direction motion.
 - **Trampoline pauses between captures.** Reuse the existing
   `BATTY_REPLAY_WAIT_KEY` mechanism but rearm the port for a second
   pause at a known game-state point (e.g. after the first brick hit),
