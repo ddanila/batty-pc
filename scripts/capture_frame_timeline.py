@@ -45,6 +45,13 @@ def main():
     ap.add_argument('--require-motion', action='store_true',
                     help='also fail if consecutive captures are identical '
                          '(proves the sim advanced between checkpoints)')
+    ap.add_argument('--wait-key', action='store_true',
+                    help='floppy was built with BATTY_REPLAY_WAIT_KEY=1: the '
+                         'port pauses at main-loop entry ($BA83). Capture that '
+                         'pause as frame 0 (the aligned start, == the original '
+                         'side\'s post-setup $BA83), then wake and step the '
+                         '--frames checkpoints. Frame counts then match the '
+                         'original timeline frame-for-frame.')
     args = ap.parse_args()
 
     frames = [int(t) for t in args.frames.split(',') if t.strip()]
@@ -55,20 +62,33 @@ def main():
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
 
-    # Build the QEMU monitor script. The port halts at frames[0] within
-    # the boot-wait window; thereafter each `sendkey ret` releases it to
-    # run (frames[i]-frames[i-1]) more frames, so we sleep that long
-    # (plus margin) before grabbing the next screendump.
+    # Build the QEMU monitor script.
+    #
+    # Default mode: the port free-runs from gameplay start and the visual
+    # probe halts at frames[0] within the boot-wait window; thereafter each
+    # `sendkey ret` releases it to run (frames[i]-frames[i-1]) more frames.
+    #
+    # --wait-key mode: the port pauses at main-loop entry ($BA83) during
+    # the boot wait. We screendump that as frame 0 (byte-aligned with the
+    # original's post-setup $BA83), then `sendkey ret` wakes it into the
+    # frame loop; the probe then halts at each --frames checkpoint, counted
+    # from entry just like the original side's $BA83 trips.
     script = [f'SLEEP {args.boot_wait}']
     ppm_paths = []
+    if args.wait_key:
+        zero = out / 'frame_0000.ppm'
+        ppm_paths.append((0, zero))
+        script.append(f'screendump {zero}')
+    prev = 0
     for i, n in enumerate(frames):
-        if i > 0:
-            delta = frames[i] - frames[i - 1]
+        if args.wait_key or i > 0:
+            delta = n - prev
             script.append('sendkey ret')
             script.append(f'SLEEP {delta / args.fps + 0.5:.3f}')
         ppm = out / f'frame_{n:04d}.ppm'
         ppm_paths.append((n, ppm))
         script.append(f'screendump {ppm}')
+        prev = n
 
     print(f'booting {args.floppy} headless (boot wait {args.boot_wait}s), '
           f'checkpoints={frames}...')

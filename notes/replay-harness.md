@@ -227,6 +227,35 @@ required equality. Two plausible paths for the capture timing remain:
   Only after both are pinned does the residual ROI diff become the
   `handling_ball` / `LAFFC` divergence signal we actually want to drive
   to zero. The gate and its numbers now exist to measure that work.
+
+  **Aligned start landed + a seeded-entry render gap found (2026-06-04).**
+  `capture_frame_timeline.py --wait-key` now captures the port's
+  `BATTY_REPLAY_WAIT_KEY` main-loop-entry pause as frame 0, and
+  `make capture-timeline-both` wakes from it so the port's frame counts
+  match the original's `$BA83` trips. With that aligned start, the
+  comparison surfaced a sharper, more useful fact than expected:
+
+  - `orig frame0` is **byte-identical to the canonical L3 GT**
+    (`build/level_gt/level_03.scr`, 0 px in the ROI),
+  - `port frame0` differs from that same GT by **1568 px**,
+  - the phase-offset matrix (port[n] vs orig[m] for n,m in 0..5) has its
+    minimum at (0,0); **no frame shift aligns them**, so this is not a
+    timing offset — it is a content difference present at the very first
+    frame.
+
+  So the port, when seeded with the `replay-l3-brick-flash` descriptors,
+  paints something in the brick band at seeded entry that canonical L3
+  (and the original) does not. The diff is structured along brick rows
+  (per-row bands of ≈6–26 px with spikes of 90–164 px at row
+  boundaries), i.e. a brick-field render/state difference, not a compact
+  ball/enemy sprite. This is *upstream* of `handling_ball`: the
+  frame-step gate can't isolate ball physics until the seeded-entry
+  render matches. The per-level static test passes L3 at 0 px because it
+  uses the **default stuck-ball** entry, not the brick-flash seed — so
+  the discrepancy is specific to the in-flight-ball + enemy seed. See
+  `notes/seeded-l3-entry-triage.md` for the next step: bisect which seed
+  field (ENEMY_OBJECT? in-flight ball? a metal-brick anim state) the
+  port paints differently from the original at frame 0.
 - **Trampoline pauses between captures.** Reuse the existing
   `BATTY_REPLAY_WAIT_KEY` mechanism but rearm the port for a second
   pause at a known game-state point (e.g. after the first brick hit),

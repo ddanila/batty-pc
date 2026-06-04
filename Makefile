@@ -475,6 +475,7 @@ capture-timeline-original: $(ZESARUX)
 # brick shimmer runs out of phase; see notes/replay-harness.md. The
 # numbers localize where the two simulations diverge.
 TL_FRAMES ?= 1,3,5
+TL_CMP_FRAMES ?= 0,1,3,5
 TL_ROI    ?= 8,32,248,128
 TL_MAXDIFF ?= 0
 L3_SEED_ENV = BATTY_LEVEL=3 BATTY_START_LEVEL=1 BATTY_REPLAY_RANDOM=8E49 \
@@ -482,16 +483,19 @@ L3_SEED_ENV = BATTY_LEVEL=3 BATTY_START_LEVEL=1 BATTY_REPLAY_RANDOM=8E49 \
 	BATTY_REPLAY_BALL_OBJECT=02006C004E001F03020CEEF008076C4E020C0000008C \
 	BATTY_REPLAY_BALL_STUCK=0 \
 	BATTY_REPLAY_ENEMY_OBJECT=0905A4471B642D01030FDD74180CA41C030F30703100
+# WAIT_KEY pauses the port at main-loop entry; --wait-key captures that
+# as frame 0, byte-aligned with the original's post-setup $BA83.
 capture-timeline-both: $(ZESARUX)
 	@rm -f $(TEST_FLOPPY_OUT)
-	@$(L3_SEED_ENV) BATTY_VISUAL_PROBE_FRAMES=$(TL_FRAMES) $(MAKE) $(TEST_FLOPPY_OUT)
+	@$(L3_SEED_ENV) BATTY_REPLAY_WAIT_KEY=1 BATTY_VISUAL_PROBE_FRAMES=$(TL_FRAMES) \
+	    $(MAKE) $(TEST_FLOPPY_OUT)
 	python3 scripts/capture_frame_timeline.py --floppy $(TEST_FLOPPY_OUT) \
-	    --frames $(TL_FRAMES) --out build/tl_port
+	    --frames $(TL_FRAMES) --wait-key --out build/tl_port
 	python3 scripts/capture_frame_timeline_original.py --snapshot $(SNAPSHOT) \
-	    --frames $(TL_FRAMES) --zesarux $(ZESARUX) \
+	    --frames $(TL_CMP_FRAMES) --zesarux $(ZESARUX) \
 	    --setup-from-replay $(SETUP_REPLAY) --out build/tl_orig
 	python3 scripts/compare_timelines.py --port build/tl_port \
-	    --original build/tl_orig --frames $(TL_FRAMES) --roi $(TL_ROI) \
+	    --original build/tl_orig --frames $(TL_CMP_FRAMES) --roi $(TL_ROI) \
 	    --max-diff $(TL_MAXDIFF)
 
 test-hud: $(FLOPPY_OUT)
