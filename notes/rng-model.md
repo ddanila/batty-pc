@@ -269,3 +269,45 @@ exact `src` byte read and `ctrl_btns` used, and the seed value AT THE READ
 (not at the probe). Align those and the walk should close. Until then,
 RNG-dependent parity (enemy steering target, bonus drops) cannot be gated;
 the descend gate (RNG-independent) is the locked half.
+
+## RESOLVED (2026-06-05): the walk IS byte-exact — it was a SEED BYTE-ORDER error
+
+The "walk does NOT match" finding above was a test mistake, not a port bug.
+Two byte-order traps:
+
+1. `random_number` D:E. The original stores it LE at $8D48 (E=low=$8D48,
+   D=high=$8D49); the port's PROBE prints `(random_d, random_e)` = D:E.
+   The original f0 value is E=$93, D=$37 = the pair `9337` when read
+   $8D48-then-$8D49, but that is **D:E = 3793**. Seeding the port with
+   `BATTY_REPLAY_RANDOM=9337` set D=$93/E=$37 (byte-SWAPPED). The correct
+   seed is `BATTY_REPLAY_RANDOM=3793`.
+2. `random_seed` is the LE 16-bit `962A` (not `2A96`), per the prior note.
+
+With **RANDOM=3793 + RANDOM_SEED=962A + BATTY_RNG_PERFRAME=1**, the port's
+`random_number` walk is **byte-identical** to the original for every frame
+captured:
+
+    frame   port == original
+    f0      3793        (seeded)
+    f1      BB53
+    f2      460D
+    f3      0990
+    f4      6A76
+
+Locked by `make test-rng-walk` (`scripts/test_rng_walk.py`). So the RNG
+model, `next_random()` algorithm, AND `random_seed.bin` ($8000-$9FFF
+source) are all byte-exact — the earlier "byte-exact validated" claim was
+RIGHT after all; only the live re-test had used swapped seed bytes.
+
+### This fixes the enemy steering
+
+With the correct RNG seed + flag ON, the enemy's arrival-repick reads the
+correct `random_number`, so the steering now matches the GT: `dir` climbs
+0x11→0x12→0x13 over f16/f20/f24 (was the wrong-way 0x0E→0x0C with the
+stale/swapped RNG). See notes/enemy-movement.md. (A ~1px x residual at
+f20/f24 remains — sub-pixel, dir/y match.) So RNG-dependent parity is
+UNBLOCKED: the per-frame tick + correct seed reproduce the original's
+random sequence, hence the enemy target and (by the same mechanism) bonus
+drops. The remaining work is a deliberate default-flip of
+`BATTY_RNG_PERFRAME` + wiring the snapshot's true seed into the replay
+infra (the L3 env still bakes the stale `8E49`), now that there is a gate.

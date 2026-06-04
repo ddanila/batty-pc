@@ -209,8 +209,21 @@ and `laffc-decode.md` for the detailed trail.
   RNG-independent descend phase (`handling_bird`: `if (y<8) y++`) is
   byte-exact vs the original: x=168, y +1/frame, dir=$10, spd=1,
   target=$10 held (port frames 3/6 match the GT). Locked by the new gate.
-- **Enemy steering (y >= 8)** — NOT matching (corrected over-claim,
-  2026-06-05). An earlier entry here said the steering was
+- **RNG per-frame walk** — BYTE-EXACT, gate-locked (`make test-rng-walk`).
+  With the byte-correct L3 f0 seed (`BATTY_REPLAY_RANDOM=3793` +
+  `BATTY_REPLAY_RANDOM_SEED=962A`) and the per-frame tick
+  (`BATTY_RNG_PERFRAME=1`), the port's `random_number` walk is identical to
+  the original's at f0..f4 (3793/BB53/460D/0990/6A76). Proves `next_random`
+  + `random_seed.bin` ($8000-$9FFF source) + the tick all byte-exact. The
+  earlier "diverges" scare was a seed BYTE-ORDER mistake in the test (see
+  `notes/rng-model.md`), not a port bug.
+- **Enemy steering (y >= 8)** — now MATCHES with the correct RNG (dir
+  0x11→0x12→0x13 at f16/f20/f24 = the GT), confirming the steering model +
+  the RNG repick are right; only a ~1px x residual remains (sub-pixel).
+  This supersedes the "NOT matching" note below, which held only under the
+  stale/byte-swapped RNG seed. (Below kept for the decode trail.)
+- **Enemy steering (y >= 8) — earlier (stale-RNG) analysis** — An earlier
+  entry here said the steering was
   "ground-truth-confirmed"; that was wrong — it was inferred from the GT's
   *shape*, not gate-compared. A frame-by-frame port-vs-GT capture shows the
   port steers the alien the WRONG WAY in the y>=8 leg: the original turns

@@ -80,7 +80,7 @@ PROFILE_WAIT   ?= 25
 PROFILE_BALL_OBJECT ?= 02008000A0001802020C000008070000000000000080
 PROFILE_BALL_STUCK  ?= 0
 
-.PHONY: all clean run run-86box profile-auto profile-86box read-profile floppy assets help run-original run-original-cheat snapshot candidates regions test test-hud test-bat-redraw-window test-ball-dirty-redraw test-ball-object-dirty-redraw test-rocket-flight-redraw test-rocket-completion-no-ball test-round-banner-border test-brick-flash test-rocket-bonus test-death-sparks test-normal-ball-launch test-ball-left-wall-escape test-l3-replay-seed test-midgame-brick-replay replay-l3-brick-flash replay-l3-brick-flash-both test-laffc-ball-frame1 test-bat-deflection test-enemy-descend parity-check
+.PHONY: all clean run run-86box profile-auto profile-86box read-profile floppy assets help run-original run-original-cheat snapshot candidates regions test test-hud test-bat-redraw-window test-ball-dirty-redraw test-ball-object-dirty-redraw test-rocket-flight-redraw test-rocket-completion-no-ball test-round-banner-border test-brick-flash test-rocket-bonus test-death-sparks test-normal-ball-launch test-ball-left-wall-escape test-l3-replay-seed test-midgame-brick-replay replay-l3-brick-flash replay-l3-brick-flash-both test-laffc-ball-frame1 test-bat-deflection test-enemy-descend test-rng-walk parity-check
 
 all: $(EXE) $(ASSETS)
 
@@ -559,6 +559,12 @@ test-bat-deflection:
 # scripts/capture_enemy_flight.py).
 test-enemy-descend:
 	python3 scripts/test_enemy_descend.py
+
+# Byte-exact RNG-walk gate: the per-frame tick (flag ON) must reproduce
+# the original's random_number walk from the L3 f0 seed. Ground truth in
+# notes/rng-model.md.
+test-rng-walk:
+	python3 scripts/test_rng_walk.py
 
 # Multi-level sanity sweep: LAFFC must play comparably to brick_collision
 # on every level (no level where LAFFC destroys ~no bricks while
