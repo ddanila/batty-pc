@@ -1721,6 +1721,8 @@ static object_t objects[N_OBJECTS] = {
 
 static void ball_dir_delta_q8(unsigned char dir, unsigned char speed,
                               int *dx_q8, int *dy_q8);
+static void dir_to_dxdy(unsigned char dir, unsigned char speed,
+                        int *out_dx, int *out_dy);
 
 static void primary_ball_set_velocity(int dx, int dy) {
     ball_dx = dx;
@@ -1845,7 +1847,13 @@ static const unsigned char direction_table_q8[16] = {
 static void enemy_dir_delta_q8(unsigned char dir, unsigned char speed,
                                int *dx_q8, int *dy_q8) {
     int idx = dir & 0x0F;
-    int x = direction_table_q8[15 - idx];
+    /* X magnitude is direction_table[16 - idx] per hl_bc_calc_direction
+     * ($AD22): the original does (idx XOR $0F)+1 = 16-idx and indexes a
+     * 17-entry table whose [16] = $00. direction_table_q8 has 16 entries,
+     * so index 16 -> 0. The previous `[15 - idx]` was off by one, giving
+     * every enemy/ball X step the next direction's magnitude (a slow
+     * frame-by-frame drift caught by the frame-step parity gate). */
+    int x = (idx == 0) ? 0x00 : direction_table_q8[16 - idx];
     int y = direction_table_q8[idx];
     switch (dir & 0x30) {
         case 0x00: *dx_q8 =  x; *dy_q8 =  y; break;
@@ -1859,7 +1867,16 @@ static void enemy_dir_delta_q8(unsigned char dir, unsigned char speed,
 
 static void ball_dir_delta_q8(unsigned char dir, unsigned char speed,
                               int *dx_q8, int *dy_q8) {
-    enemy_dir_delta_q8(dir, speed, dx_q8, dy_q8);
+    /* Use the exact hl_bc_calc_direction port (dir_to_dxdy), not the
+     * older enemy_dir_delta_q8, whose X magnitude is off by one table
+     * index: the original computes the X component as
+     * direction_table[(b XOR $0F)+1] = direction_table[16 - b], which
+     * needs the 17th entry $00 (dir_sin_tbl[16]); enemy_dir_delta_q8
+     * indexes direction_table_q8[15 - b] on a 16-entry table, so every
+     * ball X step is the magnitude for the next direction up. That made
+     * the ball drift from the Spectrum frame-by-frame (caught by the
+     * frame-step parity gate). dir_to_dxdy matches the disasm exactly. */
+    dir_to_dxdy(dir, speed, dx_q8, dy_q8);
 }
 
 static void ball_reflect_descriptor(int flip_x, int flip_y) {

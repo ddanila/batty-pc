@@ -210,3 +210,34 @@ the target:
 - Treat the global enable as a precondition for the per-slot set, not
   the other way around. The same pattern almost certainly applies to
   ZEsarUX's other conditional facilities (watchpoints, memory traps).
+
+## Two ports of one routine drift — diff them against the disasm
+
+**Rule.** When the same Z80 routine has been ported twice (e.g. a
+"generic" helper and a later "exact" one), assume they disagree until
+proven otherwise, and trust the one whose derivation is written against
+the disasm. Re-point callers at the validated copy.
+
+**Why.** `handling_ball`'s motion runs through the q8.8 direction
+decoder. Two C ports existed: `enemy_dir_delta_q8` (older, used by the
+ball and enemies) and `dir_to_dxdy` (later, documented as the exact port
+of `hl_bc_calc_direction` at `$AD22`, validated against death-spark
+motion). They differed by one table index on the X component:
+`hl_bc_calc_direction` computes the X magnitude as
+`direction_table[(idx XOR $0F)+1]` = `direction_table[16 - idx]`, which
+needs the 17th entry `$00` (`dir_sin_tbl[16]`). `enemy_dir_delta_q8`
+indexed `direction_table_q8[15 - idx]` on a 16-entry table — every ball
+and enemy X step got the *next* direction's magnitude. The frame-step
+parity gate (`make capture-timeline-both`) is what made it findable, but
+the bug is sub-pixel for small `idx` deltas (e.g. dir `$1F` differs by
+only 2 q8.8 units/frame), so it stays invisible for ~40 frames and does
+not move the gate's first few captured frames — confirm such fixes
+against the disasm, not only against a short pixel diff.
+
+**How to apply.** When you spot a second port of a routine you already
+ported, byte-diff their outputs across the full input domain (here: all
+64 directions × a speed), not just the inputs your current test
+exercises. Make the validated one the single source of truth and have
+the others delegate to it. A sub-pixel-per-frame numerical bug will pass
+every short test and only surfaces as slow drift — the disasm is the
+oracle, the pixel gate is a long-horizon confirmation.
