@@ -71,6 +71,38 @@ original's `$8D48` value at frame 0 (and fix the replay to poke `$8D48`);
 frame against `$8D48`. The consumer read-current/advance classification
 already done stands.
 
+## VALIDATED end-to-end (2026-06-04): port RNG reproduces the original
+
+Two fixes made this testable:
+- The Makefile did NOT pass `BATTY_RNG_PERFRAME` / `BATTY_REPLAY_RANDOM_SEED`
+  into the DOS `AUTOEXEC`, so the flag NEVER reached the build — every
+  earlier "flag-on" test actually ran flag-OFF (no tick). Fixed the
+  passthrough. (This invalidates the earlier flag-on enemy "divergence".)
+- Added `BATTY_REPLAY_RANDOM_SEED` to seed `random_seed_addr` (the ROM-walk
+  position = the original's `random_seed` at `$8D4A`).
+
+Offline, `next_random` against the shipped ROM window (`random_seed.bin`,
+8 KB, `& $1FFF`) reproduces the original's `$8D48` sequence EXACTLY from
+the f1 state (0x460D, seed 0x962C). In the BUILT port (flag ON, seeded
+`BATTY_REPLAY_RANDOM=460D BATTY_REPLAY_RANDOM_SEED=962C`):
+
+```
+        port              original
+  f1:   0990 / 962D       460D / 962C
+  f2:   6A76 / 962E       0990 / 962D
+  f3:   9A8E / 962F       6A76 / 962E
+  f4:   D899 / 9630       9A8E / 962F
+```
+
+The port reproduces the original's exact RNG values, **offset by one
+frame**: the original has `f0 == f1` (no tick on its first frame boundary
+— a frame-step setup artifact), while the port ticks immediately. So the
+RNG model is byte-exact; the lone remaining alignment is that one-frame
+head start. Resolving it (skip the port's first-frame tick, or seed to the
+original's f0 pre-tick value) would make RNG-dependent reads — enemy
+targets, bonus drops — frame-exact. Note the L3 seed value `0x460D` is the
+snapshot's, not the env `8E49` (which wrote the wrong address `$8E17`).
+
 ## Status: staged foundation landed (flag OFF by default)
 
 `BATTY_RNG_PERFRAME` + `rng_sample()` are in (the `BATTY_LAFFC` staging

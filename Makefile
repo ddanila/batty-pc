@@ -321,6 +321,12 @@ $(TEST_FLOPPY_OUT): $(TEST_EXE) $(ASSETS) $(FLOPPY_SRC)
 	if [ -n "$$BATTY_REPLAY_RANDOM" ]; then \
 	    printf 'SET BATTY_REPLAY_RANDOM=%s\r\n' "$$BATTY_REPLAY_RANDOM" >> build/AUTOEXEC-T.BAT ; \
 	fi; \
+	if [ -n "$$BATTY_REPLAY_RANDOM_SEED" ]; then \
+	    printf 'SET BATTY_REPLAY_RANDOM_SEED=%s\r\n' "$$BATTY_REPLAY_RANDOM_SEED" >> build/AUTOEXEC-T.BAT ; \
+	fi; \
+	if [ -n "$$BATTY_RNG_PERFRAME" ]; then \
+	    printf 'SET BATTY_RNG_PERFRAME=%s\r\n' "$$BATTY_RNG_PERFRAME" >> build/AUTOEXEC-T.BAT ; \
+	fi; \
 	if [ -n "$$BATTY_REPLAY_BAT_OBJECT" ]; then \
 	    printf 'SET BATTY_REPLAY_BAT_OBJECT=%s\r\n' "$$BATTY_REPLAY_BAT_OBJECT" >> build/AUTOEXEC-T.BAT ; \
 	fi; \

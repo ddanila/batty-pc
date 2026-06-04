@@ -4356,13 +4356,31 @@ static unsigned int rng_sample(void) {
 
 static void apply_replay_random_override(void) {
     const char *p = getenv("BATTY_REPLAY_RANDOM");
+    const char *s;
     char *endp;
     unsigned long v;
-    if (p == NULL || *p == '\0') return;
-    v = strtoul(p, &endp, 16);
-    if (*endp != '\0' || v > 0xFFFFUL) return;
-    random_d = (unsigned char)(v >> 8);
-    random_e = (unsigned char)v;
+    if (p != NULL && *p != '\0') {
+        v = strtoul(p, &endp, 16);
+        if (*endp == '\0' && v <= 0xFFFFUL) {
+            random_d = (unsigned char)(v >> 8);   /* random_number high */
+            random_e = (unsigned char)v;          /* random_number low  */
+        }
+    }
+    /* Also seed the ROM-walk position (the original's random_seed at
+     * $8D4A). Needed for byte-exact RNG-dependent parity: with both
+     * random_number ($8D48) and random_seed seeded to the original's
+     * frame-0 values, next_random reproduces random_generate frame for
+     * frame (validated offline against the original's $8D48 sequence —
+     * see notes/rng-model.md). Without it the walk reads a different ROM
+     * offset. Only the low 14 bits matter ($8000-$9FFF). */
+    s = getenv("BATTY_REPLAY_RANDOM_SEED");
+    if (s != NULL && *s != '\0') {
+        v = strtoul(s, &endp, 16);
+        if (*endp == '\0' && v <= 0xFFFFUL) {
+            random_seed_addr = (unsigned int)(v & 0x9FFF);
+            if (random_seed_addr < 0x8000) random_seed_addr |= 0x8000;
+        }
+    }
 }
 
 static int replay_hex_nibble(char c) {
