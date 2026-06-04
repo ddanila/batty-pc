@@ -376,3 +376,28 @@ compared frames 0..5. The earlier port seed used a *mid-flight* enemy
 above-ROI alien, which is the confounder that was (correctly) removed by
 dropping the seed. For an enemy-specific gate, seed the port with the same
 fresh y=1 descriptor instead.
+
+### Enemy descend-phase GATE built (2026-06-05) — `make test-enemy-descend`
+
+Turned the descend-phase GT into a deterministic regression gate
+(`scripts/test_enemy_descend.py`). It bakes the authoritative fresh enemy
+descriptor (read from ZEsarUX at the spawn frame) into the port replay and
+probes `object_enemy` at two descend frames:
+
+    fresh descriptor: 0900A80001001001030FDA35180CA801030FF0701000
+    (sprite_set=09 x=168 y=1 dir=0x10 spd=1 w_body=24 h_body=12 target=0x10)
+
+    port frame 3: x=168 y=4 dir=0x10 spd=1 target=0x10   [PASS]
+    port frame 6: x=168 y=7 dir=0x10 spd=1 target=0x10   [PASS]
+
+So the port's `handling_bird_obj` reproduces the original's descend exactly
+(y +1/frame, x/dir/spd/target held), now GATE-validated, not just
+inspection-confirmed. (BATTY_VISUAL_PROBE_FRAMES counts from the replay
+start, +1 vs the original's $BA83 frame index — a probe-timing convention,
+so the gate asserts the +1/frame slope + held fields, which are
+convention-independent.)
+
+This is the first frame-by-frame port-vs-original ENEMY gate. The motion
+phase past y>=8 (steering, then the arrival re-pick at ~f28) is
+RNG-state-dependent and still needs the per-frame RNG-tick + boot-cadence
+phase aligned (notes/rng-model.md) before it can be gated the same way.
