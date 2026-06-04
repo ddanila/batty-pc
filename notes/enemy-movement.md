@@ -199,13 +199,30 @@ A closer look (flag-ON, seeded 460D/962C) shows the target THRASHES, not
 matches: f14=0x36, f16=0x2B, f18=0x36, f20=0x2C, with dir oscillating
 (0x0F/0x11/0x0E/0x13). The original has a STABLE target (0x2C) and smooth
 steering. The earlier "repicks to 0x2C" was a coincidental single frame.
-So under flag-ON the enemy repicks far too often — the target is changing
-every ~2 frames even though dir (~0x10) is nowhere near it, so it's not an
-arrival-repick (delta==0); the cause is unknown and needs a flag-ON MWA
-trace of writes to $9BAA (like trace_enemy_target.py) to find what repicks
-it. Until then flag-ON is NOT correct for the enemy and must not become
-the default. The SHIPPED game (flag-OFF, motion fixed) roams fine; only
-the flag-ON per-frame-RNG path thrashes.
+So under flag-ON the enemy repicks far too often — the target changes
+~every 2 frames with per-frame-random values (target &$3F tracks the
+per-frame random_e). Investigated the cause:
+
+- **Clobber ruled out:** `bonus_applied` is only written by the bat-bonus
+  code (OBJ_BAT_1/2 specific) and the three enemy-steering paths
+  (`enemy_turn_towards_target` arrival-repick, `enemy_pick_new_target` /
+  `enemy_target_away_from_margins` margin). No loop writes the enemy's
+  field, so the bonus system isn't clobbering it.
+- **Contradiction by static analysis:** the enemy is mid-field (x=168, no
+  margin) so the margin paths shouldn't fire, and dir (~0x10) is far from
+  the target (0x2B–0x36) so delta!=0, so the arrival-repick shouldn't fire
+  either — yet the target keeps changing. The static code can't explain a
+  per-~2-frame rewrite. Resolving it needs RUNTIME instrumentation (a
+  per-path repick counter dumped in PROBE.TXT, or a flag-on MWA trace),
+  not more code reading.
+
+Status: **deferred as a deep, flag-ON-experimental debug.** It's low
+priority — the SHIPPED default (flag-OFF) enemy roams correctly with the
+fixed motion; the thrashing only affects the experimental per-frame-RNG
+path, which is gated behind `BATTY_RNG_PERFRAME` and not user-facing. The
+byte-exact RNG *walk* and the enemy *motion/steering decode* stand; only
+the flag-on byte-exact *targeting* (a niche fidelity goal) remains, blocked
+on this instrumentation session.
 
 The byte-exact L3 ball gate and all `make test` states still pass
 (the corrected descent doesn't interfere with the ball or the captured
