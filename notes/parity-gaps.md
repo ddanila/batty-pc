@@ -51,9 +51,13 @@ Several paths use gameplay-equivalent but not byte-exact motion:
   liveness LIVE. Remaining (minor): the catch->release launch isn't
   separately gate-verified (it's correct-by-construction — the quantized
   offset feeds the already-validated launch formula), and a MAGNET bat
-  catches the primary but not yet the unified secondaries (needs per-ball
-  stuck state — niche magnet+multi-ball interaction). Full decode +
-  validation in `notes/bat-deflection.md`.
+  catches the primary but not yet the unified secondaries. The latter is a
+  deliberate project, not a quick fix: the primary stuck system spans ~32
+  sites (init/respawn/level-entry/catch/play-loop maintainer/release/
+  dirty-redraw), so catching secondaries means mirroring that as a parallel
+  per-ball stuck system — substantial, NEW (not correct-by-construction)
+  code for the niche MAGNET+TRIPLE_BALL-simultaneous case. Deferred. Full
+  decode + validation in `notes/bat-deflection.md`.
 - **metal-brick shimmer** is the remaining L3 frame-step residual, now
   fully decoded (see `notes/metal-shimmer.md`; the earlier "sliding
   window" description was wrong). It is a *ball-hit-triggered, then
