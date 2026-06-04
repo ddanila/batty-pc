@@ -659,3 +659,32 @@ collision) remains delivered and shipping; every *further* parity item
 (bat deflection, secondaries, non-L3) is blocked on capturing real
 original reference states — constructed-from-poke scenarios hang unless
 the full object state is coherent.
+
+### Update 23 (2026-06-04): robust frame-step boundary ($0038) verified — pipeline foundation
+
+Toward validating the bat deflection (and other states), the frame-step
+harness needs a per-frame boundary that survives the bat-interaction
+control flow (the `$BA83` main-loop-top boundary is skipped when the
+game branches into the bat/ball-lost paths). Verified that the IM1
+maskable-interrupt vector **`$0038`** frame-steps the *coherent*
+l3-brick-flash state cleanly (frames 1/5/10, ball progresses, no hang) —
+it fires once per 50 Hz frame regardless of which game-state branch is
+running. (The earlier `$0038` failure was on the incoherent 3-byte poke,
+which hangs the game outright — not a boundary problem.)
+
+So `capture_frame_timeline_original.py --frame-pc 0x0038` is the **robust
+boundary** for capturing through control-flow branches. Caveats / next
+steps for the capture pipeline:
+
+- **Phase alignment.** `$0038` samples at interrupt time, a different
+  point in the frame than `$BA83` (loop top) — the port's visual-probe
+  halt is at the main-loop boundary, so port-vs-original byte comparison
+  needs both sides sampled at the same phase. Either capture the port at
+  the matching phase, or compare at `$BA83` for the brick path and only
+  switch to `$0038` for the bat path (then align the port accordingly).
+- **Reaching a bat contact.** With a static bat the seeded ball never
+  contacts it (it falls past → ball-lost). A bat contact requires driving
+  the bat under the descending ball via ZRCP `send_key_event` during
+  coherent play (timed to the probed ball trajectory). That input
+  orchestration is the next pipeline piece, now unblocked by the robust
+  `$0038` boundary.
