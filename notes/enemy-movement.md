@@ -152,6 +152,34 @@ diverges, plus a clean enemy reference that doesn't depend on seeding
 port-divergent object bytes. That is a dedicated debugging effort, not a
 quick edit.
 
+## Re-validated with byte-exact RNG (2026-06-04): decode right, 3 blockers
+
+With the RNG now proven byte-exact (notes/rng-model.md) and actually
+reaching the build (Makefile passthrough fix), re-ran the seeded enemy
+flag-ON with the correct RNG seed (RANDOM=460D RANDOM_SEED=962C):
+
+- **The enemy target mechanism is confirmed**: the port repicks
+  `target = random_number & $3F` exactly (e.g. target `0x36` =
+  `random 0x96F6 & $3F`). `LAA7D_1` decode is correct.
+- It still does NOT match the original's `0x2C`, for three reasons, none
+  of which is the steering decode:
+  1. **Seeded-enemy motion artifact** — the seeded enemy sticks at y=8 and
+     drifts x+ instead of descending (dir=0x10 should be straight down).
+     The 22-byte seed carries object fields the port interprets
+     differently; the port's own spawned enemy descends fine. So a
+     *seeded* enemy isn't a clean reference, and it repicks at the wrong
+     point.
+  2. **RNG sequence diverges with the enemy active** — port f8
+     random=816C vs the no-enemy sequence's FC56, so some enemy-path
+     consumer advances the RNG differently than the original (needs
+     tracing which `next_random`/`rng_sample` site).
+  3. **One-frame RNG offset** (the original's `f0==f1`, see rng-model.md).
+
+So byte-exact ENEMY targets are gated on (1) a clean enemy reference (fix
+the seed-field interpretation or capture a fresh in-flight enemy) and (2)
+the enemy-path RNG consumer audit + the one-frame offset — not on the
+steering or RNG-walk model, both of which are now validated.
+
 ## Still approximate / not byte-exact
 
 - **RNG model.** The original advances `random_number` every frame (a
