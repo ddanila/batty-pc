@@ -517,6 +517,14 @@ gate-laffc-long:
 	$(MAKE) capture-timeline-both LAFFC_FLAG=1 \
 	    TL_FRAMES=1,5,10,20,40 TL_CMP_FRAMES=0,1,5,10,20,40
 
+# Headless regression locking in the byte-exact LAFFC ball state at L3
+# frame 1 (no ZEsarUX needed; asserts object_ball_1 == the Spectrum probe).
+test-laffc-ball-frame1:
+	@rm -f $(TEST_FLOPPY_OUT)
+	@$(L3_SEED_ENV) BATTY_REPLAY_WAIT_KEY=1 BATTY_LAFFC=1 BATTY_REPLAY_PROBE=1 \
+	    BATTY_VISUAL_PROBE_FRAMES=1 $(MAKE) $(TEST_FLOPPY_OUT)
+	python3 scripts/test_laffc_ball_frame1.py --floppy $(TEST_FLOPPY_OUT)
+
 test-hud: $(FLOPPY_OUT)
 	python3 scripts/test_hud.py --floppy $(FLOPPY_OUT)
 

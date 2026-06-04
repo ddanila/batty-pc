@@ -309,3 +309,16 @@ multi-ball, undestructible (bit5) and metal/multi-hit bricks, and SMASH
 scenario (only L3 `20260513T202101Z.sna` exists today) or a second
 seeded trajectory. Until then the default stays `brick_collision`; the
 byte-exact path ships behind `BATTY_LAFFC=1`.
+
+### Update 8 (2026-06-04): byte-exact ball locked in by a headless regression
+
+`make test-laffc-ball-frame1` (`scripts/test_laffc_ball_frame1.py`) is a
+ZEsarUX-free regression: it steps the L3-seeded LAFFC port one frame from
+the aligned `$BA83` entry and asserts `object_ball_1` (from `PROBE.TXT`)
+equals the Spectrum's probed frame-1 ball **x=0x69 xf=0x09 y=0x41
+yf=0x48 dir=0x21**. That single assertion covers the whole exact-motion
+chain — `dir_to_dxdy` (LAD69 X/Y cross), the q8.8 fraction, the LAFFC
+up-bounce cell/axis, `change_direction`, and the fraction-preserving
+cell-edge snap — so any regression flips a byte and fails. PASS as of
+this commit. Fast guard; the full frame-step gate (`gate-laffc-long`)
+remains the visual/long-horizon check.
