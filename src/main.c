@@ -5900,13 +5900,19 @@ static void dir_to_dxdy(unsigned char dir, unsigned char speed,
     int L = dir_sin_tbl[16 - d];
     int hl, bc;
     switch (q) {
-        case 0x00: hl = L;          bc = C;          break;   /* +x +y */
-        case 0x10: hl = C;          bc = -L;         break;   /* +x -y */
-        case 0x20: hl = -L;         bc = -C;         break;   /* -x -y */
-        default:   hl = -C;         bc = L;          break;   /* -x +y */
+        case 0x00: hl = L;          bc = C;          break;
+        case 0x10: hl = C;          bc = -L;         break;
+        case 0x20: hl = -L;         bc = -C;         break;
+        default:   hl = -C;         bc = L;          break;
     }
-    *out_dx = hl * (int)speed;
-    *out_dy = bc * (int)speed;
+    /* LAD69 adds the hl_bc_calc_direction BC term to X and the HL term to
+     * Y (it PUSHes HL, multiplies BC into X, then POPs HL for Y), so the
+     * two components are CROSSED relative to the table read. Assigning
+     * them straight (out_dx=hl) put the wrong magnitude on X — e.g. dir
+     * $1F gave dx=+0.28 px where the Spectrum moves dx=-3 px (probed via
+     * scripts/capture_frame_timeline_original.py --probe-ball). */
+    *out_dx = bc * (int)speed;
+    *out_dy = hl * (int)speed;
 }
 
 #define DEATH_SPARK_COUNT 10

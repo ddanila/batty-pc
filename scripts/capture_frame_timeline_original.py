@@ -78,6 +78,9 @@ def main():
     ap.add_argument('--zesarux', default='tools/zesarux/src/zesarux')
     ap.add_argument('--zrcp-port', type=int, default=10000)
     ap.add_argument('--require-motion', action='store_true')
+    ap.add_argument('--probe-ball', type=lambda s: int(s, 0), default=None,
+                    help='read object_ball_1 at this address (e.g. 0x9AD0) '
+                         'at each captured frame and print x/y/dir')
     ap.add_argument('--setup-from-replay',
                     help='apply this replay spec\'s original.setup before '
                          'stepping (pokes level/RNG, jumps into active play); '
@@ -120,6 +123,13 @@ def main():
             idx = decode_scr(scr.read_bytes())
             (out / f'frame_{n:04d}.idx').write_bytes(idx)
             captures.append((n, scr, idx))
+            if args.probe_ball is not None:
+                # Read object_ball_1 ($9AD0) at this frame boundary (the
+                # tool reliably parks at frame_pc here). Bytes +02/+04 are
+                # X/Y pixel, +03/+05 fraction, +06 dir, +07 speed.
+                d = zc.read_memory(args.probe_ball, 8)
+                print(f'    ball@frame{n}: x={d[2]} xf={d[3]} y={d[4]} '
+                      f'yf={d[5]} dir=0x{d[6]:02X} spd={d[7]}')
     finally:
         zc.exit_emulator()
         try:

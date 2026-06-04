@@ -197,3 +197,22 @@ paths — not more LAFFC bounce logic. Investigate: does the original
 collide on frame 1 at this seed, and at what exact post-move y? Compare
 the original's ball `IX+$02/$04` at frame 1 (ZRCP probe) against the
 port's.
+
+### Update 4 (2026-06-04): dir_to_dxdy X/Y were crossed (LAD69)
+
+Probed the original ball through the reliable tool
+(`capture_frame_timeline_original.py --probe-ball 0x9AD0`): from the seed
+`(x=108,y=78,dir=$1F)` the Spectrum's frame-1 ball is **(x=105,y=65,
+dir=$21)** — it moved **dx=-3** and bounced, up-snapping y to `Hy-h=65`.
+The port had `dx=+0.28`. Root cause: **`LAD69` crosses the components** —
+it `PUSH HL`, runs `LAD13` (multiply-by-speed) on **BC** and adds that to
+**X**, then `POP HL` and adds `HL*speed` to **Y**. `dir_to_dxdy` assigned
+them straight (`out_dx = hl`), so X got the wrong magnitude. Fixed to
+`out_dx = bc*speed`, `out_dy = hl*speed`; for dir $1F that yields
+`dx = -L*speed ≈ -3`, matching the probe.
+
+Verified: death-spark motion test still PASS (also uses `dir_to_dxdy`),
+static 5/5. Gate impact is real but modest — LAFFC frame 1 220→**188**,
+later frames within noise; the swap is one factor, the collision
+cell/straddle still dominate the residual. Next: read the port's frame-1
+ball the same way to confirm a full (x,y,dir) match after the swap.
