@@ -3984,7 +3984,12 @@ static void try_spawn_bonus(int col, int row) {
      * i.e. 5/16 ≈ 31% per destroyed brick. (Earlier port used a
      * deterministic every-Nth counter — close in average rate but
      * obvious as a pattern to the player.) */
-    if ((random_hi(next_random()) & 0x0F) >= 5) return;
+    /* Drop chance: the original reads random_number+$01 WITHOUT advancing
+     * (read-current; brik_value: LD A,(random_number+$01) / CP $05 /
+     * CALL C,set_bonus) -> rng_sample. The bonus TYPE pick below keeps
+     * next_random(): generate_new_bonus re-CALLs random_generate each
+     * retry, so each iteration advances. */
+    if ((random_hi(rng_sample()) & 0x0F) >= 5) return;
     tbl = (round_number >= 6) ? bonus_table_second : bonus_table_first;
     for (tries = 0; tries < 16; tries++) {
         unsigned int rnd = next_random();
@@ -4655,7 +4660,11 @@ static void bomb_appear(object_t *o) {
     unsigned int r;
     if (bomb_active) return;
     if (bonus_active) return;
-    r = next_random();
+    /* Read-current (rng_sample): $A989 reads both random_number bytes
+     * without advancing. bomb_appear runs every alien frame, so leaving it
+     * on next_random() advances the shared RNG every frame and is the main
+     * polluter of the enemy target sequence (see notes/rng-model.md). */
+    r = rng_sample();
     /* Original at $A989: `LD A,(random_number); LD B,A;
      * LD A,(random_number+$01); ADD A,B; AND $3F; RET NZ`. ADD
      * not XOR — the byte distributions are subtly different,

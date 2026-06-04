@@ -62,12 +62,25 @@ notes/enemy-movement.md.) So the remaining read-current consumers must all
 be converted before the flag-on acceptance tests pass; each conversion is
 flag-OFF byte-identical, so they land safely meanwhile.
 
-### Remaining consumers to classify + convert
+### Consumer classification (against the original)
 
-`src/main.c` `next_random()` sites still to handle (read-current ->
-`rng_sample()`, or leave if the original advances-then-reads): death
-sparks (~3296), bonus region (~3929/3985/3988), and ~4565/4656. Each needs
-its original counterpart checked for a preceding `CALL random_generate`.
+Converted to `rng_sample()` (read-current — original reads `random_number`
+with no preceding `CALL random_generate`):
+- enemy target (`enemy_turn_towards_target`, `enemy_pick_new_target`)
+- magnet on/off coin-flip (`print_magnets`)
+- bonus DROP CHANCE (`brik_value`: `LD A,(random_number+$01)/CP $05/
+  CALL C,set_bonus`)
+- `bomb_appear` (`$A989`: reads both bytes, no advance) — runs every alien
+  frame, so this was the main per-frame polluter of the enemy sequence
+
+Kept on `next_random()` (advance — original `CALL random_generate` first):
+- bonus TYPE pick (`generate_new_bonus`: re-`CALL`s `random_generate` each
+  retry, so each iteration advances)
+
+Still to classify/convert: alien-blast sound noise tone (~3298), the 400pts
+marker X-drift (`$3030`, ~3931), `enemy_prepare` spawn (`~4572`). These fire
+rarely (ball-lost / marker spawn / enemy spawn) so they pollute the enemy
+sequence less, but are needed for full byte-exactness.
 
 ## Alignment plan (deliberate; not a single safe edit)
 
