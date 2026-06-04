@@ -107,9 +107,33 @@ fully coherent hand-built 22-byte descriptor — i.e. driving the original
 port-seed-alignment pipeline is the substantive unblock for all remaining
 items, and is a deliberate project to greenlight, not an autonomous step.
 
+## Full regression suite — verified green
+
+`make parity-check` (re-run after all the RNG-model / enemy-steering /
+metal-shimmer-loop / bat-deflection / MAGNET-catch / resting-position
+work) is **all green**:
+
+- `make test` — 5/5 visual states pixel-identical + both lints.
+- `make test-laffc-ball-frame1` — byte-exact vs the Spectrum at frames
+  1/5/40/100/150.
+- `make test-bat-deflection` — 14/14 cases (13 dir/position + the MAGNET
+  catch rest position).
+
+So the full achieved parity is intact and guarded; none of the recent
+work regressed the byte-exact ball, bat, or visual gates.
+
 ## Bottom line
 
-The hard core of the parity goal — exact ball motion and brick collision
-— is achieved, gate-verified on L3, and regression-locked. Extending
-verified parity to other scenarios is gated on capturing aligned
-original snapshots, not on more porting or analysis of the existing one.
+The core parity goal — exact ball motion, brick collision (LAFFC), bat
+deflection (LAB1F incl. contact timing, MAGNET catch, resting position),
+and launch — is achieved, gate-verified on L3, and regression-locked.
+Enemy steering is a faithful structural port (`LAA7D`); the metal shimmer
+loops permanently like the original (sprite data byte-identical). The one
+frame-step diagnostic residual (`capture-timeline-both`, ~188 px in
+freshly-hit cells) is proven a cosmetic, seed-comparison artifact (unsynced
+shimmer counter phase — not a render bug; a measured phase-shift experiment
+made it worse and was reverted). The remaining un-achieved items —
+byte-exact enemy RNG targets, multi-ball secondaries, cycle-exact sound —
+each need a deliberate sub-project (RNG-tick alignment + enemy seeding;
+the `bonus_triple_ball` self-modifying spawn replay; a beeper backend),
+not further analysis of the existing setup.
