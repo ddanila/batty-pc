@@ -4995,8 +4995,19 @@ static void step_ball(void) {
     /* Brick collision: side-aware. brick_collision tells us which axis
      * the ball entered through; we reverse + unwind that axis. */
     {
-        int hit = use_laffc ? laffc_collision(BALL_X, BALL_Y, next_x, next_y)
-                            : brick_collision(BALL_X, BALL_Y, next_x, next_y);
+        int hit;
+        if (use_laffc) {
+            /* LAFFC-exact bounce where it fires (returns 3 = handled, or 0
+             * = no hit). Fall back to the proven brick_collision when LAFFC
+             * reports no hit, so the byte-exact path can never pass through
+             * a brick it failed to resolve (e.g. an unported two-cell
+             * straddle on a layout other than L3). On L3 LAFFC handles the
+             * hit, so the fallback never triggers and parity is unchanged. */
+            hit = laffc_collision(BALL_X, BALL_Y, next_x, next_y);
+            if (hit == 0) hit = brick_collision(BALL_X, BALL_Y, next_x, next_y);
+        } else {
+            hit = brick_collision(BALL_X, BALL_Y, next_x, next_y);
+        }
         if (hit == 3) {
             /* LAFFC path already reflected the direction and snapped the
              * ball to the cell edge (in BALL_X/BALL_Y). LAFFC_26-29 set

@@ -344,3 +344,22 @@ Ball motion + collision stay byte-exact (locked by
 brick *render* details (damaged-brick frame, then shimmer) — cosmetic,
 shared by both collision paths, and the precise next target if/when the
 shimmer/damage rendering is taken on.
+
+### Update 10 (2026-06-04): brick_collision fallback de-risks the flip
+
+`step_ball`'s LAFFC branch now falls back to `brick_collision` when
+`laffc_collision` reports **no hit** (returns 0): LAFFC-exact bounce
+where it fires, the proven `brick_collision` as a floor otherwise. So the
+byte-exact path can **never pass a brick through** that LAFFC failed to
+resolve (e.g. an unported two-cell straddle on a non-L3 layout) — the
+worst case degrades to today's shipping behaviour, not a regression. On
+L3 LAFFC handles the hit, so the fallback never triggers and parity is
+unchanged (`test-laffc-ball-frame1` still PASS, static 5/5).
+
+**Updated flip risk.** With the fallback, flipping the default to LAFFC
+removes the *pass-through* risk entirely; the only residual risk is a
+*wrong* LAFFC bounce (returns 3 with a slightly-off dir/snap) on a layout
+that exercises an unported edge case. That is bounded and still wants
+per-level original snapshots or a port-side multi-level sanity sweep
+(ball stays in play, bricks decrease) before flipping. Until then the
+default stays `brick_collision`; the fallback is in place for the flip.
