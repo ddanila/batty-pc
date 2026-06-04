@@ -64,8 +64,15 @@ brick shimmers until its final hit, matching `metal_brik_anim`.
 
 Self-contained render change (no gameplay/RNG/collision effect):
 byte-exact L3 ball gate still byte-exact, `make test` still
-pixel-identical. The dedicated `test-brick-flash` visual check is
-currently blocked by an unrelated harness issue (QEMU returns a 720x400
-screenshot vs the script's expected 640x400), so the looping shimmer
-hasn't been pixel-diffed against ZEsarUX yet — that capture is the
-remaining confirmation.
+pixel-identical, and **`make test-brick-flash` passes** (L3 brick
+destruction cleanup, no stale-flash cells vs the original L3 reference) —
+so the permanent shimmer introduces no stale-flash artifacts.
+
+The earlier "720x400 harness issue" was a false alarm: it was a stale
+replay-seeded `build/batty-test.img` left over from shimmer-validation
+builds (its AUTOEXEC booted into a replay state, so the test's menu
+navigation never reached L3 graphics and the screendump caught text mode).
+`test_brick_flash.py` now force-rebuilds a clean floppy (env stripped of
+`BATTY_*`) before capturing, so it's robust to that. Remaining (nice to
+have): a frame-step pixel-diff of a *shimmering* metal brick vs ZEsarUX to
+confirm the per-frame sprite sequence, not just the absence of artifacts.

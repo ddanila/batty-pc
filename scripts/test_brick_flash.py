@@ -41,7 +41,24 @@ def source_guard():
         raise SystemExit("FAIL: destroyed brick dirty rect must include print_one_brik_buf's 18x10 footprint")
 
 
+def rebuild_clean_floppy():
+    """Force a CLEAN test floppy. The floppy's AUTOEXEC bakes in whatever
+    BATTY_* env was set at build time, and `make` won't rebuild an
+    up-to-date image — so a leftover replay-seeded image (e.g. from a
+    BATTY_REPLAY_*/BATTY_LEVEL=3 build) would boot into a replay state and
+    the menu navigation below would never reach L3 graphics (the capture
+    then lands in 720x400 text mode). Rebuild with a stripped env so the
+    AUTOEXEC is the plain 4-state test cycle."""
+    import os
+    import subprocess
+    env = {k: v for k, v in os.environ.items() if not k.startswith("BATTY_")}
+    FLOPPY.unlink(missing_ok=True)
+    subprocess.run(["make", str(FLOPPY)], env=env,
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
 def capture():
+    rebuild_clean_floppy()
     OUT.mkdir(parents=True, exist_ok=True)
     script = [
         "SLEEP 10",
