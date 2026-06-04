@@ -81,6 +81,9 @@ def main():
     ap.add_argument('--probe-ball', type=lambda s: int(s, 0), default=None,
                     help='read object_ball_1 at this address (e.g. 0x9AD0) '
                          'at each captured frame and print x/y/dir')
+    ap.add_argument('--probe-grid', type=lambda s: int(s, 0), default=None,
+                    help='dump the brick grid (180 bytes) at this address '
+                         '(e.g. 0x6E43) at each captured frame')
     ap.add_argument('--setup-from-replay',
                     help='apply this replay spec\'s original.setup before '
                          'stepping (pokes level/RNG, jumps into active play); '
@@ -130,6 +133,12 @@ def main():
                 d = zc.read_memory(args.probe_ball, 8)
                 print(f'    ball@frame{n}: x={d[2]} xf={d[3]} y={d[4]} '
                       f'yf={d[5]} dir=0x{d[6]:02X} spd={d[7]}')
+            if args.probe_grid is not None:
+                # Dump the original brick grid (12 rows x 15-stride) at this
+                # frame boundary, to compare destroyed cells against the
+                # port's current_level_copy.
+                g = zc.read_memory(args.probe_grid, 12 * 15)
+                print(f'    grid@frame{n}=' + g.hex())
     finally:
         zc.exit_emulator()
         try:

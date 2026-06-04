@@ -434,3 +434,36 @@ which cell/mask `laffc_collision` computes, and make it bounce horizontal
 like LAFFC_27 (`change_direction(_,$1F)`, snap X to the cell edge). Then
 extend `test-laffc-ball-frame1` to also assert frames 5/10 against the
 probe table above so the side-bounce case is gated, not just frame 1.
+
+### Update 14 (2026-06-04): pinpointed — missing VERTICAL straddle (LAFFC_5-6)
+
+Instrumented `laffc_collision` (debug dumped to `PROBE.TXT` as
+`laffc_dbg=`). At the L3 f4/f5 divergence the port reports:
+`newx=110 row=3 col=6 ... exit=2` (exit 2 = straddle found no brick).
+
+Root cause, with grids confirmed byte-identical port-vs-original through
+f2 (so NOT a destruction cascade):
+
+- The byte-faithful row-finder assigns the ball at **y=64** to **row 3**
+  (`Hy=56`, spanning y56-64) — correct per LAFFC_0-2, since y64 is row
+  3's bottom edge.
+- The `0x13` brick the ball is entering is at **(4,7)** — row 4, the row
+  the ball *body* (y64-70) penetrates.
+- The port's cell-finder, when `(3,6)` is empty, only straddles **right**
+  to `(3,7)` (also empty) → returns no-hit (exit 2) → falls back to
+  `brick_collision`, which also misses → no bounce. The ball sails on
+  (dir stays 0x3F) while the original bounces (dir 0x21).
+
+The original's phase-4 head (**LAFFC_5-6**) does more than a right
+straddle: when the ball's body penetrates the next row by >= 8 px
+(`Y + height - C >= 8`, true here: 64+7-56 = 15) and `H < $78`, it steps
+**down** a row (`H += 8`, `IY += $0F`) to find the solid cell the body
+overlaps. That vertical straddle is what the port omits.
+
+**Fix (next):** port LAFFC_5-6 faithfully — when the ball's reference
+cell is empty, straddle horizontally (by body width vs `$E8`) AND
+vertically (down a row when `new_y + h - Hy >= 8`), landing `IY`/(row,
+col) on the solid cell the body actually overlaps, before building the
+mask. Then re-run the f1/f5/f10 ball probes against the original table in
+Update 13 until they match, and extend `test-laffc-ball-frame1` to gate
+frames 5/10. The `laffc_dbg=` PROBE line stays as the debugging aid.
