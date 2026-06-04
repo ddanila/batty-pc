@@ -1897,10 +1897,22 @@ static void ball_reflect_descriptor(int flip_x, int flip_y) {
     ball_dy = (dy_q8 < 0) ? -1 : (dy_q8 > 0 ? 1 : 0);
 }
 
+/* Port of LAA7D (called every 4 frames from handling_bird/ufo with the
+ * turn step B=1): turn the current dir one 6-bit step toward the target
+ * dir; the bit-5 test of (dir - target) picks the shorter way round. When
+ * dir == target (LAA7D_1), pick a NEW random target = random_number & $3F.
+ * The original refreshes the target ONLY on arrival like this, not on a
+ * fixed timer, and reads the current random_number low byte WITHOUT
+ * advancing the RNG. (A byte-exact target match additionally needs the
+ * original's per-frame RNG tick, which the port advances on demand — see
+ * notes/enemy-movement.md.) */
 static void enemy_turn_towards_target(object_t *o) {
     unsigned char target = (unsigned char)(o->bonus_applied & 0x3F);
     unsigned char delta = (unsigned char)((o->dir - target) & 0x3F);
-    if (delta == 0) return;
+    if (delta == 0) {
+        o->bonus_applied = (unsigned char)(random_e & 0x3F);   /* LAA7D_1 */
+        return;
+    }
     if (delta & 0x20) o->dir = (unsigned char)((o->dir + 1) & 0x3F);
     else             o->dir = (unsigned char)((o->dir - 1) & 0x3F);
 }
@@ -1944,7 +1956,9 @@ static void handling_bird_obj(object_t *o) {
     o->misc_12++;
     o->sprite_num = (unsigned char)((o->misc_12 >> 2) % 3);
     bomb_appear(o);
-    if ((o->misc_12 & 0x3F) == 0) enemy_pick_new_target(o);
+    /* LAA7D is called every 4 frames (counter_misc & 3 == 0); it also
+     * handles target refresh on arrival, so no separate timer-based pick
+     * (the old `misc_12 & 0x3F` random re-target was not in the original). */
     if ((o->misc_12 & 0x03) == 0) enemy_turn_towards_target(o);
     enemy_dir_delta_q8(o->dir, o->speed, &dx_q8, &dy_q8);
     nx_q8 = ((long)o->x_coord << 8) + o->x_coord_hi + dx_q8;

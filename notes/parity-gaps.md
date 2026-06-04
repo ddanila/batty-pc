@@ -11,10 +11,15 @@ they are good next targets when tightening original fidelity.
 
 Several paths use gameplay-equivalent but not byte-exact motion:
 
-- enemy movement now uses the original 6-bit direction-table shape and
-  q8.8 subpixel coordinates, but target selection/collision steering is
-  still simplified versus `LAA7B`, brick/ball collision, and
-  `check_margins`,
+- enemy movement: the `LAA7D` steering is now decoded and partly ported
+  (turn 1 dir-step toward target every 4 frames; repick a random target
+  *on arrival*, matching the original — the old 64-frame timer repick is
+  gone). Still approximate: the port advances the RNG on demand rather
+  than the original's per-frame tick (so enemy targets aren't byte-exact),
+  and the bird doesn't yet run `LAFFC` brick collision or the exact
+  `check_margins`. Ground truth + decode: `notes/enemy-movement.md`,
+  capture via `scripts/capture_enemy_flight.py`. Enemy capture is
+  unblocked (the L3 snapshot has a live enemy), unlike multi-ball.
 - **brick/ball collision** — DONE. The `LAFFC` port (cell-find incl. the
   LAFFC_5-6 down/down-right straddle + neighbour-open-face mask +
   direction gate + `change_direction` reflect + fraction-preserving snap +
