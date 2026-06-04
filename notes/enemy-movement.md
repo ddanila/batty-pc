@@ -216,12 +216,28 @@ dumped in PROBE.TXT) and tested determinism:
 So the enemy steering is CORRECT under flag-ON (stable target, repicks on
 arrival like `LAA7D_1`); there is no thrashing bug. The previous
 "thrashing" note was itself a separate-run artifact. The remaining limit
-is that this harness can't byte-exact-GATE the enemy target: separate-run
-release jitter makes the exact RNG state at a comparison frame
-non-reproducible across builds. That's a harness limitation, not a port
-issue — a single multi-frame-probing run (or a fixed release frame) would
-be needed to pin the exact value. (Earlier mistaken analysis kept below
-for the record.)
+is that this harness can't byte-exact-GATE the enemy target.
+
+Dug into the jitter source: the WAIT_KEY wait runs only `sound_tick` (no
+play loop, no RNG tick); the play loop + per-frame RNG tick start AFTER
+the key release, and the RNG ticks once per pit-tick (the same gate as the
+ball). So wait *duration* isn't the jitter source. Yet the enemy target
+varied across BINARY REBUILDS (0x2B before adding the diagnostic counters,
+0x08 after — same seed/env) while the RNG-independent ball stays
+byte-exact. So there's an unexplained cross-binary non-determinism in the
+RNG-dependent state (the ball can't expose it; only RNG-dependent objects
+do). Within one binary it's deterministic (3 identical f16 runs → 0x08).
+
+Conclusion (enemy/RNG thread): the enemy MOTION fix and the byte-exact RNG
+WALK are solid, shipped, and validated; the enemy STEERING is correct
+(stable target, `LAA7D_1` repick-on-arrival, deterministic per binary);
+flag-ON is the validated-correct model. But byte-exact enemy-TARGET
+*gating* — and hence the confident flag-ON default flip — is blocked by
+this cross-binary harness non-determinism, which needs a controlled,
+deterministically-frame-aligned harness (a single multi-frame-probing run
+with a fixed release frame) to resolve. That's a deliberate test-infra
+effort, deferred; the shipped default (flag-OFF) is unaffected.
+(Earlier mistaken analysis kept below for the record.)
 
 - **Clobber ruled out:** `bonus_applied` is only written by the bat-bonus
   code (OBJ_BAT_1/2 specific) and the three enemy-steering paths
