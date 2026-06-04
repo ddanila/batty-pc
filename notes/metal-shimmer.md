@@ -109,6 +109,26 @@ lacks** (plus different magenta/cyan counts). So this cell is a
 detail — the port's damaged/half-state (and/or the revealed background
 tile) is missing the cracks/black the original shows.
 
+### Sprite data verified identical; step-order phase fix tried + reverted
+
+- The port's `brik_anim_sprites[1..7]` are **byte-identical** to the
+  original `spr_brik_1..7` (`original/disasm/gfx/briks.asm`). So the
+  residual is NOT a sprite-data difference.
+- Hypothesis: the port advances (`step_brick_hit_anim`) BEFORE drawing,
+  while the original draws-then-advances, so the shimmer runs one frame
+  ahead. Tried `frame_idx = (tick>>1)-1` instead of `(tick-1)>>1`.
+  Re-measured: frame 1 unchanged (188), frame 3 188->184, **frame 5
+  184->261 (worse)**. Net worse, so REVERTED. The residual is therefore
+  NOT a simple step-order off-by-one.
+- Most likely remaining cause: the shimmer COUNTER PHASE is unsynced
+  between port and original because the L3 seed does not capture the
+  `briks_data` / `brick_hit_anim` state — the bricks were hit at
+  different relative times before/within the window, so each side's
+  shimmer counter sits at a different point in the 8-frame cycle. Syncing
+  that would require seeding the shimmer slots + counters, which the seed
+  doesn't do. So this residual is intrinsic to the seed-based comparison,
+  not a port render bug.
+
 Conclusion: the ~188 px L3 residual is a MIX — metal-shimmer phase on
 undestructible cells, plus damaged-brick / background render detail on
 freshly-hit destructible cells. It is small, cosmetic (no gameplay
