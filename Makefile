@@ -449,6 +449,15 @@ test:
 	@$(MAKE) $(TEST_FLOPPY_OUT)
 	python3 scripts/test_visual.py --floppy $(TEST_FLOPPY_OUT)
 
+# One entry point for the gameplay frame-parity regression: the static
+# 5-checkpoint + per-level visual test, plus the byte-exact LAFFC collision
+# gate (ball object matches the Spectrum over L3's 150-frame trajectory).
+# Both green => the shipped parity (motion + collision) is intact. The
+# cosmetic metal-brick shimmer is out of scope (see notes/laffc-decode.md).
+parity-check:
+	$(MAKE) test
+	$(MAKE) test-laffc-ball-frame1
+
 # Deterministic mid-game frame-timeline capture (port side of the
 # frame-step parity sweep). Builds the test floppy starting directly in
 # gameplay with the multi-checkpoint visual probe, then drives the port

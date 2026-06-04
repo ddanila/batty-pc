@@ -83,6 +83,7 @@ make floppy   # builds build/batty.exe + assets, packs build/batty.img
 make run      # boots in QEMU
 make run-86box # boots in 86Box as an IBM XT with an ISA VGA card
 make test     # headless visual-regression (boots, drives keys, pixel-diffs)
+make parity-check # test + byte-exact LAFFC collision gate (gameplay frame parity)
 ```
 
 `make run-86box` defaults to the locally built SDL frontend at
