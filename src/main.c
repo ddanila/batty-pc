@@ -1325,16 +1325,16 @@ static unsigned char use_laffc = 1;
  * seeded to the original's frame-0 state, the port's next_random walk
  * reproduces the original's $8D48 sequence EXACTLY (offset by the one
  * frame the original doesn't tick at its snapshot start); the byte-exact
- * L3 ball gate stays byte-exact with the flag ON. NOT YET the default
- * because the RNG-*dependent* behaviour has no byte-exact gate of its own
- * (the ball gate is RNG-independent, and the enemy target isn't
- * reproducible across separate-run builds due to WAIT_KEY release-timing
- * jitter). flag-ON IS behaviour-correct for the enemy (stable target,
- * repicks once on arrival — the earlier "thrash" was a separate-run
- * measurement artifact, see notes/enemy-movement.md). The flip stays
- * deliberate pending a real RNG-behaviour gate (a single multi-frame
- * probing run). Flag OFF (default) is fine regardless. */
-static unsigned char rng_perframe = 0;
+ * Now the DEFAULT (2026-06-05). The per-frame tick is the original's model
+ * (random_generate once per frame at the main-loop top; consumers read
+ * without advancing). It is byte-exact: `make test-rng-walk` proves the
+ * port's random_number walk equals the original's f0..f4 from the L3 seed,
+ * and that makes the enemy steering match the GT (dir 0x11->0x12->0x13).
+ * The earlier flag-OFF (advance-on-read) consumed the RNG faster than the
+ * original. `BATTY_RNG_PERFRAME=0` reverts to the old behaviour (the
+ * BATTY_LAFFC fallback pattern); the RNG-independent gates (ball, bat,
+ * enemy-descend, visual states) stay green either way. */
+static unsigned char rng_perframe = 1;
 static unsigned char suppress_no_ball_death = 0;
 static int sound_disabled = 0;
 
@@ -7014,7 +7014,12 @@ int main(void) {
     if (getenv("BATTY_FORCE_BALL_FULL_REDRAW") != NULL) force_ball_full_redraw = 1;
     if (getenv("BATTY_LAFFC") != NULL) use_laffc = 1;
     if (getenv("BATTY_LEGACY_COLLISION") != NULL) use_laffc = 0;
-    if (getenv("BATTY_RNG_PERFRAME") != NULL) rng_perframe = 1;
+    {   /* Default ON (per-frame tick = the original's model). The env can
+         * force either state: BATTY_RNG_PERFRAME=0 reverts to advance-on-
+         * read (the old default); any other value keeps it on. */
+        const char *e = getenv("BATTY_RNG_PERFRAME");
+        if (e != NULL) rng_perframe = (e[0] == '0' && e[1] == '\0') ? 0 : 1;
+    }
     if (getenv("BATTY_FORCE_FULL_FLUSH_EACH_FRAME") != NULL) force_full_flush_each_frame = 1;
     if (getenv("BATTY_SUPPRESS_NO_BALL_DEATH") != NULL) suppress_no_ball_death = 1;
     {

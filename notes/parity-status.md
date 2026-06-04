@@ -209,6 +209,13 @@ and `laffc-decode.md` for the detailed trail.
   RNG-independent descend phase (`handling_bird`: `if (y<8) y++`) is
   byte-exact vs the original: x=168, y +1/frame, dir=$10, spd=1,
   target=$10 held (port frames 3/6 match the GT). Locked by the new gate.
+- **RNG per-frame tick** — now the DEFAULT (`rng_perframe=1`, flipped
+  2026-06-05; `BATTY_RNG_PERFRAME=0` reverts). The shipped game advances
+  its RNG once per frame like the original (`random_generate` at the
+  main-loop top), so enemy targets + bonus drops use the correct random
+  sequence model. Flip verified safe: the full gate suite stays green
+  (`test-laffc-ball-frame1`, `make test` 5 states + 2 lints,
+  `test-bat-deflection` 14/14, `test-enemy-descend`, `test-rng-walk`).
 - **RNG per-frame walk** — BYTE-EXACT, gate-locked (`make test-rng-walk`).
   With the byte-correct L3 f0 seed (`BATTY_REPLAY_RANDOM=3793` +
   `BATTY_REPLAY_RANDOM_SEED=962A`) and the per-frame tick

@@ -130,7 +130,19 @@ original's f0 pre-tick value) would make RNG-dependent reads — enemy
 targets, bonus drops — frame-exact. Note the L3 seed value `0x460D` is the
 snapshot's, not the env `8E49` (which wrote the wrong address `$8E17`).
 
-## Status: staged foundation landed (flag OFF by default)
+## Status: FLIPPED — flag ON by default (2026-06-05)
+
+`rng_perframe` now defaults to **1** (per-frame tick = the original's
+model); `BATTY_RNG_PERFRAME=0` reverts to the old advance-on-read
+behaviour (BATTY_LAFFC fallback pattern). Flipped after `make test-rng-walk`
+proved the walk byte-exact and the full gate suite stayed green with the
+flag on: `test-laffc-ball-frame1` (5 checkpoints), `make test` (5 visual
+states + 2 lints), `test-bat-deflection` (14/14), `test-enemy-descend`,
+`test-rng-walk`. So the shipped game now advances its RNG once per frame
+like the original — enemy targets and bonus drops use the correct random
+sequence model. (Below: the original staging notes, kept for the trail.)
+
+## (historical) Status: staged foundation landed (flag OFF by default)
 
 `BATTY_RNG_PERFRAME` + `rng_sample()` are in (the `BATTY_LAFFC` staging
 pattern). Flag OFF: `rng_sample()` ≡ `next_random()` and no per-frame
