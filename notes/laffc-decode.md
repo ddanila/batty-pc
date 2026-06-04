@@ -288,3 +288,24 @@ data, screen position, or attr handling**, not the frame timing — the
 next thing to pin down (compare `brik_anim_sprites[1]` / the render
 address `0x401+row*0x100+col*2` against `metal_brik_anim`'s
 `screen_addr_calc`/`scr_buff_addr_calc` slot addresses).
+
+### Update 7 (2026-06-04): LAFFC path validated over 40 frames
+
+`make gate-laffc-long` frame-steps both runners for 40 frames on the L3
+seed. The ROI residual stays **bounded** — frames 0/1/5/10/20/40 ≈
+0/188/339/386/530/444 px (~2% of the ROI), never exploding into the
+thousands that a lost or diverged ball would produce. So the byte-exact
+LAFFC collision keeps the ball in lockstep with the Spectrum for 40
+frames; the only accumulating diff is the brick-hit shimmer on each cell
+the ball strikes (and it even shrinks as earlier shimmers finish).
+
+**Flip readiness.** The LAFFC path is byte-exact and stable on the L3
+single-ball trajectory and beats `brick_collision` on every measured
+frame. Before flipping the default it should be validated on the cases
+this gate does not cover: other level layouts (different brick
+neighbourhoods exercise the two-cell straddle / fully-enclosed fallback),
+multi-ball, undestructible (bit5) and metal/multi-hit bricks, and SMASH
+(big-ball plough-through). Those need original-side snapshots per
+scenario (only L3 `20260513T202101Z.sna` exists today) or a second
+seeded trajectory. Until then the default stays `brick_collision`; the
+byte-exact path ships behind `BATTY_LAFFC=1`.

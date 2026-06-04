@@ -509,6 +509,14 @@ capture-timeline-both: $(ZESARUX)
 	    --original build/tl_orig --frames $(TL_CMP_FRAMES) --roi $(TL_ROI) \
 	    --max-diff $(TL_MAXDIFF)
 
+# Longer-horizon validation of the byte-exact LAFFC collision path: the
+# ball must stay in lockstep with the Spectrum for 40 frames (residual
+# stays bounded to the brick-hit shimmer, ~hundreds of px, never the
+# thousands that a lost/diverged ball would produce).
+gate-laffc-long:
+	$(MAKE) capture-timeline-both LAFFC_FLAG=1 \
+	    TL_FRAMES=1,5,10,20,40 TL_CMP_FRAMES=0,1,5,10,20,40
+
 test-hud: $(FLOPPY_OUT)
 	python3 scripts/test_hud.py --floppy $(FLOPPY_OUT)
 
