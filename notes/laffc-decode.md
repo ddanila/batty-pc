@@ -635,3 +635,27 @@ So: the bat deflection IS reachable for validation from the existing
 snapshot (scenario built), but the frame-step tool needs that boundary
 fix first. Scoped here; `replays/l3-bat-bounce.json` is the reusable
 scenario.
+
+### Update 22 (2026-06-04): bat-bounce scenario hangs the original — needs full object state
+
+Tried frame-stepping `l3-bat-bounce.json` with both `$BA83` and the IM1
+vector `$0038` as the boundary. Both fail: the run executes ~5M opcodes
+ending around `$ABDx` *without* `$0038` firing — i.e. the original is hung
+in a tight interrupt-disabled loop, not even reaching a frame HALT. So
+poking only the ball's x/y/dir ($9AD0+2/+4/+6) and leaving the other 19
+bytes from the brick-flash seed produces an **inconsistent ball-object
+state that hangs the game** (the L3-brick-flash seed worked because its
+full 22 bytes were a coherent captured state).
+
+So validating the bat deflection by constructing a ball-onto-bat state is
+**not** just a 3-byte poke: it needs a coherent full ball descriptor (buf
+addresses, prev_x/y, the +08..+13 fields) consistent with the new
+position, or — more reliably — capturing an actual original snapshot at a
+ball-near-bat moment. That puts bat-deflection validation back in the
+"needs a real captured reference" bucket, same as multi-ball and non-L3.
+
+Net: the gameplay frame-parity goal (byte-exact ball motion + brick
+collision) remains delivered and shipping; every *further* parity item
+(bat deflection, secondaries, non-L3) is blocked on capturing real
+original reference states — constructed-from-poke scenarios hang unless
+the full object state is coherent.
