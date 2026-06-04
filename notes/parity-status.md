@@ -332,9 +332,17 @@ work) is **all green**:
   1/5/40/100/150.
 - `make test-bat-deflection` — 14/14 cases (13 dir/position + the MAGNET
   catch rest position).
+- `make test-enemy-descend` — enemy y<8 slide (x/y/dir held), GT-validated.
+- `make test-rng-walk` — byte-exact `random_number` walk f1/f2/f4 from the
+  L3 f0 seed (per-frame tick).
+- `make test-enemy-steer` — RNG-dependent steering (dir 0x11→0x12→0x13,
+  y exact, x ±1 for the boot-phase jitter), GT-validated.
 
-So the full achieved parity is intact and guarded; none of the recent
-work regressed the byte-exact ball, bat, or visual gates.
+`parity-check` now runs all six (the three enemy/RNG gates were added to
+the aggregate this pass, so the RNG-flip + enemy-steering work is part of
+the standard regression suite). So the full achieved parity is intact and
+guarded; none of the recent work regressed the byte-exact ball, bat,
+visual, enemy, or RNG gates.
 
 ## Bottom line
 

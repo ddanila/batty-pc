@@ -464,6 +464,9 @@ parity-check:
 	$(MAKE) test
 	$(MAKE) test-laffc-ball-frame1
 	$(MAKE) test-bat-deflection
+	$(MAKE) test-enemy-descend
+	$(MAKE) test-rng-walk
+	$(MAKE) test-enemy-steer
 
 # Deterministic mid-game frame-timeline capture (port side of the
 # frame-step parity sweep). Builds the test floppy starting directly in
