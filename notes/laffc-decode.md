@@ -467,3 +467,24 @@ col) on the solid cell the body actually overlaps, before building the
 mask. Then re-run the f1/f5/f10 ball probes against the original table in
 Update 13 until they match, and extend `test-laffc-ball-frame1` to gate
 frames 5/10. The `laffc_dbg=` PROBE line stays as the debugging aid.
+
+### Update 15 (2026-06-04): FIXED — ported LAFFC_5-6 straddle; byte-exact f1-f40
+
+Ported the full phase-4 head (`LAFFC_5-6`) into `laffc_collision`: when
+the ball's reference cell is empty, land on the solid cell the body
+overlaps by trying own → right → down → down-right, with the straddle
+conditions `rem + width >= 16` (crosses into the next column, not at
+`$E8`) and `new_y + h - Hy >= 8` (penetrates the next row, not at `$78`).
+The earlier right-only straddle missed the down/down-right brick at a row
+boundary (Update 14).
+
+**Result:** the port ball is now **byte-exact vs the Spectrum at frames
+1, 5, 10, 20, and 40** (x / x-frac / y / y-frac / dir all match) — the
+full 40-frame L3 trajectory, dozens of bounces, including the
+horizontal/side bounce that diverged before. The frame-step gate's
+remaining residual (~160-220 px) is purely the cosmetic brick-hit
+shimmer render (the ball object itself matches exactly; verified by
+`object_ball_1` probes, not just pixels). Locked in by the extended
+`make test-laffc-ball-frame1` (now checks frames 1/5/10/40) and static
+5/5. So **the brick collision is byte-exact on L3's full trajectory**,
+correcting Update 13's "diverges at frame 5".

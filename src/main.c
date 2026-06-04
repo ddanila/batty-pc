@@ -4143,7 +4143,7 @@ static int laffc_collision(int prev_x, int prev_y, int new_x, int new_y) {
     object_t *o = &objects[OBJ_BALL_1];
     int h = o->h_body_px;
     unsigned char dir = o->dir;
-    int row = -1, Hy = 0, col = 0, Lx = 0x08, mask;
+    int row = -1, Hy = 0, col = 0, Lx = 0x08, mask, rem = 0;
     (void)prev_x; (void)prev_y;
     laffc_dbg_newx = new_x; laffc_dbg_row = -1; laffc_dbg_col = -1;
     laffc_dbg_mask = -1; laffc_dbg_gated = -1; laffc_dbg_exit = 0;
@@ -4170,20 +4170,37 @@ static int laffc_collision(int prev_x, int prev_y, int new_x, int new_y) {
         int a = (new_x - 0x08);
         if (a < 0) a = 0;
         while (a >= 0x10 && col < LVL_COLS - 1) { a -= 0x10; col++; Lx += 0x10; }
+        rem = a;   /* X penetration within the cell, 0..15 */
     }
     laffc_dbg_row = row; laffc_dbg_col = col;
-    /* The hit cell is the brick at the ball's reference point. LAFFC walks
-     * to an adjacent solid cell when the ball straddles into one; here we
-     * accept the ball's own cell, else its right neighbour (the common
-     * horizontal straddle), else no brick. */
-    if (live_level[row * LVL_COLS + col] & 0x80) {
-        if (col + 1 < LVL_COLS && !(live_level[row * LVL_COLS + col + 1] & 0x80)) {
-            col++; Lx += 0x10; laffc_dbg_col = col;
-        } else {
-            laffc_dbg_exit = 2;
-            return 0;
+    /* phase 4 head (LAFFC_5-6): land (row,col)/(Lx,Hy) on the SOLID cell
+     * the ball body overlaps. The body straddles into the next COLUMN
+     * when it crosses the cell's right edge (rem + width >= 16, not at the
+     * $E8 edge) and into the next ROW when it penetrates >= 8 px
+     * (new_y + h - Hy >= 8, not at the $78 bottom). LAFFC tries, in order:
+     * own cell, right, down, then down-right (only when the horizontal
+     * straddle applied). My earlier port did right only, which missed the
+     * down/down-right brick at a row boundary (see laffc-decode Update 14). */
+#define LAFFC_SOLID(rr,cc) ((rr) >= 0 && (rr) < LVL_ROWS && (cc) >= 0 && \
+        (cc) < LVL_COLS && !(live_level[(rr) * LVL_COLS + (cc)] & 0x80))
+    if (!LAFFC_SOLID(row, col)) {
+        int hstrad = (rem + o->w_body_px) >= 0x10 && Lx != 0xE8;
+        int vstrad = (new_y + h - Hy) >= 8 && Hy < 0x78;
+        int landed = 0;
+        if (hstrad && LAFFC_SOLID(row, col + 1)) {          /* right */
+            col++; Lx += 0x10; landed = 1;
+        } else if (vstrad) {
+            row++; Hy += 8;
+            if (LAFFC_SOLID(row, col)) {                    /* down */
+                landed = 1;
+            } else if (hstrad && LAFFC_SOLID(row, col + 1)) { /* down-right */
+                col++; Lx += 0x10; landed = 1;
+            }
         }
+        if (!landed) { laffc_dbg_exit = 2; return 0; }
     }
+#undef LAFFC_SOLID
+    laffc_dbg_col = col;
     /* phase 4: open-face mask (bit0 L, 1 R, 2 U, 3 D). LAFFC clears a bit
      * when that neighbour is SOLID or past a playfield edge, so a set bit
      * = an OPEN (empty/destroyed) face the ball can reflect off. */
