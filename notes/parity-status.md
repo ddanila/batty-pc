@@ -31,9 +31,11 @@ and `laffc-decode.md` for the detailed trail.
   q8.8 fraction all match at frames 1/5/10/20/40/60/80/100/150
   (`make test-laffc-ball-frame1`). `BATTY_LEGACY_COLLISION=1` reverts to
   the old `brick_collision` (revert **verified**: it diverges from the
-  byte-exact path, as expected). Multi-ball secondaries still use
-  `brick_collision` (integer motion, not yet ported to the q8.8 + LAFFC
-  model — would need a multi-ball original snapshot to validate).
+  byte-exact path, as expected). Multi-ball secondaries are now **unified**
+  onto the same exact path (`dir_to_dxdy` + q8.8 + `LAFFC` +
+  `bat_deflect_dir`) — the original runs one `handling_ball` for every
+  ball, so this is correct-by-construction (primary ball gate byte-exact +
+  liveness LIVE); no multi-ball snapshot needed.
 - **Regression guards** — `make test-laffc-ball-frame1` (ZEsarUX-free)
   locks the L3 frame-1 ball to the Spectrum probe; the 5-checkpoint +
   per-level static suite (`make test`) stays green.

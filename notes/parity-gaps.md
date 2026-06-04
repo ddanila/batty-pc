@@ -41,14 +41,19 @@ Several paths use gameplay-equivalent but not byte-exact motion:
   caught offset is quantized (`& 0xFC`, clamp 0x18) and gated on a normal
   bat, so the rest position (x=132 for a centre drop) and the derived
   launch match the Spectrum (validated in `make test-bat-deflection`).
-  The multi-ball secondaries (`step_extra_ball`) are now UNIFIED with the
-  primary: they use the exact `dir_to_dxdy` + q8.8 + `LAFFC` +
-  `bat_deflect_dir` path (not the old integer + 5-zone model), so they
-  move/bounce/deflect exactly like the original (one `handling_ball` for
-  all balls) — correct-by-construction, primary ball gate byte-exact +
-  liveness LIVE. Remaining: the catch held-ball rest y is 1px off
-  ($A6 vs $A7, cosmetic) and the catch->release launch isn't yet
-  gate-verified. Full decode + validation in `notes/bat-deflection.md`.
+  The held-ball rest y is correct ($A7=167 for a MAGNET-held ball vs
+  $A6=166 for the launch rest — the maintainers add 1px when the bat
+  carries bonus $03). The multi-ball secondaries (`step_extra_ball`) are
+  now UNIFIED with the primary: they use the exact `dir_to_dxdy` + q8.8 +
+  `LAFFC` + `bat_deflect_dir` path (not the old integer + 5-zone model), so
+  they move/bounce/deflect exactly like the original (one `handling_ball`
+  for all balls) — correct-by-construction, primary ball gate byte-exact +
+  liveness LIVE. Remaining (minor): the catch->release launch isn't
+  separately gate-verified (it's correct-by-construction — the quantized
+  offset feeds the already-validated launch formula), and a MAGNET bat
+  catches the primary but not yet the unified secondaries (needs per-ball
+  stuck state — niche magnet+multi-ball interaction). Full decode +
+  validation in `notes/bat-deflection.md`.
 - **metal-brick shimmer** is the remaining L3 frame-step residual, now
   fully decoded (see `notes/metal-shimmer.md`; the earlier "sliding
   window" description was wrong). It is a *ball-hit-triggered, then
