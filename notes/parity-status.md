@@ -145,6 +145,17 @@ and `laffc-decode.md` for the detailed trail.
   marker drift (`LA67B_3`: `counter_misc & 1` / `random_number & 1` → ±1
   px) is mirrored. The SCORE/$08 bonus adds +5000 and KILL_ALIENS blasts
   the on-screen alien — both present in the port.
+- **Scoring economy** — byte-exact. (1) **Brick points** `points_table`
+  ($AF45): the 12 per-row BCD values `120,110,100,90,80,70,60,50,40,30,
+  20,10` (top row worth most) match the port's `points_table[12]`
+  exactly; a brick whose colour nibble `& $0F >= 6` scores **double**
+  (original `ADD A,C; DAA`, port `pts *= 2`), and the row→value index
+  matches (`idx = min(row, 11)`). (2) **Extra-life milestones**
+  `live_add_steps` ($0395): the BCD high-byte thresholds `$03,$06,$10,
+  $15,$20,$25,$50,$75` (= 30000/60000/100000/150000/200000/250000/
+  500000/750000 as 6-digit BCD scores) match the port's
+  `live_add_thresholds[]` exactly. Catch bonuses add +400, the score
+  bonus +5000 (see "Bonus catch mechanics" above).
 - **Regression guards** — `make test-laffc-ball-frame1` (ZEsarUX-free)
   locks the L3 frame-1 ball to the Spectrum probe; the 5-checkpoint +
   per-level static suite (`make test`) stays green.
