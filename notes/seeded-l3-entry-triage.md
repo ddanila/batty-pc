@@ -2,47 +2,74 @@
 
 ## Symptom
 
-With the `replay-l3-brick-flash` seed (ball in flight + enemy + RNG),
-the port's frame-0 brick-band render (ROI `8,32,248,128`) differs from
-the canonical L3 ground truth (`build/level_gt/level_03.scr`) by
+The frame-step parity gate (`make capture-timeline-both`,
+`notes/replay-harness.md`) cannot reach 0 px at frame 0: the port's
+WAIT_KEY-pause frame-0 brick-band render (ROI `8,32,248,128`) differs
+from the canonical L3 ground truth (`build/level_gt/level_03.scr`) by
 **1568 px**, while the original side's frame 0 is byte-identical to that
-GT (0 px). Surfaced by `make capture-timeline-both` (see
-`notes/replay-harness.md`).
+GT (0 px).
 
-It is **not** a frame-step or ball-motion bug, and **not** a timing
-offset: the port[n]-vs-orig[m] diff matrix (n,m ∈ 0..5) is minimised at
-(0,0), so no frame shift aligns the two. The difference exists at the
-first captured frame.
+## What it is NOT (ruled out 2026-06-04)
 
-The per-level static regression passes L3 at 0 px because it captures
-the **default stuck-ball entry**, not this seed — so the gap is specific
-to the in-flight-ball + enemy seed.
+- **Not the replay seed.** Bisected by dropping seed fields one at a
+  time (`ENEMY_OBJECT`, then in-flight ball, then everything): the
+  port's frame-0 vs-GT diff stays **1568 px even with no seed at all**
+  (just `BATTY_LEVEL=3` + WAIT_KEY). So `BALL_OBJECT` / `ENEMY_OBJECT` /
+  `BALL_STUCK` are not the cause.
+- **Not a frame-step / timing offset.** The port[n]-vs-orig[m] diff
+  matrix (n,m ∈ 0..5) is minimised at (0,0); no frame shift aligns them.
+- **Not ball motion.** The diff is present at the first frame, before
+  the ball has moved.
 
-## Shape of the diff
+## What it IS
 
-Localised by row inside the ROI (port frame0 vs L3 GT):
+The 1568 px decomposes (port frame-0 vs L3 GT) as:
 
-- steady bands of ≈6–26 px on most brick rows (y≈32..120),
-- spikes of 90–164 px at brick-row boundaries (e.g. y=48, y=72).
+- **bricks, y=32..104: 1129 px** — a *transient* brick state.
+  `play_brik_anim()` (`src/main.c`) runs the 8-step metal-brick reveal
+  and **leaves its last animation frame on screen**; the static brick
+  repaint only happens in the first main-loop iteration *after* the
+  WAIT_KEY pause. So the pause captures bricks mid/post-reveal, not
+  settled. `BATTY_LEVEL=3 make test` gets 0 px vs the same GT precisely
+  because it captures *after* the field settles, not at the pause.
+- **magnets, y=104..128: 439 px** — the magnet ON/OFF blink state
+  differs. `render_level_screen` (called twice at level entry, 6107 +
+  6109) calls `render_magnets` (`src/main.c:2836`), whose blink uses
+  `next_random()` (`src/main.c:2671`) unless `test_mode_pin_blink`
+  (`BATTYALL=1`) forces the deterministic `i>=2` pattern — which itself
+  need not match the original's actual blink at entry.
 
-That is a brick-field-wide render/state difference, not a compact
-ball/enemy sprite footprint. Candidate causes, to bisect:
+The original side shows the *settled* bricks at `$BA83` (its metal-brick
+animation is NOP'd via the `$BA6C` setup poke), hence == GT. So the
+port's WAIT_KEY pause (transient) and the original's `$BA83` (settled)
+are not the same render state even though both are "main-loop entry".
 
-1. **Metal-brick shimmer state.** The original `l3-brick-flash` setup
-   NOPs `all_metal_briks_animation` (`$BA6C`); if the port paints a
-   metal-brick shimmer frame at seeded entry, it would diff field-wide.
-2. **Seeded enemy (`BATTY_REPLAY_ENEMY_OBJECT`).** A UFO/bird painted by
-   the port but not yet painted by the original at its pre-paint `$BA83`.
-3. **In-flight ball + secondary balls** painted by the port at entry.
+## Related regression: replay-l3-entry no longer 0 px
+
+`make replay-l3-entry` — documented as `0/23040 px` — now **FAILS at
+1885 px**, diff bounds `(8,104,248,128)` (the magnet/lower-brick band).
+Its state probes show the port RNG has diverged: `random_number
+port=A187 vs original=8E49`, and `object_enemy` / `object_ball_1` /
+`object_bat_1` differ (INFO). The RNG divergence is consistent with the
+entry-path `render_magnets` -> `next_random` consumption above; the
+original's RNG stays pinned at 8E49 because its shimmer is NOP'd. Logged
+in `notes/known-bugs.md`.
 
 ## Next step
 
-Bisect by dropping seed fields one at a time and re-running
-`capture-timeline-both` (frame 0 only): build the port with the seed
-minus `ENEMY_OBJECT`, then minus the in-flight ball, etc., and watch the
-frame-0 vs-GT number. Whichever removal collapses the 1568 px is the
-culprit. Then decide whether to (a) match the original's capture phase
-(capture the original after its per-frame `print_obj_from_buf_to_scr`
-paint, not at the pre-paint `$BA83` loop top, so both show painted
-objects), or (b) suppress the offending element on both sides for the
-physics-only gate.
+Two independent fixes, both real parity work:
+
+1. **Settle the brick field before the parity capture.** Either repaint
+   the static bricks after `play_brik_anim` (so the WAIT_KEY pause shows
+   the settled field, matching the original's `$BA83`), or capture the
+   port one main-loop paint later. Confirm against the original's actual
+   per-frame paint phase (`print_obj_from_buf_to_scr`) so both sides
+   capture the same point in the frame cycle.
+2. **Pin / match the entry RNG + magnet blink.** Find why the port
+   consumes RNG before the pause that the original (NOP'd) does not, and
+   either pin it or make the magnet blink deterministic-and-matching, so
+   `replay-l3-entry` returns to 0 px. That restores the aligned start
+   the frame-step gate depends on.
+
+Only after the frame-0 baseline is ~0 does the residual growing diff
+become the `handling_ball` / `LAFFC` signal.
