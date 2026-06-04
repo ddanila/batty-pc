@@ -133,6 +133,18 @@ and `laffc-decode.md` for the detailed trail.
   original. Minor: the port caps the retry loop at 16 (the original loops
   until a valid pick); with the populated tables this effectively always
   succeeds.
+- **Bonus catch mechanics** — verified vs `get_bonus` ($A67B). Catching
+  any non-bomb bonus awards **+400** (`LD BC,$0400; add_points_to_score`)
+  — port `score += 400`. Catching a **bomb** (sprite `$0A`) kills you
+  (original zeros `balls_quantity` → death branch; the port handles this
+  in `step_bomb` → `play_bat_explosion`). The catch sound is
+  `sound_live_add` for LIFE else the resize beep (`CP $05; CALL NZ,
+  push_resize_sound`) — port matches. `bat.bonus_applied` is set to the
+  caught code for every type except ROCKET (which jumps to `get_rocket`),
+  so a new catch REPLACES the prior bat effect — port matches. The +400
+  marker drift (`LA67B_3`: `counter_misc & 1` / `random_number & 1` → ±1
+  px) is mirrored. The SCORE/$08 bonus adds +5000 and KILL_ALIENS blasts
+  the on-screen alien — both present in the port.
 - **Regression guards** — `make test-laffc-ball-frame1` (ZEsarUX-free)
   locks the L3 frame-1 ball to the Spectrum probe; the 5-checkpoint +
   per-level static suite (`make test`) stays green.
