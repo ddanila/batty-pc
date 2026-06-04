@@ -81,10 +81,24 @@ Kept on `next_random()` (advance — original `CALL random_generate` first):
   advance) — read-current. (Same edit also fixed the spawn dir/target to
   $10, see notes/enemy-movement.md.)
 
-Still to classify/convert: alien-blast sound noise tone (~3298) and the
-400pts marker X-drift (`$3030`, ~3931). Both fire rarely (ball-lost /
-marker spawn) so they pollute the enemy sequence little, but are needed
-for full byte-exactness before the flag-on enemy acceptance test.
+- 400pts marker X-drift (`LA67B`: `LD A,(random_number)/AND $01/RL B`, no
+  advance) — read-current -> `rng_sample()`.
+
+Left on `next_random()` (advance): alien-blast sound noise tone (`$C1A8`
+region). The PC-speaker layer is an approximation, not a byte-exact beeper
+port (see parity-gaps.md), and it only fires on an alien kill — outside
+the enemy-flight window — so it neither needs nor can use a byte-exact RNG.
+
+**The enemy-relevant consumer set is now complete:** every consumer that
+fires during normal enemy flight (per-frame `bomb_appear`, per-brick bonus
+drop-chance, enemy target/spawn, magnet, 400pts) reads-current; the bonus
+TYPE pick correctly advances. So with `BATTY_RNG_PERFRAME=1` the enemy
+target sequence should track the original (the seed-walk is aligned by
+design: the port ships the $8000-$9FFF ROM window and starts the walk at
+$8000). Acceptance test (next): seed the enemy to the L3 state
+(`BATTY_REPLAY_ENEMY_OBJECT`, dir/target=$10, x=168, y=1, spd=1), run
+flag-on with RNG 8E49, and confirm the target repicks to 0x2C at frame
+~10 (notes/enemy-movement.md ground truth).
 
 ## Alignment plan (deliberate; not a single safe edit)
 

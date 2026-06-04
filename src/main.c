@@ -3928,7 +3928,9 @@ static void step_bonus(void) {
          *   bit 0 of random → +1 or +2 magnitude
          *   bit 7 of random → keep positive or negate */
         {
-            unsigned int r = next_random();
+            /* Read-current (rng_sample): the original reads random_number
+             * (low byte) here without advancing. */
+            unsigned int r = rng_sample();
             int mag = (int)((r & 1) + 1);
             pts_400_dx = (r & 0x80) ? mag : -mag;
         }
