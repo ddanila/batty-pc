@@ -589,3 +589,24 @@ a global frame counter, matching the original's `$AD8F` phase. To reach
 trades a static residual for a phase-offset one. This remains out of
 scope for the gameplay frame-parity goal (byte-exact motion + collision,
 already shipping); it is purely the metal-brick light animation.
+
+### Update 20 (2026-06-04): correction — gameplay shimmer driver is NOT all_metal_briks
+
+U19's spec ("add a per-frame `all_metal_briks_frame`") is **wrong**:
+`all_metal_briks_animation_snd` is called once in the round-intro
+sequence (disasm line 6148: after `show_window_round_number` /
+`pause_long`), i.e. it is the **entry reveal** (`$BA6C`, which the
+`l3-brick-flash` setup NOPs) — NOT a per-frame gameplay driver. And
+`metal_brik_anim`/`briks_data` frees its slot the moment a brick's bit7
+sets, so it cannot animate the destroy-on-first-hit 0x13 cell at (6,5)
+during gameplay either.
+
+So the original's per-frame cyan animation at (6,5) is explained by
+**neither** known shimmer routine. Its driver is unidentified after
+extensive RE (14+ passes). Closing this last cosmetic pixel residual
+would require deeper runtime single-stepping of the original's gameplay
+brick-render path to find what re-animates these cells — beyond what the
+static disasm + frame probes have revealed. **Definitively out of scope**
+for the gameplay frame-parity goal (byte-exact motion + collision is
+done and shipping); logged here so the next person doesn't chase the
+wrong (entry-only) routine.
