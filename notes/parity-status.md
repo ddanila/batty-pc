@@ -43,11 +43,18 @@ and `laffc-decode.md` for the detailed trail.
 ## Remaining (each needs a decision or new data — not blocked on more analysis)
 
 1. **Cosmetic: brick-hit render.** The only frame-by-frame residual on
-   the L3 gate is the just-hit brick's render (the damaged multi-hit
-   frame and/or the `briks_data` cyan shimmer). Position and attr are
-   correct; it's a sprite-frame/timing detail, shared by both collision
-   paths, that has resisted repeated investigation. Worth it only if
-   pixel-perfect *mid-game* frames are the goal.
+   the L3 gate is the just-hit brick's render. Now measured + decomposed
+   (see `notes/metal-shimmer.md`): `make capture-timeline-both` is **0 px
+   at frame 0** (aligned start, whole brick band exact) and ~188 px at
+   frames 1/3/5, confined to the freshly-hit cells. Pixel analysis shows
+   a MIX: metal-shimmer frame phase on undestructible cells (white<->cyan
+   swap; the frame->sprite mapping is verified correct, so it's a 1-frame
+   phase/order offset) PLUS damaged-brick/background render detail on
+   destructible cells (the port lacks ~14 black "crack" px per cell). The
+   metal shimmer now loops permanently like the original (was: stopped
+   after one pass). Closing the rest is several per-cell cosmetic render
+   details, not one bug — deep work with diminishing returns; no gameplay
+   effect.
 
 2. **Flip the default to `BATTY_LAFFC`.** Highest gameplay value (the
    shipping game's collision becomes byte-exact). The pass-through risk

@@ -89,10 +89,34 @@ ticks/frame over the same `{2,6,3,7,4,5,5,1}` order. So this is NOT a wrong
 mapping; it's a one-frame phase/order offset (when the slot's counter is
 sampled vs advanced within the frame, relative to the original's
 `LAFFC`-register-then-`fill_briks_data`-render order) and/or a brick
-sprite-data difference. Closing it needs a per-cell pixel diff of one
-shimmering brick across consecutive frames to pin down phase-vs-data — a
-fine cosmetic detail (no gameplay effect). Frame 0 being 0 px shows the
-aligned start and the rest of the brick band are exact.
+sprite-data difference. Frame 0 being 0 px shows the aligned start and the rest of the brick band
+are exact.
+
+### Per-cell pixel diff (done): NOT a pure phase offset
+
+Compared one differing cell (6,5) across the captured frames:
+
+```
+f0: port == orig   {11:107 cyan, 15:21 white}  (static brick, matches)
+f1: port {5:47, 8:40, 13:41}   orig {0:14, 5:50, 8:39, 13:25}
+```
+
+At f1 the cell flips to a damaged-brick pattern on BOTH sides, but the
+port's pattern matches NO captured original frame (so it's not just a
+1-frame phase slip), and the original has **14 black(0) pixels the port
+lacks** (plus different magenta/cyan counts). So this cell is a
+*destructible* brick mid-hit whose damaged-state RENDER differs in pixel
+detail — the port's damaged/half-state (and/or the revealed background
+tile) is missing the cracks/black the original shows.
+
+Conclusion: the ~188 px L3 residual is a MIX — metal-shimmer phase on
+undestructible cells, plus damaged-brick / background render detail on
+freshly-hit destructible cells. It is small, cosmetic (no gameplay
+effect), and spread across several per-cell render details rather than one
+fixable bug; matching it pixel-for-pixel is deep cosmetic work with
+diminishing returns. The gameplay-relevant parity (ball/collision/bat,
+frame 0 = 0 px, the whole brick band exact except the transient hit
+render) is achieved.
 
 The earlier "720x400 harness issue" was a false alarm: it was a stale
 replay-seeded `build/batty-test.img` left over from shimmer-validation
