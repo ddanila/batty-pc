@@ -191,6 +191,42 @@ required equality. Two plausible paths for the capture timing remain:
   — is the next step, after which a frame-by-frame `.idx` diff of the
   two timelines becomes the real gameplay parity gate that unblocks
   porting `handling_ball`'s exact 64-direction motion.
+
+  **Comparison + combined gate landed (2026-06-04).**
+  `scripts/compare_timelines.py` diffs a port timeline dir against an
+  original one frame-for-frame in palette-index space, with an optional
+  `--roi x0,y0,x1,y1` (the established gameplay ROI is `8,32,248,128` =
+  the brick-play region the `replay-l3-entry` gate uses). `make
+  capture-timeline-both` wires the whole sweep: build the L3 floppy
+  seeded to the original's probed `$BA83` descriptors (same overrides as
+  `replay-l3-brick-flash`), capture the port timeline, capture the
+  original timeline, diff in the ROI. Each timeline is reproducible
+  run-to-run (verified: two back-to-back original captures produced
+  byte-identical `frame_*.idx`).
+
+  **First quantified port-vs-original gameplay diff** (frames 1/3/5):
+  full-frame ≈ 4361 / 4493 / 4677 px; brick-ROI ≈ 1917 / 2022 / 2205 px,
+  spread across the whole ROI. That is far more than one frame of ball
+  drift, so it is *not yet* a ball-physics signal — it is dominated by
+  two alignment gaps the gate now makes measurable:
+
+  1. **Start frame not byte-aligned.** The port timeline counts visual
+     probe frames from gameplay start; the original counts `$BA83` trips
+     from the post-setup point. They are phase-offset, so "frame 1" is
+     not the same game instant on both sides. Fix: start the port from
+     the proven `BATTY_REPLAY_WAIT_KEY` pause (== `$BA83`) and capture
+     that as frame 0, so both share the `replay-l3-entry` aligned start
+     (0 px on the ROI) before stepping.
+  2. **Metal-brick shimmer out of phase.** `replay-l3-entry` NOPs
+     `all_metal_briks_animation` (`$BA6C`) to reach 0 px; once gameplay
+     runs, that shimmer animates brick cells across the whole field and,
+     if its phase differs between sides, paints ≈2000 px of ROI diff
+     unrelated to the ball. Fix: NOP it on both sides, or align its
+     frame phase, so the residual diff is purely moving-object.
+
+  Only after both are pinned does the residual ROI diff become the
+  `handling_ball` / `LAFFC` divergence signal we actually want to drive
+  to zero. The gate and its numbers now exist to measure that work.
 - **Trampoline pauses between captures.** Reuse the existing
   `BATTY_REPLAY_WAIT_KEY` mechanism but rearm the port for a second
   pause at a known game-state point (e.g. after the first brick hit),
