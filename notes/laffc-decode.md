@@ -562,3 +562,30 @@ cosmetic task with no gameplay effect. **Treating it as out of scope for
 the gameplay frame-parity goal**; the pixel gate's central-cluster
 residual is expected and is not a collision regression (the object gate
 catches those).
+
+### Update 19 (2026-06-04): precise shimmer spec — port lacks the per-frame metal animation
+
+Pixel comparison of cell (6,5) over frames:
+
+- **Original animates** it: f1 `...8888DDD8 / 88888DD8 ...` != f5
+  `...8DDDDDD8 / D8DDDDD8 ...` — the metal shimmer steps each frame.
+- **Port is static**: f1 == f5 (byte-identical) — it shows one fixed
+  cyan frame and never advances.
+
+`briks_colors[3] = 0x5F` (bright white-ink / magenta-paper) is the
+brick's at-rest colour (what the static GT shows). During gameplay the
+original runs `all_metal_briks_frame` **every frame** to animate the
+metal shimmer on these bricks; the port only plays the entry reveal
+(`play_brik_anim`) and the per-hit shimmer (`brick_hit_anim`), so a
+shimmered brick is left on a **static reveal-leftover frame** with no
+per-frame driver.
+
+**Exact spec to close the cosmetic residual (optional, no gameplay
+effect):** add a per-frame `all_metal_briks_frame` equivalent — advance
+the `anim_brik` shimmer on the shimmering bricks (the original animates
+low-nibble-3 cells like (6,5), so the set is broader than nibble>=6) by
+a global frame counter, matching the original's `$AD8F` phase. To reach
+0 px it must match the original's exact per-frame phase/RNG; otherwise it
+trades a static residual for a phase-offset one. This remains out of
+scope for the gameplay frame-parity goal (byte-exact motion + collision,
+already shipping); it is purely the metal-brick light animation.
