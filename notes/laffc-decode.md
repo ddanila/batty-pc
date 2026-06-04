@@ -688,3 +688,27 @@ steps for the capture pipeline:
   coherent play (timed to the probed ball trajectory). That input
   orchestration is the next pipeline piece, now unblocked by the robust
   `$0038` boundary.
+
+### Update 24 (2026-06-04): no bat-contact trajectory from the existing seed
+
+With the robust `$0038` boundary working, frame-stepped the coherent
+l3-brick-flash ball over 240 frames and tracked it: y stays in the
+**upper field** (y ≈ 10–56, trending up; x sweeps 14–206) — it bounces
+among the top/metal bricks and **never descends to the bat** (y≈173).
+So this seed provides no bat-contact to validate the bat deflection
+against, and (Update 22) a poked descending-ball state hangs the game.
+
+Therefore validating/porting the exact bat deflection requires a **real
+captured snapshot taken during actual gameplay at a ball-descending-onto-
+bat moment** — which means driving the original through menus + play
+(tape boot or the L3 snapshot + scripted bat/launch input) to that state
+and dumping RAM, then aligning a port seed. That gameplay-capture
+pipeline is large and fragile (menu/play automation via ZRCP input), and
+is the real remaining cost for the bat deflection — the robust `$0038`
+boundary (Update 23) is necessary but not sufficient without a usable
+descending trajectory to apply it to.
+
+Net: the bat-deflection avenue is, concretely and after multiple
+attempts, blocked behind a real gameplay-capture effort — same wall as
+multi-ball and non-L3. The shipped byte-exact-on-L3 gameplay parity
+(motion + brick collision) stands as the delivered milestone.
