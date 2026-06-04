@@ -100,6 +100,18 @@ and `laffc-decode.md` for the detailed trail.
   model); (3) the `enemy_y + 8 >= $C0` cutoff; (4) spawn at (enemy_x + 8,
   enemy_y + 8) as `spr_bomb`, fall accumulator reset. The bomb's fall
   motion is the already-confirmed `motion_accel_step(&m, 0x0008, 0x02)`.
+- **Player bat movement** (`handling_bat` $A6xx) — ±4 px/frame on
+  left/right input (`SUB $04` / `ADD $04`), both pressed cancels (net 0).
+  The port matches the rate, and **this iteration fixed the margin
+  semantics**: the original moves UNCONDITIONALLY then clamps every frame
+  via `check_left_margin` ($08) + `check_right_margin` ($F8 - body_w) in
+  `handling_bat_no_transform`; the port previously *guarded before moving*
+  (`BAT_X > min_now`), which let the bat rest up to 3 px past the margin
+  (from `x = min+2`, a guarded `-4` lands on `min-2` and sticks). Now it
+  moves ±4 then clamps to `[8+extra, 248-body_w-extra]` (computed in int so
+  the `unsigned char` BAT_X can't wrap), so the bat rests exactly at the
+  margin like the original. Clamp targets verified equal: left `$08`,
+  right `248 - body_w` (= 220 for the 28-px body).
 - **Regression guards** — `make test-laffc-ball-frame1` (ZEsarUX-free)
   locks the L3 frame-1 ball to the Spectrum probe; the 5-checkpoint +
   per-level static suite (`make test`) stays green.

@@ -6684,8 +6684,22 @@ static state_t run_level(void) {
                 {
                     int min_now = 8 + bat_extra_px;
                     int max_now = 248 - BAT_BODY_W - bat_extra_px;
-                    if (!rocket_active && key_state[SC_LEFT]  && BAT_X > min_now) BAT_X -= 4;
-                    if (!rocket_active && key_state[SC_RIGHT] && BAT_X < max_now) BAT_X += 4;
+                    /* Original handling_bat moves x by ±4 UNCONDITIONALLY
+                     * (SUB/ADD $04), then handling_bat_no_transform clamps
+                     * every frame via check_left_margin ($08) /
+                     * check_right_margin ($F8 - body_w). Match that
+                     * move-then-clamp: a guard-BEFORE-move lets the bat
+                     * rest up to 3 px PAST the margin (from x=min+2 a
+                     * guarded -4 lands on min-2 and sticks), whereas the
+                     * original always clamps to exactly the margin. Compute
+                     * in int so the unsigned-char BAT_X can't wrap on the
+                     * subtract; both keys pressed still cancels (net 0). */
+                    int bx = (int)BAT_X;
+                    if (!rocket_active && key_state[SC_LEFT])  bx -= 4;
+                    if (!rocket_active && key_state[SC_RIGHT]) bx += 4;
+                    if (bx < min_now) bx = min_now;
+                    if (bx > max_now) bx = max_now;
+                    BAT_X = (unsigned char)bx;
                 }
                 if (ball_stuck) {
                     /* Ball rides the bat at the catch offset (= where it
