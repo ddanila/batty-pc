@@ -241,3 +241,35 @@ exercises. Make the validated one the single source of truth and have
 the others delegate to it. A sub-pixel-per-frame numerical bug will pass
 every short test and only surfaces as slow drift — the disasm is the
 oracle, the pixel gate is a long-horizon confirmation.
+
+## Count-down-to-underflow counters: the gate semantics shift the reset value (2026-06-05)
+
+The original's laser fire-rate counter (`handling_bullet` $A12C) gates on
+`SUB $02; JR C` — i.e. it fires when the counter *underflows* (goes below
+2), one frame *after* it reaches 0. The DOS port reproduced the `-= 2`
+per-frame decrement but gated on `cooldown == 0`, which trips one frame
+*earlier* than the underflow. Same decrement, same reset constant (`0x16`),
+but an 11-frame cadence instead of the original's 12 — the laser fired
+~8% too fast. The author had even noted "~11 frames" without flagging it
+as wrong.
+
+The fix is NOT to change the gate but to bump the reset so the `==0` gate
+trips on the same frame the underflow would: `0x16` → `0x18` (24 → 0 at
+frame 12 → fire frame 13 = 12-frame period). Verified by hand-simulating
+both loops frame-by-frame.
+
+A second subtlety: the original's reset is *parity-adjusted*
+(`LD A,(bullet); CPL; AND $01; ADD A,$16` = `0x16` or `0x17`). With the
+carry gate, that parity bit is what keeps the period at exactly 12 for
+*both* values (and across not-holding-fire transients where the counter
+sits at 0/1). Under the port's `==0` gate the parity bit is moot — a
+fixed `0x18` reproduces the period deterministically.
+
+**How to apply.** When porting a Z80 countdown that gates on the *carry*
+of a `SUB`/`DEC` (underflow) rather than on reaching zero, account for the
+one-frame offset: a `== 0` (or `< step`) gate in C trips one tick sooner,
+so the equivalent reset constant is one decrement-step larger. Don't just
+copy the reset literal — simulate the loop and match the *period between
+fires*, not the literal value. Cadence bugs like this pass every static
+test (no QEMU/ZEsarUX gate covers laser rate) and only show as a subtly
+faster weapon.

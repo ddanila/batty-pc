@@ -44,6 +44,17 @@ and `laffc-decode.md` for the detailed trail.
   popup uses `handling_400pts`'s `LD DE,$0028; LD B,$80` =
   `motion_accel_step(…, 0x0028, 0x80)`. Verified by code-comparison
   against the disasm (`handling_bonus` / `handling_400pts`).
+- **Laser fire cadence** (LASER bonus bullets) — byte-exact rate. The
+  original (`handling_bullet` $A12C) gates firing on `SUB $02; JR C`
+  (underflow `<2`) and resets the `bullet` counter to a parity-adjusted
+  `0x16`/`0x17` (`LD A,(bullet); CPL; AND $01; ADD A,$16` at $A150); both
+  reset values underflow exactly **12 frames** after each shot (the parity
+  bit keeps the period constant). The port gates on `cooldown == 0`
+  checked *before* its end-of-frame `-= 2`, so the equivalent reset is
+  `0x18` (24 → reaches 0 at frame 12 → fires frame 13 = 12-frame cadence).
+  Was previously a fixed `0x16` = 11 frames (~8% too fast); fixed to
+  `0x18`. Bullet *speed* was already exact: `handling_bullet`'s `SUB $06`
+  (up 6 px/frame) = the port's `BULLET_SPEED = 6`.
 - **Regression guards** — `make test-laffc-ball-frame1` (ZEsarUX-free)
   locks the L3 frame-1 ball to the Spectrum probe; the 5-checkpoint +
   per-level static suite (`make test`) stays green.

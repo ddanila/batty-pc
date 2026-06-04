@@ -6623,7 +6623,18 @@ static state_t run_level(void) {
                             bullet_x[free_slot] = BAT_X + 12;
                             bullet_y[free_slot] = BAT_Y - 1;
                             bat_fire_anim_ticks = 8;
-                            bullet_cooldown = 0x16;          /* ~11 frames @ -2 / frame */
+                            /* Original free_bullet_2 reset ($A150): LD A,(bullet);
+                             * CPL; AND $01; ADD A,$16 — a parity-adjusted 0x16/0x17
+                             * combined with the SUB $02 / JR C (carry) fire gate at
+                             * $A12C. Holding fire, the counter underflows (<2) exactly
+                             * 12 frames after each shot for BOTH reset values (the
+                             * parity bit keeps the period constant). Our gate is
+                             * `cooldown == 0` checked BEFORE the end-of-frame -=2, so
+                             * to match the original's 12-frame cadence the reset must
+                             * be 0x18 (24-2k=0 at k=12 -> fire on frame 13). A fixed
+                             * 0x16 here gave 11 frames — ~8% too fast. Under ==0
+                             * semantics the parity bit is moot; 0x18 reproduces it. */
+                            bullet_cooldown = 0x18;          /* 12 frames @ -2 / frame (matches original) */
                             snd_q_push(SND_SHOT);
                         }
                     }
