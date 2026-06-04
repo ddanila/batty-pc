@@ -758,3 +758,24 @@ direction (matches). Remaining (bat-in-flight bounce, multi-ball
 secondaries, non-L3) all need the original driven into a descending-ball
 state — the input-orchestration capture pipeline — which the available
 coherent seeds don't reach (the ball stays in the upper field).
+
+### Update 27 (2026-06-04): SMASH plough-through is reachable + coherent (validatable)
+
+Poking the bat's applied-bonus flag `object_bat_1+$14 = $07` (SMASH /
+BIG_BALL plough) is coherent — the original does NOT hang (unlike the
+ball-position poke, U22) and the ball **ploughs straight through the
+bricks**: dir stays `0x1F`, x marches 105→99→93→87→81 with no bounce
+(vs the non-SMASH ball, which bounced to dir 0x21 on frame 1). Scenario
+saved as `replays/l3-smash.json`.
+
+So bat-flag pokes ARE a usable way to reach more validation states. To
+validate the port's SMASH collision against this, force the port into
+plough mode and compare the ball trajectory + destroyed cells. Nuance to
+resolve first: the port gates plough on `big_ball_active()`, which also
+**enlarges** the ball (`eff_ball_size`), whereas the original's `$07`
+plough flag is set without necessarily changing the ball size — so the
+port may couple size+plough where the original separates them. A clean
+SMASH validation needs a port "force plough, normal size" hook (or
+confirming the original's `$07` also enlarges). Logged as a reachable,
+niche next validation; the core gameplay parity (motion + collision +
+launch) stands verified.
