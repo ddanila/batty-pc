@@ -66,3 +66,4 @@ __pycache__/
 .DS_Store
 build/PROBE_laffc.txt
 build/PROBE_sane.txt
+build/bat_gate.log
