@@ -5001,8 +5001,13 @@ static void step_ball(void) {
          * BAT_Y - BALL_H_PX = 166 = $A6 (matches the original's launch
          * rest at LA27E_15 and respawn_primary_ball). Using ball_sz (= 8
          * width) here put it 1px high (165) every frame, silently
-         * clobbering respawn_primary_ball's correct $A6. */
-        BALL_Y = BAT_Y - BALL_H_PX;
+         * clobbering respawn_primary_ball's correct $A6. A ball HELD by
+         * the MAGNET bonus rests 1px lower at $A7 = 167 (LAB1F_3 uses $A7
+         * for a caught ball vs $A6 for the launch rest); the bat's active
+         * bonus ($03 == MAGNET, the original's IY+$14) distinguishes the
+         * two without a separate caught-state flag. */
+        BALL_Y = BAT_Y - BALL_H_PX +
+                 (objects[OBJ_BAT_1].bonus_applied == 0x03 ? 1 : 0);
         objects[OBJ_BALL_1].x_coord_hi = 0;
         objects[OBJ_BALL_1].y_coord_hi = 0;
         return;
@@ -5074,7 +5079,10 @@ static void step_ball(void) {
             ball_dy         = -BALL_SPEED;
             objects[OBJ_BALL_1].dir = 0x20;
             BALL_X          = BAT_X + off;
-            BALL_Y          = next_y;
+            /* A MAGNET-caught ball rests 1px lower than the launch rest:
+             * LAB1F_3 sets y = $A7 = 167 (= bat_top - BALL_H_PX + 1),
+             * vs $A6 = 166 for the level-start / launch rest. */
+            BALL_Y          = bat_top - BALL_H_PX + 1;
             objects[OBJ_BALL_1].x_coord_hi = 0;
             objects[OBJ_BALL_1].y_coord_hi = 0;
             snd_q_push(SND_BAT_BEAT);
@@ -6554,7 +6562,12 @@ static state_t run_level(void) {
                      * default BALL_X_OFFSET_ON_BAT) until SPACE or
                      * timeout. */
                     BALL_X = BAT_X + stuck_offset_x;
-                    BALL_Y = BAT_Y - BALL_H_PX;        /* = $A6 per LA27E_15 */
+                    /* $A6 = 166 for the launch rest (LA27E_15); a ball
+                     * held by the MAGNET bonus rests 1px lower at $A7 =
+                     * 167 (LAB1F_3). The bat's active bonus ($03 = MAGNET,
+                     * the original's IY+$14) selects which. */
+                    BALL_Y = BAT_Y - BALL_H_PX +
+                             (objects[OBJ_BAT_1].bonus_applied == 0x03 ? 1 : 0);
                     ball_moved = 1;
                     stuck_ticks++;
                     if (stuck_ticks >= STUCK_TIMEOUT) {

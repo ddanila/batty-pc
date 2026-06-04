@@ -164,16 +164,23 @@ The per-frame stuck-ball tracker in `step_ball` was resting the ball at
 `BAT_Y - BALL_H_PX` (= 173 - **7 height** = 166 = `$A6`), so the
 level-start / launch rest ball sits exactly where the Spectrum's does
 (its bottom row on the bat top). Probed: level-start stuck ball y = 166
-(was 165); `make test` stays pixel-identical. The MAGNET catch still
-parks at 166 vs the original's `$A7=167` (1px) — the original uses a
-distinct value for held vs launch-rest, which the port's unified tracker
-doesn't yet distinguish; left as a 1px cosmetic follow-up.
+(was 165); `make test` stays pixel-identical.
+
+## MAGNET catch-rest ($A7) vs launch-rest ($A6) — done
+
+The original rests a MAGNET-held ball 1px lower than the launch rest:
+`LAB1F_3` sets `$A7=167`, vs `LA27E_15`'s `$A6=166`. The port has TWO
+stuck-ball position maintainers — the `step_ball` stuck block and the
+authoritative one in the play loop (the one that actually wins while
+waiting for FIRE). Both now add 1px when the bat carries the MAGNET bonus
+(`objects[OBJ_BAT_1].bonus_applied == $03`, the original's `IY+$14`), so
+no separate caught-state flag is needed. Probed: MAGNET-held ball y = 167,
+level-start launch-rest y = 166 (the +1 is gated on bonus $03, so the
+non-magnet path is byte-identical and `make test` is unaffected).
 
 ## Next steps
 
-1. Distinguish catch-rest ($A7=167) from launch-rest ($A6=166) in the
-   stuck tracker (1px, needs a caught-vs-launch flag).
-2. Validate the catch->FIRE-release launch direction against the original
+1. Validate the catch->FIRE-release launch direction against the original
    (needs driving the release; the launch code is already validated for
    the level-start case).
 3. Unify the multi-ball secondaries (`step_extra_ball`) onto the exact
