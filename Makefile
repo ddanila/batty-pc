@@ -80,7 +80,7 @@ PROFILE_WAIT   ?= 25
 PROFILE_BALL_OBJECT ?= 02008000A0001802020C000008070000000000000080
 PROFILE_BALL_STUCK  ?= 0
 
-.PHONY: all clean run run-86box profile-auto profile-86box read-profile floppy assets help run-original run-original-cheat snapshot candidates regions test test-hud test-bat-redraw-window test-ball-dirty-redraw test-ball-object-dirty-redraw test-rocket-flight-redraw test-rocket-completion-no-ball test-round-banner-border test-brick-flash test-rocket-bonus test-death-sparks test-normal-ball-launch test-ball-left-wall-escape test-l3-replay-seed test-midgame-brick-replay replay-l3-brick-flash replay-l3-brick-flash-both
+.PHONY: all clean run run-86box profile-auto profile-86box read-profile floppy assets help run-original run-original-cheat snapshot candidates regions test test-hud test-bat-redraw-window test-ball-dirty-redraw test-ball-object-dirty-redraw test-rocket-flight-redraw test-rocket-completion-no-ball test-round-banner-border test-brick-flash test-rocket-bonus test-death-sparks test-normal-ball-launch test-ball-left-wall-escape test-l3-replay-seed test-midgame-brick-replay replay-l3-brick-flash replay-l3-brick-flash-both test-laffc-ball-frame1 test-bat-deflection parity-check
 
 all: $(EXE) $(ASSETS)
 
@@ -457,6 +457,7 @@ test:
 parity-check:
 	$(MAKE) test
 	$(MAKE) test-laffc-ball-frame1
+	$(MAKE) test-bat-deflection
 
 # Deterministic mid-game frame-timeline capture (port side of the
 # frame-step parity sweep). Builds the test floppy starting directly in
@@ -533,6 +534,12 @@ gate-laffc-long:
 # frame 1 (no ZEsarUX needed; asserts object_ball_1 == the Spectrum probe).
 test-laffc-ball-frame1:
 	python3 scripts/test_laffc_ball_frame1.py
+
+# Bat-deflection gate: the LAB1F port in step_ball must reproduce the
+# Spectrum's deflected direction across bat positions (ground truth in
+# notes/bat-deflection.md, captured by scripts/capture_bat_deflection.py).
+test-bat-deflection:
+	python3 scripts/test_bat_deflection_port.py
 
 # Multi-level sanity sweep: LAFFC must play comparably to brick_collision
 # on every level (no level where LAFFC destroys ~no bricks while

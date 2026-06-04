@@ -4910,6 +4910,81 @@ static void step_rocket(void) {
     if (killed_this_tick) snd_q_push(SND_NORMAL_BRIK);
 }
 
+/* --- Exact bat deflection (port of LAB1F @ $AB1F) ---------------------
+ *
+ * Replaces the old 5-zone approximation. The original snaps the ball to
+ * the bat top, computes offset = ball_x + 3 - bat_x (IY+$02), walks a
+ * (threshold,zone) table, optionally reflects the direction, then looks
+ * up the outgoing dir in LAC0A indexed by (zone&3) and the incoming dir.
+ * Full decode + captured ground truth: notes/bat-deflection.md. The
+ * offline check in that note confirms this reproduces every captured
+ * datapoint (incoming 0x0C: offset -3->0x28, 5->0x2C, 13->0x34,
+ * 21->0x38, 29->0x38). */
+
+/* LABEE: (threshold, zone) pairs, normal (28-wide) bat. */
+static const unsigned char bat_zone_tbl_normal[14] = {
+    0x04,0x07, 0x08,0x06, 0x0C,0x05, 0x10,0x00,
+    0x14,0x01, 0x18,0x02, 0xFF,0x03
+};
+/* LABFC: (threshold, zone) pairs, enlarged bat. */
+static const unsigned char bat_zone_tbl_big[14] = {
+    0x06,0x07, 0x0C,0x06, 0x12,0x05, 0x1A,0x00,
+    0x20,0x01, 0x26,0x02, 0xFF,0x03
+};
+/* LAC0A: [zone&3][incoming-dir index in {04,08,0C,14,18,1C}]. */
+static const unsigned char bat_deflect_tbl[4][6] = {
+    {0x3C,0x38,0x34,0x2C,0x28,0x24},
+    {0x3C,0x38,0x34,0x34,0x34,0x34},
+    {0x3C,0x38,0x38,0x34,0x38,0x38},
+    {0x3C,0x3C,0x38,0x38,0x3C,0x3C}
+};
+
+/* LAB1F_9: dir = ((dir ^ 0x1F) + 1) & 0x3F (vertical reflect). */
+static unsigned char bat_reflect_dir(unsigned char dir) {
+    return (unsigned char)(((dir ^ 0x1F) + 1) & 0x3F);
+}
+
+/* LAB1F_11: index of a downward dir within {04,08,0C,14,18,1C} (A starts
+ * at 4, +4 each step, skipping 0x10). Returns 0..5, or -1 for a dir not
+ * in the set — only pure-vertical 0x10 / non-multiple-of-4 dirs, which
+ * the original assumes never reach the bat (it would loop forever). The
+ * caller treats -1 as a plain vertical reflect so the port never hangs. */
+static int bat_dir_index(unsigned char dir) {
+    int a = 0x04, idx = 0;
+    while (idx < 6) {
+        if ((unsigned char)a == dir) return idx;
+        a += 4;
+        if (a == 0x10) a += 4;
+        idx++;
+    }
+    return -1;
+}
+
+/* Port of LAB1F_4..LAB1F_12: outgoing dir for a normal (non-catch) bat
+ * bounce. big_bat picks the LABFC threshold table. */
+static unsigned char bat_deflect_dir(unsigned char dir, int offset,
+                                     int big_bat) {
+    const unsigned char *t = big_bat ? bat_zone_tbl_big : bat_zone_tbl_normal;
+    unsigned char zone;
+    int didx;
+    if (offset < 0) {
+        zone = t[1];                 /* LAB1F_5 carry: first pair's zone */
+    } else {
+        int i = 0;
+        while (i < 12 && (unsigned char)offset >= t[i]) i += 2;
+        zone = t[i + 1];
+    }
+    if (zone & 0x04) {               /* LAB1F_8: reflect, lookup, reflect */
+        dir  = bat_reflect_dir(dir);
+        didx = bat_dir_index(dir);
+        if (didx < 0) return bat_reflect_dir(dir);
+        return bat_reflect_dir(bat_deflect_tbl[zone & 3][didx]);
+    }
+    didx = bat_dir_index(dir);       /* LAB1F_10: lookup only */
+    if (didx < 0) return bat_reflect_dir(dir);
+    return bat_deflect_tbl[zone & 3][didx];
+}
+
 /* Step the ball one frame: handle wall + bat collisions. If the ball
  * exits the bottom of the playfield it respawns stuck on the bat. */
 static void step_ball(void) {
@@ -4983,14 +5058,19 @@ static void step_ball(void) {
             return;
         }
         ball_dy = -BALL_SPEED;
-        /* Same 5-zone split, normalised to the (possibly-bigger) bat span. */
-        if      (hit_x * 5 < span * 1) { ball_dx = -2; objects[OBJ_BALL_1].dir = 0x2C; }
-        else if (hit_x * 5 < span * 2) { ball_dx = -1; objects[OBJ_BALL_1].dir = 0x28; }
-        else if (hit_x * 5 < span * 3) { ball_dx = (ball_dx >= 0) ? +1 : -1; objects[OBJ_BALL_1].dir = (ball_dx >= 0) ? 0x18 : 0x28; }
-        else if (hit_x * 5 < span * 4) { ball_dx = +1; objects[OBJ_BALL_1].dir = 0x18; }
-        else                           { ball_dx = +2; objects[OBJ_BALL_1].dir = 0x14; }
+        /* Exact LAB1F deflection (replaces the 5-zone approximation).
+         * offset = ball_x + 3 - bat_x (the bat object's left edge BAT_X,
+         * = original IY+$02); an enlarged bat selects the LABFC table.
+         * See notes/bat-deflection.md (validated vs captured ground
+         * truth). hit_x/span retained only for the catch branch above. */
+        (void)hit_x; (void)span;
+        objects[OBJ_BALL_1].dir =
+            bat_deflect_dir(objects[OBJ_BALL_1].dir,
+                            next_x + 3 - BAT_X, bat_extra_px != 0);
         ball_dir_delta_q8(objects[OBJ_BALL_1].dir, objects[OBJ_BALL_1].speed,
                           &dx_q8, &dy_q8);
+        ball_dx = (dx_q8 < 0) ? -1 : (dx_q8 > 0 ? 1 : 0);
+        ball_dy = (dy_q8 < 0) ? -1 : (dy_q8 > 0 ? 1 : 0);
         snd_q_push(SND_BAT_BEAT);            /* ball-on-bat */
     }
     /* Past the bat (= primary ball lost). Original at LA27E_25 ($A4xx)

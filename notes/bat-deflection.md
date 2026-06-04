@@ -102,12 +102,31 @@ reasoned out by hand. The match loop also *skips* dir `0x10` (pure
 vertical), which never occurs in real play; a synthetic dir=0x10 ball
 does not return cleanly from `LAB1F` (don't use it as a probe dir).
 
+## DONE: ported + validated
+
+`LAB1F` is now ported literally into `step_ball`'s bat-contact path
+(`bat_deflect_dir` + `bat_zone_tbl_normal/big` + `bat_deflect_tbl` +
+`bat_reflect_dir`/`bat_dir_index` in `src/main.c`), replacing the 5-zone
+approximation. The offset is `next_x + 3 - BAT_X`; an enlarged bat
+(`bat_extra_px != 0`) selects the LABFC table. Unmatched incoming dirs
+(pure-vertical 0x10 / non-multiple-of-4, which never reach the bat in real
+play) fall back to a plain vertical reflect so the port never hangs.
+
+Validated end-to-end by `make test-bat-deflection`
+(`scripts/test_bat_deflection_port.py`, in `parity-check`): seeding the
+port with the same descending ball reaches the same contact pixel and
+produces the **same outgoing dir as the Spectrum** at all five bat
+positions (start_x 104/112/120/128/136 -> 0x28/0x2C/0x34/0x38/0x38, the
+exact captured ground truth; contact at port frame 6, e.g. x=134 -> 0x38).
+The byte-exact L3 upper-field gate (`make test-laffc-ball-frame1`) is
+unchanged — L3 never contacts the bat, so that path is untouched.
+
 ## Next steps
 
-1. Port `LAB1F` literally into the bat-contact path of `step_ball`
-   (replacing the 5-zone block), including the `LABEE/LABFC/LAC0A`
-   tables and the double-reflect for bit2 zones.
-2. Add a regression that asserts the port's deflected dir matches this
-   ground-truth table (extend `capture_bat_deflection.py` to cover more
-   incoming dirs: 0x04, 0x14, 0x18, 0x1C).
-3. Port the MAGNET catch branch (bonus $03) separately.
+1. Extend the gate to more incoming dirs (0x04, 0x14, 0x18, 0x1C) — the
+   capture harness and port test already parameterize on it.
+2. Port the MAGNET catch branch (bonus $03) faithfully (the port keeps a
+   simplified catch today; LAB1F has the exact offset-quantize logic).
+3. Apply the exact deflection to the multi-ball secondaries
+   (`step_extra_ball`), which still use the 5-zone split on integer
+   motion — needs a multi-ball reference (no ground truth yet).

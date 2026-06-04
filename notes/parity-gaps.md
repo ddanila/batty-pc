@@ -22,20 +22,20 @@ Several paths use gameplay-equivalent but not byte-exact motion:
   and is byte-exact vs the Spectrum over L3's 150-frame trajectory
   (`make test-laffc-ball-frame1`). `BATTY_LEGACY_COLLISION=1` reverts.
   Full decode + status in `notes/laffc-decode.md`.
-- **bat-ball deflection** — the next gameplay-parity port, now **decoded
-  and ground-truthed** (see `notes/bat-deflection.md`). The port uses a
-  5-zone approximation (`step_ball`/`step_extra_ball` set dir to one of
-  ~5 fixed values by hit zone); the original derives it in `LAB1F`
-  ($AB1F): snap ball y to $A6, `offset = ball_x+3-bat_x`, walk the
-  `LABEE`/`LABFC` threshold→zone table, optionally reflect
-  `dir=((dir^$1F)+1)&$3F`, then look up `LAC0A[(zone&3)*6 + dir_index]`
-  (plus a MAGNET catch branch for bonus $03). The "needs a ball-onto-bat
-  scenario" blocker is **solved**: repositioning the coherent
-  `l3-brick-flash` ball just above the bat (not poking a placeholder)
-  drops it onto the bat without a new snapshot —
-  `scripts/capture_bat_deflection.py` captures the deflection table.
-  Remaining: port `LAB1F` literally (hand-derivation diverges — the bit2
-  zones double-reflect) and gate it against the captured table.
+- **bat-ball deflection (primary ball)** — DONE. The `LAB1F` ($AB1F) port
+  (`bat_deflect_dir` in `src/main.c`) replaces the 5-zone approximation
+  for the primary ball: snap ball y to the bat top, `offset =
+  next_x+3-BAT_X`, walk the `LABEE`/`LABFC` threshold→zone table,
+  optionally double-reflect `dir=((dir^$1F)+1)&$3F`, look up
+  `LAC0A[(zone&3)*6 + dir_index]`. Validated vs the Spectrum at five bat
+  positions (`make test-bat-deflection`, in `parity-check`); the
+  byte-exact L3 gate is unchanged. The "needs a ball-onto-bat scenario"
+  blocker was solved by *repositioning the coherent `l3-brick-flash`
+  ball* (no new snapshot) — `scripts/capture_bat_deflection.py`.
+  Remaining: the MAGNET catch branch (bonus $03) is still simplified, and
+  the multi-ball secondaries (`step_extra_ball`) still use the 5-zone
+  split on integer motion (no multi-ball ground truth yet). Full decode +
+  validation in `notes/bat-deflection.md`.
 - **brick-hit shimmer** is now the remaining frame-step residual (shared
   by both collision paths via `brick_hit_anim`). The original
   `metal_brik_anim` (`$B6A9`) slides a 16-byte window into `anim_brik`
