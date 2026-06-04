@@ -176,6 +176,20 @@ and `laffc-decode.md` for the detailed trail.
   frame ~1184, far past the 150-frame ball gate); verified green:
   `test-laffc-ball-frame1` (5 checkpoints), `make test` (5 states + 2
   lints), `test-bat-deflection` (14/14).
+- **Alien explosion** (`handling_blast` $AA30, sprite_set $0A) —
+  implemented (not stubbed). Both the original and the port have exactly
+  **5** blast sprites (`spr_alien_blast_1..5` / `SPR_BLAST_1..5`). The
+  port's `handling_blast_obj` animates the 5 frames and then frees the
+  slot (`sprite_set = 0`) so `enemy_prepare` can respawn — the original
+  does `SET 7` (→ `$8A`), but the port's slot-clear reaches the same
+  result under its `sprite_set != 0` respawn check. The gameplay-relevant
+  behaviour (alien dies → blast plays → slot frees) matches. Cosmetic
+  caveat: the exact cadence (port 5 frames × 3 ticks vs the original's
+  `LAAD2` `$12=$50` frame timer + `CP $09` deactivation, which may cycle
+  the 5 sprites ~twice) isn't pinned down — needs a blast-animation
+  ground-truth capture. With this, ALL 11 object handlers
+  ($01–$0B: bat, ball, screen-elements, bonus, bullet, rocket, spark,
+  ufo, bird, blast, 400pts) have been surveyed against the disasm.
 - **Regression guards** — `make test-laffc-ball-frame1` (ZEsarUX-free)
   locks the L3 frame-1 ball to the Spectrum probe; the 5-checkpoint +
   per-level static suite (`make test`) stays green.

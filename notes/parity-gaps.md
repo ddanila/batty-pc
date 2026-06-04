@@ -70,6 +70,12 @@ Several paths use gameplay-equivalent but not byte-exact motion:
   the note.
 - big-bat resize timing is matched visually but not a literal port of
   the original bit-gated state machine.
+- **alien-explosion cadence** (cosmetic). `handling_blast_obj` plays the 5
+  blast sprites once at 3 ticks/frame; the original's `LAAD2` advances on a
+  `$12=$50` timer and `handling_blast` deactivates at frame `$09`, which
+  (with only 5 sprites) likely cycles them ~twice. Same 5 sprites, same
+  gameplay (alien dies, slot frees); only the explosion's duration/repeat
+  may differ. Needs a blast-anim ground-truth capture to pin down.
 - **progressive ball speed-up + SLOW semantics** — DONE (2026-06-05; see
   parity-status.md "Ball speed-up + SLOW"). The port now models the
   original's accelerating ball (`$02 → $06` via the `ball+$13`/`$94` ramp
