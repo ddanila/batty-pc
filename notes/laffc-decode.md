@@ -737,3 +737,24 @@ probe phase) rather than a real position gap — confirm with a same-phase
 capture before treating it as a bug. Method note: usable validation
 states CAN be reached from the round-init (`l3-entry`) without a new
 snapshot; the hang (U22) was specific to incoherent hand-pokes.
+
+### Update 26 (2026-06-04): stuck-offset thread closed (tangled with GT, gameplay OK)
+
+Followed up the U25 stuck-offset sub-finding (port offset 16 vs original
+12). The port uses offset 16 + a `-4` in its launch formula, which lands
+on the same launch dir (0x34) as the original's offset 12 — so the
+gameplay-relevant launch is correct. A "clean" fix (offset 12 + drop the
+-4, porting LA27E_15's exact mapping) is possible in principle, BUT the
+L3 GT has **no white ball at the stuck position** (scanned y150-172) —
+so the port/GT/live-original offset relationship is tangled (the GT
+appears captured with the ball absent/elsewhere), and `state4`'s ~49 px
+residual can't be cleanly attributed. Not worth re-baselining the GT and
+risking the static gate for a 4 px pre-launch visual whose launch outcome
+already matches. Thread closed.
+
+Validated-parity surface to date: ball **motion** (q8.8, byte-exact 150
+frames), **brick collision** (LAFFC, byte-exact, default), **launch**
+direction (matches). Remaining (bat-in-flight bounce, multi-ball
+secondaries, non-L3) all need the original driven into a descending-ball
+state — the input-orchestration capture pipeline — which the available
+coherent seeds don't reach (the ball stays in the upper field).
