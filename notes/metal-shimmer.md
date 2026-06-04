@@ -68,6 +68,32 @@ pixel-identical, and **`make test-brick-flash` passes** (L3 brick
 destruction cleanup, no stale-flash cells vs the original L3 reference) —
 so the permanent shimmer introduces no stale-flash artifacts.
 
+## L3 frame-step measurement (the residual is shimmer render phase)
+
+`make capture-timeline-both` (port QEMU vs ZEsarUX, brick ROI, max-diff 0):
+
+```
+frame 0: 0/23040 px   [PASS]   (aligned start, perfect)
+frame 1: 188/23040 px [FAIL]   bounds ~(104,72,127,86)
+frame 3: 188/23040 px [FAIL]
+frame 5: 184/23040 px [FAIL]
+```
+
+Pixel-level, the residual is dominated by a **white(15) <-> cyan(11) swap**
+(~93 px) in the freshly-hit brick cells (cols 5-7, rows 4-7) — i.e. at a
+given frame the port draws a DIFFERENT `anim_brik` frame than the original
+(the frames are cyan/white brick variants, so a 1-frame offset reads as a
+white/cyan swap). The frame->sprite MAPPING is verified correct: port
+`frame_idx = (tick-1)>>1` matches original `((counter+1)&$FE)/2-1`, both 2
+ticks/frame over the same `{2,6,3,7,4,5,5,1}` order. So this is NOT a wrong
+mapping; it's a one-frame phase/order offset (when the slot's counter is
+sampled vs advanced within the frame, relative to the original's
+`LAFFC`-register-then-`fill_briks_data`-render order) and/or a brick
+sprite-data difference. Closing it needs a per-cell pixel diff of one
+shimmering brick across consecutive frames to pin down phase-vs-data — a
+fine cosmetic detail (no gameplay effect). Frame 0 being 0 px shows the
+aligned start and the rest of the brick band are exact.
+
 The earlier "720x400 harness issue" was a false alarm: it was a stale
 replay-seeded `build/batty-test.img` left over from shimmer-validation
 builds (its AUTOEXEC booted into a replay state, so the test's menu
