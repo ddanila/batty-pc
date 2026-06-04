@@ -1319,12 +1319,13 @@ static unsigned char use_laffc = 1;
  * frame the original doesn't tick at its snapshot start); the byte-exact
  * L3 ball gate stays byte-exact with the flag ON. NOT YET the default
  * because the RNG-*dependent* behaviour has no byte-exact gate of its own
- * (the ball gate is RNG-independent), AND flag-ON currently makes the
- * enemy target THRASH (oscillates frame-to-frame) instead of holding a
- * stable target like the original — so the per-frame RNG + enemy repick
- * interact wrongly. Flipping is BLOCKED until that's diagnosed/fixed (see
- * notes/enemy-movement.md, notes/rng-model.md). Flag OFF (default) roams
- * fine; only the experimental flag-ON path thrashes. */
+ * (the ball gate is RNG-independent, and the enemy target isn't
+ * reproducible across separate-run builds due to WAIT_KEY release-timing
+ * jitter). flag-ON IS behaviour-correct for the enemy (stable target,
+ * repicks once on arrival — the earlier "thrash" was a separate-run
+ * measurement artifact, see notes/enemy-movement.md). The flip stays
+ * deliberate pending a real RNG-behaviour gate (a single multi-frame
+ * probing run). Flag OFF (default) is fine regardless. */
 static unsigned char rng_perframe = 0;
 static unsigned char suppress_no_ball_death = 0;
 static int sound_disabled = 0;
@@ -1902,10 +1903,15 @@ static void ball_reflect_descriptor(int flip_x, int flip_y) {
  * advancing the RNG. (A byte-exact target match additionally needs the
  * original's per-frame RNG tick, which the port advances on demand — see
  * notes/enemy-movement.md.) */
+static unsigned int dbg_enemy_arrival_repicks = 0;  /* diag: LAA7D_1 fires */
+static unsigned int dbg_enemy_margin_repicks  = 0;  /* diag: margin path fires */
+static unsigned int dbg_enemy_turn_calls      = 0;  /* diag: turn fn called */
 static void enemy_turn_towards_target(object_t *o) {
     unsigned char target = (unsigned char)(o->bonus_applied & 0x3F);
     unsigned char delta = (unsigned char)((o->dir - target) & 0x3F);
+    dbg_enemy_turn_calls++;
     if (delta == 0) {
+        dbg_enemy_arrival_repicks++;
         o->bonus_applied = (unsigned char)(random_e & 0x3F);   /* LAA7D_1 */
         return;
     }
@@ -1920,6 +1926,7 @@ static void enemy_pick_new_target(object_t *o) {
 }
 
 static void enemy_target_away_from_margins(object_t *o) {
+    dbg_enemy_margin_repicks++;
     if (o->x_coord <= 8) {
         o->bonus_applied = (o->y_coord <= 12) ? 0x08 : 0x00;
     } else if (o->x_coord >= PLAYFIELD_W - 8 - o->w_body_px) {
@@ -4515,6 +4522,9 @@ static void write_replay_probe(void) {
     fprintf(f, "score=%06lu\n", score);
     fprintf(f, "random_number=%02X%02X\n", (unsigned)random_d, (unsigned)random_e);
     fprintf(f, "random_seed=%04X\n", random_seed_addr);
+    fprintf(f, "enemy_repicks=arrival%u_margin%u_turns%u\n",
+            dbg_enemy_arrival_repicks, dbg_enemy_margin_repicks,
+            dbg_enemy_turn_calls);
     fprintf(f, "object_ball_1=");
     for (i = 0; i < (int)sizeof(object_t); i++) {
         fprintf(f, "%02X", ((unsigned char *)&objects[OBJ_BALL_1])[i]);

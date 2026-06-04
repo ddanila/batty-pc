@@ -110,17 +110,22 @@ enemy don't perturb the ball. And the port's RNG init (`random_e=$17`,
 from a clean start too. So flag ON is the validated-correct model and
 flipping the default is the natural culmination (BATTY_LAFFC pattern).
 
-NOT flipped — and a blocker found: the ball gate is RNG-*independent*, so
-it cannot prove the RNG-*dependent* behaviour. When checked, flag-ON makes
-the **enemy target THRASH** (0x36/0x2B/0x36/0x2C frame-to-frame, dir
-oscillating) instead of holding a stable target like the original — see
-notes/enemy-movement.md. So flag-ON, while the RNG *walk* is byte-exact,
-is NOT behaviour-correct for the enemy yet; the per-frame RNG + the enemy
-repick interact wrongly (the target changes ~every 2 frames with no
-apparent arrival). Flipping the default is BLOCKED until that thrashing is
-diagnosed (flag-ON MWA trace of $9BAA writes) and fixed. The shipped
-default (flag-OFF) enemy roams fine; only the experimental flag-ON path
-thrashes, so nothing user-facing regresses. Resolving it (skip the port's first-frame tick, or seed to the
+NOT flipped — but the "thrashing" scare was a MEASUREMENT ARTIFACT, now
+resolved (see notes/enemy-movement.md). Per-path repick counters show the
+enemy arrival-repick fires ONCE per run (`arrival=1`), so the target is
+stable WITHIN a run; the apparent frame-to-frame thrash was comparing
+separate-run builds whose WAIT_KEY release timing jitters (different RNG
+start). So flag-ON IS behaviour-correct for the enemy (stable target,
+repicks on arrival like `LAA7D_1`) — no thrashing bug.
+
+What actually blocks the default flip: there is still no byte-exact GATE
+for the RNG-dependent behaviour (the ball gate is RNG-independent, and the
+enemy target isn't reproducible across separate-run builds because of the
+release-timing jitter). A gate needs a single multi-frame-probing run or a
+fixed release frame. So flag-ON is validated-correct (walk byte-exact,
+init matches, enemy steering correct) but the flip stays deliberate
+pending a real behaviour gate. The shipped default (flag-OFF) is fine
+regardless. Resolving it (skip the port's first-frame tick, or seed to the
 original's f0 pre-tick value) would make RNG-dependent reads — enemy
 targets, bonus drops — frame-exact. Note the L3 seed value `0x460D` is the
 snapshot's, not the env `8E49` (which wrote the wrong address `$8E17`).

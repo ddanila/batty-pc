@@ -199,9 +199,29 @@ A closer look (flag-ON, seeded 460D/962C) shows the target THRASHES, not
 matches: f14=0x36, f16=0x2B, f18=0x36, f20=0x2C, with dir oscillating
 (0x0F/0x11/0x0E/0x13). The original has a STABLE target (0x2C) and smooth
 steering. The earlier "repicks to 0x2C" was a coincidental single frame.
-So under flag-ON the enemy repicks far too often — the target changes
-~every 2 frames with per-frame-random values (target &$3F tracks the
-per-frame random_e). Investigated the cause:
+RESOLVED — the "thrashing" was a MEASUREMENT ARTIFACT, not a bug.
+Instrumented per-path repick counters (`dbg_enemy_arrival/margin_repicks`,
+dumped in PROBE.TXT) and tested determinism:
+
+- The arrival-repick (`LAA7D_1`) fires **once** per run (`arrival=1`,
+  `margin=0`), so `bonus_applied` is written once and is **stable within
+  a run**.
+- Running the SAME frame 3 times is fully deterministic (target=0x08,
+  random=E69B every time). The apparent frame-to-frame "thrashing" was
+  comparing SEPARATE runs (each probe frame is its own floppy build +
+  boot); the WAIT_KEY release timing jitters between runs, so the
+  per-frame RNG starts at a slightly different point → a different
+  arrival-repick value. Within any one run the target holds.
+
+So the enemy steering is CORRECT under flag-ON (stable target, repicks on
+arrival like `LAA7D_1`); there is no thrashing bug. The previous
+"thrashing" note was itself a separate-run artifact. The remaining limit
+is that this harness can't byte-exact-GATE the enemy target: separate-run
+release jitter makes the exact RNG state at a comparison frame
+non-reproducible across builds. That's a harness limitation, not a port
+issue — a single multi-frame-probing run (or a fixed release frame) would
+be needed to pin the exact value. (Earlier mistaken analysis kept below
+for the record.)
 
 - **Clobber ruled out:** `bonus_applied` is only written by the bat-bonus
   code (OBJ_BAT_1/2 specific) and the three enemy-steering paths
