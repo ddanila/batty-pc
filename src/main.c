@@ -2718,7 +2718,9 @@ static void render_magnets(unsigned char level_idx) {
          * outline replacing the lightning's bright body). Normal play
          * follows the original coin flip from print_magnets. */
         blit_masked_to_scr_buff_ptr(spr_magnet_on, x, y);
-        if (test_mode_pin_blink ? (i >= 2) : (random_lo(next_random()) & 1)) {
+        /* Magnet on/off coin-flip: the original print_magnets reads
+         * random_number+$01 without advancing (read-current) -> rng_sample. */
+        if (test_mode_pin_blink ? (i >= 2) : (random_lo(rng_sample()) & 1)) {
             blit_masked_to_scr_buff_ptr(spr_magnet_off, x, y);
         }
     }

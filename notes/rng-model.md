@@ -48,9 +48,26 @@ tick, so behaviour is byte-identical — verified, the L3 ball gate and all
 runs at the play-loop top, and read-current consumers sample without
 advancing. Done so far: the per-frame tick; the enemy consumers
 (`enemy_turn_towards_target` reads `random_e`, `enemy_pick_new_target`
-uses `rng_sample()`). Flag-ON smoke: boots fine and the (RNG-independent)
-ball stays byte-exact. Remaining consumers below are converted +
-validated incrementally before the default can flip.
+uses `rng_sample()`); the magnet on/off coin-flip (the original
+`print_magnets` reads `random_number+$01` without advancing). Flag-ON
+smoke: boots fine and the (RNG-independent) ball stays byte-exact.
+
+**Validation is gated on FINISHING the conversion.** Read-current
+consumers can't be validated piecemeal: any consumer still calling
+`next_random()` advances the shared `random_number` between frames, so a
+converted consumer's sampled value won't match the original until the
+others are converted too. (Concretely: the enemy repick can't match its
+`0x2C` ground truth while L3's bonus-drop consumers still advance — see
+notes/enemy-movement.md.) So the remaining read-current consumers must all
+be converted before the flag-on acceptance tests pass; each conversion is
+flag-OFF byte-identical, so they land safely meanwhile.
+
+### Remaining consumers to classify + convert
+
+`src/main.c` `next_random()` sites still to handle (read-current ->
+`rng_sample()`, or leave if the original advances-then-reads): death
+sparks (~3296), bonus region (~3929/3985/3988), and ~4565/4656. Each needs
+its original counterpart checked for a preceding `CALL random_generate`.
 
 ## Alignment plan (deliberate; not a single safe edit)
 

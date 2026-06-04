@@ -56,6 +56,21 @@ per 4 frames, and when it arrives pick a new random target. It does **not**
 pursue the bat/ball — the L3 curve toward the bat was just the random
 target happening to point that way.
 
+### Target (+$14) ground truth (probed at $9BAA)
+
+```
+f0-8 : target = 0x10   (== dir, so no turn; entry slide + arrived)
+f10+ : target = 0x2C   (repicked on arrival; random_number & $3F = 0x2C)
+```
+
+So dir holds at 0x10 until ~f10, then curves 0x10 -> ... -> 0x2C (+1 per
+4 frames). The pick value 0x2C is `random_number & $3F` at that frame —
+which is exactly why byte-exact enemy targets need the per-frame RNG tick
+(see notes/rng-model.md). Validating flag-on enemy against this needs ALL
+read-current consumers converted first: in L3 the ball is breaking bricks,
+so bonus-drop RNG consumers fire and shift `random_number` between frames;
+until they read-current too, the enemy's repick value won't match.
+
 ## Port status
 
 `handling_bird_obj` already matches the cadence (turn every 4 frames,
