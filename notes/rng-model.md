@@ -219,3 +219,53 @@ behind a `BATTY_RNG_PERFRAME`-style flag like `BATTY_LAFFC` was), with
 `scripts/capture_enemy_flight.py` and a bonus-drop capture as the
 acceptance checks. The ball physics gates are unaffected (the ball is
 RNG-independent), so they stay green throughout.
+
+## LIVE capture (2026-06-05): the walk does NOT match yet — "byte-exact" was over-claimed
+
+Captured both sides frame-by-frame from the L3 `l3-brick-flash` state
+(original via ZEsarUX reading $8D48/$8D4A at each $BA83 boundary; port via
+PROBE.TXT `random_number`/`random_seed`, flag ON). Findings:
+
+**Seed format.** `random_seed` is a little-endian 16-bit at $8D4A. The
+snapshot value at the f0 $BA83 boundary is **$962A** (NOT `2A96` — that is
+the byte pair printed lo-then-hi). It increments **+1/frame**
+($962A→$962B→$962C ...), walking the $8000-$9FFF region. So seed the port
+with `BATTY_REPLAY_RANDOM_SEED=962A` and random_number with
+`BATTY_REPLAY_RANDOM=9337` (the f0 values). (`apply_replay_random_override`
+masks `& 0x9FFF | 0x8000`, which is a no-op for a valid $962A.)
+
+**Walk still diverges** (seed + random_number both seeded to f0):
+
+    frame   original          port (flag ON, seed 962A)
+    f0      9337 / 962A       9337 / 962A     (seeded — match)
+    f1      53BB / 962B       17F7 / 962B     (DIVERGE)
+    f2      0D46 / 962C       A2B1 / 962C
+    f3      9009 / 962D       6534 / 962D
+
+The seed walk matches (962A→962B...), but `random_number` diverges from f1.
+So the earlier "RNG walk byte-exact / validated offline" claim is WRONG for
+the live L3 setup.
+
+**Narrowed root cause.** The ALGORITHM matches `random_generate` ($0072):
+`E += src + $05 + ctrl_btns`; `D += ~src + $16 + L` (L = seed low byte);
+`seed = (seed+1) & $9FFF`. And the port's `random_seed.bin` (the $8000-
+$9FFF source for `src`) MATCHES the original at the seed region:
+
+    orig mem[962A..]: BB B5 7E E1 13 06 0B 77
+    asset[162A..]   : BB B5 7E E1 13 06 0B 77   (identical)
+
+(though asset != orig at $8000.. itself, which holds runtime-mutated state
+— irrelevant unless the seed walks there). Yet at the f0→f1 tick BOTH
+output bytes diverge by exactly 0x3C (port D=17 vs orig 53; port E=F7 vs
+orig BB). Since `ctrl_btns` feeds ONLY E, a D divergence means `src` (or
+its effective read offset) differs too — i.e. the port's per-frame tick is
+NOT reading the same `src` byte the original reads at $962A, even though
+the asset byte there matches. Likely a one-tick offset (the port's tick
+reads the seed at a different point than the $BA83 read sample) and/or a
+`ctrl_btns_pressed` value mismatch (ZEsarUX no-key idle vs the port's 0).
+
+**Next (instrumented):** at the single f0→f1 tick, dump on BOTH sides the
+exact `src` byte read and `ctrl_btns` used, and the seed value AT THE READ
+(not at the probe). Align those and the walk should close. Until then,
+RNG-dependent parity (enemy steering target, bonus drops) cannot be gated;
+the descend gate (RNG-independent) is the locked half.
