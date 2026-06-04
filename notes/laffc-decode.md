@@ -216,3 +216,23 @@ static 5/5. Gate impact is real but modest — LAFFC frame 1 220→**188**,
 later frames within noise; the swap is one factor, the collision
 cell/straddle still dominate the residual. Next: read the port's frame-1
 ball the same way to confirm a full (x,y,dir) match after the swap.
+
+### Update 5 (2026-06-04): ball fully matches; residual is now the brick cell
+
+Read the port's frame-1 ball via `PROBE.TXT` (`object_ball_1`): after the
+swap it is **(x=105,y=65,dir=$21)** — the *pixel* position and direction
+match the original exactly. The only gap was the q8.8 **fraction** (port
+xf=0/yf=0 vs original xf=9/yf=72): the snap zeroed it, but LAFFC_26-29
+write only the pixel byte and leave the fraction from the move. Fixed
+`step_ball`'s `hit==3` branch to keep the moved low byte
+(`next_x_q8 = (BALL_X<<8) | (next_x_q8 & 0xFF)`); port now reads xf=9,
+yf=72 — a byte-exact ball match.
+
+**Gate (LAFFC, frames 0/1/3/5): 0 / 188 / 188 / 339** vs `brick_collision`
+0 / 212 / 333 / 494 — the LAFFC path now beats the approximation on
+*every* frame, and the ball is exact. The remaining residual is no longer
+the ball: at frame 1 its bounds `(104,72,127,86)` sit *below* the ball
+(y=65) in the brick rows — it is the **destroyed-brick cell** differing
+("same count, different cells"). Next: port the two-cell straddle / `IY`
+adjustment (LAFFC_5-6) so the bounce destroys the same cell the original
+does, then flip the default from `brick_collision` to LAFFC.

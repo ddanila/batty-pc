@@ -4999,12 +4999,15 @@ static void step_ball(void) {
                             : brick_collision(BALL_X, BALL_Y, next_x, next_y);
         if (hit == 3) {
             /* LAFFC path already reflected the direction and snapped the
-             * ball to the cell edge (in BALL_X/BALL_Y); adopt that and
-             * reset the q8.8 fraction (the snap is a whole-pixel edge). */
+             * ball to the cell edge (in BALL_X/BALL_Y). LAFFC_26-29 set
+             * only the pixel byte (IX+$02 / IX+$04) and LEAVE the q8.8
+             * fraction from the move untouched, so keep the moved low
+             * byte rather than zeroing it — matching the original's
+             * sub-pixel accumulation (probed: x frac 9, y frac 72). */
+            next_x_q8 = ((long)BALL_X << 8) | (next_x_q8 & 0xFF);
+            next_y_q8 = ((long)BALL_Y << 8) | (next_y_q8 & 0xFF);
             next_x = BALL_X;
             next_y = BALL_Y;
-            next_x_q8 = (long)next_x << 8;
-            next_y_q8 = (long)next_y << 8;
         } else if (hit == 1) {
             ball_reflect_descriptor(0, 1);
             next_y = BALL_Y;
