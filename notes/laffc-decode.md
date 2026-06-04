@@ -157,3 +157,21 @@ Next: give `laffc_collision` its own `change_direction` reflect + cell-
 edge position snap (return "handled, don't let step_ball re-reflect"),
 then add the penetration-depth corner case, re-measuring the gate each
 step until it beats `brick_collision`, then flip the default.
+
+### Update 2 (2026-06-04): change_direction + snap landed
+
+Fixed the inverted mask (set bit = neighbour **empty/open**, the face the
+ball reflects off — was set-when-solid), made the hit cell the ball's own
+cell `(row,col)` (with a right-straddle fallback), and gave
+`laffc_collision` its own reflect+snap: `change_direction`
+(`((dir^mask)+1)&0x3F`, $1F horizontal / $3F vertical) and the LAFFC_26-29
+cell-edge snaps (`Lx-w` / `Lx+$10` / `Hy-h` / `Hy+8`), returning code `3`
+so `step_ball` adopts the snapped position/dir without re-reflecting.
+
+**Gate now (`BATTY_LAFFC=1`, frames 0/1/3/5):** 0 / 220 / **276** /
+**426** px vs `brick_collision`'s 0 / 212 / 333 / 494. The LAFFC path now
+**beats** the approximation on the accumulating frames 3/5 (frame 1 ~tied,
++8 px). Still not 0 — remaining: the penetration-depth corner case
+(LAFFC_21-25, two open faces → pick the shallower axis) and the exact
+two-cell straddle/`IY` adjustment (phase 4 head). Default still
+`brick_collision` (static 5/5); flip once the gate reaches ~0.

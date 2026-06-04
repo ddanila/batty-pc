@@ -4118,6 +4118,13 @@ static int brick_hit_resolve(int col, int row, int axis) {
     return axis;
 }
 
+/* change_direction at $AD5C: dir = ((dir XOR mask) + 1) & 0x3F. mask
+ * $1F flips the horizontal component (left/right bounce), $3F the
+ * vertical (up/down). */
+static unsigned char laffc_change_dir(unsigned char dir, unsigned char mask) {
+    return (unsigned char)(((dir ^ mask) + 1) & 0x3F);
+}
+
 /* Port of LAFFC ($AFFC) brick collision, gated behind BATTY_LAFFC while
  * it is brought to parity (the default game keeps brick_collision). See
  * notes/laffc-decode.md. Phases: (1) early exits, (2/3) find the grid
@@ -4157,27 +4164,58 @@ static int laffc_collision(int prev_x, int prev_y, int new_x, int new_y) {
         if (a < 0) a = 0;
         while (a >= 0x10 && col < LVL_COLS - 1) { a -= 0x10; col++; Lx += 0x10; }
     }
-    /* phase 4: neighbour-solidity mask (bit0 L, 1 R, 2 U, 3 D). A bit is
-     * set when that neighbour cell is solid (bit7 clear) and not past a
-     * playfield edge (Lx $08/$E8 left/right, Hy $21/$78 top/bottom). */
-#define LAFFC_SOLID(rr,cc) ((rr) >= 0 && (rr) < LVL_ROWS && (cc) >= 0 && \
-        (cc) < LVL_COLS && !(live_level[(rr) * LVL_COLS + (cc)] & 0x80))
+    /* The hit cell is the brick at the ball's reference point. LAFFC walks
+     * to an adjacent solid cell when the ball straddles into one; here we
+     * accept the ball's own cell, else its right neighbour (the common
+     * horizontal straddle), else no brick. */
+    if (live_level[row * LVL_COLS + col] & 0x80) {
+        if (col + 1 < LVL_COLS && !(live_level[row * LVL_COLS + col + 1] & 0x80)) {
+            col++; Lx += 0x10;
+        } else {
+            return 0;
+        }
+    }
+    /* phase 4: open-face mask (bit0 L, 1 R, 2 U, 3 D). LAFFC clears a bit
+     * when that neighbour is SOLID or past a playfield edge, so a set bit
+     * = an OPEN (empty/destroyed) face the ball can reflect off. */
+#define LAFFC_EMPTY(rr,cc) ((rr) < 0 || (rr) >= LVL_ROWS || (cc) < 0 || \
+        (cc) >= LVL_COLS || (live_level[(rr) * LVL_COLS + (cc)] & 0x80))
     mask = 0;
-    if (Lx != 0x08 && LAFFC_SOLID(row, col - 1)) mask |= 1;
-    if (Lx != 0xE8 && LAFFC_SOLID(row, col + 1)) mask |= 2;
-    if (Hy >= 0x21 && LAFFC_SOLID(row - 1, col)) mask |= 4;
-    if (Hy <  0x78 && LAFFC_SOLID(row + 1, col)) mask |= 8;
+    if (Lx != 0x08 && LAFFC_EMPTY(row, col - 1)) mask |= 1;
+    if (Lx != 0xE8 && LAFFC_EMPTY(row, col + 1)) mask |= 2;
+    if (Hy >= 0x21 && LAFFC_EMPTY(row - 1, col)) mask |= 4;
+    if (Hy <  0x78 && LAFFC_EMPTY(row + 1, col)) mask |= 8;
+#undef LAFFC_EMPTY
     /* phase 5: gate by direction (LAFFC_13..17) */
     if (dir < 0x20) mask &= ~8; else mask &= ~4;
     if (((dir + 0x10) & 0x3F) >= 0x20) mask &= ~1; else mask &= ~2;
-    /* phase 6: bounce off the chosen solid neighbour, destroy that cell.
-     * axis 2 = horizontal flip (left/right), axis 1 = vertical (up/down). */
-    if (mask & 1) return brick_hit_resolve(col - 1, row, 2);
-    if (mask & 2) return brick_hit_resolve(col + 1, row, 2);
-    if (mask & 4) return brick_hit_resolve(col, row - 1, 1);
-    if (mask & 8) return brick_hit_resolve(col, row + 1, 1);
-#undef LAFFC_SOLID
-    return 0;
+    /* phase 6: resolve the hit cell (destroy / half-hit / shimmer). SMASH
+     * (big-ball) returns 0 = plough through: cell destroyed, no bounce. */
+    if (brick_hit_resolve(col, row, 1) == 0) return 0;
+    /* Reflect via change_direction and snap the ball to the cell edge of
+     * the chosen open face (LAFFC_26-29). $1F flips horizontal, $3F
+     * vertical. The non-snapped axis advances to the new position. */
+    {
+        int w = o->w_body_px;
+        int dx_q8, dy_q8;
+        if (mask & 1) {            /* open left -> horizontal bounce */
+            o->x_coord = (unsigned char)(Lx - w);  o->y_coord = (unsigned char)new_y;
+            o->dir = laffc_change_dir(dir, 0x1F);
+        } else if (mask & 2) {     /* open right */
+            o->x_coord = (unsigned char)(Lx + 0x10); o->y_coord = (unsigned char)new_y;
+            o->dir = laffc_change_dir(dir, 0x1F);
+        } else if (mask & 4) {     /* open up -> vertical bounce */
+            o->y_coord = (unsigned char)(Hy - h);  o->x_coord = (unsigned char)new_x;
+            o->dir = laffc_change_dir(dir, 0x3F);
+        } else {                   /* open down or fully enclosed (default) */
+            o->y_coord = (unsigned char)(Hy + 8);  o->x_coord = (unsigned char)new_x;
+            o->dir = laffc_change_dir(dir, 0x3F);
+        }
+        ball_dir_delta_q8(o->dir, o->speed, &dx_q8, &dy_q8);
+        ball_dx = (dx_q8 < 0) ? -1 : (dx_q8 > 0 ? 1 : 0);
+        ball_dy = (dy_q8 < 0) ? -1 : (dy_q8 > 0 ? 1 : 0);
+    }
+    return 3;   /* handled: reflected + snapped; step_ball must not re-reflect */
 }
 
 /* Count remaining destructible bricks: bit 7 clear (still present)
@@ -4945,7 +4983,15 @@ static void step_ball(void) {
     {
         int hit = use_laffc ? laffc_collision(BALL_X, BALL_Y, next_x, next_y)
                             : brick_collision(BALL_X, BALL_Y, next_x, next_y);
-        if (hit == 1) {
+        if (hit == 3) {
+            /* LAFFC path already reflected the direction and snapped the
+             * ball to the cell edge (in BALL_X/BALL_Y); adopt that and
+             * reset the q8.8 fraction (the snap is a whole-pixel edge). */
+            next_x = BALL_X;
+            next_y = BALL_Y;
+            next_x_q8 = (long)next_x << 8;
+            next_y_q8 = (long)next_y << 8;
+        } else if (hit == 1) {
             ball_reflect_descriptor(0, 1);
             next_y = BALL_Y;
             next_y_q8 = ((long)BALL_Y << 8) + objects[OBJ_BALL_1].y_coord_hi;
