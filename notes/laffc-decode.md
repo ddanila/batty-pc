@@ -270,3 +270,21 @@ LAFFC gate residual toward 0 (frames 3/5 too — they are the same shimmer
 on later-hit bricks), after which the default can flip from
 `brick_collision` to the byte-exact LAFFC path. The shimmer fix benefits
 the default path as well.
+
+**Gate command.** `make capture-timeline-both LAFFC_FLAG=1` measures the
+byte-exact LAFFC path (frame 0/1/3/5 ROI ≈ 0/188/188/~350, residual =
+the brick-hit shimmer); omit `LAFFC_FLAG` to measure the shipping
+`brick_collision` (≈ 0/212/333/494). frame 0 is 0 on both — the aligned
+byte-identical start.
+
+**Shimmer investigation status.** Timing analysis says the port's
+per-hit sequence already matches `metal_brik_anim` (same sprites
+brik_2,6,3,7,4,5,5,1; counter starts at the hit frame, two frames per
+sprite, render-then-increment). Yet the frame-1 cell pixels still differ
+(port shows a more-intact cyan brick, original shows the shimmer
+erase/redraw — e.g. row y79 port `85555555DDDDDDDD` vs orig
+`0000000088888888`). So the gap is most likely in the shimmer's **sprite
+data, screen position, or attr handling**, not the frame timing — the
+next thing to pin down (compare `brik_anim_sprites[1]` / the render
+address `0x401+row*0x100+col*2` against `metal_brik_anim`'s
+`screen_addr_calc`/`scr_buff_addr_calc` slot addresses).
