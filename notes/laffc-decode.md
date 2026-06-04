@@ -175,3 +175,25 @@ so `step_ball` adopts the snapped position/dir without re-reflecting.
 (LAFFC_21-25, two open faces → pick the shallower axis) and the exact
 two-cell straddle/`IY` adjustment (phase 4 head). Default still
 `brick_collision` (static 5/5); flip once the gate reaches ~0.
+
+### Update 3 (2026-06-04): corner case ported; frame-1 residual is motion, not collision
+
+Ported LAFFC_21-25 (phase 5b): when the direction gate leaves both an
+open horizontal and vertical face, compute X-pen / Y-pen from the open
+sides and bounce off the shallower (Y-pen >= X-pen → horizontal). Gate
+unchanged (0/220/276/426) — this trajectory never hits a two-open-face
+corner in frames 1-5, so it is a faithful, no-regression addition that
+will matter for corner hits / other levels.
+
+**Frame-1 residual is NOT brick collision.** Pixel classification of the
+frame-1 diff (both LAFFC and `brick_collision` paths) is dominated by
+**white↔magenta swaps (123 px)** = the *ball at a different position*,
+not a destroyed/colour-changed brick. The ball seeds at y=$4E (78),
+already inside brick row 5 (y 72-80); on frame 1 it moves up ~3 px and a
+sub-pixel first-step difference flips whether it registers a collision
+that frame, snapping it to a cell edge on one side only. So the next
+lever is the **frame-1 ball move / collide-vs-not edge**, shared by both
+paths — not more LAFFC bounce logic. Investigate: does the original
+collide on frame 1 at this seed, and at what exact post-move y? Compare
+the original's ball `IX+$02/$04` at frame 1 (ZRCP probe) against the
+port's.

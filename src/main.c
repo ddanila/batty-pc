@@ -4186,9 +4186,23 @@ static int laffc_collision(int prev_x, int prev_y, int new_x, int new_y) {
     if (Hy >= 0x21 && LAFFC_EMPTY(row - 1, col)) mask |= 4;
     if (Hy <  0x78 && LAFFC_EMPTY(row + 1, col)) mask |= 8;
 #undef LAFFC_EMPTY
-    /* phase 5: gate by direction (LAFFC_13..17) */
+    /* phase 5: gate by direction (LAFFC_13..17). Leaves at most one of
+     * {left,right} and one of {up,down}. */
     if (dir < 0x20) mask &= ~8; else mask &= ~4;
     if (((dir + 0x10) & 0x3F) >= 0x20) mask &= ~1; else mask &= ~2;
+    /* phase 5b: corner case (LAFFC_21-25). When both a horizontal and a
+     * vertical open face survive, the ball entered through the shallower-
+     * penetrated one — bounce off that axis. X-pen/Y-pen are measured
+     * from the open side (left: x+w-Lx, right: Lx+$10-x; up: y+h-Hy,
+     * down: Hy+8-y); if Y-pen >= X-pen keep horizontal, else vertical. */
+    if ((mask & 0x03) && (mask & 0x0C)) {
+        int w = o->w_body_px;
+        int xpen = (mask & 1) ? ((w + new_x) - Lx) : ((Lx + 0x10) - new_x);
+        int ypen = (mask & 4) ? ((h + new_y) - Hy) : ((Hy + 8) - new_y);
+        xpen &= 0xFF; ypen &= 0xFF;
+        if (ypen >= xpen) mask &= ~0x0C;   /* horizontal bounce */
+        else              mask &= ~0x03;   /* vertical bounce */
+    }
     /* phase 6: resolve the hit cell (destroy / half-hit / shimmer). SMASH
      * (big-ball) returns 0 = plough through: cell destroyed, no bounce. */
     if (brick_hit_resolve(col, row, 1) == 0) return 0;
