@@ -357,6 +357,9 @@ $(TEST_FLOPPY_OUT): $(TEST_EXE) $(ASSETS) $(FLOPPY_SRC)
 	if [ -n "$$BATTY_VISUAL_PROBE_FRAMES" ]; then \
 	    printf 'SET BATTY_VISUAL_PROBE_FRAMES=%s\r\n' "$$BATTY_VISUAL_PROBE_FRAMES" >> build/AUTOEXEC-T.BAT ; \
 	fi; \
+	if [ -n "$$BATTY_LAFFC" ]; then \
+	    printf 'SET BATTY_LAFFC=%s\r\n' "$$BATTY_LAFFC" >> build/AUTOEXEC-T.BAT ; \
+	fi; \
 	if [ -n "$$BATTY_HOLD_ROUND_BANNER" ]; then \
 	    printf 'SET BATTY_HOLD_ROUND_BANNER=%s\r\n' "$$BATTY_HOLD_ROUND_BANNER" >> build/AUTOEXEC-T.BAT ; \
 	fi; \

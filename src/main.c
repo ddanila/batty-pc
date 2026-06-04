@@ -1294,6 +1294,9 @@ static unsigned long profile_auto_frames = 0;
 static unsigned char force_bat_full_redraw = 0;
 static unsigned char force_ball_full_redraw = 0;
 static unsigned char force_full_flush_each_frame = 0;
+/* Develop the LAFFC brick-collision port behind this flag; default 0
+ * keeps the proven brick_collision. Set by BATTY_LAFFC=1. */
+static unsigned char use_laffc = 0;
 static unsigned char suppress_no_ball_death = 0;
 static int sound_disabled = 0;
 
@@ -4010,6 +4013,9 @@ static void render_brick_flash_to_buff(void) {
     (void)brick_flash_y;
 }
 
+static int brick_hit_resolve(int col, int row, int axis);
+static int laffc_collision(int prev_x, int prev_y, int new_x, int new_y);
+
 static int brick_collision(int prev_x, int prev_y, int new_x, int new_y) {
     int sz = eff_ball_size();
     int body_h = BALL_H_PX;
@@ -4019,7 +4025,6 @@ static int brick_collision(int prev_x, int prev_y, int new_x, int new_y) {
     int bottom = new_y + body_h - 1;
     int col0, col1, row0, row1;
     int col, row, r, c, brick_top, brick_bot, brick_left, brick_right, axis;
-    unsigned char *cell;
     if (bottom < 32 || top >= 32 + LVL_ROWS * 8) return 0;
     if (right < 8  || left >= 8  + LVL_COLS * 16) return 0;
     col0 = (left < 8) ? 0 : (left - 8) / 16;
@@ -4040,7 +4045,6 @@ static int brick_collision(int prev_x, int prev_y, int new_x, int new_y) {
         }
     }
     if (row < 0) return 0;
-    cell = &live_level[row * LVL_COLS + col];
 
     /* Determine the bounce axis (1 = flip dy, 2 = flip dx) for both
      * the destructible and undestructible paths. */
@@ -4059,7 +4063,14 @@ static int brick_collision(int prev_x, int prev_y, int new_x, int new_y) {
                       - (top > brick_top ? top : brick_top) + 1;
         axis = (overlap_y <= overlap_x) ? 1 : 2;
     }
+    return brick_hit_resolve(col, row, axis);
+}
 
+/* Shared brick-hit tail (undestructible / multi-hit half-state /
+ * destroy + shimmer + bonus), split out of brick_collision so the
+ * LAFFC port can reuse it. Returns the (possibly smash-zeroed) axis. */
+static int brick_hit_resolve(int col, int row, int axis) {
+    unsigned char *cell = &live_level[row * LVL_COLS + col];
     /* BIT 5 = undestructible: bounce, never destroy.
      * BIT 4 = "this hit destroys" (1-hit brick OR multi-hit's final
      *          hit registered by an earlier collision).
@@ -4105,6 +4116,68 @@ static int brick_collision(int prev_x, int prev_y, int new_x, int new_y) {
     brick_flash_spawn(col, row);
     try_spawn_bonus(col, row);
     return axis;
+}
+
+/* Port of LAFFC ($AFFC) brick collision, gated behind BATTY_LAFFC while
+ * it is brought to parity (the default game keeps brick_collision). See
+ * notes/laffc-decode.md. Phases: (1) early exits, (2/3) find the grid
+ * cell at the ball's position via the disasm's byte loops, (4) build a
+ * 4-bit neighbour-solidity mask, (5) gate it by ball direction, (6)
+ * bounce off the chosen solid neighbour and destroy IT (not the ball's
+ * own cell) — that is the "same count, different cells" fix. The
+ * penetration-depth corner case (LAFFC_21-25) and exact change_direction
+ * masks are still approximated by brick_hit_resolve's axis reflect;
+ * refined in later iterations against the frame-step gate. */
+static int laffc_collision(int prev_x, int prev_y, int new_x, int new_y) {
+    object_t *o = &objects[OBJ_BALL_1];
+    int h = o->h_body_px;
+    unsigned char dir = o->dir;
+    int row = -1, Hy = 0, col = 0, Lx = 0x08, mask;
+    (void)prev_x; (void)prev_y;
+    /* phase 1: early exits (ball below / above the brick band) */
+    if (new_y >= 0x80) return 0;
+    if (new_y + h < 0x20) return 0;
+    /* phase 2: find the row band (byte-faithful LAFFC_0..2) */
+    {
+        int Cv = 0x20, rr;
+        for (rr = 0; rr < LVL_ROWS; rr++) {
+            int a = (Cv - new_y) & 0xFF;
+            if (new_y > Cv) {                 /* borrow -> LAFFC_1 */
+                if (a + 8 > 0xFF) { row = rr; Hy = Cv; break; }
+            } else {                          /* LAFFC_0 main */
+                if (a < h) { row = rr; Hy = Cv; break; }
+            }
+            Cv += 8;
+        }
+    }
+    if (row < 0) return 0;
+    /* phase 3: find the column (LAFFC_4) */
+    {
+        int a = (new_x - 0x08);
+        if (a < 0) a = 0;
+        while (a >= 0x10 && col < LVL_COLS - 1) { a -= 0x10; col++; Lx += 0x10; }
+    }
+    /* phase 4: neighbour-solidity mask (bit0 L, 1 R, 2 U, 3 D). A bit is
+     * set when that neighbour cell is solid (bit7 clear) and not past a
+     * playfield edge (Lx $08/$E8 left/right, Hy $21/$78 top/bottom). */
+#define LAFFC_SOLID(rr,cc) ((rr) >= 0 && (rr) < LVL_ROWS && (cc) >= 0 && \
+        (cc) < LVL_COLS && !(live_level[(rr) * LVL_COLS + (cc)] & 0x80))
+    mask = 0;
+    if (Lx != 0x08 && LAFFC_SOLID(row, col - 1)) mask |= 1;
+    if (Lx != 0xE8 && LAFFC_SOLID(row, col + 1)) mask |= 2;
+    if (Hy >= 0x21 && LAFFC_SOLID(row - 1, col)) mask |= 4;
+    if (Hy <  0x78 && LAFFC_SOLID(row + 1, col)) mask |= 8;
+    /* phase 5: gate by direction (LAFFC_13..17) */
+    if (dir < 0x20) mask &= ~8; else mask &= ~4;
+    if (((dir + 0x10) & 0x3F) >= 0x20) mask &= ~1; else mask &= ~2;
+    /* phase 6: bounce off the chosen solid neighbour, destroy that cell.
+     * axis 2 = horizontal flip (left/right), axis 1 = vertical (up/down). */
+    if (mask & 1) return brick_hit_resolve(col - 1, row, 2);
+    if (mask & 2) return brick_hit_resolve(col + 1, row, 2);
+    if (mask & 4) return brick_hit_resolve(col, row - 1, 1);
+    if (mask & 8) return brick_hit_resolve(col, row + 1, 1);
+#undef LAFFC_SOLID
+    return 0;
 }
 
 /* Count remaining destructible bricks: bit 7 clear (still present)
@@ -4870,7 +4943,8 @@ static void step_ball(void) {
     /* Brick collision: side-aware. brick_collision tells us which axis
      * the ball entered through; we reverse + unwind that axis. */
     {
-        int hit = brick_collision(BALL_X, BALL_Y, next_x, next_y);
+        int hit = use_laffc ? laffc_collision(BALL_X, BALL_Y, next_x, next_y)
+                            : brick_collision(BALL_X, BALL_Y, next_x, next_y);
         if (hit == 1) {
             ball_reflect_descriptor(0, 1);
             next_y = BALL_Y;
@@ -6533,6 +6607,7 @@ int main(void) {
     if (getenv("BATTYALL") != NULL) test_mode_pin_blink = 1;
     if (getenv("BATTY_FORCE_BAT_FULL_REDRAW") != NULL) force_bat_full_redraw = 1;
     if (getenv("BATTY_FORCE_BALL_FULL_REDRAW") != NULL) force_ball_full_redraw = 1;
+    if (getenv("BATTY_LAFFC") != NULL) use_laffc = 1;
     if (getenv("BATTY_FORCE_FULL_FLUSH_EACH_FRAME") != NULL) force_full_flush_each_frame = 1;
     if (getenv("BATTY_SUPPRESS_NO_BALL_DEATH") != NULL) suppress_no_ball_death = 1;
     {

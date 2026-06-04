@@ -127,3 +127,33 @@ axis".
 5. After each phase, run `make capture-timeline-both` and watch the
    frame-1/3/5 ROI residual fall toward 0. Keep each commit a working
    game (the gate frames + manual `make run` sanity).
+
+## Implementation status (2026-06-04)
+
+`laffc_collision` (`src/main.c`) is in, gated behind **`BATTY_LAFFC=1`**
+(default off → the proven `brick_collision` still runs, static
+regression 5/5). The shared destroy/half-hit/shimmer tail was extracted
+into `brick_hit_resolve(col,row,axis)` (behavior-preserving) and is used
+by both paths. Done so far: phases 1–3 (byte-faithful row/column cell
+finder), phase 4 (neighbour-solidity mask), phase 5 (direction gate),
+and a first-cut phase 6 (bounce off the gated solid neighbour, destroy
+that cell, map to the port's axis reflect).
+
+**Current gate numbers** (`BATTY_LAFFC=1`, frames 0/1/3/5, brick ROI):
+0 / **415** / 604 / 486 px — *worse* than `brick_collision`'s 0 / 212 /
+333 / 494. The first cut is not yet correct because:
+
+- it returns an axis for `step_ball` to reflect via
+  `ball_reflect_descriptor` (`0x3F-dir` / `0x1F-dir`), but `LAFFC`
+  bounces with `change_direction` (`((dir^B)+1)&0x3F`, B=$1F horizontal,
+  B=$3F vertical) and snaps the ball to the cell edge itself — different
+  resulting direction and position;
+- the corner case (LAFFC_21–25 penetration-depth axis pick) and the
+  two-cell-overlap `IY` adjustment (phase 4 head) are not ported, so the
+  chosen neighbour/axis is sometimes wrong;
+- it may destroy a neighbour the original does not (mask/own-cell edge).
+
+Next: give `laffc_collision` its own `change_direction` reflect + cell-
+edge position snap (return "handled, don't let step_ball re-reflect"),
+then add the penetration-depth corner case, re-measuring the gate each
+step until it beats `brick_collision`, then flip the default.
