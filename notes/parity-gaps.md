@@ -22,17 +22,20 @@ Several paths use gameplay-equivalent but not byte-exact motion:
   and is byte-exact vs the Spectrum over L3's 150-frame trajectory
   (`make test-laffc-ball-frame1`). `BATTY_LEGACY_COLLISION=1` reverts.
   Full decode + status in `notes/laffc-decode.md`.
-- **bat-ball deflection** — the next gameplay-parity port. The port uses
-  a 5-zone approximation (`step_ball`/`step_extra_ball` set dir to one of
-  ~5 fixed values by hit zone); the original derives the bounce direction
-  more granularly in `handling_ball` (the `LA27E` region, around the
-  launch logic `LA27E_15` which maps the bat offset to a 6-bit dir). It's
-  intertwined there with magnet / `obj_compare` / `LAD69` motion, so
-  extracting it needs careful RE. Note: the L3 byte-exact run never
-  contacts the bat (static bat, ball stays up), so validating a port
-  needs a **ball-onto-bat scenario** with an original reference (a new
-  snapshot or a seed that drops the ball onto the bat) — otherwise it can
-  only be ported faithfully from the disasm, not gate-verified.
+- **bat-ball deflection** — the next gameplay-parity port, now **decoded
+  and ground-truthed** (see `notes/bat-deflection.md`). The port uses a
+  5-zone approximation (`step_ball`/`step_extra_ball` set dir to one of
+  ~5 fixed values by hit zone); the original derives it in `LAB1F`
+  ($AB1F): snap ball y to $A6, `offset = ball_x+3-bat_x`, walk the
+  `LABEE`/`LABFC` threshold→zone table, optionally reflect
+  `dir=((dir^$1F)+1)&$3F`, then look up `LAC0A[(zone&3)*6 + dir_index]`
+  (plus a MAGNET catch branch for bonus $03). The "needs a ball-onto-bat
+  scenario" blocker is **solved**: repositioning the coherent
+  `l3-brick-flash` ball just above the bat (not poking a placeholder)
+  drops it onto the bat without a new snapshot —
+  `scripts/capture_bat_deflection.py` captures the deflection table.
+  Remaining: port `LAB1F` literally (hand-derivation diverges — the bit2
+  zones double-reflect) and gate it against the captured table.
 - **brick-hit shimmer** is now the remaining frame-step residual (shared
   by both collision paths via `brick_hit_anim`). The original
   `metal_brik_anim` (`$B6A9`) slides a 16-byte window into `anim_brik`

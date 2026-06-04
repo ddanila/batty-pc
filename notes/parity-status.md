@@ -67,6 +67,19 @@ and `laffc-decode.md` for the detailed trail.
    side aligned-seed recipe per scenario (as `replay-l3-brick-flash`
    does for L3). This is the substantive next investment.
 
+## UPDATE (2026-06-04): scenario construction IS viable by *repositioning*
+
+The "not viable" conclusion below was too strong. The key distinction:
+poking a **placeholder** ball (raw snapshot, x=2/y=2) hangs, but
+**repositioning an already-coherent ball** (the `l3-brick-flash`
+descriptor) stays coherent. Moving that ball just above the bat (y=0x96,
+downward dir) drops it onto the bat and the original computes the
+deflection — no hang, no new snapshot. This unblocked the **bat
+deflection** decode + ground-truth capture (see `notes/bat-deflection.md`
+and `scripts/capture_bat_deflection.py`). The same technique should
+extend to other descending-ball scenarios. The text below stands only for
+*placeholder* pokes.
+
 ## "Construct scenarios from the existing snapshot" — investigated, not viable
 
 To validate the next items (bat deflection, etc.) I tried building new

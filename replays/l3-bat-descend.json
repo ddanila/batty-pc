@@ -1,0 +1,233 @@
+{
+  "name": "l3-bat-descend",
+  "description": "Reposition the coherent L3 ball just above the bat, heading straight down (dir 0x10), to capture the original's bat deflection (ground truth for the port 5-zone approximation). Center hit @ x=126.",
+  "timebase": {
+    "unit": "seconds"
+  },
+  "comparison": {
+    "aligned_start": true,
+    "capture_max_diff_pixels": {
+      "l3_initial": 2500,
+      "l3_after": 5000
+    },
+    "required_probe_rows": [
+      "bricks_quantity",
+      "current_level",
+      "round_number"
+    ],
+    "probe_assertions": [
+      {
+        "side": "port",
+        "name": "bricks_quantity",
+        "op": "lt_hex",
+        "value": "1A"
+      },
+      {
+        "side": "port",
+        "name": "score",
+        "op": "gt_dec",
+        "value": "0"
+      },
+      {
+        "side": "port",
+        "name": "random_number",
+        "op": "not_equals",
+        "value": "8E49"
+      },
+      {
+        "side": "port",
+        "name": "current_level_copy",
+        "op": "contains",
+        "value": "93"
+      },
+      {
+        "side": "original",
+        "name": "current_level_copy",
+        "op": "contains",
+        "value": "93"
+      },
+      {
+        "side": "original",
+        "name": "briks_data",
+        "op": "nonzero_hex_string"
+      }
+    ],
+    "note": "Stable rows and probe assertions are fail-gated. The active L3 buffer is probed on the original side; exact destroyed-cell equality remains diagnostic until brick-collision geometry is aligned."
+  },
+  "port": {
+    "floppy": "build/batty-test.img",
+    "probe_file": "PROBE.TXT",
+    "boot_wait": 10.0
+  },
+  "original": {
+    "snapshot_from": "build/snapshots/20260513T202101Z",
+    "boot_wait": 0.5,
+    "setup": [
+      {
+        "op": "enter_cpu_step"
+      },
+      {
+        "op": "write_memory",
+        "address": "0xBA6C",
+        "bytes": [
+          "0x00",
+          "0x00",
+          "0x00"
+        ]
+      },
+      {
+        "op": "write_memory",
+        "address": "0xB7EA",
+        "bytes": [
+          "0x02",
+          "0x02"
+        ]
+      },
+      {
+        "op": "write_memory",
+        "address": "0x8E17",
+        "bytes": [
+          "0x8E",
+          "0x49"
+        ]
+      },
+      {
+        "op": "set_register",
+        "register": "PC",
+        "value": "0xBA24"
+      },
+      {
+        "op": "run_until_pc",
+        "pc": "0xBA83",
+        "max_opcodes": 5000000
+      },
+      {
+        "op": "write_memory",
+        "address": "0x9AD0",
+        "bytes": [
+          "0x02",
+          "0x00",
+          "0x7E",
+          "0x00",
+          "0x96",
+          "0x00",
+          "0x0C",
+          "0x03",
+          "0x02",
+          "0x0C",
+          "0xEE",
+          "0xF0",
+          "0x08",
+          "0x07",
+          "0x7E",
+          "0x96",
+          "0x02",
+          "0x0C",
+          "0x00",
+          "0x00",
+          "0x00",
+          "0x8C"
+        ]
+      }
+    ]
+  },
+  "state_probe": {
+    "original_timing": "after",
+    "original": [
+      {
+        "name": "bricks_quantity",
+        "address": "0xB7E9",
+        "length": 1
+      },
+      {
+        "name": "current_level",
+        "address": "0xB7EA",
+        "length": 1
+      },
+      {
+        "name": "round_number",
+        "address": "0xB7EB",
+        "length": 1
+      },
+      {
+        "name": "random_number",
+        "address": "0x8E17",
+        "length": 2
+      },
+      {
+        "name": "object_ball_1",
+        "address": "0x9AD0",
+        "length": 22
+      },
+      {
+        "name": "object_bat_1",
+        "address": "0x9B54",
+        "length": 22
+      },
+      {
+        "name": "object_enemy",
+        "address": "0x9B96",
+        "length": 22
+      },
+      {
+        "name": "briks_data",
+        "address": "0xB6F4",
+        "length": 35
+      },
+      {
+        "name": "current_level_copy",
+        "address": "0x6E43",
+        "length": 180
+      }
+    ],
+    "port": [
+      {
+        "name": "level_entry",
+        "source": "screen_hash",
+        "capture": "l3_initial",
+        "roi": [
+          8,
+          32,
+          248,
+          128
+        ]
+      }
+    ]
+  },
+  "events": [
+    {
+      "at": 3.0,
+      "key": "enter",
+      "kind": "resume",
+      "note": "wake port from BATTY_REPLAY_WAIT_KEY and resume original CPU stepping"
+    },
+    {
+      "at": 3.5,
+      "key": "space",
+      "kind": "tap",
+      "note": "release ball if the runner still has it latched to the bat"
+    }
+  ],
+  "captures": [
+    {
+      "at": 0.1,
+      "name": "l3_initial",
+      "roi": [
+        8,
+        32,
+        248,
+        128
+      ]
+    },
+    {
+      "at": 5.0,
+      "name": "l3_after",
+      "roi": [
+        8,
+        32,
+        248,
+        128
+      ]
+    }
+  ]
+}
