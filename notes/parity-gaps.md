@@ -70,6 +70,20 @@ Several paths use gameplay-equivalent but not byte-exact motion:
   the note.
 - big-bat resize timing is matched visually but not a literal port of
   the original bit-gated state machine.
+- **rocket bonus flight** — now fully decoded (`notes/rocket-flight.md`).
+  The **motion** is FAITHFUL (`handling_rocket` $A89A accel model + bat
+  attach; the port's per-rocket counter is byte-equivalent because
+  `counter_misc` is reset to 0 at launch in `LBAED_6`). Two **divergences**
+  remain, both long-standing port choices: (1) the port carves a tunnel by
+  destroying bricks in a bbox sweep during flight, but the original's
+  flight loop (`LBB97`) has **no** brick destruction — the rocket flies
+  over intact bricks; (2) the port's `award_left_bricks` clears all
+  remaining bricks instantly, but the original's `add_points_for_left_briks`
+  ($AF0D) ticks points up **sequentially** (pause + sound per brick) and
+  **never clears** the bricks (the level transition does). Fixing both is a
+  deliberate sub-project: no rocket-flight ground-truth capture exists yet,
+  and `scripts/test_rocket_completion_no_ball.py` encodes the current
+  behaviour. Decode + exact plan in `notes/rocket-flight.md`.
 
 These should be compared against ZEsarUX captures if they become
 visibly wrong.
