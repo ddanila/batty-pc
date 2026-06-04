@@ -364,23 +364,35 @@ per-level original snapshots or a port-side multi-level sanity sweep
 (ball stays in play, bricks decrease) before flipping. Until then the
 default stays `brick_collision`; the fallback is in place for the flip.
 
-### Update 11 (2026-06-04): sanity sweep FAILS L1 — flip blocked, edge case real
+### Update 11 (2026-06-04): sanity sweep flagged L1 — but it was a false positive
 
-`make test-laffc-levels-sane` (`scripts/test_laffc_levels_sane.py`) runs
-each level headlessly for N frames under both collision paths (static
-bat) and compares bricks destroyed. **L1 FAILS:** over 500 frames
-`brick_collision` destroys 10 bricks (ball actively bouncing, y≈98) but
-**LAFFC destroys 0** (ball falling/respawning, y≈166). The fallback rules
-out pass-through, so LAFFC is **bouncing *wrong*** on L1's brick
-neighbourhood — an edge case the L3 trajectory never exercises — and the
-ball dies without playing.
+First pass: `make test-laffc-levels-sane` compared bricks destroyed
+under LAFFC vs `brick_collision` and flagged L1 (LAFFC 0 vs
+brick_collision 10) as a bug.
 
-So LAFFC is byte-exact on L3 but **not yet correct on other layouts**;
-the default flip is correctly blocked (it would break L1). The wrong-
-bounce risk I flagged is real, and the sweep now catches it. **Next for
-the flip:** debug the L1 divergence (almost certainly the unported
-two-cell straddle / `IY` adjustment LAFFC_5-6, or the fully-enclosed
-default-vertical fallback), port it, and re-run `test-laffc-levels-sane`
-until all levels pass — then flip with the L3 byte-exact gate +
-per-level sanity both green. `test-laffc-ball-frame1` (L3) still PASS;
-default unchanged.
+### Update 12 (2026-06-04): CORRECTION — L1 LAFFC trajectory is physically sane
+
+Traced the L1 LAFFC ball frame-by-frame (per-frame `PROBE.TXT`):
+`f195 (134,160,dir34)` launch → `f210 (145,133)` → `f225 (157,106)` →
+`f240 (168,80,dir0C)` → `f255 (179,107,dir0C)`. The ball rises into the
+bricks, **bounces correctly off a brick at y=80** (dir `0x34`→`0x0C` is
+exactly `change_direction(0x34,$3F)`, a vertical flip for a hit-from-
+below), then falls. With a **static bat** (the sweep gives no input) the
+ball simply isn't aimed, so it falls past and loses a life — *trajectory
+luck, not a bug*. `brick_collision`'s ball happens to survive longer, but
+`brick_collision` is itself only an approximation, **not** ground truth;
+LAFFC is the byte-exact path, so its (different) trajectory is if
+anything *more* likely correct.
+
+So the Update-11 "L1 bug" was a **flawed heuristic**: brick-count
+divergence from `brick_collision` under a static bat is expected, not a
+defect. The sweep was rewritten as a **liveness smoke test** (FAIL only
+on crash/hang; brick counts are INFO) and L1 now reports LIVE/PASS.
+
+**Where this actually leaves the flip:** no L1 bug is demonstrated, but
+no *correctness* is demonstrated either — a `brick_collision` comparison
+can't prove parity (it's approximate). Validating LAFFC on a non-L3
+level still requires an **original-side snapshot + frame-step gate** for
+that level (as L3 has). Until such a reference exists, the default stays
+`brick_collision`; LAFFC remains byte-exact-on-L3 behind `BATTY_LAFFC=1`
+with the pass-through fallback. `test-laffc-ball-frame1` (L3) still PASS.
