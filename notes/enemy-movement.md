@@ -295,3 +295,65 @@ flying the wrong axis in normal play.
   the brick collision. Next step once the RNG tick is aligned.
 - **Margins.** The original's `check_margins` vs the port's
   `enemy_target_away_from_margins` is still an approximation.
+
+## Ground-truth capture — FIRST enemy GT validation (2026-06-05)
+
+Ran `scripts/capture_enemy_flight.py` (ZEsarUX frame-step probing
+object_enemy $9B96 from the `l3-brick-flash` state). This is the first
+ground-truth trajectory captured for the enemy. Reproduce with:
+
+    python3 scripts/capture_enemy_flight.py --frames 40 --step 4
+
+Captured original trajectory (x, xf, y, yf, dir, spd):
+
+    f0 : x=168 y=1  dir=0x10 spd=1     <- fresh spawn at top, heading down
+    f4 : x=168 y=5  dir=0x10 spd=1     <- descend phase (y < 8): y += 1/frame
+    f8 : x=168 y=8  dir=0x10 spd=1     <- crossed y>=8: motion via dir now
+    f12: x=168 y=12 dir=0x10 spd=1
+    f16: x=167 y=16 dir=0x11 spd=1     <- steering turns dir +1 ...
+    f20: x=167 y=20 dir=0x12 spd=1
+    f24: x=165 y=24 dir=0x13 spd=1     <- ... +1 per ~4 frames toward target
+    f28: x=164 y=28 dir=0x2C spd=1     <- ARRIVAL: dir jumps 0x13 -> 0x2C
+    f32: x=163 y=25 dir=0x2C spd=1     <- new target up-left; y now DECREASING
+    f36: x=162 y=21 dir=0x2D spd=1     <- steering toward the new target
+    f40: x=161 y=18 dir=0x2E spd=1
+
+What this CONFIRMS about the port's `handling_bird_obj` (by inspection,
+cross-referenced to the verified code):
+
+- **Descend phase** — `if (y < 8) { y++; return; }`. GT y: 1→5→8 at +1/
+  frame, no horizontal motion until y>=8. MATCHES.
+- **Speed = 1** — the enemy moves at spd=1 (not the ball's 2). The port's
+  enemy keeps the snapshot/`prop[5]` speed; the per-frame step is the
+  q8.8 `dir_to_dxdy(dir, 1)` magnitude. MATCHES the GT sub-pixel drift
+  (xf/yf walk).
+- **Steady turn** — dir increments by 1 every ~4 frames (0x10→0x13 over
+  f12–f24) = the port's `enemy_turn_towards_target` on the
+  `pit_frame_counter & 3` cadence (turn ±1 toward target). MATCHES.
+- **Arrival repick** — at f28 dir jumps 0x13→0x2C and the enemy reverses
+  (y stops increasing, starts decreasing) = `LAA7D_1`: on reaching the
+  target, repick `random_number & $3F` as the new target. MATCHES
+  structurally (the port repicks `bonus_applied = random_e & 0x3F`).
+
+So the enemy MOTION + STEERING STRUCTURE is now ground-truth-confirmed,
+not just code-verified.
+
+### Prerequisite for an automated frame-by-frame enemy gate
+
+The two sides are not yet aligned for a strict gate:
+
+- `capture_enemy_flight.py` (GT) starts the enemy FRESH at x=168, y=1,
+  dir=0x10 (frame-0 spawn) and captures the full descend+flight.
+- `make replay-l3-brick-flash` bakes `BATTY_REPLAY_ENEMY_OBJECT` with the
+  enemy already mid-flight at **x=164, y=27, dir=0x2D** (≈ the GT's
+  frame-30 state).
+
+To build a deterministic enemy gate, bake the SAME fresh enemy descriptor
+(x=168, y=1, dir=0x10, spd=1, sprite_set=09) into the port replay and
+compare the port's PROBE.TXT `object_enemy` against this GT at frames
+0..~24. The DESCEND phase (f0–f7) is RNG-independent and is the cleanest
+first assertion (y = 1+frame, x = 168, dir = 0x10). The ARRIVAL-repick
+target (the 0x2C at f28) is RNG-state-dependent, so a strict match there
+needs the per-frame RNG tick + boot-cadence phase aligned first (the open
+item in `notes/rng-model.md`). Gate the descend phase first; defer the
+repick-target match behind the RNG-phase alignment.

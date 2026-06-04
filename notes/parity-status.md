@@ -205,6 +205,20 @@ and `laffc-decode.md` for the detailed trail.
   matching. With this, ALL bonus effects are verified ($00 BIG bat
   [resize approx], $01 LASER, $02 TRIPLE, $03 MAGNET, $04 SLOW, $05 LIFE,
   $06 ROCKET, $07 SMASH, $08 +5000, $09 KILL_ALIENS).
+- **Enemy motion + steering** — now GROUND-TRUTH-confirmed (was
+  code-verified only). Ran `scripts/capture_enemy_flight.py` (ZEsarUX
+  frame-step of `object_enemy` $9B96 from the L3 `l3-brick-flash` state) —
+  the first GT enemy trajectory. It confirms the port's `handling_bird`:
+  descend `y += 1/frame` until `y >= 8`, speed `1` (q8.8 `dir_to_dxdy`
+  sub-pixel drift), steady turn `dir +1` per ~4 frames toward target
+  (0x10→0x13 over the captured frames), and the **arrival repick** (at
+  ~frame 28 `dir` jumps 0x13→0x2C and the enemy reverses = `LAA7D_1`
+  random re-target on arrival). Full trajectory + decode in
+  `notes/enemy-movement.md`. A strict frame-by-frame *gate* additionally
+  needs the port replay to bake the same FRESH enemy descriptor (the port
+  currently bakes a mid-flight one) and the RNG-phase alignment for the
+  repick target — the descend phase (RNG-independent) is the clean first
+  assertion; documented as the next step.
 - **Regression guards** — `make test-laffc-ball-frame1` (ZEsarUX-free)
   locks the L3 frame-1 ball to the Spectrum probe; the 5-checkpoint +
   per-level static suite (`make test`) stays green.
