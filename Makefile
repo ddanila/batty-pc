@@ -500,12 +500,18 @@ TL_FRAMES ?= 1,3,5
 TL_CMP_FRAMES ?= 0,1,3,5
 TL_ROI    ?= 8,32,248,128
 TL_MAXDIFF ?= 0
-# No enemy seed: the l3-brick-flash original (snapshot + setup) has no
-# active enemy in these frames (its probed enemy descriptor is inactive),
-# so seeding one on the port just paints an enemy the original lacks from
-# frame 1 on — a confounder. Dropping it leaves a clean ball/brick-
-# collision signal: frame-1 ROI diff falls 363 -> 212 px and collapses to
-# a compact box around the ball (was two clusters, ball + spurious enemy).
+# No enemy seed: the l3-brick-flash original DOES have an active enemy
+# (sprite_set=$09 anim_bird at $9B96 — GT-confirmed 2026-06-05; it descends
+# and steers, so it is genuinely active, NOT the inactive descriptor the
+# earlier version of this comment claimed). But it is a FRESH alien
+# descending from the top (x=168, y=1 -> ~28 over frames 0..28) and so stays
+# ABOVE this TL_ROI (y=32..160) through the compared frames 0..5. The port
+# had been seeded with a DIFFERENT, mid-flight enemy (x=164, y=27) that
+# drops INTO the ROI by frame 1 while the original's is still above it — a
+# position-mismatch confounder. Dropping the port seed removed it: frame-1
+# ROI diff falls 363 -> 212 px, collapsing to a compact box around the ball.
+# (Proper alignment for an enemy-specific gate: seed the port with the SAME
+# fresh y=1 descriptor; see notes/enemy-movement.md.)
 L3_SEED_ENV = BATTY_LEVEL=3 BATTY_START_LEVEL=1 BATTY_REPLAY_RANDOM=8E49 \
 	BATTY_REPLAY_BAT_OBJECT=01017400AD000000040DEFAE1C0A74AD040DF0008380 \
 	BATTY_REPLAY_BALL_OBJECT=02006C004E001F03020CEEF008076C4E020C0000008C \

@@ -357,3 +357,22 @@ target (the 0x2C at f28) is RNG-state-dependent, so a strict match there
 needs the per-frame RNG tick + boot-cadence phase aligned first (the open
 item in `notes/rng-model.md`). Gate the descend phase first; defer the
 repick-target match behind the RNG-phase alignment.
+
+### sprite_set confirmation + a corrected Makefile claim (2026-06-05)
+
+Read the enemy's +0 byte directly (probe $9B94 so the tool's "+2 = x"
+lands on $9B96): enemy **sprite_set = $09** (anim_bird) at frames 0/2/6,
+with x=168 and y=1/3/7. So the L3 enemy is unambiguously ACTIVE (the
+descending+steering trajectory above is real `handling_bird`, not a stale
+inactive descriptor).
+
+This corrected a wrong claim in the Makefile's `capture-timeline-both`
+section, which said "the l3-brick-flash original ... has no active enemy
+in these frames (its probed enemy descriptor is inactive)." It is active;
+the real reason it doesn't confound the brick-band diff is that the fresh
+alien descends at y=1..28 — ABOVE the TL_ROI (y=32..160) — through the
+compared frames 0..5. The earlier port seed used a *mid-flight* enemy
+(x=164, y=27) that drops into the ROI and mismatched the original's
+above-ROI alien, which is the confounder that was (correctly) removed by
+dropping the seed. For an enemy-specific gate, seed the port with the same
+fresh y=1 descriptor instead.
