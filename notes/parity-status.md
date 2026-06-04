@@ -4,6 +4,17 @@ Definitive snapshot of where "100% visual frame parity in gameplay with
 the original" stands, and exactly what's left. See `replay-harness.md`
 and `laffc-decode.md` for the detailed trail.
 
+> **CORRECTION (2026-06-04, see laffc-decode.md Update 13).** The
+> "byte-exact collision, 40-frame stable" claims below were overstated.
+> The ball is byte-exact at **frame 1**, but on L3 it **diverges by frame
+> 5**: the port misses a *horizontal/side* brick bounce the original
+> makes (at f5 both balls are at (112,64) but orig dir=0x21 vs port
+> dir=0x3F). The frame-step gate's sparse frames (0/1/3/5) plus the ball
+> position still matching at f5 hid it (pixels matched, only direction
+> differed). So LAFFC's **vertical** bounce is exact; its **side** bounce
+> is missed/mis-handled. Read the "Done" section with that caveat — the
+> *vertical*-bounce + motion chain is byte-exact; full collision is not.
+
 ## Done and verified (byte-exact vs the Spectrum)
 
 - **Frame-step parity gate** — `make capture-timeline-both` frame-steps

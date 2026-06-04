@@ -396,3 +396,41 @@ level still requires an **original-side snapshot + frame-step gate** for
 that level (as L3 has). Until such a reference exists, the default stays
 `brick_collision`; LAFFC remains byte-exact-on-L3 behind `BATTY_LAFFC=1`
 with the pass-through fallback. `test-laffc-ball-frame1` (L3) still PASS.
+
+### Update 13 (2026-06-04): collision diverges by L3 frame 5 — side bounce missed
+
+Probed the port (LAFFC) vs original ball object across L3 frames:
+
+| frame | original (x,y,dir) | port LAFFC (x,y,dir) |
+|------:|--------------------|----------------------|
+| 1     | 105,65,**0x21**    | 105,65,**0x21** (byte-exact) |
+| 5     | 112,64,**0x21**    | 112,64,**0x3F** |
+| 10    | 107,62,0x3F        | 124,63,0x00 |
+| 20    | 136,59,0x3F        | 171,63,0x1F |
+| 40    | 113,54,0x3F        | 172,63,0x1F |
+
+They are byte-exact at frame 1 but **diverge at frame 5**: same position
+(112,64) but the original has done a **horizontal bounce** (dir 0x3F →
+0x21 is `change_direction(0x3F,$1F)`, a B=$1F left/right flip) while the
+port stayed 0x3F. So the port **missed a side (left/right) brick
+collision** the original made around f4-5; from there the trajectories
+diverge completely.
+
+This corrects two overstatements: (a) the collision is **not** byte-exact
+past frame 1 even on L3, and (b) the "40-frame lockstep" of
+`gate-laffc-long` was a *pixel* residual staying bounded — it did **not**
+mean the ball matched (at f5 the position matched so pixels matched even
+though the direction had diverged; by f10+ the ball is visibly apart but
+the bounded ROI/shimmer pixel count understated it).
+
+LAFFC's **vertical** bounce (hit from below/above) is exact — that's the
+frame-1 case. The **side** bounce (ball moving left/right into a brick
+face) is missed or mis-resolved. Likely causes in `laffc_collision`: the
+cell-finder picks the ball's own/right-straddle cell only (no left
+straddle), and/or the open-face mask + direction gate don't select the
+horizontal face when the ball enters a brick from the side. **Next fix:**
+reproduce the f4-5 state (ball ~(110,64) moving right, dir 0x3F), trace
+which cell/mask `laffc_collision` computes, and make it bounce horizontal
+like LAFFC_27 (`change_direction(_,$1F)`, snap X to the cell edge). Then
+extend `test-laffc-ball-frame1` to also assert frames 5/10 against the
+probe table above so the side-bounce case is gated, not just frame 1.
