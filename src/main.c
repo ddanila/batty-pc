@@ -4847,7 +4847,13 @@ static void step_bullet_one(int b) {
                  * bullet hits. Visual feedback comes from the 4-frame
                  * bullet-blast at the impact point instead. */
                 bullet_active[b] = 0;
-                bullet_blast_x[b] = bullet_x[b];
+                /* Original LAFFC_31 converts the bullet into the blast and
+                 * snaps its x to the 8px byte grid: `LD A,(IX+\$02); AND
+                 * \$F8; LD (IX+\$02),A`. The blast sprite is byte-aligned,
+                 * so the impact snaps to the cell column — same as the
+                 * alien-hit blast above (LA5A3_0). Was using the raw
+                 * bullet x (a <=7px position error vs the original). */
+                bullet_blast_x[b] = bullet_x[b] & ~7;
                 bullet_blast_y[b] = bullet_y[b];
                 bullet_blast_ticks[b] = BULLET_BLAST_FRAMES * BULLET_BLAST_TICKS_PER_FRAME;
                 return;

@@ -55,6 +55,24 @@ and `laffc-decode.md` for the detailed trail.
   Was previously a fixed `0x16` = 11 frames (~8% too fast); fixed to
   `0x18`. Bullet *speed* was already exact: `handling_bullet`'s `SUB $06`
   (up 6 px/frame) = the port's `BULLET_SPEED = 6`.
+- **Laser bullet → brick collision** — reviewed against `handling_bullet`
+  ($A5A3_2) + `LAFFC`. The original calls the SAME `LAFFC` the ball uses,
+  but at `LAFFC_13` a bullet (`sprite_set & $3F == $05`) jumps to
+  `LAFFC_29`→`LAFFC_31`, which **converts the bullet object into the
+  impact blast** (sprite_num=2, height=6, x snapped `AND $F8`, blast
+  timers) and falls into the `LAFFC_33`/`_34` destruction path — so the
+  bullet **stops at the first brick** (does not pass through). The port's
+  `step_bullet_one` mirrors this: stop on hit + spawn the 4-frame blast,
+  multi-hit bricks set bit 4 (half-damage) then destroy on the next hit
+  (= `LAFFC_33`'s `SET 4 / BIT 4`), undestructible (bit 5) stops without
+  destroying (= `LAFFC_34` register-only), scoring + bonus-spawn match.
+  **Fixed this iteration:** the brick-hit blast x is now snapped to the
+  8px byte grid (`& ~7`) like `LAFFC_31` (and like the port's own
+  alien-hit blast) — was using the raw bullet x (≤7px position error).
+  Residual: the cell-find uses a point lookup rather than LAFFC's full
+  straddle logic, but for a narrow bullet moving straight up this only
+  differs at sub-cell boundaries (would need a bullet-specific snapshot
+  to gate; negligible).
 - **Regression guards** — `make test-laffc-ball-frame1` (ZEsarUX-free)
   locks the L3 frame-1 ball to the Spectrum probe; the 5-checkpoint +
   per-level static suite (`make test`) stays green.
