@@ -36,6 +36,14 @@ and `laffc-decode.md` for the detailed trail.
   `bat_deflect_dir`) — the original runs one `handling_ball` for every
   ball, so this is correct-by-construction (primary ball gate byte-exact +
   liveness LIVE); no multi-ball snapshot needed.
+- **Falling-object motion** (bonus drop, enemy bomb, +400 score popup) —
+  byte-exact. The original's accelerating fall `LA55A_0` (`LD DE,$0008; LD
+  B,$02`: acc += $0008/frame, capped at velocity $0200, position += acc)
+  is ported verbatim as `motion_accel_step(&m, 0x0008, 0x02)`; the bonus
+  and the bomb share it (the original shares `object_bonus`), and the +400
+  popup uses `handling_400pts`'s `LD DE,$0028; LD B,$80` =
+  `motion_accel_step(…, 0x0028, 0x80)`. Verified by code-comparison
+  against the disasm (`handling_bonus` / `handling_400pts`).
 - **Regression guards** — `make test-laffc-ball-frame1` (ZEsarUX-free)
   locks the L3 frame-1 ball to the Spectrum probe; the 5-checkpoint +
   per-level static suite (`make test`) stays green.
