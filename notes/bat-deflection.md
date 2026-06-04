@@ -115,11 +115,29 @@ play) fall back to a plain vertical reflect so the port never hangs.
 Validated end-to-end by `make test-bat-deflection`
 (`scripts/test_bat_deflection_port.py`, in `parity-check`): seeding the
 port with the same descending ball reaches the same contact pixel and
-produces the **same outgoing dir as the Spectrum** at all five bat
-positions (start_x 104/112/120/128/136 -> 0x28/0x2C/0x34/0x38/0x38, the
-exact captured ground truth; contact at port frame 6, e.g. x=134 -> 0x38).
+produces the **same outgoing dir as the Spectrum** across 13 (dir,
+position) cases spanning three incoming dirs / two `dir_to_dxdy`
+quadrants and the threshold zones incl. the bit2 double-reflect:
+
+- dir 0x0C (q=0x00): start_x 104/112/120/128/136 -> 0x28/0x2C/0x34/0x38/0x38
+- dir 0x08 (q=0x00, col 1): start_x 100/108/116/124 -> 0x28/0x38/0x38/0x3C
+- dir 0x14 (q=0x10, col 3): start_x 124/132/140/148 -> 0x28/0x2C/0x34/0x38
+
 The byte-exact L3 upper-field gate (`make test-laffc-ball-frame1`) is
 unchanged — L3 never contacts the bat, so that path is untouched.
+
+### Contact-timing bug found + fixed via the broadened coverage
+
+Extending the gate from dir 0x0C to 0x08 exposed an off-by-one in the
+bat-contact trigger: the port fired the bounce one frame early, so on a
+shallow descent (dir 0x08 left of centre) the ball was ~2px short of the
+original's contact x, landing in the wrong threshold zone (0x24 instead
+of 0x28). The original fires `LAB1F` when `obj_compare` reports Y overlap,
+which (`LAC22`: `166 - ball_y` borrows) is exactly `ball_y >= 167`. The
+port was using the ball **width** (`eff_ball_size` = 8) and `>=` for the
+Y test; the fix uses the ball **height** (`BALL_H_PX` = 7) and a strict
+`>` so it fires at `next_y + 7 > bat_top(173)` ⟺ `ball_y >= 167`, exactly
+matching the Spectrum. The rest-snap is `$A6 = bat_top - 7 = 166`.
 
 ## Next steps
 

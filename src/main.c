@@ -5032,13 +5032,23 @@ static void step_ball(void) {
      * deflection so the ball gains horizontal control from where the
      * player intercepts it - the classic brick-breaker mechanic. */
     if (ball_dy > 0
-        && next_y + ball_sz >= bat_top
+        && next_y + BALL_H_PX > bat_top
         && next_y < bat_top
         && next_x + ball_sz > bat_left
         && next_x < bat_right) {
         int hit_x = (next_x + ball_sz / 2) - bat_left;
         int span  = bat_right - bat_left;
-        next_y  = bat_top - ball_sz;
+        /* Y-dimension uses the ball HEIGHT (7), not the width (eff_ball_size
+         * = 8), and a STRICT `>`: the original fires LAB1F when obj_compare
+         * reports Y overlap, which (LAC22: 166 - ball_y borrows) is exactly
+         * ball_y >= 167, i.e. next_y + 7 > bat_top(173). Matching the fire
+         * frame is what makes the ball x - hence the deflection zone -
+         * match the Spectrum. Firing at >= (y=166) or using the width fired
+         * one frame early at a smaller x, shifting the zone on shallow
+         * descents (e.g. dir 0x08 left of centre gave 0x24 not 0x28). The
+         * resting ball then snaps to $A6 = bat_top - 7 = 166. See
+         * notes/bat-deflection.md. */
+        next_y  = bat_top - BALL_H_PX;
         /* If the bat is carrying the CATCH bonus (matches the original's
          * BAT+$14 = $03), the ball sticks on contact and waits for SPACE
          * to release. Otherwise bounce with 5-zone deflection. */
