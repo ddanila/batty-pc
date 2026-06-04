@@ -98,7 +98,26 @@ The port reproduces the original's exact RNG values, **offset by one
 frame**: the original has `f0 == f1` (no tick on its first frame boundary
 — a frame-step setup artifact), while the port ticks immediately. So the
 RNG model is byte-exact; the lone remaining alignment is that one-frame
-head start. Resolving it (skip the port's first-frame tick, or seed to the
+head start.
+
+### Ready to flip — but gated on an RNG-behaviour test
+
+The L3 ball gate stays **byte-exact with the flag ON** (f40/f100/f150 all
+match), so per-frame ticking + the descending (now correctly-moving)
+enemy don't perturb the ball. And the port's RNG init (`random_e=$17`,
+`random_d=$8E` → `$8E17`; `random_seed_addr=$8000`) MATCHES the original's
+`random_number`/`random_seed` init, so flag-on would track the original
+from a clean start too. So flag ON is the validated-correct model and
+flipping the default is the natural culmination (BATTY_LAFFC pattern).
+
+NOT flipped yet, deliberately: the ball gate is RNG-*independent*, so it
+cannot prove the RNG-*dependent* behaviour (enemy targets, bonus drops,
+magnets). The discipline is validate-then-flip; the last risky flip
+(shimmer phase) regressed. The flip is ready once an RNG-dependent gate
+exists — e.g. a flag-on test asserting the enemy target reaches `0x2C`
+(its captured value) from the seeded L3 state. Building that gate (around
+the documented one-frame offset) is the next concrete step before the
+default flips. Resolving it (skip the port's first-frame tick, or seed to the
 original's f0 pre-tick value) would make RNG-dependent reads — enemy
 targets, bonus drops — frame-exact. Note the L3 seed value `0x460D` is the
 snapshot's, not the env `8E49` (which wrote the wrong address `$8E17`).

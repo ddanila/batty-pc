@@ -1306,14 +1306,22 @@ static unsigned char force_full_flush_each_frame = 0;
  * brick through. BATTY_LEGACY_COLLISION=1 reverts to the old
  * brick_collision path. (Multi-ball secondaries still use brick_collision.) */
 static unsigned char use_laffc = 1;
-/* Staged RNG-model alignment (see notes/rng-model.md). OFF by default:
- * the port advances the RNG on demand at each consumer (current behaviour).
- * ON (BATTY_RNG_PERFRAME=1): tick the RNG once per frame at the play-loop
- * top (mirroring the original's per-frame `CALL random_generate` at
- * LB9E8_2) and let read-current consumers sample without advancing — the
- * original's model, needed for byte-exact enemy targets / bonus / spawns.
- * Flag OFF keeps every gate byte-identical; flag ON is being validated +
- * its consumers converted incrementally (the BATTY_LAFFC staging pattern). */
+/* RNG-model alignment (see notes/rng-model.md). OFF by default: the port
+ * advances the RNG on demand at each consumer. ON (BATTY_RNG_PERFRAME=1):
+ * tick the RNG once per frame at the play-loop top (mirroring the
+ * original's per-frame `CALL random_generate` at LB9E8_2) and let
+ * read-current consumers sample without advancing — the original's model.
+ *
+ * Flag ON is now the VALIDATED-CORRECT model: random_number lives at the
+ * original's $8D48 (init $8E17, = the port's init) and ticks per frame;
+ * seeded to the original's frame-0 state, the port's next_random walk
+ * reproduces the original's $8D48 sequence EXACTLY (offset by the one
+ * frame the original doesn't tick at its snapshot start); the byte-exact
+ * L3 ball gate stays byte-exact with the flag ON. NOT YET the default
+ * because the RNG-*dependent* behaviour (enemy targets, bonus drops,
+ * magnets) has no byte-exact gate of its own — the ball gate is
+ * RNG-independent, so it can't prove those. Ready to flip once such a
+ * gate (e.g. flag-on enemy target == original) is in place. */
 static unsigned char rng_perframe = 0;
 static unsigned char suppress_no_ball_death = 0;
 static int sound_disabled = 0;
