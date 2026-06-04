@@ -610,3 +610,28 @@ static disasm + frame probes have revealed. **Definitively out of scope**
 for the gameplay frame-parity goal (byte-exact motion + collision is
 done and shipping); logged here so the next person doesn't chase the
 wrong (entry-only) routine.
+
+### Update 21 (2026-06-04): bat-deflection validation — scenario built, tool obstacle found
+
+Good news: validation scenarios can be **constructed from the existing
+L3 snapshot** by re-poking the ball — no new snapshot needed. Built
+`replays/l3-bat-bounce.json` (the l3-brick-flash setup with the $9AD0
+ball poked to x=0x80, y=0xA0, dir=0x0F, dropping it onto the bat at
+x=0x74/y=0xAD).
+
+Obstacle: the frame-step harness pins the frame boundary at `$BA83`
+(main-loop top), but with a ball-onto-bat seed the original leaves that
+loop early — `frame_step` lands at `$ABE1` after one step instead of
+`$BA83`. The brick-bounce scenario frame-steps cleanly; the bat path
+takes a different route (the "ball near/!on bat" handling around
+handling_bat / the running_dot / catch logic), so `$BA83` is not hit
+every frame. So validating the bat deflection needs the original-side
+tool taught an alternate/robust per-frame boundary for the bat path
+(e.g. break on the frame-interrupt vector `$0038` and count IM1s, which
+fires once per frame regardless of the game-state branch), then probe
+the post-bounce ball and compare to the port's 5-zone result.
+
+So: the bat deflection IS reachable for validation from the existing
+snapshot (scenario built), but the frame-step tool needs that boundary
+fix first. Scoped here; `replays/l3-bat-bounce.json` is the reusable
+scenario.
