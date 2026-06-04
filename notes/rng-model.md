@@ -39,6 +39,19 @@ the once-per-frame-ticked value; a few (bonus gen) advance first.
 (8 sites) advances on read; there is NO per-frame tick. So the RNG
 sequence the consumers see is desynced from the original's frame-by-frame.
 
+## Status: staged foundation landed (flag OFF by default)
+
+`BATTY_RNG_PERFRAME` + `rng_sample()` are in (the `BATTY_LAFFC` staging
+pattern). Flag OFF: `rng_sample()` ≡ `next_random()` and no per-frame
+tick, so behaviour is byte-identical — verified, the L3 ball gate and all
+`make test` states stay green. Flag ON: a per-frame `next_random()` tick
+runs at the play-loop top, and read-current consumers sample without
+advancing. Done so far: the per-frame tick; the enemy consumers
+(`enemy_turn_towards_target` reads `random_e`, `enemy_pick_new_target`
+uses `rng_sample()`). Flag-ON smoke: boots fine and the (RNG-independent)
+ball stays byte-exact. Remaining consumers below are converted +
+validated incrementally before the default can flip.
+
 ## Alignment plan (deliberate; not a single safe edit)
 
 1. Add a per-frame tick: one `next_random()` at the main-loop top,

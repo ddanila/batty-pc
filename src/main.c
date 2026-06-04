@@ -988,6 +988,7 @@ static unsigned char map_orig_to_our_bonus(unsigned char code) {
 
 /* Forward decls - defined below in the enemy section. */
 static unsigned int next_random(void);
+static unsigned int rng_sample(void);   /* defined later; used by enemy steering */
 static unsigned char random_hi(unsigned int r) { return (unsigned char)(r >> 8); }
 static unsigned char random_lo(unsigned int r) { return (unsigned char)r; }
 extern unsigned char round_number;
@@ -1301,6 +1302,15 @@ static unsigned char force_full_flush_each_frame = 0;
  * brick through. BATTY_LEGACY_COLLISION=1 reverts to the old
  * brick_collision path. (Multi-ball secondaries still use brick_collision.) */
 static unsigned char use_laffc = 1;
+/* Staged RNG-model alignment (see notes/rng-model.md). OFF by default:
+ * the port advances the RNG on demand at each consumer (current behaviour).
+ * ON (BATTY_RNG_PERFRAME=1): tick the RNG once per frame at the play-loop
+ * top (mirroring the original's per-frame `CALL random_generate` at
+ * LB9E8_2) and let read-current consumers sample without advancing — the
+ * original's model, needed for byte-exact enemy targets / bonus / spawns.
+ * Flag OFF keeps every gate byte-identical; flag ON is being validated +
+ * its consumers converted incrementally (the BATTY_LAFFC staging pattern). */
+static unsigned char rng_perframe = 0;
 static unsigned char suppress_no_ball_death = 0;
 static int sound_disabled = 0;
 
@@ -1918,7 +1928,9 @@ static void enemy_turn_towards_target(object_t *o) {
 }
 
 static void enemy_pick_new_target(object_t *o) {
-    o->bonus_applied = (unsigned char)(random_lo(next_random()) & 0x3F);
+    /* Read-current consumer (rng_sample): the original samples
+     * random_number for the enemy target without its own advance. */
+    o->bonus_applied = (unsigned char)(random_lo(rng_sample()) & 0x3F);
 }
 
 static void enemy_target_away_from_margins(object_t *o) {
@@ -4309,6 +4321,20 @@ static unsigned int next_random(void) {
     return (unsigned int)(((unsigned int)random_d << 8) | random_e);
 }
 
+/* Sample the RNG for a "read-current" consumer (the original's
+ * `LD A,(random_number)` without a preceding `CALL random_generate`).
+ * With rng_perframe OFF this is identical to next_random() (advance on
+ * read) so behaviour and all gates are byte-unchanged; with it ON it
+ * returns the current random_number WITHOUT advancing, because the
+ * per-frame tick (added in the play loop) is the only advance — matching
+ * the original. Consumers the original advances-then-reads (bonus
+ * generation) keep calling next_random() directly. */
+static unsigned int rng_sample(void) {
+    if (rng_perframe)
+        return (unsigned int)(((unsigned int)random_d << 8) | random_e);
+    return next_random();
+}
+
 static void apply_replay_random_override(void) {
     const char *p = getenv("BATTY_REPLAY_RANDOM");
     char *endp;
@@ -6548,6 +6574,10 @@ static state_t run_level(void) {
             if (now != last_tick) {
                 last_tick = now;
                 frame_ticked = 1;
+                /* Per-frame RNG tick (original LB9E8_2: one `CALL
+                 * random_generate` per main-loop pass). Gated so the
+                 * default on-demand model is byte-unchanged. */
+                if (rng_perframe) next_random();
                 /* Per-frame keyboard polling - mirrors
                  * get_left_player_ctrl_state ($A161) which reads the
                  * keyboard half-row IN A,($FE) and updates
@@ -6848,6 +6878,7 @@ int main(void) {
     if (getenv("BATTY_FORCE_BALL_FULL_REDRAW") != NULL) force_ball_full_redraw = 1;
     if (getenv("BATTY_LAFFC") != NULL) use_laffc = 1;
     if (getenv("BATTY_LEGACY_COLLISION") != NULL) use_laffc = 0;
+    if (getenv("BATTY_RNG_PERFRAME") != NULL) rng_perframe = 1;
     if (getenv("BATTY_FORCE_FULL_FLUSH_EACH_FRAME") != NULL) force_full_flush_each_frame = 1;
     if (getenv("BATTY_SUPPRESS_NO_BALL_DEATH") != NULL) suppress_no_ball_death = 1;
     {
