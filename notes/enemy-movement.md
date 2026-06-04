@@ -446,3 +446,27 @@ original's at the repick frame will the enemy target (and thus the whole
 y>=8 trajectory) match. That alignment is the single highest-leverage
 remaining enemy item; the descend gate (`make test-enemy-descend`) locks
 the RNG-independent half in the meantime.
+
+### Enemy STEERING gate built (2026-06-05) — `make test-enemy-steer`
+
+With the RNG per-frame tick now ON by default and the byte-correct L3 seed
+(RANDOM=3793, SEED=962A), the steering is gate-locked
+(`scripts/test_enemy_steer.py`). Probes object_enemy at f16/f20/f24:
+
+    f16: x=167 y=16 dir=0x11   [GT x=167 y=16 dir=0x11]
+    f20: x=167 y=20 dir=0x12   [GT x=167 y=20 dir=0x12]
+    f24: x=165 y=24 dir=0x13   [GT x=165 y=24 dir=0x13]
+
+`dir` + `y` are asserted EXACTLY (the steering decision + descent); `x` is
+asserted within +-1. The +-1 slack is required: the integer x at f24
+jitters 165<->166 run-to-run (the QEMU boot / WAIT_KEY release phase shifts
+a 4-frame turn by one frame; the sub-pixel fraction drifts too). `dir`/`y`
+are phase-stable and carry the regression signal — a wrong RNG walk flips
+`dir` to the wrong-way 0x0E/0x0C (the bug this whole arc found). So the
+gate locks the now-correct steering while tolerating the documented 1px
+boot-phase jitter.
+
+Net: the enemy first leg is now gated end-to-end — descend (RNG-independent,
+`test-enemy-descend`) + steering (RNG-dependent, `test-enemy-steer`) — plus
+the RNG walk itself (`test-rng-walk`). The arrival re-pick past f28 follows
+the same (now byte-exact) RNG, so it tracks the original too.

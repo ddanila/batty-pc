@@ -80,7 +80,7 @@ PROFILE_WAIT   ?= 25
 PROFILE_BALL_OBJECT ?= 02008000A0001802020C000008070000000000000080
 PROFILE_BALL_STUCK  ?= 0
 
-.PHONY: all clean run run-86box profile-auto profile-86box read-profile floppy assets help run-original run-original-cheat snapshot candidates regions test test-hud test-bat-redraw-window test-ball-dirty-redraw test-ball-object-dirty-redraw test-rocket-flight-redraw test-rocket-completion-no-ball test-round-banner-border test-brick-flash test-rocket-bonus test-death-sparks test-normal-ball-launch test-ball-left-wall-escape test-l3-replay-seed test-midgame-brick-replay replay-l3-brick-flash replay-l3-brick-flash-both test-laffc-ball-frame1 test-bat-deflection test-enemy-descend test-rng-walk parity-check
+.PHONY: all clean run run-86box profile-auto profile-86box read-profile floppy assets help run-original run-original-cheat snapshot candidates regions test test-hud test-bat-redraw-window test-ball-dirty-redraw test-ball-object-dirty-redraw test-rocket-flight-redraw test-rocket-completion-no-ball test-round-banner-border test-brick-flash test-rocket-bonus test-death-sparks test-normal-ball-launch test-ball-left-wall-escape test-l3-replay-seed test-midgame-brick-replay replay-l3-brick-flash replay-l3-brick-flash-both test-laffc-ball-frame1 test-bat-deflection test-enemy-descend test-rng-walk test-enemy-steer parity-check
 
 all: $(EXE) $(ASSETS)
 
@@ -565,6 +565,12 @@ test-enemy-descend:
 # notes/rng-model.md.
 test-rng-walk:
 	python3 scripts/test_rng_walk.py
+
+# Enemy STEERING gate (RNG-dependent): with the byte-correct L3 seed +
+# the per-frame tick, handling_bird must steer the alien like the original
+# (dir 0x11->0x12->0x13 over f16/f20/f24). Guards the RNG-walk + steering.
+test-enemy-steer:
+	python3 scripts/test_enemy_steer.py
 
 # Multi-level sanity sweep: LAFFC must play comparably to brick_collision
 # on every level (no level where LAFFC destroys ~no bricks while
