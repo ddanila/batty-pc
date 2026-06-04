@@ -39,37 +39,37 @@ the once-per-frame-ticked value; a few (bonus gen) advance first.
 (8 sites) advances on read; there is NO per-frame tick. So the RNG
 sequence the consumers see is desynced from the original's frame-by-frame.
 
-## CAVEAT (measured 2026-06-04): the per-frame-tick model is contradicted
+## RESOLVED (2026-06-04): random_number is at $8D48, and DOES tick/frame
 
-Direct measurement of `random_number` ($8E17) on the original in the
-`l3-brick-flash` frame-stepped state shows it is **CONSTANT** across frames
-0..12 (low=$8E, high=$49) — it does NOT advance once per frame. So:
+A wrong-address scare, now corrected. `random_number: DEFW $8E17` makes
+`random_number` a **variable** (in the data block at $8D46: `counter_misc`
+$8D46, `random_number` **$8D48**, `random_seed` $8D4A) whose *initial
+value* is $8E17 — it is NOT located at address $8E17. I had been
+probing/seeding $8E17 (the init value), which is why it looked constant.
 
-- The premise behind `BATTY_RNG_PERFRAME` (that `LB9E8_2` ticks
-  `random_generate` once per frame) is **wrong for this state** — adding a
-  per-frame tick makes the port's RNG *diverge* from the (static) original.
-  Flag OFF (the default) is the correct behaviour here; **do not flip the
-  default**, and treat the staged tick as unvalidated/likely-wrong until
-  the real advance condition is found (random_generate must be gated or
-  reached only on specific events, not every main-loop pass).
-- The port (flag OFF) still advances `random_number` once in the window
-  (f0 `8E49` -> f5 `A187`): some consumer's `next_random()` fires where the
-  original advances nothing. So even flag-off isn't RNG-synced here.
-- Seed byte order differs: env `8E49` gives the port value `0x8E49`
-  (random_d=$8E high, random_e=$49 low) but the original's `$8E17` bytes
-  are `8E,49` = value `0x498E` — the low/high are effectively swapped, so
-  RNG-dependent reads (enemy target low byte, etc.) start from different
-  values.
-- The captured enemy repick (`target -> 0x2C`, notes/enemy-movement.md)
-  cannot come from `$8E17 & $3F` (= `0x0E`), so either the enemy target
-  is not sourced from `$8E17`, or the `LAA7D_1` decode is incomplete.
+Probing the REAL address `$8D48` shows `random_number` **changes every
+frame** (low bytes 0x53,0x13,0x90,0x76,0x8E,0x99,…). So:
 
-Conclusion: byte-exact RNG-dependent parity (enemy targets, bonus drops)
-needs a GROUND-UP re-investigation — where `random_number` truly lives and
-how/when it advances, the seed byte order, and the real enemy-target
-source — before any tick model or consumer conversion can be trusted. The
-RNG consumer conversions already landed are flag-OFF byte-identical so they
-ship harmlessly, but the per-frame-tick approach below is now suspect.
+- `random_generate` IS called once per frame (`LB9E8_2`), confirming the
+  **per-frame-tick model (`BATTY_RNG_PERFRAME`) is correct**. The earlier
+  "constant / do not flip" caveat was an artifact of the wrong address.
+- A memory-write trace (`scripts/trace_enemy_target.py`, breakpoint
+  `MWA=9BAAH`) confirms the enemy target is written by `LAA7D_1` at
+  `$AA9C` with values that vary frame-to-frame (0x2C,0x36,0x03,0x1E,…) —
+  i.e. `random_number($8D48) & $3F`, exactly the `LAA7D_1` decode. The
+  decode was right; the contradiction was the address.
+- **Seed bug:** the replay's `BATTY_REPLAY_RANDOM` writes `$8E17`, which is
+  NOT the RNG variable, so it does NOT seed the original's RNG (the
+  original runs from its snapshot `$8D48` value). Harmless for the
+  byte-exact ball gate (RNG-independent), but it means RNG-dependent
+  validation must seed/compare `$8D48`, not `$8E17`.
+
+Path to byte-exact enemy/bonus RNG (now clear): (1) keep the per-frame
+tick (flag ON is the right model); (2) seed the port's `random_d/e` to the
+original's `$8D48` value at frame 0 (and fix the replay to poke `$8D48`);
+(3) verify the port's `next_random` walk matches the original's frame by
+frame against `$8D48`. The consumer read-current/advance classification
+already done stands.
 
 ## Status: staged foundation landed (flag OFF by default)
 
