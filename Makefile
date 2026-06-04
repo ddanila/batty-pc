@@ -443,6 +443,19 @@ test:
 	@$(MAKE) $(TEST_FLOPPY_OUT)
 	python3 scripts/test_visual.py --floppy $(TEST_FLOPPY_OUT)
 
+# Deterministic mid-game frame-timeline capture (port side of the
+# frame-step parity sweep). Builds the test floppy starting directly in
+# gameplay with the multi-checkpoint visual probe, then drives the port
+# through each checkpoint and screendumps a byte-deterministic frame at
+# each. FRAMES is a comma-separated ascending list; LEVEL picks the cycle.
+FRAMES ?= 30,60,90
+LEVEL  ?= 1
+capture-timeline:
+	@rm -f $(TEST_FLOPPY_OUT)
+	@BATTY_START_LEVEL=1 BATTY_LEVEL=$(LEVEL) BATTY_VISUAL_PROBE_FRAMES=$(FRAMES) \
+	    $(MAKE) $(TEST_FLOPPY_OUT)
+	python3 scripts/capture_frame_timeline.py --floppy $(TEST_FLOPPY_OUT) --frames $(FRAMES)
+
 test-hud: $(FLOPPY_OUT)
 	python3 scripts/test_hud.py --floppy $(FLOPPY_OUT)
 

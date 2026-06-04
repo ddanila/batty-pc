@@ -145,10 +145,27 @@ required equality. Two plausible paths for the capture timing remain:
   dropped, and the list is capped at `VISUAL_PROBE_MAX` (16) entries.
   This is the port half of the frame-step sweep: a single boot can now
   yield a *timeline* of byte-deterministic mid-game frames rather than
-  one capture-and-quit. Still open: a `replay_harness.py` capture mode
-  that sends one wake key per checkpoint and screenshots between them,
-  and the matching ZEsarUX frame-interrupt breakpoint so the original
-  side steps the same frame counts.
+  one capture-and-quit.
+
+  **Capture driver landed (2026-06-04).** `scripts/capture_frame_timeline.py`
+  drives the port through those checkpoints: boot, screendump while the
+  port is halted, `sendkey ret` to wake it toward the next checkpoint,
+  sleep the inter-checkpoint frame delta, repeat. It reuses
+  `test_visual.py`'s QEMU drive + PPM→palette-index decode, writes
+  `build/frame_timeline/frame_NNNN.{ppm,idx}`, and reports the pixel
+  delta between consecutive captures. `make capture-timeline
+  FRAMES=150,250,350 LEVEL=1` builds the gameplay floppy with the probe
+  env and runs it. Verified end-to-end: with checkpoints spanning the
+  192-frame stuck-ball auto-launch, captures advance 317 then 356 px,
+  confirming the port halts at every checkpoint and the simulation
+  steps the exact frame delta between halts (`--require-motion` makes
+  that a hard assertion; a static ball-on-bat scene is otherwise valid).
+
+  Still open: the original side. A matching ZEsarUX driver must step the
+  Z80 the same frame counts (breakpoint on the frame-interrupt vector,
+  or `run N frames`) and dump each `.scr`, so the two timelines can be
+  diffed frame-for-frame. That promotes the sweep from a port-side
+  regression baseline to a true original-vs-port gameplay parity gate.
 - **Trampoline pauses between captures.** Reuse the existing
   `BATTY_REPLAY_WAIT_KEY` mechanism but rearm the port for a second
   pause at a known game-state point (e.g. after the first brick hit),
