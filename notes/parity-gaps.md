@@ -70,6 +70,23 @@ Several paths use gameplay-equivalent but not byte-exact motion:
   the note.
 - big-bat resize timing is matched visually but not a literal port of
   the original bit-gated state machine.
+- **enemy sprite animation / facing** (cosmetic). The enemy *motion*,
+  *steering* (`LAA7D`), *brick collision* (`LAFFC`), *margins*, and *bomb
+  drop* (`bomb_appear`, see parity-status.md) are all ported faithfully,
+  but the **sprite-frame selection** is approximate. The port uses a flat
+  3-frame timer cycle (`sprite_num = (misc_12 >> 2) % 3`) for both the bird
+  and the UFO, and `handling_ufo_obj` simply delegates to
+  `handling_bird_obj`. The original is richer: `handling_bird` ($A9BC) runs
+  `LAAD2` (timer-based frame advance gated by the `IX+$12` anim state) plus
+  `LAA02`, which **mirrors/flips the sprite by flight direction** (the bird
+  faces the way it flies — `dir`-derived `XOR $07` / `$0E - frame`), while
+  `handling_ufo` ($A902) has a *distinct* tail (no direction-sprite; a
+  `flag_2`-gated `LAA7D_1` target re-pick on brick hit). So in the port the
+  enemy doesn't visibly face its travel direction and the UFO is not
+  byte-distinct from the bird. Cosmetic only (no motion/gameplay effect);
+  porting `LAAD2`+`LAA02` exactly is a self-contained render task and would
+  want an enemy-sprite-frame ground-truth capture to gate. Decode pointers
+  in `notes/enemy-movement.md`.
 - **rocket bonus flight** — now fully decoded (`notes/rocket-flight.md`).
   The **motion** is FAITHFUL (`handling_rocket` $A89A accel model + bat
   attach; the port's per-rocket counter is byte-equivalent because

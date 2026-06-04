@@ -90,6 +90,16 @@ and `laffc-decode.md` for the detailed trail.
   reflect is correct). Single-player only: the original's `LBC10_4`
   2-player branch (shift 5 sparks by `bat_2.x - bat_1.x` when
   `game_mode==2`) has no port equivalent — out of scope (port is 1P).
+- **Enemy bomb drop** (`bomb_appear` $A989, shared by `handling_bird` and
+  `handling_ufo`) — byte-exact gate. Mirrors the original: (1) returns if a
+  bonus/bomb is already falling — the original shares the single
+  `object_bonus` slot for both, the port checks both `bomb_active` and
+  `bonus_active`; (2) the **1/64 drop gate** `(random_number_lo +
+  random_number_hi) & $3F == 0` (ADD, not XOR — the port matches the ADD)
+  read via `rng_sample` (no RNG advance, matching the per-frame-tick RNG
+  model); (3) the `enemy_y + 8 >= $C0` cutoff; (4) spawn at (enemy_x + 8,
+  enemy_y + 8) as `spr_bomb`, fall accumulator reset. The bomb's fall
+  motion is the already-confirmed `motion_accel_step(&m, 0x0008, 0x02)`.
 - **Regression guards** — `make test-laffc-ball-frame1` (ZEsarUX-free)
   locks the L3 frame-1 ball to the Spectrum probe; the 5-checkpoint +
   per-level static suite (`make test`) stays green.
