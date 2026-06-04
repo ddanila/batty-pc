@@ -180,6 +180,27 @@ the seed-field interpretation or capture a fresh in-flight enemy) and (2)
 the enemy-path RNG consumer audit + the one-frame offset — not on the
 steering or RNG-walk model, both of which are now validated.
 
+## BLOCKER #1 RESOLVED — it was a real motion bug, and the enemy now matches
+
+The "seeded enemy drifts x+ instead of descending" was NOT a seed
+artifact — it was a genuine motion bug. `handling_bird_obj` moved the
+enemy with `enemy_dir_delta_q8`, whose per-quadrant switch had the X/Y
+components SWAPPED vs the validated `dir_to_dxdy`: `dir $10` came out
+`dx=$FF (right), dy=0` instead of `dx=0, dy=$FF (straight down)`. The
+original's `handling_bird` calls `LAD69` — the same `hl_bc_calc_direction`
+as the ball — so the bird should use `dir_to_dxdy`. Fixed (removed
+`enemy_dir_delta_q8` + its table).
+
+Result: the enemy now **descends** (dir $10: x constant, y 5->8->12->16),
+**steers** (dir $10->$12 as it turns), and with the byte-exact RNG
+(flag-ON, seeded 460D/962C) **repicks target to 0x2B->0x2C — matching the
+original's 0x2C.** So byte-exact enemy targeting is essentially achieved;
+the residual is just the documented one-frame RNG offset and exact repick
+frame. The byte-exact L3 ball gate and all `make test` states still pass
+(the corrected descent doesn't interfere with the ball or the captured
+frames). This was also a real gameplay-visible bug fix: enemies were
+flying the wrong axis in normal play.
+
 ## Still approximate / not byte-exact
 
 - **RNG model.** The original advances `random_number` every frame (a

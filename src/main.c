@@ -1860,43 +1860,14 @@ static void handling_blast_obj(object_t *o) {
 }
 static void handling_400pts_obj(object_t *o){ (void)o; }
 
-static const unsigned char direction_table_q8[16] = {
-    0xFF,0xFD,0xFA,0xF4,0xE6,0xE0,0xD4,0xC5,
-    0xB4,0xA1,0x8D,0x78,0x61,0x4A,0x31,0x18
-};
-
-static void enemy_dir_delta_q8(unsigned char dir, unsigned char speed,
-                               int *dx_q8, int *dy_q8) {
-    int idx = dir & 0x0F;
-    /* X magnitude is direction_table[16 - idx] per hl_bc_calc_direction
-     * ($AD22): the original does (idx XOR $0F)+1 = 16-idx and indexes a
-     * 17-entry table whose [16] = $00. direction_table_q8 has 16 entries,
-     * so index 16 -> 0. The previous `[15 - idx]` was off by one, giving
-     * every enemy/ball X step the next direction's magnitude (a slow
-     * frame-by-frame drift caught by the frame-step parity gate). */
-    int x = (idx == 0) ? 0x00 : direction_table_q8[16 - idx];
-    int y = direction_table_q8[idx];
-    switch (dir & 0x30) {
-        case 0x00: *dx_q8 =  x; *dy_q8 =  y; break;
-        case 0x10: *dx_q8 =  y; *dy_q8 = -x; break;
-        case 0x20: *dx_q8 = -x; *dy_q8 = -y; break;
-        default:   *dx_q8 = -y; *dy_q8 =  x; break;
-    }
-    *dx_q8 *= speed;
-    *dy_q8 *= speed;
-}
+/* (Removed enemy_dir_delta_q8 + direction_table_q8: the enemy now moves
+ * with the exact dir_to_dxdy / hl_bc_calc_direction, like the ball and the
+ * original's LAD69. The old routine had the X/Y components swapped per
+ * quadrant, flying the bird on the wrong axis.) */
 
 static void ball_dir_delta_q8(unsigned char dir, unsigned char speed,
                               int *dx_q8, int *dy_q8) {
-    /* Use the exact hl_bc_calc_direction port (dir_to_dxdy), not the
-     * older enemy_dir_delta_q8, whose X magnitude is off by one table
-     * index: the original computes the X component as
-     * direction_table[(b XOR $0F)+1] = direction_table[16 - b], which
-     * needs the 17th entry $00 (dir_sin_tbl[16]); enemy_dir_delta_q8
-     * indexes direction_table_q8[15 - b] on a 16-entry table, so every
-     * ball X step is the magnitude for the next direction up. That made
-     * the ball drift from the Spectrum frame-by-frame (caught by the
-     * frame-step parity gate). dir_to_dxdy matches the disasm exactly. */
+    /* Use the exact hl_bc_calc_direction port (dir_to_dxdy). */
     dir_to_dxdy(dir, speed, dx_q8, dy_q8);
 }
 
@@ -1982,7 +1953,12 @@ static void handling_bird_obj(object_t *o) {
      * there is no separate timer-based random re-target. */
     if (((unsigned long)pit_frame_counter & 0x03UL) == 0)
         enemy_turn_towards_target(o);
-    enemy_dir_delta_q8(o->dir, o->speed, &dx_q8, &dy_q8);
+    /* Move with the EXACT hl_bc_calc_direction (dir_to_dxdy) — the
+     * original handling_bird calls LAD69, the same motion routine as the
+     * ball. The old enemy_dir_delta_q8 had the X/Y components swapped per
+     * quadrant (dir $10 came out moving RIGHT instead of straight DOWN),
+     * so the bird flew the wrong axis. */
+    dir_to_dxdy(o->dir, o->speed, &dx_q8, &dy_q8);
     nx_q8 = ((long)o->x_coord << 8) + o->x_coord_hi + dx_q8;
     ny_q8 = ((long)o->y_coord << 8) + o->y_coord_hi + dy_q8;
     nx = (int)(nx_q8 >> 8);
