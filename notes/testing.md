@@ -223,20 +223,31 @@ helper `blink_phase()` pins the phase to 0 (BLACK) when `auto_advance`
 is off (= the test mode signalled by `BATTYALL`). `make run`'s floppy
 leaves `BATTYALL` unset and the user sees the natural blink.
 
-## What the test does *not* yet cover
+## Mid-game parity gate (frame-step)
 
-Mid-game frames. State 4 is a single level-init paint; nothing
-exercises ball physics / collisions / bonus drops under parity.
-The natural next step is replay files: timestamped key events driving
-both ZEsarUX (via ZRCP) and QEMU (via `sendkey`), then
-snapshot/compare at fixed checkpoints. The original is deterministic
-(same RNG state + same inputs = same output), so these become parity
-gates once a replay starts both runners from an aligned state. Ad-hoc
-smoke scripts under `scripts/exercise_*.py` cover individual scenarios
-in the meantime.
+`make test` covers static screens. Mid-game ball physics / collision is
+covered by the **frame-step gate** (`notes/replay-harness.md`,
+`notes/laffc-decode.md`):
 
-The first reusable replay harness is in `scripts/replay_harness.py`;
-see [`replay-harness.md`](replay-harness.md). It currently supports
-DOS-port and ZEsarUX-original runs plus INFO comparisons. Replays only
-become fail-gated once their spec marks the original and port start
-states as aligned.
+- `make capture-timeline-both [LAFFC_FLAG=1]` — frame-steps the port and
+  ZEsarUX from a byte-identical L3 `$BA83` start and diffs each frame in
+  the brick-play ROI (RGB palette space). Frame 0 is 0 px (aligned
+  start); with `LAFFC_FLAG=1` (the byte-exact `LAFFC` collision path) the
+  residual is purely the cosmetic brick-hit render.
+- `make gate-laffc-long` — same, over 40 frames (residual stays bounded;
+  the ball stays in lockstep with the Spectrum).
+- `make test-laffc-ball-frame1` — **ZEsarUX-free** regression asserting
+  the L3 frame-1 ball object equals the Spectrum probe
+  (x=0x69 xf=0x09 y=0x41 yf=0x48 dir=0x21); guards the whole exact-motion
+  + collision chain, suitable as a fast CI parity guard.
+
+Ball motion and collision (cell / axis / position / direction) are
+byte-exact vs the Spectrum. What still differs frame-by-frame is the
+**brick-hit render** (the damaged multi-hit brick frame + the
+`briks_data` shimmer) — cosmetic and shared by both collision paths.
+
+The reusable replay harness is in `scripts/replay_harness.py`; see
+[`replay-harness.md`](replay-harness.md). It supports DOS-port and
+ZEsarUX-original runs plus INFO comparisons; replays become fail-gated
+once their spec marks the original and port start states aligned. Ad-hoc
+smoke scripts under `scripts/exercise_*.py` cover individual scenarios.
