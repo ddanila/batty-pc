@@ -401,3 +401,48 @@ This is the first frame-by-frame port-vs-original ENEMY gate. The motion
 phase past y>=8 (steering, then the arrival re-pick at ~f28) is
 RNG-state-dependent and still needs the per-frame RNG-tick + boot-cadence
 phase aligned (notes/rng-model.md) before it can be gated the same way.
+
+### GT gate caught a real steering divergence (2026-06-05) — over-claim corrected
+
+Extending the descend gate to the y>=8 STEERING leg (port capture at the
+fresh-descriptor replay, frames 16/20/24) revealed the port steers the
+alien the WRONG WAY — a divergence prior code-inspection missed (and which
+an earlier note over-claimed as "ground-truth-confirmed"):
+
+    frame   GT (original)            port (flag off)        port (RNG_PERFRAME=1)
+    f16     x=167 dir=0x11           x=168 dir=0x0E t=0x03   x=168 dir=0x0F t=0x34
+    f20     x=167 dir=0x12           x=168 dir=0x0E
+    f24     x=165 dir=0x13           x=170 dir=0x0C          x=169 dir=0x0D t=0x34
+
+Original: dir climbs 0x10->0x13 (x drifts LEFT) toward its target.
+Port: dir falls 0x10->0x0C (x drifts RIGHT) toward a different target.
+
+Root cause — NOT the model. `enemy_turn_towards_target` matches `LAA7D`
+exactly: target is a 6-bit direction at +$14; `delta = dir - target`;
+`bit5(delta)` -> dir+1 else dir-1 (shorter arc); `delta==0` -> repick
+target = `random_number & $3F`. The repick reads the +$00 low byte
+(`LD A,(random_number)` at $8D48); the port reads `random_e`, which IS the
+low byte ($8D48, init $17) — so the BYTE is correct too.
+
+The divergence is the repicked TARGET VALUE. At spawn dir==target==0x10,
+so BOTH sides hit `delta==0` on the first turn call and repick immediately
+(this is faithful — the original does the same). But the port's
+`random_number` at that frame != the original's, so it repicks a different
+target: 0x03 (flag off, stale RNG) or 0x34 (flag on) vs the original's
+~0x13. With target 0x34, `delta = (0x10-0x34)&$3F = 0x1C`, bit5=0 -> dir-1
+(falls) — exactly the wrong-way behaviour observed.
+
+Crucially, `BATTY_RNG_PERFRAME=1` (the per-frame tick) alone does NOT fix
+it (target 0x34 is still wrong). So enemy-steering parity is gated on the
+FULL RNG-walk alignment, not just the tick:
+  1. correct seed — the snapshot's `random_number`/`random_seed`, not the
+     env `8E49` which wrote the wrong address $8E17 (the real L3 seed is
+     0x460D, per notes/rng-model.md);
+  2. the per-frame tick (flag ON);
+  3. the boot-cadence phase (the one-frame offset: original f0==f1, port
+     ticks immediately).
+Only when the port's `random_number` walk is byte-exact-aligned to the
+original's at the repick frame will the enemy target (and thus the whole
+y>=8 trajectory) match. That alignment is the single highest-leverage
+remaining enemy item; the descend gate (`make test-enemy-descend`) locks
+the RNG-independent half in the meantime.

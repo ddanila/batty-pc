@@ -205,20 +205,29 @@ and `laffc-decode.md` for the detailed trail.
   matching. With this, ALL bonus effects are verified ($00 BIG bat
   [resize approx], $01 LASER, $02 TRIPLE, $03 MAGNET, $04 SLOW, $05 LIFE,
   $06 ROCKET, $07 SMASH, $08 +5000, $09 KILL_ALIENS).
-- **Enemy motion + steering** — now GROUND-TRUTH-confirmed (was
-  code-verified only). Ran `scripts/capture_enemy_flight.py` (ZEsarUX
-  frame-step of `object_enemy` $9B96 from the L3 `l3-brick-flash` state) —
-  the first GT enemy trajectory. It confirms the port's `handling_bird`:
-  descend `y += 1/frame` until `y >= 8`, speed `1` (q8.8 `dir_to_dxdy`
-  sub-pixel drift), steady turn `dir +1` per ~4 frames toward target
-  (0x10→0x13 over the captured frames), and the **arrival repick** (at
-  ~frame 28 `dir` jumps 0x13→0x2C and the enemy reverses = `LAA7D_1`
-  random re-target on arrival). Full trajectory + decode in
-  `notes/enemy-movement.md`. A strict frame-by-frame *gate* additionally
-  needs the port replay to bake the same FRESH enemy descriptor (the port
-  currently bakes a mid-flight one) and the RNG-phase alignment for the
-  repick target — the descend phase (RNG-independent) is the clean first
-  assertion; documented as the next step.
+- **Enemy descend** — GROUND-TRUTH-GATED (`make test-enemy-descend`). The
+  RNG-independent descend phase (`handling_bird`: `if (y<8) y++`) is
+  byte-exact vs the original: x=168, y +1/frame, dir=$10, spd=1,
+  target=$10 held (port frames 3/6 match the GT). Locked by the new gate.
+- **Enemy steering (y >= 8)** — NOT matching (corrected over-claim,
+  2026-06-05). An earlier entry here said the steering was
+  "ground-truth-confirmed"; that was wrong — it was inferred from the GT's
+  *shape*, not gate-compared. A frame-by-frame port-vs-GT capture shows the
+  port steers the alien the WRONG WAY in the y>=8 leg: the original turns
+  `dir` 0x10→0x11→0x12→0x13 (x drifts left) toward its target, while the
+  port turns `dir` 0x10→0x0E→0x0C (x drifts right). Root cause: the
+  steering MODEL is faithful (the port's `enemy_turn_towards_target`
+  matches `LAA7D` exactly — target is a 6-bit *direction* at +$14,
+  `delta=dir-target`, bit5→+1 else −1, `delta==0`→repick `random_number &
+  $3F` from the +$00 low byte = the port's `random_e`, which is the
+  correct byte). The divergence is the repicked TARGET VALUE: at spawn
+  `dir==target==0x10`, so both sides repick immediately, but the port reads
+  a DIFFERENT `random_number` than the original (target 0x03 flag-off /
+  0x34 flag-on vs the original's ~0x13). So enemy steering parity is gated
+  on the full RNG-walk alignment (seed = the snapshot's, the per-frame
+  tick, and the boot-cadence phase — see `notes/rng-model.md`); the
+  per-frame tick alone (`BATTY_RNG_PERFRAME=1`) does NOT fix it. Decode +
+  capture evidence in `notes/enemy-movement.md`.
 - **Regression guards** — `make test-laffc-ball-frame1` (ZEsarUX-free)
   locks the L3 frame-1 ball to the Spectrum probe; the 5-checkpoint +
   per-level static suite (`make test`) stays green.
