@@ -4997,7 +4997,12 @@ static void step_ball(void) {
     int ball_sz   = eff_ball_size();
     if (ball_stuck) {
         BALL_X = BAT_X + stuck_offset_x;
-        BALL_Y = BAT_Y - ball_sz;
+        /* Rest the ball ON the bat: bottom row touches the bat top, i.e.
+         * BAT_Y - BALL_H_PX = 166 = $A6 (matches the original's launch
+         * rest at LA27E_15 and respawn_primary_ball). Using ball_sz (= 8
+         * width) here put it 1px high (165) every frame, silently
+         * clobbering respawn_primary_ball's correct $A6. */
+        BALL_Y = BAT_Y - BALL_H_PX;
         objects[OBJ_BALL_1].x_coord_hi = 0;
         objects[OBJ_BALL_1].y_coord_hi = 0;
         return;

@@ -154,14 +154,25 @@ $03): a centre drop is caught at **x=132** (ball_x 133 -> offset
 `0x11 & 0xFC = 0x10` -> rest x `116+16 = 132`), `y=167`. The port now
 quantizes the offset and gates on normal width (a big bat falls through
 to the normal deflection, per the original); validated by the catch case
-in `make test-bat-deflection` (caught rest x = 132). Residual: the port
-parks the held ball at y=166 vs the original's $A7=167 (1px, cosmetic,
-entangled with the shared stuck-ball tracker — left as a follow-up).
+in `make test-bat-deflection` (caught rest x = 132).
+
+## Resting ball y fixed ($A6) for the common case
+
+The per-frame stuck-ball tracker in `step_ball` was resting the ball at
+`BAT_Y - eff_ball_size` (= 173 - **8 width** = 165), silently clobbering
+`respawn_primary_ball`'s correct `$A6` every frame. It now uses
+`BAT_Y - BALL_H_PX` (= 173 - **7 height** = 166 = `$A6`), so the
+level-start / launch rest ball sits exactly where the Spectrum's does
+(its bottom row on the bat top). Probed: level-start stuck ball y = 166
+(was 165); `make test` stays pixel-identical. The MAGNET catch still
+parks at 166 vs the original's `$A7=167` (1px) — the original uses a
+distinct value for held vs launch-rest, which the port's unified tracker
+doesn't yet distinguish; left as a 1px cosmetic follow-up.
 
 ## Next steps
 
-1. Match the held-ball rest y to $A7 (167) — needs untangling the shared
-   stuck-ball tracker (used by level-start and catch).
+1. Distinguish catch-rest ($A7=167) from launch-rest ($A6=166) in the
+   stuck tracker (1px, needs a caught-vs-launch flag).
 2. Validate the catch->FIRE-release launch direction against the original
    (needs driving the release; the launch code is already validated for
    the level-start case).
