@@ -16,6 +16,11 @@ assets/random_seed.bin
 # Re-generatable analysis artifacts (`make regions`, etc.)
 # Keep snapshots/ since they're laboriously captured by hand.
 build/test_visual/
+build/frame_timeline/
+build/frame_timeline_original/
+build/tl_*/
+build/bis/
+build/bis[0-9]/
 build/test_hud/
 build/test_bat_redraw_window/
 build/test_ball_dirty_redraw/
