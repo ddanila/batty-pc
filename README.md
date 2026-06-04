@@ -19,6 +19,20 @@ PASS state4_level1      (pixel-identical, default = L1; FAIL-gated since iter-34
 PASS state5_bat_band    (pixel-identical, FAIL-gated)
 ```
 
+**Gameplay frame parity.** Beyond the static checkpoints, the primary
+ball's *motion and brick collision are byte-exact with the Spectrum* —
+the ported `handling_ball` (exact 64-direction q8.8 motion) + `LAFFC`
+brick collision match the original's ball object (x / fraction / y /
+direction, hit cell, bounce axis) frame-for-frame over level 3's first
+~150 frames (dozens of bounces). Gated by `make test-laffc-ball-frame1`;
+`make parity-check` runs the static + collision gates together. Verified
+against ZEsarUX via the frame-step harness (`notes/replay-harness.md`,
+`notes/laffc-decode.md`). The one remaining frame-by-frame difference is
+the cosmetic metal-brick light shimmer (an animation the static GT
+doesn't capture and both sides render out of phase); it has no gameplay
+effect. `BATTY_LEGACY_COLLISION=1` reverts to the older approximate
+collision.
+
 ### Per-level pixel parity (`BATTY_LEVEL=N make test`)
 
 `BATTY_LEVEL=N` (N = 1..15) re-runs `state4` against
