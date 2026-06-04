@@ -39,6 +39,38 @@ the once-per-frame-ticked value; a few (bonus gen) advance first.
 (8 sites) advances on read; there is NO per-frame tick. So the RNG
 sequence the consumers see is desynced from the original's frame-by-frame.
 
+## CAVEAT (measured 2026-06-04): the per-frame-tick model is contradicted
+
+Direct measurement of `random_number` ($8E17) on the original in the
+`l3-brick-flash` frame-stepped state shows it is **CONSTANT** across frames
+0..12 (low=$8E, high=$49) — it does NOT advance once per frame. So:
+
+- The premise behind `BATTY_RNG_PERFRAME` (that `LB9E8_2` ticks
+  `random_generate` once per frame) is **wrong for this state** — adding a
+  per-frame tick makes the port's RNG *diverge* from the (static) original.
+  Flag OFF (the default) is the correct behaviour here; **do not flip the
+  default**, and treat the staged tick as unvalidated/likely-wrong until
+  the real advance condition is found (random_generate must be gated or
+  reached only on specific events, not every main-loop pass).
+- The port (flag OFF) still advances `random_number` once in the window
+  (f0 `8E49` -> f5 `A187`): some consumer's `next_random()` fires where the
+  original advances nothing. So even flag-off isn't RNG-synced here.
+- Seed byte order differs: env `8E49` gives the port value `0x8E49`
+  (random_d=$8E high, random_e=$49 low) but the original's `$8E17` bytes
+  are `8E,49` = value `0x498E` — the low/high are effectively swapped, so
+  RNG-dependent reads (enemy target low byte, etc.) start from different
+  values.
+- The captured enemy repick (`target -> 0x2C`, notes/enemy-movement.md)
+  cannot come from `$8E17 & $3F` (= `0x0E`), so either the enemy target
+  is not sourced from `$8E17`, or the `LAA7D_1` decode is incomplete.
+
+Conclusion: byte-exact RNG-dependent parity (enemy targets, bonus drops)
+needs a GROUND-UP re-investigation — where `random_number` truly lives and
+how/when it advances, the seed byte order, and the real enemy-target
+source — before any tick model or consumer conversion can be trusted. The
+RNG consumer conversions already landed are flag-OFF byte-identical so they
+ship harmlessly, but the per-frame-tick approach below is now suspect.
+
 ## Status: staged foundation landed (flag OFF by default)
 
 `BATTY_RNG_PERFRAME` + `rng_sample()` are in (the `BATTY_LAFFC` staging
