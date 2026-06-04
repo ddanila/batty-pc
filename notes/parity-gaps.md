@@ -46,12 +46,16 @@ Several paths use gameplay-equivalent but not byte-exact motion:
   secondaries (`step_extra_ball`) still use the 5-zone split on integer
   motion (no multi-ball ground truth yet). Full decode + validation in
   `notes/bat-deflection.md`.
-- **brick-hit shimmer** is now the remaining frame-step residual (shared
-  by both collision paths via `brick_hit_anim`). The original
-  `metal_brik_anim` (`$B6A9`) slides a 16-byte window into `anim_brik`
-  (2 bytes/frame, per-slot counter); the port uses discrete reordered
-  frames. Porting the sliding-window shimmer is the next gate-closing
-  step (see `notes/laffc-decode.md` Update 6).
+- **metal-brick shimmer** is the remaining L3 frame-step residual, now
+  fully decoded (see `notes/metal-shimmer.md`; the earlier "sliding
+  window" description was wrong). It is a *ball-hit-triggered, then
+  permanent* per-brick shimmer: hitting an undestructible brick registers
+  it in one of 5 `briks_data` slots (`LAFFC_34`), and `fill_briks_data`/
+  `metal_brik_anim` ($B6A9) then cycle it through `anim_brik`'s 8 brick
+  sprites ({2,6,3,7,4,5,5,1}, 2 ticks each) forever. The port stubs this
+  (`render_brick_flash_to_buff` is a no-op). Cosmetic (no gameplay
+  effect), so it's a self-contained render feature; implementation path in
+  the note.
 - big-bat resize timing is matched visually but not a literal port of
   the original bit-gated state machine.
 
