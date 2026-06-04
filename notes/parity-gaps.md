@@ -15,15 +15,24 @@ Several paths use gameplay-equivalent but not byte-exact motion:
   q8.8 subpixel coordinates, but target selection/collision steering is
   still simplified versus `LAA7B`, brick/ball collision, and
   `check_margins`,
-- **brick/ball collision** — a byte-exact `LAFFC` port now exists behind
-  `BATTY_LAFFC=1` (cell-find + neighbour-open-face mask + direction gate +
-  `change_direction` reflect + fraction-preserving cell-edge snap +
-  penetration corner case). Verified via the frame-step gate + ball
-  probes: ball position/fraction/direction and the hit cell/axis match
-  the Spectrum exactly. It beats the default `brick_collision` on every
-  measured frame. Default still `brick_collision` pending broader-scenario
-  validation before the flip. Full decode + status in
-  `notes/laffc-decode.md`.
+- **brick/ball collision** — DONE. The `LAFFC` port (cell-find incl. the
+  LAFFC_5-6 down/down-right straddle + neighbour-open-face mask +
+  direction gate + `change_direction` reflect + fraction-preserving snap +
+  penetration corner case) is now the **default** for the primary ball
+  and is byte-exact vs the Spectrum over L3's 150-frame trajectory
+  (`make test-laffc-ball-frame1`). `BATTY_LEGACY_COLLISION=1` reverts.
+  Full decode + status in `notes/laffc-decode.md`.
+- **bat-ball deflection** — the next gameplay-parity port. The port uses
+  a 5-zone approximation (`step_ball`/`step_extra_ball` set dir to one of
+  ~5 fixed values by hit zone); the original derives the bounce direction
+  more granularly in `handling_ball` (the `LA27E` region, around the
+  launch logic `LA27E_15` which maps the bat offset to a 6-bit dir). It's
+  intertwined there with magnet / `obj_compare` / `LAD69` motion, so
+  extracting it needs careful RE. Note: the L3 byte-exact run never
+  contacts the bat (static bat, ball stays up), so validating a port
+  needs a **ball-onto-bat scenario** with an original reference (a new
+  snapshot or a seed that drops the ball onto the bat) — otherwise it can
+  only be ported faithfully from the disasm, not gate-verified.
 - **brick-hit shimmer** is now the remaining frame-step residual (shared
   by both collision paths via `brick_hit_anim`). The original
   `metal_brik_anim` (`$B6A9`) slides a 16-byte window into `anim_brik`
