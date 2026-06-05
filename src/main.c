@@ -4977,31 +4977,15 @@ static int any_bullet_active(void) {
 /* Step the rocket one frame: move up (the original handling_rocket accel),
  * lifting the bat. The original (LBB97 flight loop) does NO brick
  * destruction — the rocket flies over the INTACT brick field; the bricks
- * are awarded + cleared only at fly-off (award_left_bricks). The dirty
+ * are awarded + cleared at fly-off by play_rocket_award_tally. The dirty
  * redraw restores the bricks behind the rocket from scr_buff each frame.
  * Deactivate when the rocket leaves the top of the playfield. */
-/* Award bonus points for every still-live destructible brick on the
- * current level — port of add_points_for_left_briks at $AF81. Called
- * when the rocket exits the playfield (LBB97 → LBBFB). Iterates the
- * 12x15 grid, awards points_table[row] (×2 for metal) for each cell
- * that's neither destroyed (bit 7) nor undestructible (bit 5), then
- * marks them destroyed so live_bricks_remaining() = 0 ends the level. */
-static void award_left_bricks(void) {
-    int row, col;
-    for (row = 0; row < LVL_ROWS; row++) {
-        for (col = 0; col < LVL_COLS; col++) {
-            unsigned char *cell = &live_level[row * LVL_COLS + col];
-            unsigned int pts, idx;
-            if (*cell & 0xA0) continue;          /* destroyed or undestructible */
-            idx = (unsigned int)((row < 12) ? row : 11);
-            pts = points_table[idx];
-            if ((*cell & 0x0F) >= 6) pts *= 2;
-            score += pts;
-            *cell |= 0x80;
-            mark_static_bg_cache_dirty();
-        }
-    }
-}
+/* End-of-level brick-points tally (port of add_points_for_left_briks
+ * $AF0D): tick the remaining bricks' points up one-by-one with the scene
+ * + score on screen (bricks stay visible), then clear them so
+ * live_bricks_remaining()==0 advances the level. Defined after the
+ * scene-redraw helpers; forward-declared here for step_rocket. */
+static void play_rocket_award_tally(unsigned char level_idx);
 
 static void step_rocket(void) {
     if (!rocket_active) return;
@@ -5028,10 +5012,10 @@ static void step_rocket(void) {
     if (rocket_y >= PLAYFIELD_H || rocket_y + ROCKET_H_PX < 0) {
         rocket_active = 0;
         rocket_clear_completed = 1;
-        /* Mirror LBB97 → LBBFB: award bonus points for every brick the
-         * rocket didn't reach and end the level. Matches the original's
-         * "rocket clears the round" gameplay loop. */
-        award_left_bricks();
+        /* Mirror LBB97 → LBBFB → add_points_for_left_briks: tick up the
+         * points for every remaining brick (bricks stay on screen), then
+         * clear them to end the level. */
+        play_rocket_award_tally(current_level_idx_var);
         return;
     }
     /* No brick destruction during flight (port of the destruction-free
@@ -6266,6 +6250,60 @@ static void redraw_with_death_sparks(unsigned char level_idx) {
                                  xp, yp);
     }
     buff_to_vga();
+}
+
+/* Render the level scene (no death sparks) for the rocket-clear tally. */
+static void redraw_level_scene(unsigned char level_idx) {
+    unsigned char bg_attr = bg_attr_per_cycle[level_idx & 3];
+    unsigned char cycle   = (unsigned char)(level_idx & 3);
+    paint_bg_to_buff(bg_attr, cycle);
+    paint_frame_to_buff(cycle, level_idx);
+    render_lives(cycle, bg_attr);
+    render_hud_to_buff();
+    inner_border_line_c();
+    render_brick_band(level_idx);
+    render_brick_flash_to_buff();
+    render_brick_hit_anim_to_buff();
+    buff_to_vga();
+}
+
+/* Port of add_points_for_left_briks ($AF0D): the rocket-clear score tally.
+ * Sweep the grid row-major and, for every remaining live brick, add its
+ * points (points_table[row], ×2 for colour >= 6) one PIT tick at a time
+ * with the scene + counting score on screen and the BRICKS STILL VISIBLE.
+ * Then clear them so live_bricks_remaining()==0 advances the level. The
+ * original's per-brick `pause_short` is a CPU busy-wait; we pace one
+ * brick per PIT tick instead — the same visible count-up, timing not
+ * byte-exact (the busy-wait is Z80-clock-bound and unreproducible). */
+static void play_rocket_award_tally(unsigned char level_idx) {
+    int row, col;
+    unsigned long last = pit_ticks();
+    for (row = 0; row < LVL_ROWS; row++) {
+        for (col = 0; col < LVL_COLS; col++) {
+            unsigned char *cell = &live_level[row * LVL_COLS + col];
+            unsigned int pts, idx;
+            if (*cell & 0xA0) continue;          /* destroyed or undestructible */
+            idx = (unsigned int)((row < 12) ? row : 11);
+            pts = points_table[idx];
+            if ((*cell & 0x0F) >= 6) pts *= 2;
+            score += pts;
+            snd_q_push(SND_NORMAL_BRIK);          /* per-brick tick */
+            /* Pace one brick per PIT tick (sound playing meanwhile). */
+            do { sound_tick(); } while (pit_ticks() == last);
+            last = pit_ticks();
+            snd_q_tick();
+            redraw_level_scene(level_idx);        /* bricks intact + new score */
+        }
+    }
+    /* Clear all the tallied bricks so the level advances (the original's
+     * next-round load is what wipes them; here we mark them destroyed). */
+    for (row = 0; row < LVL_ROWS; row++) {
+        for (col = 0; col < LVL_COLS; col++) {
+            unsigned char *cell = &live_level[row * LVL_COLS + col];
+            if (!(*cell & 0xA0)) *cell |= 0x80;
+        }
+    }
+    mark_static_bg_cache_dirty();
 }
 
 /* Block in a self-contained PIT-paced loop while the bat explodes —
