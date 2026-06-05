@@ -401,13 +401,26 @@ the full achieved parity is intact and guarded; none of the recent work
 regressed the byte-exact ball, bat, visual, enemy, or RNG gates, and the
 previously-unguarded feature gates are now routinely runnable.
 
+**Newly gated (2026-06-05): falling-object motion.** `test-bonus-fall`
+(in `parity-check-full`) bakes a fresh falling bonus via a new
+`BATTY_REPLAY_BONUS=type,x,y` hook (ball hidden, no-ball-death suppressed,
+bonus clear of the bat) and asserts `bonus_y` follows the
+`motion_accel_step(&bonus_motion, 0x0008, 0x02)` accel progression —
+independently hand-computed checkpoints y=46/65/97 at f20/40/60 from y0=40.
+Port-only (no ZEsarUX), RNG-independent; guards the 0x08/0x02 fall
+constants + the 8.8 accumulator math. Matched the port exactly (no jitter
+slack needed in practice). This also unlocks future bonus-catch / effect
+gates (the bake hook is reusable).
+
 **Still NOT gated** (verified by code-comparison / one-off GT capture, no
 standing automated gate): laser fire cadence + bullet-blast, bonus economy
-+ effects + scoring tables, falling-object motion, enemy bomb drop, the
-ball speed-up ramp, and the sprite-animation ping-pongs (bird/UFO/blast —
+(drop RNG-gate) + effects + scoring tables, enemy bomb drop, the ball
+speed-up ramp, and the sprite-animation ping-pongs (bird/UFO/blast —
 deliberately not gated: sprite_num shares the ±1 boot-phase jitter, so an
 exact frame assertion is flaky). These are the genuine remaining
-test-coverage gaps if deeper regression protection is wanted.
+test-coverage gaps if deeper regression protection is wanted; the bomb
+drop and pts-400 popup both reuse `motion_accel_step` and could be gated
+the same way as bonus-fall next.
 
 ## Bottom line (updated 2026-06-05)
 

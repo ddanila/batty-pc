@@ -4524,6 +4524,30 @@ static void apply_replay_enemy_object_override(void) {
     fast_memcpy(&objects[OBJ_ENEMY], bytes, sizeof(bytes));
 }
 
+/* Bake a falling bonus for the falling-object regression gate.
+ * BATTY_REPLAY_BONUS = "type,x,y" (decimal or 0x-hex per field). Starts a
+ * fresh fall (bonus_motion zeroed) so the accel progression
+ * motion_accel_step(&bonus_motion, 0x0008, 0x02) is deterministic from y.
+ * Put x clear of the bat to test pure fall (no catch). */
+static void apply_replay_bonus_override(void) {
+    const char *spec = getenv("BATTY_REPLAY_BONUS");
+    char *endp, *endp2, *endp3;
+    long type, x, y;
+    if (spec == NULL) return;
+    type = strtol(spec, &endp, 0);
+    if (endp == spec || *endp != ',') return;
+    x = strtol(endp + 1, &endp2, 0);
+    if (endp2 == endp + 1 || *endp2 != ',') return;
+    y = strtol(endp2 + 1, &endp3, 0);
+    if (endp3 == endp2 + 1) return;
+    bonus_active = 1;
+    bonus_type = (unsigned char)type;
+    bonus_x = (int)x;
+    bonus_y = (int)y;
+    bonus_motion.acc = 0;
+    bonus_motion.frac = 0;
+}
+
 static void apply_replay_rocket_override(void) {
     if (getenv("BATTY_REPLAY_ROCKET_ACTIVE") == NULL) return;
     rocket_active = 1;
@@ -6619,6 +6643,7 @@ static state_t run_level(void) {
         apply_replay_ball_object_override();
         apply_replay_ball_motion_override();
         apply_replay_enemy_object_override();
+        apply_replay_bonus_override();
         apply_replay_rocket_override();
         write_replay_probe();
         render_level_screen(i);
