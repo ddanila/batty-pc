@@ -4568,6 +4568,27 @@ static void apply_replay_bomb_override(void) {
     bomb_motion.frac = 0;
 }
 
+/* Bake a rising/falling +400 score popup for the pts-400-fall gate.
+ * BATTY_REPLAY_PTS400 = "x,y". Uses motion_accel_step(&pts_400_motion,
+ * 0x0028, 0x80) — a DIFFERENT accel constant pair than bonus/bomb, so this
+ * exercises a faster-grow path. dx is zeroed so the y progression is pure. */
+static void apply_replay_pts400_override(void) {
+    const char *spec = getenv("BATTY_REPLAY_PTS400");
+    char *endp, *endp2;
+    long x, y;
+    if (spec == NULL) return;
+    x = strtol(spec, &endp, 0);
+    if (endp == spec || *endp != ',') return;
+    y = strtol(endp + 1, &endp2, 0);
+    if (endp2 == endp + 1) return;
+    pts_400_active = 1;
+    pts_400_x = (int)x;
+    pts_400_y = (int)y;
+    pts_400_dx = 0;
+    pts_400_motion.acc = 0;
+    pts_400_motion.frac = 0;
+}
+
 static void apply_replay_rocket_override(void) {
     if (getenv("BATTY_REPLAY_ROCKET_ACTIVE") == NULL) return;
     rocket_active = 1;
@@ -4674,6 +4695,9 @@ static void write_replay_probe(void) {
     fprintf(f, "\nbomb_state=active%02X_x%02X_y%02X",
             (unsigned)bomb_active, (unsigned)(bomb_x & 0xFF),
             (unsigned)(bomb_y & 0xFF));
+    fprintf(f, "\npts400_state=active%02X_x%02X_y%02X",
+            (unsigned)pts_400_active, (unsigned)(pts_400_x & 0xFF),
+            (unsigned)(pts_400_y & 0xFF));
     fprintf(f, "\nnormal_launch_state=%02X%02X%02X%02X%02X",
             (unsigned)last_primary_launch_valid,
             (unsigned)last_primary_launch_x,
@@ -6668,6 +6692,7 @@ static state_t run_level(void) {
         apply_replay_enemy_object_override();
         apply_replay_bonus_override();
         apply_replay_bomb_override();
+        apply_replay_pts400_override();
         apply_replay_rocket_override();
         write_replay_probe();
         render_level_screen(i);

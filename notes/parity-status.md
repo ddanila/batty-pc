@@ -421,16 +421,25 @@ guards the bomb's OWN 0x08/0x02 call site (bomb dodgeability) independently
 of the bonus gate. Same hand-computed checkpoints (y=46/65/97 at f20/40/60),
 matched exactly.
 
+**+400 popup motion also gated (2026-06-05).** `test-pts400-fall` (in
+`parity-check-full`) bakes the +400 catch popup via `BATTY_REPLAY_PTS400=x,y`
+(dx zeroed) + a `pts400_state` probe line, and asserts pts_400_y follows
+`motion_accel_step(&pts_400_motion, 0x0028, 0x80)` — a DIFFERENT accel
+constant pair (de=0x28 is 5× the bonus rate, cap 0x80), so it covers a
+faster-grow accumulator path the bonus/bomb gates don't reach. Checkpoints
+y=48/72/112 at f10/20/30, matched exactly. The three falling-object gates
+(`bonus-fall`, `bomb-fall`, `pts400-fall`) now cover both
+`motion_accel_step` constant pairs in use.
+
 **Still NOT gated** (verified by code-comparison / one-off GT capture, no
 standing automated gate): laser fire cadence + bullet-blast, bonus economy
 (drop RNG-gate) + effects + scoring tables, the ball speed-up ramp, and the
 sprite-animation ping-pongs (bird/UFO/blast — deliberately not gated:
 sprite_num shares the ±1 boot-phase jitter, so an exact frame assertion is
 flaky). These are the genuine remaining test-coverage gaps if deeper
-regression protection is wanted. Next-easiest: the **+400 popup**
-(`step_pts_400`, `motion_accel_step(0x0028, 0x80)`) — a DIFFERENT accel
-constant pair, so it exercises a code path the bonus/bomb gates don't;
-gateable via the same bake+probe template.
+regression protection is wanted. The motion primitives are now fully gated;
+the remaining items need RNG-seeded scenarios (laser/bonus-drop) or hit a
+known jitter wall (sprite anim), so they're a step up in effort.
 
 ## Bottom line (updated 2026-06-05)
 
