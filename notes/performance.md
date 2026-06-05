@@ -218,6 +218,21 @@ Interpretation:
   changed bat sprite. Worth doing if a specific scene needs it, but expect
   ~single-digit-% gains, not step changes.
 
+- **Bat fire-animation joined the dirty path (2026-06-05).** The laser
+  cannon fire-anim (and the bat sprite changing each of its ~8 ticks) was a
+  full-dynamic blocker (`BALL_DIRTY_BLOCK_BAT_FX`) purely because the dirty
+  tiers only marked the 1px running-dot row dirty, never the bat body. New
+  `redraw_bat_dirty` helper: on a fire-anim frame it repaints + flushes the
+  whole 13px bat body (otherwise just the running-dot row as before); the
+  blocker now fires only on a resize TRANSITION (`bat_extra_px !=
+  bat_extra_tgt`, which needs the vacated-area restore). Measured
+  (profile-bricks): full-dynamic frames **72 → 21** (`ball block bat FX` 63
+  → 0). Combined with the bullet tier, the laser worst case went **124 → 21**
+  full-dynamic frames. `test-bat-fire-dirty-redraw` (new) confirms the
+  dirty path is pixel-identical to the FORCE_BALL_FULL_REDRAW baseline
+  mid-fire-anim. The remaining 21 are brick-hit frames (band + HUD blockers
+  — the low-marginal tier per the note above).
+
 ## Next Likely Wins
 
 0. **Brick-change frames should NOT force a full-dynamic redraw.** This is

@@ -6008,7 +6008,10 @@ static unsigned int ball_dirty_blockers(int bat_moved) {
     if (any_bullet_active() || any_bullet_blast()) blockers |= BALL_DIRTY_BLOCK_OBJECTS;
     if (brick_flash_ticks || any_brick_hit_anim()) blockers |= BALL_DIRTY_BLOCK_BRICKS;
     if (ball2_active || ball3_active || big_ball_active()) blockers |= BALL_DIRTY_BLOCK_BALLS;
-    if (bat_extra_px != bat_extra_tgt || bat_fire_anim_ticks) blockers |= BALL_DIRTY_BLOCK_BAT_FX;
+    /* Resize transitions still force a full frame (the bat changes width,
+     * needing the vacated-area restore); the laser fire-anim is now handled
+     * on the dirty path by redraw_bat_dirty, so it is no longer a blocker. */
+    if (bat_extra_px != bat_extra_tgt) blockers |= BALL_DIRTY_BLOCK_BAT_FX;
     return blockers;
 }
 
@@ -6099,10 +6102,34 @@ static void render_simple_objects_to_buff_and_mark(unsigned char bg_attr) {
     }
 }
 
+/* Repaint + flush the (non-moving) bat on a dirty-redraw frame. Normally
+ * only the 1px running-dot row needs refreshing (the bat body is static +
+ * cached); but while the laser cannon fire-animation is playing the body
+ * sprite changes each frame, so refresh + flush the whole 13px body. This
+ * lets a fire-anim frame stay on the dirty path instead of forcing a full
+ * recompose. (Bat MOVEMENT and resize transitions still take the full path
+ * via the BAT / BAT_FX blockers.) */
+static void redraw_bat_dirty(unsigned char cycle, unsigned char bg_attr) {
+    int bat_x0, bat_x1;
+    bat_sprite_bounds(BAT_X, bat_extra_px, &bat_x0, &bat_x1);
+    if (bat_fire_anim_ticks) {
+        paint_bg_window_to_buff(bg_attr, cycle, BAT_Y, BAT_H_PX,
+                                bat_x0 >> 3, (bat_x1 - 1) >> 3);
+        render_bat(cycle, bg_attr);
+        render_running_dot();
+        mark_dirty_rect_px(bat_x0, BAT_Y, bat_x1 - bat_x0, BAT_H_PX);
+    } else {
+        paint_bg_window_to_buff(bg_attr, cycle, BAT_Y + 6, 1,
+                                bat_x0 >> 3, (bat_x1 - 1) >> 3);
+        render_bat(cycle, bg_attr);
+        render_running_dot();
+        mark_dirty_rect_px(bat_x0, BAT_Y + 6, bat_x1 - bat_x0, 1);
+    }
+}
+
 static void redraw_ball_only(unsigned char level_idx) {
     unsigned char bg_attr = bg_attr_per_cycle[level_idx & 3];
     unsigned char cycle = (unsigned char)(level_idx & 3);
-    int bat_x0, bat_x1;
 
     prof_start();
     restore_prev_dirty_from_static_cache();
@@ -6111,12 +6138,7 @@ static void redraw_ball_only(unsigned char level_idx) {
 
     render_ball_to_buff(BALL_X, BALL_Y, bg_attr);
     mark_dirty_rect_px(BALL_X, BALL_Y, 16, 12);
-    bat_sprite_bounds(BAT_X, bat_extra_px, &bat_x0, &bat_x1);
-    paint_bg_window_to_buff(bg_attr, cycle, BAT_Y + 6, 1,
-                            bat_x0 >> 3, (bat_x1 - 1) >> 3);
-    render_bat(cycle, bg_attr);
-    render_running_dot();
-    mark_dirty_rect_px(bat_x0, BAT_Y + 6, bat_x1 - bat_x0, 1);
+    redraw_bat_dirty(cycle, bg_attr);
     prof_bricks_pit += prof_elapsed();
 
     carry_dirty_with_previous();
@@ -6130,7 +6152,6 @@ static void redraw_ball_only(unsigned char level_idx) {
 static void redraw_ball_with_simple_objects(unsigned char level_idx) {
     unsigned char bg_attr = bg_attr_per_cycle[level_idx & 3];
     unsigned char cycle = (unsigned char)(level_idx & 3);
-    int bat_x0, bat_x1;
 
     prof_start();
     restore_prev_dirty_from_static_cache();
@@ -6139,12 +6160,7 @@ static void redraw_ball_with_simple_objects(unsigned char level_idx) {
 
     render_ball_to_buff(BALL_X, BALL_Y, bg_attr);
     mark_dirty_rect_px(BALL_X, BALL_Y, 16, 12);
-    bat_sprite_bounds(BAT_X, bat_extra_px, &bat_x0, &bat_x1);
-    paint_bg_window_to_buff(bg_attr, cycle, BAT_Y + 6, 1,
-                            bat_x0 >> 3, (bat_x1 - 1) >> 3);
-    render_bat(cycle, bg_attr);
-    render_running_dot();
-    mark_dirty_rect_px(bat_x0, BAT_Y + 6, bat_x1 - bat_x0, 1);
+    redraw_bat_dirty(cycle, bg_attr);
     render_simple_objects_to_buff_and_mark(bg_attr);
     prof_bricks_pit += prof_elapsed();
 
