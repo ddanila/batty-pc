@@ -390,23 +390,24 @@ the RNG seed → proved the walk byte-exact → flipped the per-frame tick to
 default → fixed the enemy steering (and caught a spurious bonus-drop the
 flip exposed, fixed by wiring the snapshot seed into the L3 replay).
 
-**Remaining — all deliberate sub-projects (deferred), not analysis gaps:**
-1. **Rocket brick-clear behaviour.** The original flies the rocket over
-   INTACT bricks (`handling_rocket` motion-only; `LBB97` does no
-   destruction) and awards remaining bricks SEQUENTIALLY at fly-off
-   (`add_points_for_left_briks`, pause+sound/brick, no clear — the level
-   transition clears). The port carves a destruction tunnel + awards
-   instantly. Matching it = remove the tunnel + port the frame-paced
-   sequential tally; a visible behaviour change vs the recent deliberate
-   "rocket clears the level" UX, and no rocket-flight GT exists (the flight
-   runs its own `LBB97` loop, not the `$BA83` main loop). Greenlight needed.
-2. **Metal-shimmer residual.** The shimmer LOGIC is correct (byte-identical
+**Rocket brick-clear — DONE (2026-06-05):** the rocket now flies over
+INTACT bricks (Change A: removed the tunnel sweep, matching the
+destruction-free `LBB97`) and ticks the remaining bricks' points up
+SEQUENTIALLY at fly-off with the bricks on screen (Change B:
+`play_rocket_award_tally`, a port of `add_points_for_left_briks`), then
+clears them to advance — matching the original (was a tunnel-carve +
+instant clear). Verified by the rocket test suite. The per-brick pace is
+1/PIT-tick (the original's `pause_short` busy-wait is Z80-clock-bound and
+not byte-reproducible); everything else matches.
+
+**Remaining — both proven NOT byte-exactly achievable (not analysis gaps):**
+1. **Metal-shimmer residual.** The shimmer LOGIC is correct (byte-identical
    sprites, correct `anim_brik` order, loops permanently). The
    `capture-timeline-both` ~188 px residual is largely a seed-state
    artifact (the L3 snapshot doesn't capture the `briks_data` mid-animation
    state, so port and original shimmer at different phases) plus a per-cell
    damaged-brick "crack" render detail (~14 black px/cell the port lacks).
    See `notes/metal-shimmer.md`.
-3. **Cycle-exact sound.** PC-speaker PIT square waves vs the Spectrum
+2. **Cycle-exact sound.** PC-speaker PIT square waves vs the Spectrum
    beeper port-`$FE` toggling — needs a sampled/low-level beeper backend
    (out of the visual-parity scope).
