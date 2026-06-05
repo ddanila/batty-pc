@@ -80,7 +80,7 @@ PROFILE_WAIT   ?= 25
 PROFILE_BALL_OBJECT ?= 02008000A0001802020C000008070000000000000080
 PROFILE_BALL_STUCK  ?= 0
 
-.PHONY: all clean run run-86box profile-auto profile-86box read-profile floppy assets help run-original run-original-cheat snapshot candidates regions test test-hud test-bat-redraw-window test-ball-dirty-redraw test-ball-object-dirty-redraw test-rocket-flight-redraw test-rocket-completion-no-ball test-round-banner-border test-brick-flash test-rocket-bonus test-death-sparks test-normal-ball-launch test-ball-left-wall-escape test-l3-replay-seed test-midgame-brick-replay replay-l3-brick-flash replay-l3-brick-flash-both test-laffc-ball-frame1 test-bat-deflection test-enemy-descend test-rng-walk test-enemy-steer parity-check
+.PHONY: all clean run run-86box profile-auto profile-86box read-profile floppy assets help run-original run-original-cheat snapshot candidates regions test test-hud test-bat-redraw-window test-ball-dirty-redraw test-ball-object-dirty-redraw test-rocket-flight-redraw test-rocket-completion-no-ball test-round-banner-border test-brick-flash test-rocket-bonus test-death-sparks test-normal-ball-launch test-ball-left-wall-escape test-l3-replay-seed test-midgame-brick-replay replay-l3-brick-flash replay-l3-brick-flash-both test-laffc-ball-frame1 test-bat-deflection test-enemy-descend test-rng-walk test-enemy-steer parity-check parity-check-full
 
 all: $(EXE) $(ASSETS)
 
@@ -460,6 +460,11 @@ test:
 # gate (ball object matches the Spectrum over L3's 150-frame trajectory).
 # Both green => the shipped parity (motion + collision) is intact. The
 # cosmetic metal-brick shimmer is out of scope (see notes/laffc-decode.md).
+# Fast routine regression core: the byte-exact gameplay-math gates
+# (visual states + lints, ball/collision, bat/deflection, enemy, RNG).
+# Run this per-change. For the COMPREHENSIVE coverage (every feature gate,
+# incl. the rocket-clear / sparks / brick-flash / redraw guards), use
+# `parity-check-full` below.
 parity-check:
 	$(MAKE) test
 	$(MAKE) test-laffc-ball-frame1
@@ -467,6 +472,30 @@ parity-check:
 	$(MAKE) test-enemy-descend
 	$(MAKE) test-rng-walk
 	$(MAKE) test-enemy-steer
+
+# Comprehensive regression suite: the fast core PLUS every standalone
+# feature/render gate that previously was NOT wired into any aggregate
+# (so a routine run actually exercises the rocket-clear tally, death
+# sparks, brick-flash render, midgame brick replay, ball launch, the
+# multi-level LAFFC sanity sweep, and the dirty-redraw correctness
+# guards). Slower (many QEMU boots) — run before milestones / merges.
+parity-check-full:
+	$(MAKE) parity-check
+	$(MAKE) test-normal-ball-launch
+	$(MAKE) test-laffc-levels-sane
+	$(MAKE) test-hud
+	$(MAKE) test-round-banner-border
+	$(MAKE) test-brick-flash
+	$(MAKE) test-death-sparks
+	$(MAKE) test-rocket-bonus
+	$(MAKE) test-rocket-completion-no-ball
+	$(MAKE) test-rocket-flight-redraw
+	$(MAKE) test-midgame-brick-replay
+	$(MAKE) test-ball-dirty-redraw
+	$(MAKE) test-ball-object-dirty-redraw
+	$(MAKE) test-bat-redraw-window
+	$(MAKE) test-ball-left-wall-escape
+	$(MAKE) test-l3-replay-seed
 
 # Deterministic mid-game frame-timeline capture (port side of the
 # frame-step parity sweep). Builds the test floppy starting directly in

@@ -218,3 +218,24 @@ score-count animation at end-of-level. Net: low value + unreproducible
 timing → deferred indefinitely (not worth the frame-paced-loop +
 score-redraw machinery + the level-advance-gating risk). The rocket-clear
 is effectively parity-complete after Change A.
+
+## Change B IMPLEMENTED after all (2026-06-05, user-greenlit) — SUPERSEDES the deferral above
+
+The deferral above was the *engineering* recommendation; the user
+explicitly chose "Implement rocket end-tally" (AskUserQuestion), overriding
+it for the visible end-of-level score-count behaviour. So Change B shipped:
+`play_rocket_award_tally(level_idx)` + `redraw_level_scene` (defined after
+`redraw_with_death_sparks` in src/main.c). It sweeps the 15×12 grid
+row-major, awards `points_table[row]` (×2 if the colour nibble >= 6) per
+live brick, paces **one PIT tick per brick** with the scene + score
+redrawn each tick (bricks stay visible — matching `add_points_for_left_briks`
+which never `SET 7`s), then clears every cell (`*cell |= 0x80`) at the end
+to drive the round advance (resolving THE RISK above — the advance still
+fires because the final clear zeroes bricks_remaining). The per-brick pace
+uses PIT ticks rather than the original's CPU-busy `pause_short`, so the
+tally speed is a deliberate non-byte-exact choice (the timing is
+unreproducible, per the reassessment) — the *score total*, the
+bricks-stay-visible render, and the row-major order ARE faithful. Gated by
+`test-rocket-completion-no-ball`, `test-rocket-bonus`,
+`test-rocket-flight-redraw`, `test-midgame-brick-replay` (now all in
+`parity-check-full`). The rocket-clear is parity-complete (A + B).

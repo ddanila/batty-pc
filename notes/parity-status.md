@@ -372,11 +372,42 @@ work) is **all green**:
 - `make test-enemy-steer` — RNG-dependent steering (dir 0x11→0x12→0x13,
   y exact, x ±1 for the boot-phase jitter), GT-validated.
 
-`parity-check` now runs all six (the three enemy/RNG gates were added to
-the aggregate this pass, so the RNG-flip + enemy-steering work is part of
-the standard regression suite). So the full achieved parity is intact and
-guarded; none of the recent work regressed the byte-exact ball, bat,
-visual, enemy, or RNG gates.
+`parity-check` runs those six — the **fast routine core** (byte-exact
+gameplay math), meant to run per-change.
+
+### Coverage tiers (2026-06-05): `parity-check` vs `parity-check-full`
+
+A test-coverage audit found ~15 feature/render gates that EXISTED but were
+not in any aggregate — so a `parity-check` run silently skipped them,
+including the **rocket-clear tally** (this session's Change B), death
+sparks, the brick-flash render, the midgame brick replay, ball launch, the
+multi-level LAFFC sweep, and the dirty-redraw correctness guards. They are
+now wired into a new **`parity-check-full`** aggregate (= the fast core +
+all of them). Use the fast core per-change; run `parity-check-full` before
+milestones / merges.
+
+`parity-check-full` adds: `test-normal-ball-launch`, `test-laffc-levels-
+sane`, `test-hud`, `test-round-banner-border`, `test-brick-flash`,
+`test-death-sparks`, `test-rocket-bonus`, `test-rocket-completion-no-ball`,
+`test-rocket-flight-redraw`, `test-midgame-brick-replay`, `test-ball-dirty-
+redraw`, `test-ball-object-dirty-redraw`, `test-bat-redraw-window`,
+`test-ball-left-wall-escape`, `test-l3-replay-seed`.
+
+The two gates the destroyed-cell shadow fix could plausibly touch were
+re-verified green this pass: `test-brick-flash` (brick band changed 234 px,
+no stale flash vs the L3 reference) and `test-midgame-brick-replay`
+(bricks=18, `bonus_state=00…` — the seed fix held, no spurious bonus). So
+the full achieved parity is intact and guarded; none of the recent work
+regressed the byte-exact ball, bat, visual, enemy, or RNG gates, and the
+previously-unguarded feature gates are now routinely runnable.
+
+**Still NOT gated** (verified by code-comparison / one-off GT capture, no
+standing automated gate): laser fire cadence + bullet-blast, bonus economy
++ effects + scoring tables, falling-object motion, enemy bomb drop, the
+ball speed-up ramp, and the sprite-animation ping-pongs (bird/UFO/blast —
+deliberately not gated: sprite_num shares the ±1 boot-phase jitter, so an
+exact frame assertion is flaky). These are the genuine remaining
+test-coverage gaps if deeper regression protection is wanted.
 
 ## Bottom line (updated 2026-06-05)
 
