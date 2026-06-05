@@ -269,12 +269,29 @@ Interpretation:
 
 ## Next Likely Wins
 
-0. **Multi-ball / big-ball dirty tier (CONFIRMED top lever).** Measured 89/180
-   full-dynamic frames in `profile-ballbricks` are `ball block balls`.
-   ball2/ball3 are full 16×12 moving sprites like the primary — extend the
-   dirty path to render + dirty-mark them (and the big-ball sprite), same
-   proven pattern as the bullet/bomb tiers. Verify with a multi-ball
-   dirty-redraw comparison.
+0. **Multi-ball / big-ball dirty tier (top lever — PARKED on a test-harness
+   blocker, 2026-06-05).** Implemented the extra-ball tier (route ball2/ball3
+   to the OBJECTS/simple tier + render them there; keep big-ball full) — but
+   REVERTED it because I could not VERIFY it. The attempt's findings:
+   - The extra-ball rendering is plausibly correct (an isolated f30 capture
+     matched the full baseline) but the only available scenario — catching a
+     MULTI_BALL bonus — is too emergent: 3 balls bounce through the brick
+     band, drop further RNG-gated bonuses, and the capture isn't frame-frozen
+     for it, so the dirty-vs-full comparison is FLAKY (0 px and 75 px on
+     identical builds). A flaky test can't gate a rendering change.
+   - It also exposed a separate **+400-popup simple-tier coupling**: at f5
+     (popup live) the comparison showed 138 px at the catch position. A
+     MULTI_BALL catch always spawns the popup, so the two are entangled.
+   - `profile-ballbricks`'s emergent bonus happened to be BIG_BALL (which
+     stays full-dynamic by design), so that profile didn't even exercise the
+     multi-ball change — need a multi-ball-specific measurement too.
+   **To land it:** add a deterministic harness first — a direct
+   `BATTY_REPLAY_MULTIBALL` bake hook that spawns ball2/ball3 BELOW the brick
+   band (no bonus catch → no popup, no emergent brick hits) with a
+   frame-frozen capture. Then the extra-ball tier can be verified + shipped,
+   and the +400-popup simple-tier trail handled separately. The bullet/bomb
+   tiers were easy because their bake scenarios were simple + deterministic;
+   multi-ball's catch-coupling makes it the harder one.
 
 ## Next Likely Wins
 
