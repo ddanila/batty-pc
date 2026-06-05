@@ -512,10 +512,18 @@ TYPE pick (logic + table + exclusions) -> catch->bonus_applied code ->
 catch->actual effect. Plus the whole laser path, all per-frame motion, and
 the enemy animation.
 
+**Bullet-blast animation also gated (2026-06-05).** `test-bullet-blast`
+(in `parity-check-full`) bakes a bullet-impact blast (`BATTY_REPLAY_BLAST`)
++ a `blast_state` probe line and asserts the 8-tick countdown at 2
+ticks/frame (derived frame 3/2/1/0 at f1/3/5/7) — the last visible
+per-frame animation. With this every per-frame animation in the game is
+gated.
+
 **Still NOT gated** (verified by code-comparison, low value / out of frame-
-step reach): the bullet-blast 4-frame anim (cosmetic), scoring tables per
-row, and the ball speed-up ramp (~1184-frame, too slow for a frame-step
-gate). These are the only remaining gaps and none is high-value.
+step reach): scoring tables per row (needs precise ball-to-known-brick
+positioning) and the ball speed-up ramp (~1184-frame, too slow for a
+frame-step gate). Neither is high-value; the deterministic, high-confidence
+coverage is complete.
 
 ## Bottom line (updated 2026-06-05)
 

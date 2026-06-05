@@ -4635,6 +4635,24 @@ static void apply_replay_force_bonus(void) {
     try_spawn_bonus(col, row);
 }
 
+/* Bake a bullet-impact blast for the blast-animation gate.
+ * BATTY_REPLAY_BLAST = "x,y" arms slot 0 at full duration; step_bullet_blast
+ * decrements bullet_blast_ticks 1/frame (8 -> 0 over 8 frames = 4 frames x
+ * BULLET_BLAST_TICKS_PER_FRAME), render frame = (ticks-1)/2. */
+static void apply_replay_blast_override(void) {
+    const char *spec = getenv("BATTY_REPLAY_BLAST");
+    char *endp, *endp2;
+    long x, y;
+    if (spec == NULL) return;
+    x = strtol(spec, &endp, 0);
+    if (endp == spec || *endp != ',') return;
+    y = strtol(endp + 1, &endp2, 0);
+    if (endp2 == endp + 1) return;
+    bullet_blast_ticks[0] = BULLET_BLAST_FRAMES * BULLET_BLAST_TICKS_PER_FRAME;
+    bullet_blast_x[0] = (int)x;
+    bullet_blast_y[0] = (int)y;
+}
+
 static void apply_replay_rocket_override(void) {
     if (getenv("BATTY_REPLAY_ROCKET_ACTIVE") == NULL) return;
     rocket_active = 1;
@@ -4749,6 +4767,11 @@ static void write_replay_probe(void) {
             (unsigned)(bullet_y[0] & 0xFF));
     fprintf(f, "\nlaser_fire_state=shots%04X_cd%02X",
             (unsigned)dbg_shots_fired, (unsigned)bullet_cooldown);
+    fprintf(f, "\nblast_state=ticks%02X_frame%02X",
+            (unsigned)bullet_blast_ticks[0],
+            (unsigned)(bullet_blast_ticks[0]
+                       ? (bullet_blast_ticks[0] - 1) / BULLET_BLAST_TICKS_PER_FRAME
+                       : 0xFF));
     fprintf(f, "\neffects_state=b2%02X_b3%02X_xtgt%02X_bball%02X_lives%02X",
             (unsigned)ball2_active, (unsigned)ball3_active,
             (unsigned)(bat_extra_tgt & 0xFF),
@@ -6776,6 +6799,7 @@ static state_t run_level(void) {
         apply_replay_bomb_override();
         apply_replay_pts400_override();
         apply_replay_bullet_override();
+        apply_replay_blast_override();
         apply_replay_force_bonus();
         apply_replay_rocket_override();
         write_replay_probe();
