@@ -696,6 +696,14 @@ static unsigned char bat_fire_anim_ticks = 0;
  * is ignored until the counter underflows. Net effect: ~11 frames
  * between shots regardless of how fast SPACE is mashed. */
 static unsigned char bullet_cooldown = 0;
+/* Total laser shots fired this level (diagnostic, exposed via the probe so
+ * the fire-cadence gate can assert the 12-frame period). Reset at level
+ * entry. */
+static unsigned int  dbg_shots_fired = 0;
+/* Test hook: when set (BATTY_AUTO_FIRE), the laser fires every frame the
+ * cooldown permits, simulating held SPACE so the cadence is gate-checkable
+ * without driving keyboard input through the capture harness. */
+static unsigned char auto_fire = 0;
 
 /* Second ball for the MULTI_BALL ($02 = triple_ball) bonus. We only
  * spawn TWO extras for a total of three balls — port of the LA67B_8
@@ -4719,6 +4727,8 @@ static void write_replay_probe(void) {
     fprintf(f, "\nbullet_state=active%02X_x%02X_y%02X",
             (unsigned)bullet_active[0], (unsigned)(bullet_x[0] & 0xFF),
             (unsigned)(bullet_y[0] & 0xFF));
+    fprintf(f, "\nlaser_fire_state=shots%04X_cd%02X",
+            (unsigned)dbg_shots_fired, (unsigned)bullet_cooldown);
     fprintf(f, "\nnormal_launch_state=%02X%02X%02X%02X%02X",
             (unsigned)last_primary_launch_valid,
             (unsigned)last_primary_launch_x,
@@ -5031,6 +5041,31 @@ static void step_bullet_one(int b) {
 static void step_bullet(void) {
     int i;
     for (i = 0; i < N_BULLETS; i++) step_bullet_one(i);
+}
+
+/* Fire one laser bullet if the bat carries the LASER bonus, the cooldown
+ * has expired, and a slot is free. Port of free_bullet_2 ($A14C) + the
+ * $A12C cooldown gate. Called from the SPACE handler and (under
+ * BATTY_AUTO_FIRE) once per frame. The cooldown == 0 check is BEFORE the
+ * end-of-frame `-= 2`, so the 0x18 reset yields the original's 12-frame
+ * cadence (see the long note at the old call site / notes/laser.md). */
+static void try_fire_laser(void) {
+    int free_slot = -1;
+    int j;
+    if (rocket_active
+        || objects[OBJ_BAT_1].bonus_applied != 0x01
+        || bullet_cooldown != 0) return;
+    for (j = 0; j < N_BULLETS; j++) {
+        if (!bullet_active[j]) { free_slot = j; break; }
+    }
+    if (free_slot < 0) return;
+    bullet_active[free_slot] = 1;
+    bullet_x[free_slot] = BAT_X + 12;
+    bullet_y[free_slot] = BAT_Y - 1;
+    bat_fire_anim_ticks = 8;
+    bullet_cooldown = 0x18;          /* 12 frames @ -2 / frame */
+    dbg_shots_fired++;
+    snd_q_push(SND_SHOT);
 }
 
 /* Step the bullet-impact blasts one tick each. Per-slot countdown
@@ -6678,6 +6713,7 @@ static state_t run_level(void) {
         bullet_blast_ticks[0] = 0;
         bullet_blast_ticks[1] = 0;
         bullet_cooldown       = 0;
+        dbg_shots_fired       = 0;
         rocket_active      = 0;
         rocket_clear_completed = 0;
         set_rocket_bonus_sprite_height(ROCKET_BONUS_H_PX);
@@ -6798,38 +6834,12 @@ static state_t run_level(void) {
                      * once (port of object_bullet_1 / _2 at $A0FA).
                      * Independent of ball state — SPACE can refire
                      * the laser while the ball is in play. */
-                    if (!rocket_active
-                        && objects[OBJ_BAT_1].bonus_applied == 0x01
-                        && bullet_cooldown == 0) {
-                        int free_slot = -1;
-                        int j;
-                        for (j = 0; j < N_BULLETS; j++) {
-                            if (!bullet_active[j]) { free_slot = j; break; }
-                        }
-                        if (free_slot >= 0) {
-                            bullet_active[free_slot] = 1;
-                            /* Original free_bullet_2 at \$A14C:
-                             *   bullet_x = bat_x + \$0C (= +12 px)
-                             *   bullet_y = \$AC (= 172, one px above bat top)
-                             * Bullet emerges from the bat surface, not floating above. */
-                            bullet_x[free_slot] = BAT_X + 12;
-                            bullet_y[free_slot] = BAT_Y - 1;
-                            bat_fire_anim_ticks = 8;
-                            /* Original free_bullet_2 reset ($A150): LD A,(bullet);
-                             * CPL; AND $01; ADD A,$16 — a parity-adjusted 0x16/0x17
-                             * combined with the SUB $02 / JR C (carry) fire gate at
-                             * $A12C. Holding fire, the counter underflows (<2) exactly
-                             * 12 frames after each shot for BOTH reset values (the
-                             * parity bit keeps the period constant). Our gate is
-                             * `cooldown == 0` checked BEFORE the end-of-frame -=2, so
-                             * to match the original's 12-frame cadence the reset must
-                             * be 0x18 (24-2k=0 at k=12 -> fire on frame 13). A fixed
-                             * 0x16 here gave 11 frames — ~8% too fast. Under ==0
-                             * semantics the parity bit is moot; 0x18 reproduces it. */
-                            bullet_cooldown = 0x18;          /* 12 frames @ -2 / frame (matches original) */
-                            snd_q_push(SND_SHOT);
-                        }
-                    }
+                    /* free_bullet_2 ($A14C): bullet emerges from the bat
+                     * surface (bat_x+12, y=172), 0x18 reset = 12-frame
+                     * cadence. Extracted to try_fire_laser so the auto-fire
+                     * test hook can drive the same path. Independent of ball
+                     * state — SPACE refires the laser while the ball flies. */
+                    try_fire_laser();
                     start = bios_ticks();
                 }
                 /* Mirror the original: no level-skip key. ENTER while
@@ -6930,6 +6940,7 @@ static state_t run_level(void) {
                         }
                     }
                 }
+                if (auto_fire) try_fire_laser();   /* held-SPACE sim (test) */
                 step_bonus();
                 step_pts_400();
                 step_bomb();
@@ -7171,6 +7182,7 @@ int main(void) {
     }
     if (getenv("BATTY_FORCE_FULL_FLUSH_EACH_FRAME") != NULL) force_full_flush_each_frame = 1;
     if (getenv("BATTY_SUPPRESS_NO_BALL_DEATH") != NULL) suppress_no_ball_death = 1;
+    if (getenv("BATTY_AUTO_FIRE") != NULL) auto_fire = 1;
     {
         const char *p = getenv("BATTY_PROFILE_AUTO_FRAMES");
         if (p != NULL && *p != '\0') {

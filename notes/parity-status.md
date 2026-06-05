@@ -442,15 +442,24 @@ frame 1). Guards bullet travel speed; the laser FIRE CADENCE (cooldown)
 stays ungated because it needs held-fire input the capture harness can't
 drive.
 
+**Laser FIRE cadence also gated (2026-06-05).** `test-laser-cadence` (in
+`parity-check-full`) verifies the held-fire shot period. The fire path was
+extracted into `try_fire_laser()` and a `BATTY_AUTO_FIRE` test hook calls
+it every frame (simulating held SPACE — which the capture harness can't
+drive via keyboard), with a `dbg_shots_fired` counter in a new
+`laser_fire_state` probe line. With the bat baked into LASER mode
+(bonus_applied=0x01) it asserts shots 1/1/2 at f1/12/13 — the 12-frame
+cadence from the 0x18 cooldown reset (a regression to 0x16 fires shot 2 at
+f12, which the gate catches). The 0x18 fix is now regression-locked.
+
 **Still NOT gated** (verified by code-comparison / one-off GT capture, no
-standing automated gate): laser FIRE cadence (cooldown — needs held-fire
-input) + bullet-blast anim, bonus economy (drop RNG-gate) + effects +
-scoring tables, the ball speed-up ramp, and the sprite-animation ping-pongs
-(bird/UFO/blast — deliberately not gated: sprite_num shares the ±1
-boot-phase jitter). All the deterministic per-frame MOTION (bonus, bomb,
-+400 popup, bullet) is now gated; the remaining items need RNG-seeded
-scenarios (bonus-drop), held-input simulation (laser cadence), or hit the
-jitter wall (sprite anim) — each a meaningful step up in effort.
+standing automated gate): the bullet-blast 4-frame anim, bonus economy
+(drop RNG-gate) + effects + scoring tables, the ball speed-up ramp, and the
+sprite-animation ping-pongs (bird/UFO/blast — deliberately not gated:
+sprite_num shares the ±1 boot-phase jitter). The whole laser path
+(bullet flight + fire cadence) and all deterministic per-frame motion are
+now gated; the remaining items need RNG-seeded scenarios (bonus-drop /
+scoring) or hit the jitter wall (sprite anim).
 
 ## Bottom line (updated 2026-06-05)
 
