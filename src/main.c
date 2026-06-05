@@ -1157,14 +1157,20 @@ static const unsigned int spr_ufo_frames[8]  = {
 #define SPR_BONUS_EXTRA_LIFE  (0x8C44 - 0x7A8C)   /* code $05 */
 #define SPR_BONUS_5000_POINTS (0x8C94 - 0x7A8C)   /* code $08 */
 #define SPR_BONUS_TRIPLE_BALL (0x8CEA - 0x7A8C)   /* code $02 */
-static const unsigned int spr_blast_frames[5] = {
-    SPR_BLAST_1, SPR_BLAST_2, SPR_BLAST_3, SPR_BLAST_4, SPR_BLAST_5
+/* anim_alien_blast ($788A) is a 10-entry PING-PONG over the 5 blast
+ * sprites: 1,2,3,4,5,4,3,2,1,1 (GT-confirmed: poking the enemy to the
+ * blast state and stepping shows sprite_num 0..9 advancing +1 every 2
+ * frames — misc_12 toggles $50<->$10 — then handling_blast deactivates at
+ * frame 9). The port had only the 5-frame expand (1..5) at 3 ticks/frame. */
+static const unsigned int spr_blast_frames[10] = {
+    SPR_BLAST_1, SPR_BLAST_2, SPR_BLAST_3, SPR_BLAST_4, SPR_BLAST_5,
+    SPR_BLAST_4, SPR_BLAST_3, SPR_BLAST_2, SPR_BLAST_1, SPR_BLAST_1
 };
 static const unsigned int spr_spark_frames[5] = {
     SPR_SPARK_1, SPR_SPARK_2, SPR_SPARK_3, SPR_SPARK_4, SPR_SPARK_5
 };
-#define BLAST_FRAMES 5
-#define BLAST_TICKS_PER_FRAME 3
+#define BLAST_FRAMES 10
+#define BLAST_TICKS_PER_FRAME 2
 /* Spark: each frame decays in duration (rough port of the original's
  * "halve the timer each frame" mechanic). 8/4/2/1/1 ticks total. */
 #define SPARK_FRAMES 5

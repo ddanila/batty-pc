@@ -70,12 +70,17 @@ Several paths use gameplay-equivalent but not byte-exact motion:
   the note.
 - big-bat resize timing is matched visually but not a literal port of
   the original bit-gated state machine.
-- **alien-explosion cadence** (cosmetic). `handling_blast_obj` plays the 5
-  blast sprites once at 3 ticks/frame; the original's `LAAD2` advances on a
-  `$12=$50` timer and `handling_blast` deactivates at frame `$09`, which
-  (with only 5 sprites) likely cycles them ~twice. Same 5 sprites, same
-  gameplay (alien dies, slot frees); only the explosion's duration/repeat
-  may differ. Needs a blast-anim ground-truth capture to pin down.
+- **alien-explosion cadence** — FIXED (2026-06-05). GT capture (poke the
+  enemy to the blast state `set=$0A, misc_12=$50, misc_13=$90` and step)
+  showed `anim_alien_blast` is a 10-entry PING-PONG `{1,2,3,4,5,4,3,2,1,1}`
+  with sprite_num advancing **+1 every 2 frames** (misc_12 toggles
+  `$50`↔`$10`) and `handling_blast` deactivating at frame 9 (~20 frames).
+  The port played only the 5-frame expand once at 3 ticks/frame. Fixed:
+  `spr_blast_frames` is now the 10-entry ping-pong, `BLAST_FRAMES=10`,
+  `BLAST_TICKS_PER_FRAME=2`. Port sprite_num now matches the GT (f0=0,
+  f2=1, f4=2, f6=3 — +1/2 frames). (The earlier "only 5 sprites would
+  overflow" worry was from mis-reading anim_bird's tail; the real
+  `anim_alien_blast` table ping-pongs the 5 sprites over 10 entries.)
 - **progressive ball speed-up + SLOW semantics** — DONE (2026-06-05; see
   parity-status.md "Ball speed-up + SLOW"). The port now models the
   original's accelerating ball (`$02 → $06` via the `ball+$13`/`$94` ramp
