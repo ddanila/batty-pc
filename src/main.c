@@ -2666,6 +2666,11 @@ static unsigned char dirty_max_byte[DIRTY_SLOTS][PLAYFIELD_H];
  * PLAYFIELD_H. Init full so the first restore (before any carry) is safe. */
 static int prev_dirty_y_lo = 0;
 static int prev_dirty_y_hi = PLAYFIELD_H - 1;
+/* Pixel-row span of THIS frame's current dirty marks (reset each frame in
+ * clear_dirty_ranges, grown by mark_dirty_bytes / mark_all_dirty), so
+ * carry_dirty_with_previous can scan only [current ∪ prev] rows. */
+static int cur_dirty_y_lo = PLAYFIELD_H;
+static int cur_dirty_y_hi = -1;
 static unsigned char prev_dirty_min_byte[DIRTY_SLOTS][PLAYFIELD_H];
 static unsigned char prev_dirty_max_byte[DIRTY_SLOTS][PLAYFIELD_H];
 static int static_bg_dirty = 1;
@@ -2687,6 +2692,10 @@ static void clear_dirty_ranges(unsigned char mins[DIRTY_SLOTS][PLAYFIELD_H],
     for (s = 0; s < DIRTY_SLOTS; s++) {
         memset(mins[s], DIRTY_NONE, PLAYFIELD_H);
         memset(maxs[s], 0, PLAYFIELD_H);
+    }
+    if (mins == dirty_min_byte) {   /* clearing the CURRENT set: reset its span */
+        cur_dirty_y_lo = PLAYFIELD_H;
+        cur_dirty_y_hi = -1;
     }
 }
 
@@ -2729,6 +2738,9 @@ static void mark_dirty_bytes(int y_start, int height, int byte_lo, int byte_hi) 
     if (byte_lo > byte_hi) return;
     if (y_start < 0) y_start = 0;
     if (end > PLAYFIELD_H) end = PLAYFIELD_H;
+    if (y_start >= end) return;
+    if (y_start < cur_dirty_y_lo) cur_dirty_y_lo = y_start;
+    if (end - 1 > cur_dirty_y_hi) cur_dirty_y_hi = end - 1;
     for (y = y_start; y < end; y++) {
         mark_dirty_byte_row(dirty_min_byte, dirty_max_byte, y, byte_lo, byte_hi);
     }
@@ -2759,6 +2771,8 @@ static void mark_all_dirty(void) {
         dirty_min_byte[1][y] = DIRTY_NONE;
         dirty_max_byte[1][y] = 0;
     }
+    cur_dirty_y_lo = 0;
+    cur_dirty_y_hi = PLAYFIELD_H - 1;
 }
 
 static void fast_memcpy(void *dest, const void *src, unsigned int n_bytes) {
@@ -5827,7 +5841,13 @@ static void carry_dirty_with_previous(void) {
      * span for next frame's restore to scan only those rows, not all 192. */
     int y_lo = PLAYFIELD_H;
     int y_hi = -1;
-    for (y = 0; y < PLAYFIELD_H; y++) {
+    /* Only rows where the current OR last-prev set is dirty need carrying;
+     * everything else is already NONE in both. Scan that union, not all 192. */
+    int scan_lo = (cur_dirty_y_lo < prev_dirty_y_lo) ? cur_dirty_y_lo : prev_dirty_y_lo;
+    int scan_hi = (cur_dirty_y_hi > prev_dirty_y_hi) ? cur_dirty_y_hi : prev_dirty_y_hi;
+    if (scan_lo < 0) scan_lo = 0;
+    if (scan_hi > PLAYFIELD_H - 1) scan_hi = PLAYFIELD_H - 1;
+    for (y = scan_lo; y <= scan_hi; y++) {
         unsigned char current_min0 = dirty_min_byte[0][y];
         unsigned char current_max0 = dirty_max_byte[0][y];
         unsigned char current_min1 = dirty_min_byte[1][y];

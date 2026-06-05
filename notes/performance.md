@@ -322,6 +322,22 @@ Interpretation:
   leave a trail — none did). Init range is full so the first restore
   (pre-carry) is safe; empty range (hi<lo) scans nothing.
 
+- **Per-frame carry scan bounded too (2026-06-05).** Symmetric to the
+  restore-scan bound: `carry_dirty_with_previous` also scanned all 192 rows
+  every frame (it lives in the `buff_to_vga` bucket). It only needs the rows
+  where the current OR last-prev set is dirty, so it now scans
+  `[min(cur,prev)_y_lo, max(cur,prev)_y_hi]`. The current span is tracked in
+  `mark_dirty_bytes` + `mark_all_dirty` (the only pre-carry current-mark
+  paths) and reset in `clear_dirty_ranges` for the current set; the prev span
+  comes from the previous carry. Measured (profile-ballbricks):
+  `buff_to_vga` 8760 → 7792. The bound is the UNION of current+prev so it
+  can never be too narrow (it changes the scan range only, not the flushed
+  output — so it can't introduce a trail); all 8 dirty-redraw gates + visual
+  states pass. (Note: `test-ball-object-dirty-redraw` flaked once then passed
+  twice — a pre-existing SLEEP-timed-screendump capture flake, unrelated to
+  the scan range.) With both scan loops bounded, the every-frame floor is now
+  just the restore memcpy + the VGA flush — both intrinsic.
+
 ## Next Likely Wins
 
 0. **Brick-change frames should NOT force a full-dynamic redraw.** This is
