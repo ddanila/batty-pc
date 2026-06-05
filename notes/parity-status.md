@@ -476,14 +476,25 @@ behaviour. This was the "harder, needs an RNG-seeded scenario" item — done
 deterministically without ZEsarUX GT by isolating the decision via the
 force-spawn hook.
 
+**Bonus catch->effect also gated (2026-06-05).** `test-bonus-effects` (in
+`parity-check-full`) bakes a bonus of a given PORT type just above the bat
+(reusing the `BATTY_REPLAY_BONUS` hook), lets it be caught on f1, and
+asserts `object_bat_1.bonus_applied` equals the DOCUMENTED original code
+(0x00 BIG_BAT, 0x01 LASER, 0x03 MAGNET, 0x09 KILL_ALIENS — hardcoded, not
+read from the C `our_to_orig_bonus`, so a wrong mapping is caught). Only
+codes differing from the 0xFF entry value are used, so the catch is
+unambiguous. Composes with `test-laser-cadence` (which bakes
+bonus_applied=0x01 directly): catch LASER -> 0x01 -> fires.
+
 **Still NOT gated** (verified by code-comparison, no standing gate): the
 bonus TYPE-pick table + per-type exclusions (the `next_random()` loop after
-the drop gate — gateable next via the same force-spawn hook, asserting
-bonus_type for a seed against the documented table), the bullet-blast
-4-frame anim (cosmetic), bonus EFFECTS + scoring tables, and the ball
-speed-up ramp (a ~1184-frame effect, too slow for a frame-step gate). The
-drop DECISION, the whole laser path, all per-frame motion, and the enemy
-animation are now gated.
+the drop gate — would need an independent RNG-walk reimplementation to
+avoid circularity, the one piece where ZEsarUX GT would add real value),
+the bullet-blast 4-frame anim (cosmetic), the remaining bonus effects
+(MULTI_BALL ball-spawn, BIG_BALL, LIFE lives++ — need extra probe fields),
+scoring tables per row, and the ball speed-up ramp (~1184-frame, too slow
+for a frame-step gate). The drop DECISION + catch->effect linkage, the
+whole laser path, all per-frame motion, and the enemy animation are gated.
 
 ## Bottom line (updated 2026-06-05)
 
