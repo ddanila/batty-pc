@@ -1101,6 +1101,9 @@ static unsigned char sprites_blob[SPRITES_BLOB_SIZE];
 #define SPR_UFO_1        (0x83B0 - 0x7A8C)   /* = 0x924 */
 #define SPR_UFO_2        (0x8406 - 0x7A8C)   /* = 0x97a */
 #define SPR_UFO_3        (0x8462 - 0x7A8C)   /* = 0x9d6 */
+#define SPR_UFO_4        (0x84C4 - 0x7A8C)   /* = 0xa38 */
+#define SPR_UFO_5        (0x852C - 0x7A8C)   /* = 0xaa0 */
+#define SPR_UFO_6        (0x859A - 0x7A8C)   /* = 0xb0e */
 #define SPR_BIRD_1       (0x860E - 0x7A8C)   /* = 0xb82 */
 #define SPR_BIRD_2       (0x866A - 0x7A8C)   /* = 0xbde */
 #define SPR_BIRD_3       (0x86C6 - 0x7A8C)   /* = 0xc3a */
@@ -1119,7 +1122,13 @@ static const unsigned int spr_bird_frames[8] = {
     SPR_BIRD_1, SPR_BIRD_2, SPR_BIRD_3, SPR_BIRD_4,
     SPR_BIRD_3, SPR_BIRD_2, SPR_BIRD_1, SPR_BIRD_5
 };
-static const unsigned int spr_ufo_frames[3]  = { SPR_UFO_1,  SPR_UFO_2,  SPR_UFO_3  };
+/* anim_ufo ($789E) is the same 8-step ping-pong shape as the bird, over
+ * 6 UFO sprites: 1,2,3,4,5,6,5,4. Indexed by the shared sprite_num
+ * ((misc_12>>2) & 7 from handling_bird_obj, which the UFO delegates to). */
+static const unsigned int spr_ufo_frames[8]  = {
+    SPR_UFO_1, SPR_UFO_2, SPR_UFO_3, SPR_UFO_4,
+    SPR_UFO_5, SPR_UFO_6, SPR_UFO_5, SPR_UFO_4
+};
 
 #define SPR_400_POINTS   (0x7ABE - 0x7A8C)   /* = 0x032 */
 #define SPR_BLAST_1      (0x87E6 - 0x7A8C)   /* = 0xd5a */
@@ -5600,7 +5609,7 @@ static void redraw_full_with_ball(unsigned char level_idx) {
         } else {
             spr = (enemy->sprite_set == 0x09)
                 ? spr_bird_frames[enemy->sprite_num & 7]   /* 8-step ping-pong */
-                : spr_ufo_frames[enemy->sprite_num % 3];   /* UFO unchanged */
+                : spr_ufo_frames[enemy->sprite_num & 7];   /* UFO 8-step ping-pong */
         }
         spr_w_px = sprites_blob[spr]     * 8;
         spr_h_px = sprites_blob[spr + 1];
@@ -5731,7 +5740,7 @@ static void render_enemy_to_buff_and_mark(unsigned char bg_attr) {
     } else {
         spr = (enemy->sprite_set == 0x09)
             ? spr_bird_frames[enemy->sprite_num & 7]   /* 8-step ping-pong */
-            : spr_ufo_frames[enemy->sprite_num % 3];   /* UFO unchanged */
+            : spr_ufo_frames[enemy->sprite_num & 7];   /* UFO 8-step ping-pong */
     }
     spr_w_px = sprites_blob[spr] * 8;
     spr_h_px = sprites_blob[spr + 1];

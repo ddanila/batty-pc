@@ -115,6 +115,14 @@ Several paths use gameplay-equivalent but not byte-exact motion:
   timer. (b) **direction mirror** — `LAA02` flips the sprite horizontally
   when the bird crosses a facing hemisphere; not ported (needs a mirror
   blit). Decode + GT in `notes/enemy-movement.md`.
+  **UFO ($08) also done (2026-06-05):** `anim_ufo` ($789E) is the same
+  8-step ping-pong over 6 sprites — `{1,2,3,4,5,6,5,4}`. Added
+  `SPR_UFO_4/5/6` ($84C4/$852C/$859A — growing-height UFO frames) and made
+  `spr_ufo_frames` the 8-entry table indexed by the shared `sprite_num &
+  7`. Table-derived (no runtime GT — the L3 snapshot has a bird, not a
+  UFO — but the `anim_ufo` table IS the authoritative frame mapping), and
+  the UFO's phase is actually correct (its `prop_even[1]=$60` → sprite_num
+  0 at spawn). Same mirror caveat as the bird.
 - **rocket bonus flight** — now fully decoded (`notes/rocket-flight.md`).
   The **motion** is FAITHFUL (`handling_rocket` $A89A accel model + bat
   attach; the port's per-rocket counter is byte-equivalent because
