@@ -26,8 +26,13 @@ What remains is **intrinsic or measured-marginal**, not headroom:
 Further rendering-perf changes would be marginal and carry dirty-redraw
 gate-risk. Higher-value future perf would be a DIFFERENT dimension (asset/
 level load time, sound path) — but those are one-time/low-value or hard to
-measure under QEMU's fast disk. **Recommend concluding or redirecting the
-perf loop.**
+measure under QEMU's fast disk.
+
+**The perf loop was concluded here (2026-06-05).** Rendering is at its
+floor. If perf work resumes, the untouched lever is LOAD TIME (the asset/
+level `fread`s in src/main.c around the file-load helpers — batching small
+reads helps the real DOS/floppy target even though QEMU's fast disk hides
+it); that was identified but not pursued. The render-cost work is complete.
 
 ## Current Profiling Workflow
 
