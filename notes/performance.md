@@ -284,11 +284,19 @@ Interpretation:
   always co-occurs with the catch anyway). big-ball still stays full-dynamic
   (its wider sprite needs a wider dirty rect — a small separate follow-up).
 
+- **big-ball dirty tier — LANDED (2026-06-05).** The last BALLS
+  full-dynamic driver. It turned out trivial: SPR_BIG_BALL and
+  SPR_BALL_NORMAL are BOTH 16×12 (2 bytes × 12 rows — verified from the
+  sprite blob), and `render_ball_to_buff` already draws the big-ball sprite
+  in every tier, so the primary's existing 16×12 dirty mark covers it. The
+  big-ball blocker was purely conservative — removed it (no rect change).
+  `test-bigball-dirty-redraw` (new, via a deterministic `BATTY_REPLAY_BIGBALL`
+  hook) confirms pixel-exact vs the full baseline. **Every ball state —
+  normal, multi-ball, big-ball — is now on the dirty path; `ball block
+  balls` only fires for a genuinely-absent primary (hidden/stuck) now.**
+
 ## Next Likely Wins
 
-0. **big-ball dirty tier.** The one remaining BALLS full-dynamic driver: the
-   primary's larger SPR_BIG_BALL sprite needs a wider dirty rect than the
-   normal 16×12. Small follow-up to the multi-ball tier.
 0. **Brick-change frames should NOT force a full-dynamic redraw.** This is
    the real lever the measurement exposed: a single destroyed brick
    invalidates `static_bg_cache_dirty`, which blocks the ball-only fast

@@ -4748,6 +4748,15 @@ static void apply_replay_bullet_override(void) {
     bullet_y[0] = (int)y;
 }
 
+/* Activate big-ball (SMASH) for the deterministic big-ball dirty-tier gate.
+ * big_ball_active() needs big_ball_ticks>0 AND bat.bonus_applied==0x07. */
+static void apply_replay_bigball(void) {
+    if (getenv("BATTY_REPLAY_BIGBALL") == NULL) return;
+    big_ball_ticks = BIG_BALL_DURATION;
+    objects[OBJ_BAT_1].bonus_applied = 0x07;
+    objects[OBJ_BAT_2].bonus_applied = 0x07;
+}
+
 /* Bake two extra balls (multi-ball) for the deterministic extra-ball dirty
  * tier gate — WITHOUT a bonus catch (so no +400 popup) and placed BELOW the
  * brick band (y=150, clear of bricks at y<128 and the bat at y>=173), so a
@@ -6041,10 +6050,11 @@ static unsigned int ball_dirty_blockers(int bat_moved) {
     if (brick_flash_ticks || any_brick_hit_anim()) blockers |= BALL_DIRTY_BLOCK_BRICKS;
     /* Extra balls (multi-ball) are full moving sprites like the primary —
      * route them to the simple-object dirty tier (OBJECTS), not a full
-     * recompose. big-ball stays full-dynamic (the primary's larger sprite
-     * needs a wider dirty rect; handled separately). */
+     * recompose. big-ball is the PRIMARY ball with a different sprite of the
+     * SAME 16×12 footprint (verified: SPR_BIG_BALL/SPR_BALL_NORMAL both
+     * 2 bytes × 12 rows), already drawn by render_ball_to_buff + covered by
+     * the primary's 16×12 dirty mark — so it needs no blocker at all. */
     if (ball2_active || ball3_active) blockers |= BALL_DIRTY_BLOCK_OBJECTS;
-    if (big_ball_active()) blockers |= BALL_DIRTY_BLOCK_BALLS;
     /* Resize transitions still force a full frame (the bat changes width,
      * needing the vacated-area restore); the laser fire-anim is now handled
      * on the dirty path by redraw_bat_dirty, so it is no longer a blocker. */
@@ -7067,6 +7077,7 @@ static state_t run_level(void) {
         apply_replay_blast_override();
         apply_replay_force_bonus();
         apply_replay_multiball();
+        apply_replay_bigball();
         apply_replay_rocket_override();
         write_replay_probe();
         render_level_screen(i);
