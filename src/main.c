@@ -6041,7 +6041,12 @@ static unsigned int ball_dirty_blockers(int bat_moved) {
     unsigned int blockers = 0;
     if (force_ball_full_redraw || force_bat_full_redraw) blockers |= BALL_DIRTY_BLOCK_FORCED;
     if (bat_moved) blockers |= BALL_DIRTY_BLOCK_BAT;
-    if (!BALL_VISIBLE || ball_stuck) blockers |= BALL_DIRTY_BLOCK_BALLS;
+    /* A hidden primary can't be redrawn (nothing to draw) -> full path. A
+     * STUCK ball, though, is visible and rides the bat at a known position
+     * (BALL_X/Y set each frame in the stuck handler), so it redraws fine on
+     * the dirty path like a moving ball — no need to force full (helps the
+     * MAGNET-hold + pre-launch states). */
+    if (!BALL_VISIBLE) blockers |= BALL_DIRTY_BLOCK_BALLS;
     if (static_bg_dirty || static_bg_cache_dirty || force_full_flush) blockers |= BALL_DIRTY_BLOCK_STATIC;
     if (score != prev_score || high_score != prev_high_score || lives != prev_lives) blockers |= BALL_DIRTY_BLOCK_HUD;
     if (bonus_active || pts_400_active || bomb_active || rocket_active) blockers |= BALL_DIRTY_BLOCK_OBJECTS;

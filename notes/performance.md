@@ -295,6 +295,20 @@ Interpretation:
   normal, multi-ball, big-ball — is now on the dirty path; `ball block
   balls` only fires for a genuinely-absent primary (hidden/stuck) now.**
 
+- **Stuck-ball tiered (2026-06-05).** Re-profiling `profile-ballbricks`
+  after big-ball showed `ball block balls` STILL 89 — now from `ball_stuck`,
+  not big-ball (the emergent scenario catches a MAGNET bonus → the ball
+  rides the bat, and the auto-profile never presses SPACE to launch). But a
+  stuck ball is visible and rides the bat at a known position (BALL_X/Y set
+  each frame), so it redraws fine on the dirty path — it was force-routed to
+  full only by the `ball_stuck` half of the BALLS blocker. Dropped that half
+  (kept `!BALL_VISIBLE`, which genuinely has nothing to draw). Measured:
+  full-dynamic **107 → 19**, `ball block balls` → 0, 88 frames now ball-only.
+  Helps the real MAGNET-hold + pre-launch states. `test-stuck-ball-dirty-
+  redraw` (new) confirms pixel-exact. **`ball block balls` is now fully
+  eliminated** — every ball state (moving, stuck, multi-ball, big-ball) is on
+  the dirty path; BALLS only fires for a truly hidden primary.
+
 ## Next Likely Wins
 
 0. **Brick-change frames should NOT force a full-dynamic redraw.** This is
