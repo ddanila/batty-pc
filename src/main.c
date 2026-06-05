@@ -2475,16 +2475,21 @@ static void render_brick_band(unsigned char level_idx) {
                     int cr  = 4 + lvl_row;
                     int cc1 = 1 + 2 * lvl_col;
                     int cc2 = cc1 + 1;
-                    /* A destroyed cell reveals the brick-band bg, which
-                     * carries the inter-brick gap shadow on its LEFT char
-                     * (the original keeps a non-bright left column at the
-                     * cell + its shadow row — GT: char-col 13 = $05 vs the
-                     * bright $45 right char). Dim the left char (clear the
-                     * bright bit) to match; the right char stays bg_attr. */
-                    unsigned char shad = (unsigned char)(bg_attr & 0xBF);
-                    attr_buff[cr * 32 + cc1] = shad;
+                    /* A destroyed cell reveals the brick-band bg. The
+                     * original casts an inter-brick shadow from a live
+                     * brick onto the LEFT char of the cell to its right, so
+                     * a destroyed cell shows a non-bright left char ONLY
+                     * when its LEFT NEIGHBOUR is still a live brick (GT:
+                     * destroyed col 6 with live col 5 -> left char $05; a
+                     * destroyed cell whose left neighbour is also gone
+                     * keeps the bright $45). Right char is always bg_attr. */
+                    int left_live = (lvl_col > 0) &&
+                        !(cells[lvl_row * LVL_COLS + lvl_col - 1] & 0x80);
+                    unsigned char latt = left_live
+                        ? (unsigned char)(bg_attr & 0xBF) : bg_attr;
+                    attr_buff[cr * 32 + cc1] = latt;
                     attr_buff[cr * 32 + cc2] = bg_attr;
-                    attr_buff[(cr + 1) * 32 + cc1] = shad;
+                    attr_buff[(cr + 1) * 32 + cc1] = latt;
                     attr_buff[(cr + 1) * 32 + cc2] = bg_attr;
                 }
             }
