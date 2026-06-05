@@ -1991,11 +1991,16 @@ static void handling_bird_obj(object_t *o) {
         o->y_coord++;
         return;
     }
+    /* Sprite animation: the original keeps sprite_num (IX+$01) as an
+     * INDEPENDENT counter that enemy_prepare inits to 0; LAAD2 bumps it +1
+     * every 4 frames over an 8-step cycle (IX+$13 high nibble). Bumping a
+     * separate counter (not deriving sprite_num from misc_12) makes it
+     * start at 0 like the original — `(misc_12>>2)&7` started the bird
+     * mid-loop at 4 (misc_12 inits to $F0). misc_12 is the 4-frame tick.
+     * Bird/UFO render maps 0..7 through the 8-entry ping-pong tables. */
     o->misc_12++;
-    /* +1 every 4 frames over an 8-step cycle (the original's LAAD2 with
-     * IX+$13=$70). The bird render maps this through the 8-entry ping-pong
-     * spr_bird_frames; the UFO render still takes % 3 of it (unchanged). */
-    o->sprite_num = (unsigned char)((o->misc_12 >> 2) & 7);
+    if ((o->misc_12 & 3) == 0)
+        o->sprite_num = (unsigned char)((o->sprite_num + 1) & 7);
     bomb_appear(o);
     /* Steer every 4 frames. The original gates on the GLOBAL counter_misc
      * (`LD A,(counter_misc); AND $03; CALL Z,LAA7D`), not a per-object

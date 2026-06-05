@@ -116,11 +116,15 @@ Several paths use gameplay-equivalent but not byte-exact motion:
   increments smoothly 4→5→6 across the f28 hemisphere flip (dir→0x2C
   repick) with no remap jump. So the 8-entry ping-pong IS the complete
   bird animation; `LAA02`'s only live effect is its tail (`flag_2`-gated
-  `LAA7D_1` target re-pick, already handled). The one residual is the loop
-  **phase** — the port starts at sprite_num 4 not 0 (reads `misc_12` as a
-  plain counter, `0xF0>>2 & 7 = 4`, vs `LAAD2`'s `$F0`→0); negligible for a
-  looping flap and per-enemy (the UFO's `$60` init already gives phase 0),
-  so left as-is. Decode + GT in `notes/enemy-movement.md`.
+  `LAA7D_1` target re-pick, already handled). **Phase also fixed
+  (2026-06-05):** `sprite_num` is now an INDEPENDENT counter (init 0, +1
+  every 4 frames on `misc_12 & 3`) rather than `(misc_12>>2)&7`, so it
+  starts at 0 like the original instead of mid-loop at 4. Now **byte-exact
+  vs the GT**: port sprite_num f8=0, f12=1, f16=2, f24=4 = the original's
+  walk. So the bird animation is fully byte-exact (cycle + cadence +
+  phase). (Not added to the auto-gate: it shares the ±1 boot-phase jitter
+  that the x-coord does, so it'd be flaky; verified manually.) Decode + GT
+  in `notes/enemy-movement.md`.
   **UFO ($08) also done (2026-06-05):** `anim_ufo` ($789E) is the same
   8-step ping-pong over 6 sprites — `{1,2,3,4,5,6,5,4}`. Added
   `SPR_UFO_4/5/6` ($84C4/$852C/$859A — growing-height UFO frames) and made
