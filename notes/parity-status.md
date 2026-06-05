@@ -401,13 +401,18 @@ instant clear). Verified by the rocket test suite. The per-brick pace is
 not byte-reproducible); everything else matches.
 
 **Remaining — both proven NOT byte-exactly achievable (not analysis gaps):**
-1. **Metal-shimmer residual.** The shimmer LOGIC is correct (byte-identical
-   sprites, correct `anim_brik` order, loops permanently). The
-   `capture-timeline-both` ~188 px residual is largely a seed-state
-   artifact (the L3 snapshot doesn't capture the `briks_data` mid-animation
-   state, so port and original shimmer at different phases) plus a per-cell
-   damaged-brick "crack" render detail (~14 black px/cell the port lacks).
-   See `notes/metal-shimmer.md`.
+1. **Metal-shimmer / brick-flash residual.** The shimmer LOGIC is correct
+   and is NOT even exercised at L3 — the original's `briks_data` ($B6F4) is
+   EMPTY at the L3 start (read via ZEsarUX 2026-06-05), so there is no
+   mid-animation phase to mismatch (the earlier "seed-state phase artifact"
+   note was wrong). The `capture-timeline-both` ~188 px residual is actually
+   the transient **brick-destruction render** (the destruction flash +
+   revealed-background detail) on the freshly-hit destructible cells at
+   f1/3/5 — a diagnostic-only, gameplay-correct cosmetic detail (the brick
+   IS destroyed + scored). There is also NO damaged-brick crack-render gap:
+   the original `print_line_briks` renders bricks with one sprite gated on
+   bit 7 only (no cracked bit-4 sprite), which the port matches. See
+   `notes/metal-shimmer.md`.
 2. **Cycle-exact sound.** PC-speaker PIT square waves vs the Spectrum
    beeper port-`$FE` toggling — needs a sampled/low-level beeper backend
    (out of the visual-parity scope).

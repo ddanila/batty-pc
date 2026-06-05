@@ -146,3 +146,32 @@ navigation never reached L3 graphics and the screendump caught text mode).
 `BATTY_*`) before capturing, so it's robust to that. Remaining (nice to
 have): a frame-step pixel-diff of a *shimmering* metal brick vs ZEsarUX to
 confirm the per-frame sprite sequence, not just the absence of artifacts.
+
+## CORRECTION (2026-06-05): the L3 residual is NOT a shimmer phase artifact
+
+Read the original's `briks_data` ($B6F4, 5×7-byte slots) at the L3 `$BA83`
+start via ZEsarUX: **all 5 slots are EMPTY** (00…). So there is NO active
+metal-shimmer at the L3 capture point — both the original and the port
+start the shimmer system fresh (empty slots). The earlier "the residual is
+a seed-state shimmer-phase artifact (the snapshot doesn't capture the
+mid-animation `briks_data`)" hypothesis is therefore **wrong** — there is
+no mid-animation state to mismatch.
+
+What the `capture-timeline-both` ~188 px residual actually is: the L3
+`l3-brick-flash` scenario destroys a **destructible** brick, so the
+residual on the freshly-hit cells is the transient **brick-destruction
+render** — the destruction flash + the revealed-background detail during
+the few ticks after the hit (frame 0 = 0 px aligned; ~188 px at f1/3/5;
+converges afterward). It is NOT the metal-shimmer animation.
+
+Also confirmed this pass: the original `print_line_briks` renders every
+non-destroyed brick with a single sprite gated only on bit 7 (destroyed) —
+it does NOT pick a "cracked" sprite for bit 4 (half-damaged). So the port's
+single-`spr_brik_1`-per-brick render matches; there is **no damaged-brick
+crack-render gap** either.
+
+Net: the metal-shimmer LOGIC is correct (and not even exercised at L3), and
+the residual is a transient destruction-flash/bg-reveal render detail — a
+brief diagnostic-only difference on destroyed cells (gameplay is correct:
+the brick is destroyed, points awarded, bg revealed). Pixel-matching the
+exact flash is low-value cosmetic, not a shimmer or shipped-game bug.
