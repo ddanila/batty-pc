@@ -1328,6 +1328,15 @@ static unsigned long prof_frames_count = 0;
 static unsigned long prof_vga_rects = 0;
 static unsigned long prof_vga_bytes = 0;
 static unsigned long prof_static_rebuilds = 0;
+/* Brick-band cache rebuilds (build_static_brick_band_cache): count, total
+ * char-rows re-composited, and PIT ticks spent. rows/rebuilds shows the
+ * incremental win directly (full = 14, scoped ~= 3). */
+static unsigned long prof_band_rebuilds = 0;
+static unsigned long prof_band_rows = 0;
+static unsigned long prof_band_pit = 0;
+/* Force the whole-band rebuild path (A/B baseline for the incremental
+ * scoping). Set by BATTY_FULL_BAND_REBUILD. */
+static unsigned char force_full_band_rebuild = 0;
 static unsigned long prof_full_dynamic_frames = 0;
 static unsigned long prof_ball_only_frames = 0;
 static unsigned long prof_ball_object_frames = 0;
@@ -1417,6 +1426,9 @@ static void write_profile_report(void) {
             fprintf(f, "  buff_to_vga:          %lu (%u%%)\n", prof_vga_pit, (unsigned)((prof_vga_pit * 100) / total));
         }
         fprintf(f, "  static rebuilds:      %lu\n", prof_static_rebuilds);
+        fprintf(f, "  band rebuilds:        %lu\n", prof_band_rebuilds);
+        fprintf(f, "  band rows rebuilt:    %lu\n", prof_band_rows);
+        fprintf(f, "  band rebuild PIT:     %lu\n", prof_band_pit);
         fprintf(f, "  full dynamic frames:  %lu\n", prof_full_dynamic_frames);
         fprintf(f, "  ball-only frames:     %lu\n", prof_ball_only_frames);
         fprintf(f, "  ball-object frames:   %lu\n", prof_ball_object_frames);
@@ -2898,8 +2910,10 @@ static void build_static_brick_band_cache(unsigned char level_idx) {
     int cr;
     int lo = brick_dirty_lo;
     int hi = brick_dirty_hi;
+    unsigned short t0 = pit_current_ticks();
+    unsigned short t1;
 
-    if (lo <= 0 && hi >= LVL_ROWS - 1) {
+    if (force_full_band_rebuild || (lo <= 0 && hi >= LVL_ROWS - 1)) {
         /* Whole band dirty: the proven full path. */
         paint_bg_window_to_buff(bg_attr, cycle,
                                 BRICK_BAND_Y_TOP,
@@ -2912,6 +2926,7 @@ static void build_static_brick_band_cache(unsigned char level_idx) {
         for (cr = 3; cr <= 16; cr++) {
             fast_memcpy(&bg_attr_buff[cr << 5], &attr_buff[cr << 5], 32);
         }
+        prof_band_rows += 14;
     } else {
         /* Incremental: re-composite only the dirty brick rows (+1 below for
          * the vertical shadow). Pixel + char windows derived from the brick
@@ -2934,7 +2949,12 @@ static void build_static_brick_band_cache(unsigned char level_idx) {
         for (cr = cr0; cr <= cr1; cr++) {
             fast_memcpy(&bg_attr_buff[cr << 5], &attr_buff[cr << 5], 32);
         }
+        prof_band_rows += (unsigned long)(cr1 - cr0 + 1);
     }
+    t1 = pit_current_ticks();
+    prof_band_pit += (t1 <= t0) ? (unsigned long)(t0 - t1)
+                                : (unsigned long)((t0 - t1) + 23864u);
+    prof_band_rebuilds++;
     static_bg_cache_dirty = 0;
 }
 
@@ -7376,6 +7396,7 @@ int main(void) {
     if (getenv("BATTY_FORCE_FULL_FLUSH_EACH_FRAME") != NULL) force_full_flush_each_frame = 1;
     if (getenv("BATTY_SUPPRESS_NO_BALL_DEATH") != NULL) suppress_no_ball_death = 1;
     if (getenv("BATTY_AUTO_FIRE") != NULL) auto_fire = 1;
+    if (getenv("BATTY_FULL_BAND_REBUILD") != NULL) force_full_band_rebuild = 1;
     {
         const char *p = getenv("BATTY_PROFILE_AUTO_FRAMES");
         if (p != NULL && *p != '\0') {

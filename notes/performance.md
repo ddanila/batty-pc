@@ -163,12 +163,33 @@ Interpretation:
   regression — that scenario destroys no bricks, so it can't show the win).
   Quantifying it needs a brick-destruction profile scenario (see below).
 
+- **Measured the band-rebuild scoping (2026-06-05) — and it corrected the
+  assumption.** Added `make profile-bricks` (laser bat + `BATTY_AUTO_FIRE`
+  so bullets continuously destroy bricks) + band-rebuild counters (`band
+  rebuilds` / `band rows rebuilt` / `band rebuild PIT` in PROFILE.TXT) + a
+  `FULL_BAND=1` A/B toggle (`BATTY_FULL_BAND_REBUILD` forces the whole-band
+  path). A/B over 180 frames, 7 brick-destroy rebuilds:
+  - scoped:  28 rows rebuilt, band rebuild PIT 1364
+  - full:    98 rows rebuilt, band rebuild PIT 1278
+  The row count drops 3.5× (98→28) as designed, but the **wall-clock is
+  flat** (within run-to-run noise). Why: `build_static_brick_band_cache` is
+  only ~4% of frame time. The REAL cost of a brick-destroy frame is the
+  **full-dynamic redraw** it forces — `static_bg_cache_dirty` is a
+  ball-only-fast-path blocker (`BALL_DIRTY_BLOCK_STATIC`), so every
+  brick-change frame falls back to `redraw_full_with_ball` (the mislabeled
+  `render_brick_band` ~21% bucket + bg + vga). The row-scoping is still a
+  correct ~3.5× reduction in cache-rebuild work and is kept, but it is not
+  the lever. **Honest takeaway: profile-driven, not assumption-driven.**
+
 ## Next Likely Wins
 
-0. Add a brick-destruction profile scenario (ball or auto-fired bullets
-   repeatedly hitting bricks) so the incremental band rebuild above can be
-   measured, not just reasoned about. The current open-bounce profile
-   destroys no bricks.
+0. **Brick-change frames should NOT force a full-dynamic redraw.** This is
+   the real lever the measurement exposed: a single destroyed brick
+   invalidates `static_bg_cache_dirty`, which blocks the ball-only fast
+   path, so the whole frame re-composites. Instead, after the (now cheap,
+   scoped) band-cache rebuild, flush just the changed band rect + the ball
+   via the dirty-rect path — like the ball-only tier but including the
+   dirty brick rows. That removes the per-brick-hit full-frame recompose.
 
 1. Reduce `buff_to_vga` bytes/frame and rect count. The automated profile
    now makes this the top measured bucket.

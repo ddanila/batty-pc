@@ -79,8 +79,15 @@ PROFILE_FRAMES ?= 180
 PROFILE_WAIT   ?= 25
 PROFILE_BALL_OBJECT ?= 02008000A0001802020C000008070000000000000080
 PROFILE_BALL_STUCK  ?= 0
+# Laser bat (bonus_applied=0x01 at byte 0x14) for the brick-destruction
+# profile: with auto-fire, bullets continuously destroy bricks so the
+# incremental band-rebuild path is exercised + measurable.
+PROFILE_BAT_LASER   ?= 01017400AD000000040DEFAE1C0A74AD040DF0000180
+# A/B toggle: empty = incremental scoped rebuild (default); 1 = force the
+# whole-band rebuild baseline. `make profile-bricks` vs `... FULL_BAND=1`.
+FULL_BAND           ?=
 
-.PHONY: all clean run run-86box profile-auto profile-86box read-profile floppy assets help run-original run-original-cheat snapshot candidates regions test test-hud test-bat-redraw-window test-ball-dirty-redraw test-ball-object-dirty-redraw test-rocket-flight-redraw test-rocket-completion-no-ball test-round-banner-border test-brick-flash test-rocket-bonus test-death-sparks test-normal-ball-launch test-ball-left-wall-escape test-l3-replay-seed test-midgame-brick-replay replay-l3-brick-flash replay-l3-brick-flash-both test-laffc-ball-frame1 test-bat-deflection test-enemy-descend test-rng-walk test-enemy-steer test-bonus-fall test-bomb-fall test-pts400-fall test-bullet-fly test-laser-cadence test-enemy-anim test-bonus-drop test-bonus-effects test-bonus-effects2 test-bonus-typepick test-bullet-blast test-brick-scoring test-ball-speed-ramp parity-check parity-check-full
+.PHONY: all clean run run-86box profile-auto profile-bricks profile-86box read-profile floppy assets help run-original run-original-cheat snapshot candidates regions test test-hud test-bat-redraw-window test-ball-dirty-redraw test-ball-object-dirty-redraw test-rocket-flight-redraw test-rocket-completion-no-ball test-round-banner-border test-brick-flash test-rocket-bonus test-death-sparks test-normal-ball-launch test-ball-left-wall-escape test-l3-replay-seed test-midgame-brick-replay replay-l3-brick-flash replay-l3-brick-flash-both test-laffc-ball-frame1 test-bat-deflection test-enemy-descend test-rng-walk test-enemy-steer test-bonus-fall test-bomb-fall test-pts400-fall test-bullet-fly test-laser-cadence test-enemy-anim test-bonus-drop test-bonus-effects test-bonus-effects2 test-bonus-typepick test-bullet-blast test-brick-scoring test-ball-speed-ramp parity-check parity-check-full
 
 all: $(EXE) $(ASSETS)
 
@@ -281,6 +288,18 @@ $(FLOPPY_OUT): $(EXE) $(ASSETS) $(FLOPPY_SRC)
 	@if [ -n "$$BATTY_REPLAY_BALL_STUCK" ]; then \
 	    printf 'SET BATTY_REPLAY_BALL_STUCK=%s\r\n' "$$BATTY_REPLAY_BALL_STUCK" >> build/AUTOEXEC.BAT ; \
 	fi
+	@if [ -n "$$BATTY_REPLAY_BAT_OBJECT" ]; then \
+	    printf 'SET BATTY_REPLAY_BAT_OBJECT=%s\r\n' "$$BATTY_REPLAY_BAT_OBJECT" >> build/AUTOEXEC.BAT ; \
+	fi
+	@if [ -n "$$BATTY_AUTO_FIRE" ]; then \
+	    printf 'SET BATTY_AUTO_FIRE=%s\r\n' "$$BATTY_AUTO_FIRE" >> build/AUTOEXEC.BAT ; \
+	fi
+	@if [ -n "$$BATTY_SUPPRESS_NO_BALL_DEATH" ]; then \
+	    printf 'SET BATTY_SUPPRESS_NO_BALL_DEATH=%s\r\n' "$$BATTY_SUPPRESS_NO_BALL_DEATH" >> build/AUTOEXEC.BAT ; \
+	fi
+	@if [ -n "$$BATTY_FULL_BAND_REBUILD" ]; then \
+	    printf 'SET BATTY_FULL_BAND_REBUILD=%s\r\n' "$$BATTY_FULL_BAND_REBUILD" >> build/AUTOEXEC.BAT ; \
+	fi
 	@printf 'BATTY\r\n' >> build/AUTOEXEC.BAT
 	mcopy -i $@ -o build/AUTOEXEC.BAT ::AUTOEXEC.BAT
 	@echo "Floppy ready: $@  (menu-only cycle)"
@@ -438,6 +457,20 @@ profile-auto:
 	python3 scripts/run_profile_auto.py --floppy $(FLOPPY_OUT) --seconds $(PROFILE_WAIT)
 	$(MAKE) read-profile
 	python3 scripts/analyze_profile.py build/PROFILE.TXT --json build/profile-summary.json --min-frames $(PROFILE_FRAMES)
+
+# Brick-destruction profile: laser bat + auto-fire so bullets continuously
+# destroy bricks, exercising + measuring the incremental brick-band rebuild.
+# A/B: `make profile-bricks` (scoped) vs `make profile-bricks FULL_BAND=1`
+# (whole-band baseline). Compare the "band rebuild PIT" / "band rows
+# rebuilt" lines in build/PROFILE.TXT.
+profile-bricks:
+	rm -f $(FLOPPY_OUT)
+	BATTY_RENDER_PROFILE=1 BATTY_PROFILE_AUTO_FRAMES=$(PROFILE_FRAMES) BATTY_START_LEVEL=1 BATTY_LEVEL=$(PROFILE_LEVEL) \
+	    BATTY_REPLAY_BAT_OBJECT=$(PROFILE_BAT_LASER) BATTY_AUTO_FIRE=1 BATTY_SUPPRESS_NO_BALL_DEATH=1 \
+	    BATTY_REPLAY_BALL_OBJECT=$(PROFILE_BALL_OBJECT) BATTY_REPLAY_BALL_STUCK=$(PROFILE_BALL_STUCK) \
+	    BATTY_FULL_BAND_REBUILD=$(FULL_BAND) $(MAKE) $(FLOPPY_OUT)
+	python3 scripts/run_profile_auto.py --floppy $(FLOPPY_OUT) --seconds $(PROFILE_WAIT)
+	$(MAKE) read-profile
 
 profile-86box:
 	rm -f $(FLOPPY_OUT)
