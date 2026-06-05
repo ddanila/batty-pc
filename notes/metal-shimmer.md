@@ -288,3 +288,71 @@ port palette 15 = bright white vs orig 10) — NOT the destroyed-cell bg
 It's ~0.017% of the ROI, a 1-px brick-edge ink nuance, almost certainly a
 captured level_attrs edge value. Diminishing returns past here; the
 frame-step parity is effectively pixel-perfect. Pixel-chase complete.
+
+## CORRECTION (2026-06-05, iter 2): the last 4px is a CAPTURE-PHASE offset, NOT an attr value
+
+The "almost certainly a captured level_attrs edge value" guess above is
+**wrong**. Re-decoded the f3/f5 residual directly from the existing
+`build/tl_port` + `build/tl_orig` `.idx`/`.scr` captures:
+
+- The diff cells are `port=15 (white)` vs `orig=10 (red)`. The char-cell
+  **attr is identical on both sides** (`0x57` = white ink / **bright red**
+  paper), so it is NOT an attr/captured-asset difference. It is a **bitmap**
+  difference: the port has set (ink) bits the original leaves clear (paper).
+- The differing pixels form a **white wedge in the bottom-right of brick
+  col 5 / char row 8** (x88–103, y64–71). It is absent at f0/f1 (0px), then
+  appears at f3 and grows at f5 — i.e. it is the transient at the moment the
+  ball hits/penetrates that brick (the cell attr is still `0x57`, so the ball
+  body OR-blitted into the red cell shows white-on-red).
+- **Decisive measurement:** the wedge pixel-set is, byte-for-byte,
+  `PORT frame 3 ≡ ORIG frame 5` (18px, **zero** difference). The port's
+  transient runs ahead of ZEsarUX's by a fixed phase. Growth is ~2px/frame
+  and the port leads by ~2 capture indices consistently (port f5=22px vs
+  orig f5=18px = the same lead).
+
+**Why:** the port's visual-probe halt is at `main.c:7430` — *after* the
+frame's full `handling_object` + redraw (post-update). ZEsarUX captures at
+the `$BA83` breakpoint — the *top* of the main loop (pre-update). So port
+frame N ≈ orig frame N+1 by construction; the brick-hit transient then adds
+one more anim-step of lead. Both halves are temporal, not spatial: the
+RENDER is identical (proven by f3≡f5), only the sample phase differs.
+
+This puts the last 4px in the **same class as the rocket pace and
+cycle-exact sound** — a measurement/timing-phase residual, not a port render
+bug. Options if ever chased: (a) capture the port pre-update (move the probe
+halt to the loop top) to match `$BA83` — risks shifting the 8 currently-0px
+gates; (b) investigate the brick-hit-anim tick phase (a prior step-order
+flip `(tick>>1)-1` was tried and reverted — made f5 worse). Neither is worth
+4 transient px. **Status: root-caused (phase offset), accepted as artifact.**
+
+## REGRESSION found + fixed (2026-06-05, iter 2): perf cut f5 4px → 88px
+
+Caveat to the "accepted as 4px artifact" above: when re-running
+`capture-timeline-both` on HEAD, f5 was **88px**, not 4px — the documented
+4px had **regressed**. Bisected it (the capture gate needs ZEsarUX and is
+NOT in `make test`/`parity-check`, so it wasn't re-run during the perf
+campaign):
+
+- `8aa0a92` (parent): f5 = **4px** ✓
+- `27c4d69` "perf: brick destruction costs one full-dynamic frame, not two":
+  f5 = **134px** ✗  ← culprit
+
+`27c4d69` cut `BRICK_FLASH_TICKS` 2→1 on the theory that the destroyed
+cell's second full-dynamic frame is redundant because
+`carry_dirty_with_previous` re-flushes the rect on the next ball-only/object
+frame. That holds for the single-buffer **erase** (so `test-brick-flash`
+still passed), but the carry re-flush does **not** reproduce a full-dynamic
+band REBUILD of the destruction transient — so the destroy frame rendered
+differently from the original, regressing the L3 frame-step residual to
+88–134px (it oscillates with the later bounded-scan commits).
+
+**Fix:** revert `BRICK_FLASH_TICKS` to 2 (the destroyed cell needs two
+full-dynamic frames to match the original's destroy render). Re-measured at
+HEAD: `f0=0 f1=0 f2=0 f3=4 f4=0 f5=4 f6=1` — back to the 4px floor.
+`test-brick-flash`, `make test` (all 4 states), and the dirty-redraw gates
+(bullet/bomb/ball-object) all still pass. Cost: loses that micro-opt's
+"ball block bricks 19→12" on normal brick-hit frames — parity wins over a
+brick-hit-frame perf nicety. **Lesson:** any change to the brick-band /
+dirty-redraw / flash path must re-run `capture-timeline-both`, not just the
+headless gates — `test-brick-flash` checks erase cleanup, not the
+destruction transient's full-dynamic render. (Added to lessons.md.)

@@ -761,11 +761,15 @@ static void ball_delta_from_dir(unsigned char dir, int *dx, int *dy) {
  * background/window data; it does not paint a bright-white replacement
  * block. Keep the most recent cell live for a couple of ticks only so
  * dirty redraw includes print_one_brik_buf's wider 18x10 footprint. */
-/* The destroyed-cell region needs one full-dynamic frame to rebuild the
- * band + flush; the next frame re-flushes the same rect automatically via
- * carry_dirty_with_previous (single-buffer erase path), so a ball-only/
- * object frame covers it. Was 2 (a redundant second full-dynamic frame). */
-#define BRICK_FLASH_TICKS 1
+/* MUST stay 2 for frame-step parity. The perf idea (cut to 1, let
+ * carry_dirty_with_previous re-flush the cell on the next ball-only/object
+ * frame) holds for the single-buffer ERASE (test-brick-flash passes), but
+ * the carry re-flush does NOT reproduce a full-dynamic band rebuild of the
+ * destruction transient: cutting to 1 regressed the L3 capture-timeline
+ * residual from 4px to 88-134px at the destroy frame (f5). Two full-dynamic
+ * frames are required to match the original's destroy render. See
+ * notes/metal-shimmer.md (BRICK_FLASH_TICKS regression). */
+#define BRICK_FLASH_TICKS 2
 static unsigned char brick_flash_ticks = 0;
 static int           brick_flash_x     = 0;
 static int           brick_flash_y     = 0;

@@ -273,3 +273,16 @@ copy the reset literal — simulate the loop and match the *period between
 fires*, not the literal value. Cadence bugs like this pass every static
 test (no QEMU/ZEsarUX gate covers laser rate) and only show as a subtly
 faster weapon.
+
+## Brick-band / dirty-redraw changes MUST re-run capture-timeline-both
+
+`make test` (4-state visual) and `make parity-check` do NOT cover the L3
+frame-step destruction transient — only `make capture-timeline-both` (needs
+ZEsarUX) does. A perf commit (`27c4d69`) cut `BRICK_FLASH_TICKS` 2→1,
+reasoning the carry-flush covers the destroyed cell's 2nd frame. It covers
+the single-buffer ERASE (so `test-brick-flash` passed) but NOT a full-dynamic
+band REBUILD of the destroy render, regressing the L3 frame-step residual
+4px → 88px undetected for the whole rest of the campaign. Rule: any change to
+the brick-band cache / dirty-redraw / flash path is a parity change — re-run
+`capture-timeline-both`, don't trust the headless gates alone. See
+notes/metal-shimmer.md (BRICK_FLASH_TICKS regression).
