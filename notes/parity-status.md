@@ -452,14 +452,25 @@ drive via keyboard), with a `dbg_shots_fired` counter in a new
 cadence from the 0x18 cooldown reset (a regression to 0x16 fires shot 2 at
 f12, which the gate catches). The 0x18 fix is now regression-locked.
 
+**Enemy wing-flap animation also gated (2026-06-05).** `test-enemy-anim`
+(in `parity-check-full`) closes what earlier notes called the
+sprite-animation "jitter wall" — that jitter came from the MOVING ball in
+the enemy steer/descend gates, not the enemy. With the ball HIDDEN the
+enemy is fully frame-deterministic (its x is exact, not ±1), so the
+`handling_bird_obj` ping-pong is gateable: `sprite_num` advances (+1)&7
+every 4 frames once the y<8 entry slide ends. Asserts sprite_num 0/1/2/3/4
+at f8/12/16/20/24 (mid-plateau probe points). No src change needed —
+sprite_num is already in the `object_enemy` probe.
+
 **Still NOT gated** (verified by code-comparison / one-off GT capture, no
-standing automated gate): the bullet-blast 4-frame anim, bonus economy
-(drop RNG-gate) + effects + scoring tables, the ball speed-up ramp, and the
-sprite-animation ping-pongs (bird/UFO/blast — deliberately not gated:
-sprite_num shares the ±1 boot-phase jitter). The whole laser path
-(bullet flight + fire cadence) and all deterministic per-frame motion are
-now gated; the remaining items need RNG-seeded scenarios (bonus-drop /
-scoring) or hit the jitter wall (sprite anim).
+standing automated gate): the bullet-blast 4-frame anim (cosmetic;
+deterministically gateable via the same template if wanted), bonus economy
+(drop RNG-gate) + effects + scoring tables, and the ball speed-up ramp (a
+~1184-frame effect, too slow for a frame-step gate). The whole laser path
+(flight + cadence), all deterministic per-frame motion, AND the enemy
+animation are now gated; the remaining items genuinely need RNG-seeded
+scenarios (bonus-drop / scoring) — the cheap, deterministic coverage is
+now fully harvested.
 
 ## Bottom line (updated 2026-06-05)
 
