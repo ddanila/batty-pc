@@ -1,5 +1,18 @@
 # Gameplay parity status
 
+> **MILESTONE — PARITY COMPLETE (2026-06-05).** Gameplay frame-parity with
+> the Spectrum original is achieved and regression-locked: ball, bat,
+> collision (LAFFC), deflection (LAB1F), launch, catch, multi-ball, falling
+> objects, sparks, laser (+ blasts), bombs, bonus economy + all effects +
+> scoring, ball speed-up + SLOW, the per-frame RNG model, the fully
+> byte-exact enemy (motion / steering / bomb / all sprite animations), and
+> the rocket-clear (fly-over-intact + sequential tally) — all byte-exact or
+> fixed, behind 8 regression gates. The L3 frame-step diff is down to 4 px
+> (~0.017% of the ROI, from 188 px). The only residuals are NOT byte-exactly
+> achievable: that 4 px brick-edge ink nuance (a captured-asset edge value)
+> and cycle-exact sound (PIT square waves vs the Spectrum beeper — out of
+> the visual scope). See the "Bottom line" at the end for the full record.
+
 Definitive snapshot of where "100% visual frame parity in gameplay with
 the original" stands, and exactly what's left. See `replay-harness.md`
 and `laffc-decode.md` for the detailed trail.
