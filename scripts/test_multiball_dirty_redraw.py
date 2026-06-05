@@ -1,23 +1,15 @@
 #!/usr/bin/env python3
-"""Compare multi-ball dirty redraw against a forced full redraw baseline.
+"""Compare multi-ball (extra-ball) dirty redraw against a full redraw baseline.
 
-KNOWN FLAKY (2026-06-05) — NOT wired into parity-check-full. The MULTI_BALL
-catch scenario is too emergent for a clean dirty-vs-full comparison: the 3
-balls bounce through the brick band, destroy bricks, and drop further
-RNG-gated bonuses, and the screendump capture is not frame-frozen for it, so
-results vary run-to-run (seen 0 px and 75 px on identical builds). It also
-exposed a separate +400-popup simple-tier rendering coupling at early frames
-(f5: 138 px at the catch position). The extra-ball dirty tier this was
-written to verify is therefore PARKED until a deterministic harness exists:
-a direct ball2/ball3 bake hook (no bonus catch -> no popup, balls placed
-below the brick band -> no emergent hits). See notes/performance.md.
-
-Verifies the extra-ball tier: catching a MULTI_BALL bonus spawns ball2/ball3,
-which are now rendered + dirty-marked on the ball-object tier instead of
-forcing a full-dynamic recompose. Bakes a MULTI_BALL bonus (port type 9)
-just above the bat so it is caught on f1, then probes f5 (three balls in
-flight) and asserts the dirty-path screen equals the
-BATTY_FORCE_BALL_FULL_REDRAW baseline (no extra-ball trail).
+Verifies the extra-ball dirty tier: ball2/ball3 are routed to the
+simple-object tier and rendered + dirty-marked there instead of forcing a
+full recompose. Uses the deterministic BATTY_REPLAY_MULTIBALL bake hook,
+which spawns the two extra balls BELOW the brick band (y=150, no bonus catch
+→ no +400 popup) so a short probe stays clear of bricks (y<128) and the bat
+(y>=173) for ANY direction — no emergent brick hits, fully deterministic
+(unlike the earlier flaky MULTI_BALL-catch scenario). Probes f3 (three balls
+moved a few px, exercising the dirty clear/carry) and asserts the dirty path
+is pixel-identical to the BATTY_FORCE_BALL_FULL_REDRAW baseline.
 """
 
 from __future__ import annotations
@@ -45,9 +37,9 @@ def build_floppy(force_full: bool) -> None:
         "BATTY_REPLAY_WAIT_KEY": "1",
         "BATTY_REPLAY_BALL_OBJECT": BALL_OBJECT,
         "BATTY_REPLAY_BALL_STUCK": "0",
-        "BATTY_REPLAY_BONUS": "9,118,167",   # MULTI_BALL caught at the bat
+        "BATTY_REPLAY_MULTIBALL": "1",     # deterministic: extra balls below the bricks
         "BATTY_SUPPRESS_NO_BALL_DEATH": "1",
-        "BATTY_VISUAL_PROBE_FRAMES": "30",
+        "BATTY_VISUAL_PROBE_FRAMES": "3",
     })
     if force_full:
         env["BATTY_FORCE_BALL_FULL_REDRAW"] = "1"

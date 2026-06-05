@@ -4748,6 +4748,34 @@ static void apply_replay_bullet_override(void) {
     bullet_y[0] = (int)y;
 }
 
+/* Bake two extra balls (multi-ball) for the deterministic extra-ball dirty
+ * tier gate — WITHOUT a bonus catch (so no +400 popup) and placed BELOW the
+ * brick band (y=150, clear of bricks at y<128 and the bat at y>=173), so a
+ * few-frame probe stays clear of any emergent brick hit regardless of
+ * direction. Dirs/speed copied from the primary. */
+static void apply_replay_multiball(void) {
+    if (getenv("BATTY_REPLAY_MULTIBALL") == NULL) return;
+    if (ball2_active || ball3_active) return;
+    ball2_active = 1;
+    objects[OBJ_BALL_2].sprite_set = 0x02;
+    objects[OBJ_BALL_2].x_coord = 96;
+    objects[OBJ_BALL_2].y_coord = 150;
+    objects[OBJ_BALL_2].dir = objects[OBJ_BALL_1].dir;
+    objects[OBJ_BALL_2].speed = objects[OBJ_BALL_1].speed;
+    objects[OBJ_BALL_2].x_coord_hi = 0;
+    objects[OBJ_BALL_2].y_coord_hi = 0;
+    ball_delta_from_dir(objects[OBJ_BALL_2].dir, &ball2_dx, &ball2_dy);
+    ball3_active = 1;
+    objects[OBJ_BALL_3].sprite_set = 0x02;
+    objects[OBJ_BALL_3].x_coord = 160;
+    objects[OBJ_BALL_3].y_coord = 150;
+    objects[OBJ_BALL_3].dir = objects[OBJ_BALL_1].dir;
+    objects[OBJ_BALL_3].speed = objects[OBJ_BALL_1].speed;
+    objects[OBJ_BALL_3].x_coord_hi = 0;
+    objects[OBJ_BALL_3].y_coord_hi = 0;
+    ball_delta_from_dir(objects[OBJ_BALL_3].dir, &ball3_dx, &ball3_dy);
+}
+
 /* Force one bonus-drop roll at level entry for the drop-economy gate.
  * BATTY_FORCE_SPAWN_BONUS = "1" (or "col,row") calls try_spawn_bonus once
  * with the freshly-baked RNG (no frames elapsed yet), isolating the drop
@@ -6011,7 +6039,12 @@ static unsigned int ball_dirty_blockers(int bat_moved) {
     if (objects[OBJ_ENEMY].sprite_set != 0) blockers |= BALL_DIRTY_BLOCK_OBJECTS;
     if (any_bullet_active() || any_bullet_blast()) blockers |= BALL_DIRTY_BLOCK_OBJECTS;
     if (brick_flash_ticks || any_brick_hit_anim()) blockers |= BALL_DIRTY_BLOCK_BRICKS;
-    if (ball2_active || ball3_active || big_ball_active()) blockers |= BALL_DIRTY_BLOCK_BALLS;
+    /* Extra balls (multi-ball) are full moving sprites like the primary —
+     * route them to the simple-object dirty tier (OBJECTS), not a full
+     * recompose. big-ball stays full-dynamic (the primary's larger sprite
+     * needs a wider dirty rect; handled separately). */
+    if (ball2_active || ball3_active) blockers |= BALL_DIRTY_BLOCK_OBJECTS;
+    if (big_ball_active()) blockers |= BALL_DIRTY_BLOCK_BALLS;
     /* Resize transitions still force a full frame (the bat changes width,
      * needing the vacated-area restore); the laser fire-anim is now handled
      * on the dirty path by redraw_bat_dirty, so it is no longer a blocker. */
@@ -6039,8 +6072,16 @@ static void prof_note_ball_dirty_blockers(unsigned int blockers) {
 static int can_redraw_ball_with_simple_objects(unsigned int blockers) {
     if ((blockers & ~BALL_DIRTY_BLOCK_OBJECTS) != 0) return 0;
     if (!bonus_active && !pts_400_active && objects[OBJ_ENEMY].sprite_set == 0
-        && !any_bullet_active() && !any_bullet_blast() && !bomb_active) return 0;
+        && !any_bullet_active() && !any_bullet_blast() && !bomb_active
+        && !ball2_active && !ball3_active) return 0;
     if (rocket_active) return 0;
+    /* The +400 catch popup renders correctly only via the full path; in the
+     * simple tier it leaves a trail (drift + catch-frame transition — a
+     * pre-existing latent issue). It is brief + low-frequency, so route its
+     * frames to the full path. This also keeps the multi-ball CATCH frames
+     * (which spawn the popup) on the full path; steady-state multi-ball
+     * (after the popup falls off) still tiers. */
+    if (pts_400_active) return 0;
     return 1;
 }
 
@@ -6103,6 +6144,20 @@ static void render_simple_objects_to_buff_and_mark(unsigned char bg_attr) {
     if (bomb_active) {
         blit_masked_to_scr_buff_ptr(spr_bomb_data, bomb_x, bomb_y);
         mark_dirty_rect_px(bomb_x, bomb_y, 16, 16);
+    }
+    /* Multi-ball extras: full 16×12 moving balls, same dirty treatment as
+     * the primary (the carry erases last frame's position). */
+    if (ball2_active) {
+        render_ball_to_buff(objects[OBJ_BALL_2].x_coord,
+                            objects[OBJ_BALL_2].y_coord, bg_attr);
+        mark_dirty_rect_px(objects[OBJ_BALL_2].x_coord,
+                           objects[OBJ_BALL_2].y_coord, 16, 12);
+    }
+    if (ball3_active) {
+        render_ball_to_buff(objects[OBJ_BALL_3].x_coord,
+                            objects[OBJ_BALL_3].y_coord, bg_attr);
+        mark_dirty_rect_px(objects[OBJ_BALL_3].x_coord,
+                           objects[OBJ_BALL_3].y_coord, 16, 12);
     }
 }
 
@@ -7011,6 +7066,7 @@ static state_t run_level(void) {
         apply_replay_bullet_override();
         apply_replay_blast_override();
         apply_replay_force_bonus();
+        apply_replay_multiball();
         apply_replay_rocket_override();
         write_replay_probe();
         render_level_screen(i);

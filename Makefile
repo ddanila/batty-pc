@@ -91,7 +91,7 @@ PROFILE_BAT_LASER   ?= 01017400AD000000040DEFAE1C0A74AD040DF0000180
 # whole-band rebuild baseline. `make profile-bricks` vs `... FULL_BAND=1`.
 FULL_BAND           ?=
 
-.PHONY: all clean run run-86box profile-auto profile-bricks profile-ballbricks profile-86box read-profile floppy assets help run-original run-original-cheat snapshot candidates regions test test-hud test-bat-redraw-window test-ball-dirty-redraw test-ball-object-dirty-redraw test-bullet-dirty-redraw test-bomb-dirty-redraw test-bat-fire-dirty-redraw test-rocket-flight-redraw test-rocket-completion-no-ball test-round-banner-border test-brick-flash test-rocket-bonus test-death-sparks test-normal-ball-launch test-ball-left-wall-escape test-l3-replay-seed test-midgame-brick-replay replay-l3-brick-flash replay-l3-brick-flash-both test-laffc-ball-frame1 test-bat-deflection test-enemy-descend test-rng-walk test-enemy-steer test-bonus-fall test-bomb-fall test-pts400-fall test-bullet-fly test-laser-cadence test-enemy-anim test-bonus-drop test-bonus-effects test-bonus-effects2 test-bonus-typepick test-bullet-blast test-brick-scoring test-ball-speed-ramp parity-check parity-check-full
+.PHONY: all clean run run-86box profile-auto profile-bricks profile-ballbricks profile-multiball profile-86box read-profile floppy assets help run-original run-original-cheat snapshot candidates regions test test-hud test-bat-redraw-window test-ball-dirty-redraw test-ball-object-dirty-redraw test-bullet-dirty-redraw test-bomb-dirty-redraw test-bat-fire-dirty-redraw test-multiball-dirty-redraw test-rocket-flight-redraw test-rocket-completion-no-ball test-round-banner-border test-brick-flash test-rocket-bonus test-death-sparks test-normal-ball-launch test-ball-left-wall-escape test-l3-replay-seed test-midgame-brick-replay replay-l3-brick-flash replay-l3-brick-flash-both test-laffc-ball-frame1 test-bat-deflection test-enemy-descend test-rng-walk test-enemy-steer test-bonus-fall test-bomb-fall test-pts400-fall test-bullet-fly test-laser-cadence test-enemy-anim test-bonus-drop test-bonus-effects test-bonus-effects2 test-bonus-typepick test-bullet-blast test-brick-scoring test-ball-speed-ramp parity-check parity-check-full
 
 all: $(EXE) $(ASSETS)
 
@@ -304,6 +304,9 @@ $(FLOPPY_OUT): $(EXE) $(ASSETS) $(FLOPPY_SRC)
 	@if [ -n "$$BATTY_FULL_BAND_REBUILD" ]; then \
 	    printf 'SET BATTY_FULL_BAND_REBUILD=%s\r\n' "$$BATTY_FULL_BAND_REBUILD" >> build/AUTOEXEC.BAT ; \
 	fi
+	@if [ -n "$$BATTY_REPLAY_MULTIBALL" ]; then \
+	    printf 'SET BATTY_REPLAY_MULTIBALL=%s\r\n' "$$BATTY_REPLAY_MULTIBALL" >> build/AUTOEXEC.BAT ; \
+	fi
 	@printf 'BATTY\r\n' >> build/AUTOEXEC.BAT
 	mcopy -i $@ -o build/AUTOEXEC.BAT ::AUTOEXEC.BAT
 	@echo "Floppy ready: $@  (menu-only cycle)"
@@ -401,6 +404,9 @@ $(TEST_FLOPPY_OUT): $(TEST_EXE) $(ASSETS) $(FLOPPY_SRC)
 	if [ -n "$$BATTY_REPLAY_BALL_RAMP" ]; then \
 	    printf 'SET BATTY_REPLAY_BALL_RAMP=%s\r\n' "$$BATTY_REPLAY_BALL_RAMP" >> build/AUTOEXEC-T.BAT ; \
 	fi; \
+	if [ -n "$$BATTY_REPLAY_MULTIBALL" ]; then \
+	    printf 'SET BATTY_REPLAY_MULTIBALL=%s\r\n' "$$BATTY_REPLAY_MULTIBALL" >> build/AUTOEXEC-T.BAT ; \
+	fi; \
 	if [ -n "$$BATTY_REPLAY_WAIT_KEY" ]; then \
 	    printf 'SET BATTY_REPLAY_WAIT_KEY=%s\r\n' "$$BATTY_REPLAY_WAIT_KEY" >> build/AUTOEXEC-T.BAT ; \
 	fi; \
@@ -485,6 +491,18 @@ profile-ballbricks:
 	BATTY_RENDER_PROFILE=1 BATTY_PROFILE_AUTO_FRAMES=$(PROFILE_FRAMES) BATTY_START_LEVEL=1 BATTY_LEVEL=$(PROFILE_LEVEL) \
 	    BATTY_REPLAY_BALL_OBJECT=$(PROFILE_BALL_FIELD) BATTY_REPLAY_BALL_STUCK=0 \
 	    BATTY_SUPPRESS_NO_BALL_DEATH=1 $(MAKE) $(FLOPPY_OUT)
+	python3 scripts/run_profile_auto.py --floppy $(FLOPPY_OUT) --seconds $(PROFILE_WAIT)
+	$(MAKE) read-profile
+
+# Multi-ball profile: two extra balls in play (BATTY_REPLAY_MULTIBALL), to
+# measure the extra-ball dirty tier. A/B with FULL_BAND-style: compare to
+# the same scenario where extra balls force full-dynamic (git-revert era) —
+# here just confirms the extra balls take the ball-object tier, not full.
+profile-multiball:
+	rm -f $(FLOPPY_OUT)
+	BATTY_RENDER_PROFILE=1 BATTY_PROFILE_AUTO_FRAMES=$(PROFILE_FRAMES) BATTY_START_LEVEL=1 BATTY_LEVEL=$(PROFILE_LEVEL) \
+	    BATTY_REPLAY_BALL_OBJECT=$(PROFILE_BALL_OBJECT) BATTY_REPLAY_BALL_STUCK=0 \
+	    BATTY_REPLAY_MULTIBALL=1 BATTY_SUPPRESS_NO_BALL_DEATH=1 $(MAKE) $(FLOPPY_OUT)
 	python3 scripts/run_profile_auto.py --floppy $(FLOPPY_OUT) --seconds $(PROFILE_WAIT)
 	$(MAKE) read-profile
 
@@ -585,6 +603,7 @@ parity-check-full:
 	$(MAKE) test-bullet-dirty-redraw
 	$(MAKE) test-bomb-dirty-redraw
 	$(MAKE) test-bat-fire-dirty-redraw
+	$(MAKE) test-multiball-dirty-redraw
 	$(MAKE) test-bat-redraw-window
 	$(MAKE) test-ball-left-wall-escape
 	$(MAKE) test-l3-replay-seed
@@ -731,6 +750,9 @@ test-bomb-dirty-redraw:
 
 test-bat-fire-dirty-redraw:
 	python3 scripts/test_bat_fire_dirty_redraw.py
+
+test-multiball-dirty-redraw:
+	python3 scripts/test_multiball_dirty_redraw.py
 
 test-rocket-flight-redraw:
 	python3 scripts/test_rocket_flight_redraw.py

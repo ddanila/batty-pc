@@ -266,35 +266,29 @@ Interpretation:
   So the renderer is NOT at a plateau; the multi-ball/big-ball tier (long
   listed below as a Next Win) is a confirmed, large lever, not a
   speculative one.
+- **Multi-ball dirty tier — LANDED (2026-06-05), the biggest win.** Extra
+  balls (ball2/ball3) now route to the simple-object tier and are rendered +
+  dirty-marked there instead of forcing a full recompose every frame.
+  Measured (`profile-multiball`, two extra balls in play): full-dynamic
+  frames **~178 → 2**, `ball block balls` → 0, 178/180 frames now on the
+  ball-object tier; total PIT 27214. Multi-ball play used to be a worst
+  case (every frame full-dynamic); it's now tiered like ordinary play.
+  Verified by `test-multiball-dirty-redraw` — and the key was a DETERMINISTIC
+  harness: the prior MULTI_BALL-catch scenario was flaky (emergent 3-ball +
+  bonus cascade) and entangled with the +400 popup. The new
+  `BATTY_REPLAY_MULTIBALL` bake hook spawns ball2/ball3 BELOW the brick band
+  (no bonus catch → no popup; a few-frame probe stays clear of bricks for
+  any direction), giving a pixel-exact, repeatable comparison (passed 2/2
+  runs). The +400-popup simple-tier coupling is handled by routing
+  pts_400-active frames to the full path (brief + low-frequency; the popup
+  always co-occurs with the catch anyway). big-ball still stays full-dynamic
+  (its wider sprite needs a wider dirty rect — a small separate follow-up).
 
 ## Next Likely Wins
 
-0. **Multi-ball / big-ball dirty tier (top lever — PARKED on a test-harness
-   blocker, 2026-06-05).** Implemented the extra-ball tier (route ball2/ball3
-   to the OBJECTS/simple tier + render them there; keep big-ball full) — but
-   REVERTED it because I could not VERIFY it. The attempt's findings:
-   - The extra-ball rendering is plausibly correct (an isolated f30 capture
-     matched the full baseline) but the only available scenario — catching a
-     MULTI_BALL bonus — is too emergent: 3 balls bounce through the brick
-     band, drop further RNG-gated bonuses, and the capture isn't frame-frozen
-     for it, so the dirty-vs-full comparison is FLAKY (0 px and 75 px on
-     identical builds). A flaky test can't gate a rendering change.
-   - It also exposed a separate **+400-popup simple-tier coupling**: at f5
-     (popup live) the comparison showed 138 px at the catch position. A
-     MULTI_BALL catch always spawns the popup, so the two are entangled.
-   - `profile-ballbricks`'s emergent bonus happened to be BIG_BALL (which
-     stays full-dynamic by design), so that profile didn't even exercise the
-     multi-ball change — need a multi-ball-specific measurement too.
-   **To land it:** add a deterministic harness first — a direct
-   `BATTY_REPLAY_MULTIBALL` bake hook that spawns ball2/ball3 BELOW the brick
-   band (no bonus catch → no popup, no emergent brick hits) with a
-   frame-frozen capture. Then the extra-ball tier can be verified + shipped,
-   and the +400-popup simple-tier trail handled separately. The bullet/bomb
-   tiers were easy because their bake scenarios were simple + deterministic;
-   multi-ball's catch-coupling makes it the harder one.
-
-## Next Likely Wins
-
+0. **big-ball dirty tier.** The one remaining BALLS full-dynamic driver: the
+   primary's larger SPR_BIG_BALL sprite needs a wider dirty rect than the
+   normal 16×12. Small follow-up to the multi-ball tier.
 0. **Brick-change frames should NOT force a full-dynamic redraw.** This is
    the real lever the measurement exposed: a single destroyed brick
    invalidates `static_bg_cache_dirty`, which blocks the ball-only fast
