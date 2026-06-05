@@ -181,6 +181,21 @@ Interpretation:
   correct ~3.5× reduction in cache-rebuild work and is kept, but it is not
   the lever. **Honest takeaway: profile-driven, not assumption-driven.**
 
+- **Bullets/blasts joined the simple-object dirty tier (2026-06-05).** The
+  brick-destruction profile turned out to be **bullet-dominated**, not
+  brick-dominated: with auto-fire, a bullet is in flight almost every frame,
+  and bullets were a hard full-dynamic blocker — `ball block objects: 124`
+  of 180 frames. Extended `render_simple_objects_to_buff_and_mark` to render
+  + dirty-mark bullets and impact blasts (and dropped the bullet rejection
+  in `can_redraw_ball_with_simple_objects`), so in-flight bullets now use
+  the cheaper ball-object tier. Measured (profile-bricks): full-dynamic
+  frames **124 → 72**, total PIT 36400 → 35242 (~3% in this laser worst
+  case; the remaining 72 are bullet frames that ALSO carry a flash / HUD /
+  bat-fx blocker). A bullet travels 6 px/frame — the fastest dirty sprite —
+  so `test-bullet-dirty-redraw` (new) compares the dirty path to the
+  `FORCE_BALL_FULL_REDRAW` baseline mid-flight and confirms **no trail**
+  (pixel-identical). Wired into `parity-check-full`.
+
 ## Next Likely Wins
 
 0. **Brick-change frames should NOT force a full-dynamic redraw.** This is

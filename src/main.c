@@ -6031,9 +6031,9 @@ static void prof_note_ball_dirty_blockers(unsigned int blockers) {
 
 static int can_redraw_ball_with_simple_objects(unsigned int blockers) {
     if ((blockers & ~BALL_DIRTY_BLOCK_OBJECTS) != 0) return 0;
-    if (!bonus_active && !pts_400_active && objects[OBJ_ENEMY].sprite_set == 0) return 0;
+    if (!bonus_active && !pts_400_active && objects[OBJ_ENEMY].sprite_set == 0
+        && !any_bullet_active() && !any_bullet_blast()) return 0;
     if (bomb_active || rocket_active) return 0;
-    if (any_bullet_active() || any_bullet_blast()) return 0;
     return 1;
 }
 
@@ -6069,6 +6069,27 @@ static void render_simple_objects_to_buff_and_mark(unsigned char bg_attr) {
         unsigned int spr = spr_for_bonus(bonus_type);
         render_bonus_to_buff(bg_attr);
         mark_dirty_sprite_rect(spr, bonus_x, bonus_y);
+    }
+    /* Laser bullets + impact blasts: small fast sprites, redrawable on the
+     * dirty path like the ball. render_*_to_buff blit into scr_buff; mark
+     * each live slot's rect (the carry restores last frame's position, so
+     * the bullet's fast upward travel leaves no trail). */
+    if (any_bullet_active()) {
+        int i;
+        render_bullet_to_buff();
+        for (i = 0; i < N_BULLETS; i++) {
+            if (bullet_active[i])
+                mark_dirty_rect_px(bullet_x[i], bullet_y[i],
+                                   BULLET_W_PX, BULLET_H_PX);
+        }
+    }
+    if (any_bullet_blast()) {
+        int i;
+        render_bullet_blast_to_buff();
+        for (i = 0; i < N_BULLETS; i++) {
+            if (bullet_blast_ticks[i])
+                mark_dirty_rect_px(bullet_blast_x[i], bullet_blast_y[i], 16, 12);
+        }
     }
 }
 
