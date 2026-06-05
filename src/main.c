@@ -4974,10 +4974,12 @@ static int any_bullet_active(void) {
     return 0;
 }
 
-/* Step the rocket one frame: move up, destroy any destructible
- * brick its bbox overlaps, leave undestructible bricks alone (no
- * bounce — the rocket just continues past them). Deactivate when
- * the rocket leaves the top of the playfield. */
+/* Step the rocket one frame: move up (the original handling_rocket accel),
+ * lifting the bat. The original (LBB97 flight loop) does NO brick
+ * destruction — the rocket flies over the INTACT brick field; the bricks
+ * are awarded + cleared only at fly-off (award_left_bricks). The dirty
+ * redraw restores the bricks behind the rocket from scr_buff each frame.
+ * Deactivate when the rocket leaves the top of the playfield. */
 /* Award bonus points for every still-live destructible brick on the
  * current level — port of add_points_for_left_briks at $AF81. Called
  * when the rocket exits the playfield (LBB97 → LBBFB). Iterates the
@@ -5002,8 +5004,6 @@ static void award_left_bricks(void) {
 }
 
 static void step_rocket(void) {
-    int col_lo, col_hi, row_lo, row_hi, r, c;
-    int killed_this_tick = 0;
     if (!rocket_active) return;
     /* Port of handling_rocket at $A89A:
      *   HL = LA8CF - $20
@@ -5034,48 +5034,11 @@ static void step_rocket(void) {
         award_left_bricks();
         return;
     }
-    /* Map the rocket bbox onto level-grid cells (8 + col*16, 32 +
-     * row*8) and destroy every overlapping non-undestructible cell.
-     * Use the body region only so the trailing flame doesn't extend
-     * the destruction zone. */
-    {
-        int rx_l = rocket_x;
-        int rx_r = rocket_x + ROCKET_W_PX;
-        int ry_t = rocket_y;
-        int ry_b = rocket_y + ROCKET_H_PX;
-        if (rx_l < 8) rx_l = 8;
-        if (rx_r > 8 + LVL_COLS * 16) rx_r = 8 + LVL_COLS * 16;
-        if (ry_t < 32) ry_t = 32;
-        if (ry_b > 32 + LVL_ROWS * 8) ry_b = 32 + LVL_ROWS * 8;
-        col_lo = (rx_l - 8) / 16;
-        col_hi = (rx_r - 8 - 1) / 16;
-        row_lo = (ry_t - 32) / 8;
-        row_hi = (ry_b - 32 - 1) / 8;
-        for (r = row_lo; r <= row_hi; r++) {
-            for (c = col_lo; c <= col_hi; c++) {
-                unsigned char *cell;
-                if (r < 0 || r >= LVL_ROWS || c < 0 || c >= LVL_COLS) continue;
-                cell = &live_level[r * LVL_COLS + c];
-                if (*cell & 0x80) continue;          /* already gone */
-                if (*cell & 0x20) continue;          /* undestructible */
-                {
-                    unsigned int idx = (unsigned int)((r < 12) ? r : 11);
-                    unsigned int pts = points_table[idx];
-                    if ((*cell & 0x0F) >= 6) pts *= 2;
-                    score += pts;
-                }
-                *cell |= 0x80;
-                mark_static_bg_cache_dirty();
-                brick_flash_spawn(c, r);
-                try_spawn_bonus(c, r);
-                killed_this_tick = 1;
-            }
-        }
-    }
-    /* One brick-click per tick rather than per cell, so the rocket's
-     * flight produces a steady rattle instead of a thousand-snd-q
-     * spam when it lines up with a packed brick row. */
-    if (killed_this_tick) snd_q_push(SND_NORMAL_BRIK);
+    /* No brick destruction during flight (port of the destruction-free
+     * LBB97 loop): the rocket flies over the intact bricks, which the
+     * dirty redraw restores behind it. They are awarded + cleared at
+     * fly-off above. (Was a bbox sweep that carved a tunnel — a port-ism
+     * the original does not have; see notes/rocket-flight.md.) */
 }
 
 /* --- Exact bat deflection (port of LAB1F @ $AB1F) ---------------------
