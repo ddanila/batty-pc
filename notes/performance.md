@@ -250,14 +250,31 @@ Interpretation:
   frame count is the reliable signal. Correctness: test-brick-flash (no
   stale cell vs L3 ref), midgame-brick-replay, brick-scoring, and the dirty
   gates all pass.
-- **Plateau reached.** Across these iterations the dirty tiers now cover
-  every moving element (ball, bat incl. fire-anim, enemy, bonus, +400,
-  bullets, blasts, bomb) and brick hits cost one full-dynamic frame. The
-  laser worst case went 124 → 21 full-dynamic frames; the common case was
-  already 178/180 ball-only. The one structural driver left — the brick-hit
-  frame's own band-rebuild + HUD-score work — is genuinely small-payoff (the
-  full path already skips inactive objects). Further gains are micro
-  (VGA-flush coalescing) or need a real slow-scene to justify the risk.
+- **"Plateau" CORRECTED by a realistic profile (2026-06-05).** The
+  plateau claim above rested on the open-bounce profile (178/180 ball-only)
+  — which is unrealistic: it has no enemy and never multiballs. New
+  `make profile-ballbricks` bakes a ball INSIDE the brick band (no laser) so
+  it bounces through the bricks; this is normal-play. It revealed:
+    1. **Real play is object-tier-dominated, not ball-only.** 0/180 ball-only
+       frames — an enemy is on screen most of the time, so the ball-object
+       tier is the common path (validating the bullet/bomb tier work).
+    2. **Multi-ball is the biggest un-tiered full-dynamic driver.** A brick
+       hit dropped a MULTI_BALL bonus → caught → `ball block balls: 89` of
+       180 frames forced full-dynamic. Extra balls (ball2/ball3) and big-ball
+       have no dirty tier, so multiball play — a common, deliberate state —
+       recomposes the whole frame every frame.
+  So the renderer is NOT at a plateau; the multi-ball/big-ball tier (long
+  listed below as a Next Win) is a confirmed, large lever, not a
+  speculative one.
+
+## Next Likely Wins
+
+0. **Multi-ball / big-ball dirty tier (CONFIRMED top lever).** Measured 89/180
+   full-dynamic frames in `profile-ballbricks` are `ball block balls`.
+   ball2/ball3 are full 16×12 moving sprites like the primary — extend the
+   dirty path to render + dirty-mark them (and the big-ball sprite), same
+   proven pattern as the bullet/bomb tiers. Verify with a multi-ball
+   dirty-redraw comparison.
 
 ## Next Likely Wins
 

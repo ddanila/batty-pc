@@ -79,6 +79,10 @@ PROFILE_FRAMES ?= 180
 PROFILE_WAIT   ?= 25
 PROFILE_BALL_OBJECT ?= 02008000A0001802020C000008070000000000000080
 PROFILE_BALL_STUCK  ?= 0
+# A ball baked INSIDE the brick band (y=0x48) so it bounces through the
+# bricks and destroys them — a normal-play (no-laser) brick-hit profile, the
+# scenario that exercises the brick-hit redraw path without bullet noise.
+PROFILE_BALL_FIELD  ?= 0200800048001802020C000008070000000000000080
 # Laser bat (bonus_applied=0x01 at byte 0x14) for the brick-destruction
 # profile: with auto-fire, bullets continuously destroy bricks so the
 # incremental band-rebuild path is exercised + measurable.
@@ -87,7 +91,7 @@ PROFILE_BAT_LASER   ?= 01017400AD000000040DEFAE1C0A74AD040DF0000180
 # whole-band rebuild baseline. `make profile-bricks` vs `... FULL_BAND=1`.
 FULL_BAND           ?=
 
-.PHONY: all clean run run-86box profile-auto profile-bricks profile-86box read-profile floppy assets help run-original run-original-cheat snapshot candidates regions test test-hud test-bat-redraw-window test-ball-dirty-redraw test-ball-object-dirty-redraw test-bullet-dirty-redraw test-bomb-dirty-redraw test-bat-fire-dirty-redraw test-rocket-flight-redraw test-rocket-completion-no-ball test-round-banner-border test-brick-flash test-rocket-bonus test-death-sparks test-normal-ball-launch test-ball-left-wall-escape test-l3-replay-seed test-midgame-brick-replay replay-l3-brick-flash replay-l3-brick-flash-both test-laffc-ball-frame1 test-bat-deflection test-enemy-descend test-rng-walk test-enemy-steer test-bonus-fall test-bomb-fall test-pts400-fall test-bullet-fly test-laser-cadence test-enemy-anim test-bonus-drop test-bonus-effects test-bonus-effects2 test-bonus-typepick test-bullet-blast test-brick-scoring test-ball-speed-ramp parity-check parity-check-full
+.PHONY: all clean run run-86box profile-auto profile-bricks profile-ballbricks profile-86box read-profile floppy assets help run-original run-original-cheat snapshot candidates regions test test-hud test-bat-redraw-window test-ball-dirty-redraw test-ball-object-dirty-redraw test-bullet-dirty-redraw test-bomb-dirty-redraw test-bat-fire-dirty-redraw test-rocket-flight-redraw test-rocket-completion-no-ball test-round-banner-border test-brick-flash test-rocket-bonus test-death-sparks test-normal-ball-launch test-ball-left-wall-escape test-l3-replay-seed test-midgame-brick-replay replay-l3-brick-flash replay-l3-brick-flash-both test-laffc-ball-frame1 test-bat-deflection test-enemy-descend test-rng-walk test-enemy-steer test-bonus-fall test-bomb-fall test-pts400-fall test-bullet-fly test-laser-cadence test-enemy-anim test-bonus-drop test-bonus-effects test-bonus-effects2 test-bonus-typepick test-bullet-blast test-brick-scoring test-ball-speed-ramp parity-check parity-check-full
 
 all: $(EXE) $(ASSETS)
 
@@ -469,6 +473,18 @@ profile-bricks:
 	    BATTY_REPLAY_BAT_OBJECT=$(PROFILE_BAT_LASER) BATTY_AUTO_FIRE=1 BATTY_SUPPRESS_NO_BALL_DEATH=1 \
 	    BATTY_REPLAY_BALL_OBJECT=$(PROFILE_BALL_OBJECT) BATTY_REPLAY_BALL_STUCK=$(PROFILE_BALL_STUCK) \
 	    BATTY_FULL_BAND_REBUILD=$(FULL_BAND) $(MAKE) $(FLOPPY_OUT)
+	python3 scripts/run_profile_auto.py --floppy $(FLOPPY_OUT) --seconds $(PROFILE_WAIT)
+	$(MAKE) read-profile
+
+# Normal-play brick-hit profile: a ball bounces through the brick band
+# (no laser), so brick-destruction redraw cost is measured without the
+# bullet/auto-fire noise of profile-bricks. Watch "full dynamic frames" /
+# "ball block bricks" / "band rebuilds".
+profile-ballbricks:
+	rm -f $(FLOPPY_OUT)
+	BATTY_RENDER_PROFILE=1 BATTY_PROFILE_AUTO_FRAMES=$(PROFILE_FRAMES) BATTY_START_LEVEL=1 BATTY_LEVEL=$(PROFILE_LEVEL) \
+	    BATTY_REPLAY_BALL_OBJECT=$(PROFILE_BALL_FIELD) BATTY_REPLAY_BALL_STUCK=0 \
+	    BATTY_SUPPRESS_NO_BALL_DEATH=1 $(MAKE) $(FLOPPY_OUT)
 	python3 scripts/run_profile_auto.py --floppy $(FLOPPY_OUT) --seconds $(PROFILE_WAIT)
 	$(MAKE) read-profile
 
