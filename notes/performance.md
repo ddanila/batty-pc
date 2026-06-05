@@ -196,6 +196,28 @@ Interpretation:
   `FORCE_BALL_FULL_REDRAW` baseline mid-flight and confirms **no trail**
   (pixel-identical). Wired into `parity-check-full`.
 
+- **Bomb joined the simple-object dirty tier (2026-06-05).** Same proven
+  pattern as bullets: a falling enemy bomb (a single 16×16 sprite, common in
+  normal play) was a hard full-dynamic blocker. Extended
+  `render_simple_objects_to_buff_and_mark` to render + dirty-mark it (the
+  bat-collision kill stays in step_bomb), dropped `bomb_active` from the
+  `can_redraw_ball_with_simple_objects` rejection. `test-bomb-dirty-redraw`
+  (new, reuses the `BATTY_REPLAY_BOMB` hook) confirms the dirty path is
+  pixel-identical to the `FORCE_BALL_FULL_REDRAW` baseline mid-fall. Wired
+  into `parity-check-full`.
+- **Diminishing-returns note (2026-06-05).** The renderer is now
+  well-optimized: the common case (open bounce) is 178/180 ball-only frames,
+  and the `buff_to_vga` flush (the analyzer's top bucket) is already tight —
+  one coalesced byte-aligned rect per moving object, with the 1bpp→8bpp
+  conversion intrinsic per changed pixel. The remaining full-dynamic drivers
+  are each a specialised tier with edge cases and modest payoff: brick-hit
+  frames also carry a HUD (score) blocker and the full path already skips
+  inactive objects (so a brick-flash tier saves little — note the flash
+  renders NOTHING, it only schedules the destroyed cell's dirty rect); the
+  bat fire-anim / resize (`bat_fx`) forces a full frame only to reflush the
+  changed bat sprite. Worth doing if a specific scene needs it, but expect
+  ~single-digit-% gains, not step changes.
+
 ## Next Likely Wins
 
 0. **Brick-change frames should NOT force a full-dynamic redraw.** This is

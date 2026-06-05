@@ -6032,8 +6032,8 @@ static void prof_note_ball_dirty_blockers(unsigned int blockers) {
 static int can_redraw_ball_with_simple_objects(unsigned int blockers) {
     if ((blockers & ~BALL_DIRTY_BLOCK_OBJECTS) != 0) return 0;
     if (!bonus_active && !pts_400_active && objects[OBJ_ENEMY].sprite_set == 0
-        && !any_bullet_active() && !any_bullet_blast()) return 0;
-    if (bomb_active || rocket_active) return 0;
+        && !any_bullet_active() && !any_bullet_blast() && !bomb_active) return 0;
+    if (rocket_active) return 0;
     return 1;
 }
 
@@ -6090,6 +6090,12 @@ static void render_simple_objects_to_buff_and_mark(unsigned char bg_attr) {
             if (bullet_blast_ticks[i])
                 mark_dirty_rect_px(bullet_blast_x[i], bullet_blast_y[i], 16, 12);
         }
+    }
+    /* Enemy bomb: a single falling sprite, same dirty treatment as a bonus
+     * (the bat-collision kill is handled in step_bomb, not here). */
+    if (bomb_active) {
+        blit_masked_to_scr_buff_ptr(spr_bomb_data, bomb_x, bomb_y);
+        mark_dirty_rect_px(bomb_x, bomb_y, 16, 16);
     }
 }
 
