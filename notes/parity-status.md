@@ -216,6 +216,18 @@ and `laffc-decode.md` for the detailed trail.
   sequence model. Flip verified safe: the full gate suite stays green
   (`test-laffc-ball-frame1`, `make test` 5 states + 2 lints,
   `test-bat-deflection` 14/14, `test-enemy-descend`, `test-rng-walk`).
+- **L3 replay seed corrected** (side effect of the RNG flip, fixed). With
+  the per-frame tick now default, the L3 replay's brick destruction runs
+  `try_spawn_bonus` (5/16 gate) on the per-frame RNG. The stale `8E49`
+  seed (which wrote the wrong address $8E17, leaving the RNG un-seeded)
+  made the port drop a **spurious SLOW bonus** the original lacks
+  (verified via the new `bonus_state` PROBE field: stale → `active01_type04`,
+  original → no drop). Wiring the byte-correct seed
+  (`BATTY_REPLAY_RANDOM=3793 BATTY_REPLAY_RANDOM_SEED=962A`) into
+  `L3_SEED_ENV` + `replay-l3-brick-flash`/`-both` reproduces the original's
+  RNG walk, so the port drops no bonus there — confirmed by
+  `make test-midgame-brick-replay` (`bonus_state=00000000000000`). This is
+  why the seed-wiring is NOT cosmetic post-flip.
 - **RNG per-frame walk** — BYTE-EXACT, gate-locked (`make test-rng-walk`).
   With the byte-correct L3 f0 seed (`BATTY_REPLAY_RANDOM=3793` +
   `BATTY_REPLAY_RANDOM_SEED=962A`) and the per-frame tick

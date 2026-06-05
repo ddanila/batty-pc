@@ -4573,6 +4573,13 @@ static void write_replay_probe(void) {
     for (i = 0; i < (int)sizeof(object_t); i++) {
         fprintf(f, "%02X", ((unsigned char *)&objects[OBJ_ENEMY])[i]);
     }
+    /* Bonus/bomb state (the original shares object_bonus $9B80 for both).
+     * Used to verify RNG-dependent drops match the original (e.g. that the
+     * RNG-perframe flip + seed do not spawn a spurious bonus). */
+    fprintf(f, "\nbonus_state=active%02X_type%02X_x%02X_y%02X_bomb%02X",
+            (unsigned)bonus_active, (unsigned)bonus_type,
+            (unsigned)(bonus_x & 0xFF), (unsigned)(bonus_y & 0xFF),
+            (unsigned)bomb_active);
     fprintf(f, "\nnormal_launch_state=%02X%02X%02X%02X%02X",
             (unsigned)last_primary_launch_valid,
             (unsigned)last_primary_launch_x,
