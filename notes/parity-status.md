@@ -400,19 +400,21 @@ instant clear). Verified by the rocket test suite. The per-brick pace is
 1/PIT-tick (the original's `pause_short` busy-wait is Z80-clock-bound and
 not byte-reproducible); everything else matches.
 
-**Remaining — both proven NOT byte-exactly achievable (not analysis gaps):**
-1. **Metal-shimmer / brick-flash residual.** The shimmer LOGIC is correct
-   and is NOT even exercised at L3 — the original's `briks_data` ($B6F4) is
-   EMPTY at the L3 start (read via ZEsarUX 2026-06-05), so there is no
-   mid-animation phase to mismatch (the earlier "seed-state phase artifact"
-   note was wrong). The `capture-timeline-both` ~188 px residual is actually
-   the transient **brick-destruction render** (the destruction flash +
-   revealed-background detail) on the freshly-hit destructible cells at
-   f1/3/5 — a diagnostic-only, gameplay-correct cosmetic detail (the brick
-   IS destroyed + scored). There is also NO damaged-brick crack-render gap:
-   the original `print_line_briks` renders bricks with one sprite gated on
-   bit 7 only (no cracked bit-4 sprite), which the port matches. See
-   `notes/metal-shimmer.md`.
+**Frame-step residual — pixel-chased 188px → 4px (2026-06-05, ~98%).**
+The `capture-timeline-both` L3 residual is now `f0=0 f1=0 f3=4 f5=4 px`
+(ROI, max-diff 0). Two fixes: (a) the corrected L3 seed (3793/962A) killed
+a spurious SLOW-bonus drop → f1 188→0; (b) a conditional destroyed-cell
+left-char shadow (dim the left char iff the left neighbour is a live
+brick, reproducing the inter-brick gap shadow) → f5 85→4. The shimmer
+LOGIC is correct and isn't even exercised at L3 (`briks_data` $B6F4 EMPTY
+at start), and there's no crack-render gap (`print_line_briks` is bit-7-
+only). See `notes/metal-shimmer.md`.
+
+**Remaining — both negligible / out-of-scope (not analysis gaps):**
+1. **Last 4px (frame-step).** A brick-edge ink nuance at brick col 5
+   (palette 15 vs 10, x92–94/x101), 0.017% of the ROI, transient at the
+   destruction moment — almost certainly a captured `level_attrs` edge
+   value. Gameplay correct; extreme diminishing returns.
 2. **Cycle-exact sound.** PC-speaker PIT square waves vs the Spectrum
    beeper port-`$FE` toggling — needs a sampled/low-level beeper backend
    (out of the visual-parity scope).
