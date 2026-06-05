@@ -494,15 +494,28 @@ BIG_BALL arms its timer, LIFE bumps lives 3->4. Bakes each bonus to be
 caught on f1; asserts against the documented effect constants. Deterministic
 + non-circular.
 
-**Still NOT gated** (verified by code-comparison, no standing gate): the
-bonus TYPE-pick table + per-type exclusions (the `next_random()` loop —
-would need an independent RNG-walk reimplementation to avoid circularity,
-the one piece where ZEsarUX GT would add real value), the bullet-blast
-4-frame anim (cosmetic), scoring tables per row, and the ball speed-up
-ramp (~1184-frame, too slow for a frame-step gate). The drop DECISION, the
-catch->effect linkage AND the actual effects, the whole laser path, all
-per-frame motion, and the enemy animation are now gated — the bonus system
-is gated end-to-end except the RNG type-pick mix.
+**Bonus TYPE-pick also gated (2026-06-05).** `test-bonus-typepick` (in
+`parity-check-full`) closes the last bonus-system piece — non-circularly,
+without ZEsarUX GT. Forcing a drop across 8 seeds (varying the seed to vary
+the pick), it validates the pick LOGIC via properties that must hold from
+the documented rules: every drop resolves to a VALID supported type, NEVER
+SLOW (port 1 — excluded at base ball speed; a regression removing that
+exclusion would surface SLOW), and the table is non-degenerate (4 distinct
+types {0,2,8,9} appear). Plus a golden per-seed pin catching any RNG/table
+regression (the RNG itself is independently gated by `test-rng-walk`, so a
+golden change isolates to the table/exclusions). The full
+reimplement-the-RNG-walk approach was avoided as circular; the
+property+pin approach gives the validation without it.
+
+**Now fully gated — the bonus system end-to-end:** drop DECISION (5/16) ->
+TYPE pick (logic + table + exclusions) -> catch->bonus_applied code ->
+catch->actual effect. Plus the whole laser path, all per-frame motion, and
+the enemy animation.
+
+**Still NOT gated** (verified by code-comparison, low value / out of frame-
+step reach): the bullet-blast 4-frame anim (cosmetic), scoring tables per
+row, and the ball speed-up ramp (~1184-frame, too slow for a frame-step
+gate). These are the only remaining gaps and none is high-value.
 
 ## Bottom line (updated 2026-06-05)
 
