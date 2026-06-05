@@ -102,13 +102,19 @@ Several paths use gameplay-equivalent but not byte-exact motion:
   f8=0,f12=1,f16=2,f20=3,f24=4,f28=5,f32=6 — the `IX+$13=$70` max-nibble 7
   gives an 8-step counter), and `LAA02` maps that 0..7 + flight direction
   onto the **5** sprite frames (`spr_bird_1..5`) with a horizontal mirror.
-  The port has only **3** bird frames (`SPR_BIRD_1..3`) and does a flat
-  `%3` cycle. Note the port's CADENCE already matches (`misc_12>>2` = +1
-  per 4 frames); the gaps are (a) the 2 missing sprites `spr_bird_4/5` (not
-  yet extracted into `assets/sprites.bin` refs), and (b) the `LAAD2` 8-step
-  range + the `LAA02` direction→frame mapping/mirror. So this is a scoped
-  cosmetic sub-project: extract `spr_bird_4/5`, widen the frame table, and
-  port the `LAAD2`/`LAA02` index logic. Decode in `notes/enemy-movement.md`.
+  **PARTIALLY FIXED (2026-06-05):** ported the 8-step ping-pong. Added
+  `SPR_BIRD_4` ($8722) + `SPR_BIRD_5` ($8778) and made `spr_bird_frames`
+  the 8-entry ping-pong `{1,2,3,4,3,2,1,5}` indexed by `(misc_12>>2) & 7`
+  (the GT cycle). The bird now does the correct 5-sprite wing-flap (was a
+  3-sprite cycle); the cadence (+1/4 frames) already matched. The UFO
+  ($08) render keeps `% 3` (its anim_ufo table isn't GT'd yet). Two minor
+  refinements remain: (a) **phase** — the port starts the loop at
+  sprite_num 4 not 0 (it reads `misc_12` as a plain counter, `0xF0>>2 & 7
+  = 4`, whereas the original's `LAAD2` interprets `$F0` as 0); negligible
+  for a looping flap, exact-matching it needs porting LAAD2's `misc_12`
+  timer. (b) **direction mirror** — `LAA02` flips the sprite horizontally
+  when the bird crosses a facing hemisphere; not ported (needs a mirror
+  blit). Decode + GT in `notes/enemy-movement.md`.
 - **rocket bonus flight** — now fully decoded (`notes/rocket-flight.md`).
   The **motion** is FAITHFUL (`handling_rocket` $A89A accel model + bat
   attach; the port's per-rocket counter is byte-equivalent because

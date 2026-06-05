@@ -1104,12 +1104,21 @@ static unsigned char sprites_blob[SPRITES_BLOB_SIZE];
 #define SPR_BIRD_1       (0x860E - 0x7A8C)   /* = 0xb82 */
 #define SPR_BIRD_2       (0x866A - 0x7A8C)   /* = 0xbde */
 #define SPR_BIRD_3       (0x86C6 - 0x7A8C)   /* = 0xc3a */
+#define SPR_BIRD_4       (0x8722 - 0x7A8C)   /* = 0xc96 */
+#define SPR_BIRD_5       (0x8778 - 0x7A8C)   /* = 0xcec (the taller frame-7 pose) */
 
-/* Frame tables for alien animation. The original cycles via the
- * sprite_num field per the per-tick logic in handling_bird at $A9BC;
- * we walk these arrays directly using descriptor's misc_12 as the
- * tick counter and (misc_12 >> 2) % N_FRAMES as the frame index. */
-static const unsigned int spr_bird_frames[3] = { SPR_BIRD_1, SPR_BIRD_2, SPR_BIRD_3 };
+/* Frame tables for alien animation. The original advances object+$01
+ * (sprite_num) +1 every 4 frames over an 8-step cycle (IX+$13=$70 high
+ * nibble 7) and indexes anim_bird ($7896) — an 8-entry PING-PONG using all
+ * 5 bird sprites: 1,2,3,4,3,2,1,5 (GT-confirmed sprite_num walk
+ * f8=0..f32=6, see notes/enemy-movement.md). We encode that ping-pong in
+ * the table and index it with (misc_12 >> 2) & 7. (The original's LAA02
+ * also mirrors the sprite by flight direction — not yet ported; the
+ * wing-flap sequence here is the visible animation regardless.) */
+static const unsigned int spr_bird_frames[8] = {
+    SPR_BIRD_1, SPR_BIRD_2, SPR_BIRD_3, SPR_BIRD_4,
+    SPR_BIRD_3, SPR_BIRD_2, SPR_BIRD_1, SPR_BIRD_5
+};
 static const unsigned int spr_ufo_frames[3]  = { SPR_UFO_1,  SPR_UFO_2,  SPR_UFO_3  };
 
 #define SPR_400_POINTS   (0x7ABE - 0x7A8C)   /* = 0x032 */
@@ -1974,7 +1983,10 @@ static void handling_bird_obj(object_t *o) {
         return;
     }
     o->misc_12++;
-    o->sprite_num = (unsigned char)((o->misc_12 >> 2) % 3);
+    /* +1 every 4 frames over an 8-step cycle (the original's LAAD2 with
+     * IX+$13=$70). The bird render maps this through the 8-entry ping-pong
+     * spr_bird_frames; the UFO render still takes % 3 of it (unchanged). */
+    o->sprite_num = (unsigned char)((o->misc_12 >> 2) & 7);
     bomb_appear(o);
     /* Steer every 4 frames. The original gates on the GLOBAL counter_misc
      * (`LD A,(counter_misc); AND $03; CALL Z,LAA7D`), not a per-object
@@ -5586,10 +5598,9 @@ static void redraw_full_with_ball(unsigned char level_idx) {
             if (frame >= BLAST_FRAMES) frame = BLAST_FRAMES - 1;
             spr = spr_blast_frames[frame];
         } else {
-            unsigned char frame = enemy->sprite_num % 3;
             spr = (enemy->sprite_set == 0x09)
-                ? spr_bird_frames[frame]
-                : spr_ufo_frames[frame];
+                ? spr_bird_frames[enemy->sprite_num & 7]   /* 8-step ping-pong */
+                : spr_ufo_frames[enemy->sprite_num % 3];   /* UFO unchanged */
         }
         spr_w_px = sprites_blob[spr]     * 8;
         spr_h_px = sprites_blob[spr + 1];
@@ -5718,10 +5729,9 @@ static void render_enemy_to_buff_and_mark(unsigned char bg_attr) {
         if (frame >= BLAST_FRAMES) frame = BLAST_FRAMES - 1;
         spr = spr_blast_frames[frame];
     } else {
-        unsigned char frame = enemy->sprite_num % 3;
         spr = (enemy->sprite_set == 0x09)
-            ? spr_bird_frames[frame]
-            : spr_ufo_frames[frame];
+            ? spr_bird_frames[enemy->sprite_num & 7]   /* 8-step ping-pong */
+            : spr_ufo_frames[enemy->sprite_num % 3];   /* UFO unchanged */
     }
     spr_w_px = sprites_blob[spr] * 8;
     spr_h_px = sprites_blob[spr + 1];
