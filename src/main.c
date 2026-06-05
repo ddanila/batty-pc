@@ -676,10 +676,13 @@ static int stuck_offset_x = BALL_X_OFFSET_ON_BAT;
 static unsigned char bullet_active[N_BULLETS] = {0, 0};
 static int           bullet_x[N_BULLETS]      = {0, 0};
 static int           bullet_y[N_BULLETS]      = {0, 0};
-/* Bullet-impact blast: 4 frames, ~3 ticks each. Spawned wherever
- * step_bullet's collision deactivates the bullet. Per-slot so two
- * simultaneous bullets get their own blast on impact. */
-#define BULLET_BLAST_TICKS_PER_FRAME 3
+/* Bullet-impact blast: 4 frames (spr_bullet_blast_1..4, straight 1->4 — no
+ * ping-pong) at 2 ticks/frame. The original (handling_bullet LA5A3_0)
+ * animates the converted bullet via LAAD2 with misc_12=$50, which advances
+ * +1 every 2 frames (same cadence as the alien blast). Was 3 ticks/frame.
+ * Spawned wherever step_bullet's collision deactivates the bullet; per-slot
+ * so two simultaneous bullets get their own blast. */
+#define BULLET_BLAST_TICKS_PER_FRAME 2
 #define BULLET_BLAST_FRAMES          4
 static unsigned char bullet_blast_ticks[N_BULLETS] = {0, 0};
 static int           bullet_blast_x[N_BULLETS]     = {0, 0};
