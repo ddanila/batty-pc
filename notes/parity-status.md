@@ -462,15 +462,28 @@ every 4 frames once the y<8 entry slide ends. Asserts sprite_num 0/1/2/3/4
 at f8/12/16/20/24 (mid-plateau probe points). No src change needed —
 sprite_num is already in the `object_enemy` probe.
 
-**Still NOT gated** (verified by code-comparison / one-off GT capture, no
-standing automated gate): the bullet-blast 4-frame anim (cosmetic;
-deterministically gateable via the same template if wanted), bonus economy
-(drop RNG-gate) + effects + scoring tables, and the ball speed-up ramp (a
-~1184-frame effect, too slow for a frame-step gate). The whole laser path
-(flight + cadence), all deterministic per-frame motion, AND the enemy
-animation are now gated; the remaining items genuinely need RNG-seeded
-scenarios (bonus-drop / scoring) — the cheap, deterministic coverage is
-now fully harvested.
+**Bonus-drop economy also gated (2026-06-05).** `test-bonus-drop` (in
+`parity-check-full`) gates the 5/16 drop rate: when a brick is destroyed
+the original drops a bonus iff `(random_number_hi & 0x0F) < 5`. A
+`BATTY_FORCE_SPAWN_BONUS` hook calls `try_spawn_bonus()` once at level entry
+with a freshly-baked RNG (no frames elapsed, so the per-frame tick is
+out of the picture); with rng_perframe ON, `random_d` (the hi byte of
+`BATTY_REPLAY_RANDOM`) directly decides the drop. Tests the threshold
+boundary exactly — d&0x0F = 0/4 → drop, 5/15 → no drop — with the expected
+computed FROM THE DOCUMENTED RULE in the test (not the C code), so it
+validates the port implements 5/16 rather than just pinning current
+behaviour. This was the "harder, needs an RNG-seeded scenario" item — done
+deterministically without ZEsarUX GT by isolating the decision via the
+force-spawn hook.
+
+**Still NOT gated** (verified by code-comparison, no standing gate): the
+bonus TYPE-pick table + per-type exclusions (the `next_random()` loop after
+the drop gate — gateable next via the same force-spawn hook, asserting
+bonus_type for a seed against the documented table), the bullet-blast
+4-frame anim (cosmetic), bonus EFFECTS + scoring tables, and the ball
+speed-up ramp (a ~1184-frame effect, too slow for a frame-step gate). The
+drop DECISION, the whole laser path, all per-frame motion, and the enemy
+animation are now gated.
 
 ## Bottom line (updated 2026-06-05)
 

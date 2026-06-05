@@ -4615,6 +4615,26 @@ static void apply_replay_bullet_override(void) {
     bullet_y[0] = (int)y;
 }
 
+/* Force one bonus-drop roll at level entry for the drop-economy gate.
+ * BATTY_FORCE_SPAWN_BONUS = "1" (or "col,row") calls try_spawn_bonus once
+ * with the freshly-baked RNG (no frames elapsed yet), isolating the drop
+ * decision: with rng_perframe ON, the gate is (random_d & 0x0F) < 5, so a
+ * baked BATTY_REPLAY_RANDOM directly controls whether a bonus drops. */
+static void apply_replay_force_bonus(void) {
+    const char *spec = getenv("BATTY_FORCE_SPAWN_BONUS");
+    int col = 5, row = 5;
+    char *endp;
+    if (spec == NULL) return;
+    if (*spec) {
+        long c = strtol(spec, &endp, 0);
+        if (endp != spec && *endp == ',') {
+            col = (int)c;
+            row = (int)strtol(endp + 1, NULL, 0);
+        }
+    }
+    try_spawn_bonus(col, row);
+}
+
 static void apply_replay_rocket_override(void) {
     if (getenv("BATTY_REPLAY_ROCKET_ACTIVE") == NULL) return;
     rocket_active = 1;
@@ -6751,6 +6771,7 @@ static state_t run_level(void) {
         apply_replay_bomb_override();
         apply_replay_pts400_override();
         apply_replay_bullet_override();
+        apply_replay_force_bonus();
         apply_replay_rocket_override();
         write_replay_probe();
         render_level_screen(i);
