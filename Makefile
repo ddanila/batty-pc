@@ -80,7 +80,7 @@ PROFILE_WAIT   ?= 25
 PROFILE_BALL_OBJECT ?= 02008000A0001802020C000008070000000000000080
 PROFILE_BALL_STUCK  ?= 0
 
-.PHONY: all clean run run-86box profile-auto profile-86box read-profile floppy assets help run-original run-original-cheat snapshot candidates regions test test-hud test-bat-redraw-window test-ball-dirty-redraw test-ball-object-dirty-redraw test-rocket-flight-redraw test-rocket-completion-no-ball test-round-banner-border test-brick-flash test-rocket-bonus test-death-sparks test-normal-ball-launch test-ball-left-wall-escape test-l3-replay-seed test-midgame-brick-replay replay-l3-brick-flash replay-l3-brick-flash-both test-laffc-ball-frame1 test-bat-deflection test-enemy-descend test-rng-walk test-enemy-steer test-bonus-fall test-bomb-fall test-pts400-fall test-bullet-fly test-laser-cadence test-enemy-anim test-bonus-drop test-bonus-effects test-bonus-effects2 test-bonus-typepick test-bullet-blast test-brick-scoring parity-check parity-check-full
+.PHONY: all clean run run-86box profile-auto profile-86box read-profile floppy assets help run-original run-original-cheat snapshot candidates regions test test-hud test-bat-redraw-window test-ball-dirty-redraw test-ball-object-dirty-redraw test-rocket-flight-redraw test-rocket-completion-no-ball test-round-banner-border test-brick-flash test-rocket-bonus test-death-sparks test-normal-ball-launch test-ball-left-wall-escape test-l3-replay-seed test-midgame-brick-replay replay-l3-brick-flash replay-l3-brick-flash-both test-laffc-ball-frame1 test-bat-deflection test-enemy-descend test-rng-walk test-enemy-steer test-bonus-fall test-bomb-fall test-pts400-fall test-bullet-fly test-laser-cadence test-enemy-anim test-bonus-drop test-bonus-effects test-bonus-effects2 test-bonus-typepick test-bullet-blast test-brick-scoring test-ball-speed-ramp parity-check parity-check-full
 
 all: $(EXE) $(ASSETS)
 
@@ -375,6 +375,9 @@ $(TEST_FLOPPY_OUT): $(TEST_EXE) $(ASSETS) $(FLOPPY_SRC)
 	if [ -n "$$BATTY_FORCE_BRICK" ]; then \
 	    printf 'SET BATTY_FORCE_BRICK=%s\r\n' "$$BATTY_FORCE_BRICK" >> build/AUTOEXEC-T.BAT ; \
 	fi; \
+	if [ -n "$$BATTY_REPLAY_BALL_RAMP" ]; then \
+	    printf 'SET BATTY_REPLAY_BALL_RAMP=%s\r\n' "$$BATTY_REPLAY_BALL_RAMP" >> build/AUTOEXEC-T.BAT ; \
+	fi; \
 	if [ -n "$$BATTY_REPLAY_WAIT_KEY" ]; then \
 	    printf 'SET BATTY_REPLAY_WAIT_KEY=%s\r\n' "$$BATTY_REPLAY_WAIT_KEY" >> build/AUTOEXEC-T.BAT ; \
 	fi; \
@@ -524,6 +527,7 @@ parity-check-full:
 	$(MAKE) test-bonus-typepick
 	$(MAKE) test-bullet-blast
 	$(MAKE) test-brick-scoring
+	$(MAKE) test-ball-speed-ramp
 	$(MAKE) test-rocket-completion-no-ball
 	$(MAKE) test-rocket-flight-redraw
 	$(MAKE) test-midgame-brick-replay
@@ -711,6 +715,9 @@ test-bullet-blast:
 
 test-brick-scoring:
 	python3 scripts/test_brick_scoring.py
+
+test-ball-speed-ramp:
+	python3 scripts/test_ball_speed_ramp.py
 
 test-brick-flash: $(TEST_FLOPPY_OUT)
 	python3 scripts/test_brick_flash.py

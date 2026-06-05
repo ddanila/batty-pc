@@ -528,10 +528,22 @@ Asserts `points_table[row]` per row (120/70/10 at rows 0/5/11) and the x2
 metal-colour bonus (row 3 colour 6 -> 90*2 = 180), computed from the
 documented table — not the C scoring code.
 
-**Still NOT gated:** only the ball speed-up ramp (~1184-frame, too slow for
-a frame-step gate). Everything else — the full per-frame engine, all
-animations, the bonus economy end-to-end, and per-row scoring — is now
-gated. The deterministic, high-confidence regression coverage is COMPLETE.
+**Ball speed-up ramp also gated (2026-06-05).** `test-ball-speed-ramp`
+(in `parity-check-full`) — the earlier "too slow to frame-step" claim was
+wrong: a new `BATTY_REPLAY_BALL_RAMP` hook SEEDS the ramp counter near its
+0x94 threshold so the bump fires in a few frames instead of the ~1184-frame
+climb. With a moving ball it asserts the documented mechanic via a
+`speed_ramp_state` probe: seed 0x93 -> speed bumps 3->4, seed 0x00 -> no
+bump (control), seed 0x93 at speed 6 -> stays 6 (cap). The bump fires within
+8 frames so the probed speed is jitter-immune.
+
+**Coverage COMPLETE.** Every gameplay mechanic now has a standing gate: the
+full per-frame engine (ball/bat/collision/deflection/RNG/enemy motion+steer),
+all animations (enemy wing-flap, bullet-blast), the laser path end-to-end
+(catch->arm->flight->cadence), the bonus economy end-to-end (drop->type->
+flag->effect), per-row scoring + x2 colour, and the ball speed ramp. The
+only thing outside the visual-parity scope remains cycle-exact sound (needs
+a beeper backend). Nothing deterministic is left ungated.
 
 ## Bottom line (updated 2026-06-05)
 

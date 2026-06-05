@@ -4635,6 +4635,17 @@ static void apply_replay_force_bonus(void) {
     try_spawn_bonus(col, row);
 }
 
+/* Seed the ball speed-up ramp counter for the speed-ramp gate.
+ * BATTY_REPLAY_BALL_RAMP = value. The ramp bumps every active ball's speed
+ * (cap 6) when ball_speed_ramp reaches 0x94, ticking once per 8 frames
+ * (ball_speed_ramp_tick). Seeding it near 0x94 lets the gate observe a bump
+ * in a few frames instead of the full ~1184-frame climb. */
+static void apply_replay_ball_ramp(void) {
+    const char *spec = getenv("BATTY_REPLAY_BALL_RAMP");
+    if (spec == NULL || !*spec) return;
+    ball_speed_ramp = (unsigned int)strtol(spec, NULL, 0);
+}
+
 /* Plant a known brick for the per-row scoring gate.
  * BATTY_FORCE_BRICK = "col,row,value" overwrites live_level[row*COLS+col]
  * after the level load, so a bullet/ball can destroy a brick of a known row
@@ -4786,6 +4797,8 @@ static void write_replay_probe(void) {
             (unsigned)(bullet_y[0] & 0xFF));
     fprintf(f, "\nlaser_fire_state=shots%04X_cd%02X",
             (unsigned)dbg_shots_fired, (unsigned)bullet_cooldown);
+    fprintf(f, "\nspeed_ramp_state=ramp%04X_spd%02X",
+            (unsigned)ball_speed_ramp, (unsigned)objects[OBJ_BALL_1].speed);
     fprintf(f, "\nblast_state=ticks%02X_frame%02X",
             (unsigned)bullet_blast_ticks[0],
             (unsigned)(bullet_blast_ticks[0]
@@ -6818,6 +6831,7 @@ static state_t run_level(void) {
         apply_replay_bomb_override();
         apply_replay_pts400_override();
         apply_replay_force_brick();
+        apply_replay_ball_ramp();
         apply_replay_bullet_override();
         apply_replay_blast_override();
         apply_replay_force_bonus();
