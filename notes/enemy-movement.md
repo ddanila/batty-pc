@@ -470,3 +470,24 @@ Net: the enemy first leg is now gated end-to-end — descend (RNG-independent,
 `test-enemy-descend`) + steering (RNG-dependent, `test-enemy-steer`) — plus
 the RNG walk itself (`test-rng-walk`). The arrival re-pick past f28 follows
 the same (now byte-exact) RNG, so it tracks the original too.
+
+### Enemy sprite-animation GT (2026-06-05) — cosmetic gap precisely scoped
+
+Probed `object_enemy+$01` (sprite_num) on the original over the flight:
+
+    f2=00 f8=00 f12=01 f16=02 f20=03 f24=04 f28=05 f32=06
+
+So `sprite_num` increments +1 every 4 frames, cycling 0→7 (the `IX+$13=$70`
+high-nibble 7 = max frame; `LAAD2` advances on the 4-frame `IX+$12` timer).
+`LAA02` then maps (sprite_num 0..7 + flight direction) onto the **5** actual
+bird sprites (`spr_bird_1..5`) with a horizontal mirror so the bird faces
+the way it flies.
+
+The port: only **3** bird sprites (`SPR_BIRD_1..3`) and `sprite_num =
+(misc_12>>2) % 3`. The CADENCE matches (`misc_12>>2` = +1 per 4 frames),
+but the range (3 vs 8) + the direction mapping are wrong, and 2 sprites
+(`spr_bird_4/5`) aren't wired in. Cosmetic only (motion/steering are exact
+and gated). To close: extract `spr_bird_4/5` into the frame table and port
+the `LAAD2` 8-step counter + the `LAA02` direction→frame mirror. The UFO
+($08) shares this (the port delegates `handling_ufo_obj` to the bird) and
+also has a distinct non-sprite tail in the original — same sub-project.
