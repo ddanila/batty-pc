@@ -260,6 +260,15 @@ and `laffc-decode.md` for the detailed trail.
   tick, and the boot-cadence phase — see `notes/rng-model.md`); the
   per-frame tick alone (`BATTY_RNG_PERFRAME=1`) does NOT fix it. Decode +
   capture evidence in `notes/enemy-movement.md`.
+- **+400 popup motion** — faithful (`handling_400pts` + `LA67B_2`/`LA590`).
+  Vertical: init velocity `-((counter_misc&1)+1)` (= -1/-2 px/frame up) then
+  the `motion_accel_step(0x0028, 0x80)` arc (`DE=$0028, B=$80`). Horizontal
+  drift: `pts_400_dx = ±((random&1)+1)` (magnitude 1/2 from bit 0, sign from
+  bit 7 = the original's `AND $01; INC A; RL B; JR C; NEG`), read-current
+  via `rng_sample`, clamped to the playfield. Both axes match.
+- **Running dot** — faithful (`running_dot` $B8E6): the bat-edge dot with
+  its frame counter, direction bit, and bat-shrink recovery branch are
+  ported (`render_running_dot`, GT-pinned in test mode).
 - **Regression guards** — `make test-laffc-ball-frame1` (ZEsarUX-free)
   locks the L3 frame-1 ball to the Spectrum probe; the 5-checkpoint +
   per-level static suite (`make test`) stays green.
