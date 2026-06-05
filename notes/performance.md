@@ -1,5 +1,34 @@
 # Performance Notes
 
+## STATUS: rendering perf at its floor (2026-06-05)
+
+The render-cost campaign is comprehensively complete and measurement-backed.
+Both realistic profiles confirm minimal avoidable work:
+- `profile-ballbricks` (ball through bricks, emergent bonuses): **88 ball-only
+  / 73 ball-object / 19 full-dynamic** of 180 frames.
+- `profile-multiball` (extra balls in play): **0 / 178 / 2 full-dynamic**.
+
+Arc: the realistic scenarios started at ~100% full-dynamic (full recompose
+every frame); every moving element now has a dirty tier (ball — moving/
+stuck/multi/big — bat incl. fire-anim, enemy, bonus, +400, bullets, blasts,
+bomb), brick hits cost one scoped-band-rebuild frame, and both per-frame
+scan loops (restore + carry) are bounded to the dirty row span.
+
+What remains is **intrinsic or measured-marginal**, not headroom:
+- `buff_to_vga` (~31%) — 1bpp→8bpp per changed pixel, 16-bit stosw; tight.
+- `render_brick_band` bucket (~38%) — the per-frame OBJECT/full composition
+  (e.g. compositing 3 balls in multiball); proportional to what's on screen.
+- The per-frame restore memcpy — proportional to moving-sprite area.
+- The few remaining full-dynamic frames are NECESSARY (level entry, the
+  scoped band rebuild on a brick destroy — the full path is already
+  localized for these, so a dedicated tier wouldn't help; verified).
+
+Further rendering-perf changes would be marginal and carry dirty-redraw
+gate-risk. Higher-value future perf would be a DIFFERENT dimension (asset/
+level load time, sound path) — but those are one-time/low-value or hard to
+measure under QEMU's fast disk. **Recommend concluding or redirecting the
+perf loop.**
+
 ## Current Profiling Workflow
 
 Use the deterministic headless profile run when comparing renderer cost:
