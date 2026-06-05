@@ -224,3 +224,31 @@ destroyed (the cell then settles). Gameplay is fully correct. Pixel-
 matching needs re-capturing the exact brick-band bg pattern + per-cell
 revealed attrs — deep captured-asset work, very low value. This is the
 final, fully-decomposed frame-step residual.
+
+## ATTR-LEVEL (2026-06-05): the f5 residual is a left-char shadow + bg texture
+
+Read the original's `.scr` attrs at the destroyed region (frame 5). The
+85 px decompose into two brick-band attr/texture details:
+
+1. **Left-char shadow on the destroyed cell.** The destroyed brick (brick
+   row 4 / char row 8, brick col 6 / char cols 13–14) shows attr `0x05`
+   (cyan ink, black paper, **bright=0**) on its LEFT char (col 13) and
+   `0x45` (bright) on its right char (col 14). The port resets the whole
+   destroyed cell to `bg_attr 0x45` (bright both chars), so its left char
+   is too bright (palette 8 paper vs the original's palette 0). This
+   left-char-only dimming is NOT the port's `brik_shadow_c` (which clears
+   bright on a full brick width — both chars — of the row below a live
+   brick); it's a distinct left-edge/inter-brick-gap shadow the port
+   doesn't reproduce at destroyed cells. (col 13 is non-bright across char
+   rows 7–9 — a vertical shadow strip down the left of brick col 6.)
+2. **Bg texture at cols 15–17.** Port draws cyan ink (13) where the
+   original has black paper (8) — the brick-band background PIXEL pattern
+   (paint_bg / bg_tile) differs at those revealed cells.
+
+Remaining pixel-chase work (deep, two independent sub-parts): (a) port the
+original's left-edge/gap shadow so a destroyed cell keeps its non-bright
+left char instead of a flat bright `bg_attr`; (b) re-capture/correct the
+brick-band bg texture so the revealed pixels match. Both are
+captured-asset / shadow-logic details; gameplay is unaffected (the diff is
+a few-tick, sub-100 px cosmetic at the destruction moment). Progressed
+from "188 px unknown" → "85 px, two named attr/texture sub-parts."
