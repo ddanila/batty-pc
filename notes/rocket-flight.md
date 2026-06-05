@@ -149,3 +149,56 @@ This is held, not flipped autonomously, because:
 original into rocket mode, dump frames) to confirm "flies over intact
 bricks + end-of-flight sequential tally", then port both parts behind the
 existing rocket test, replacing its expectations.
+
+## Executable implementation plan + GT recipe (2026-06-05)
+
+The decode is complete; this is the ready-to-run plan for when the
+behaviour change is greenlit. Two code changes + one risk + the GT recipe.
+
+### Change A — flight: fly over INTACT bricks (remove the tunnel)
+
+In `step_rocket` (src/main.c), delete the bbox-sweep cell-destruction loop
+(the `for (r...) for (c...)` that does `*cell |= 0x80` /
+`brick_flash_spawn` / `try_spawn_bonus` while the rocket rises). Keep the
+motion block, the `BAT_Y = rocket_y - 6` attach, and the fly-off branch.
+After this the rocket sprite simply draws over the still-rendered bricks
+(matches `handling_rocket` motion-only + the destruction-free `LBB97`).
+
+### Change B — end: SEQUENTIAL tally, don't clear (port add_points_for_left_briks $AF0D)
+
+Replace `award_left_bricks`'s instant clear-and-award with a frame-paced
+sweep of the 15x12 grid (row-major, the original's `C=$0C` rows x `B=$0F`
+cols):
+- for each cell: if `!(cell & $A0)` (live, destructible) add
+  `points_table[row]` (doubled if colour nibble >= 6) + a score sound;
+- a short pause every cell (`pause_short D=$03` ~= 3 PIT ticks) so the
+  score visibly ticks up; use the existing frame-pace primitive (the
+  death-spark loop / `pit_ticks()` busy-wait is the template);
+- do NOT set `cell |= $80` — leave bricks on screen; the next-level load
+  clears them.
+
+### THE RISK — level-advance gating
+
+`award_left_bricks` currently `|= $80`s every brick, which is likely what
+drives the port's "round complete -> advance" (bricks_remaining hits 0)
+and/or avoids the no-ball-death branch during the rocket sequence. If
+Change B stops clearing, the advance may not fire (level hangs) or
+no-ball-death may trigger. So Change B must ALSO ensure the round still
+advances — either keep a final `bricks_remaining = 0` / explicit
+`rocket_clear_completed` advance after the tally, or clear the cells only
+AFTER the tally completes (just before the transition). Verify with
+`make test-rocket-completion-no-ball`, `test-rocket-bonus`, and
+`test-midgame-brick-replay` — these catch a broken advance / no-ball-death
+(they are the regression guard; there is no pixel gate for the tally).
+
+### GT recipe (to verify the visual, optional but recommended)
+
+The rocket flight runs its OWN loop `LBB97` ($BB97), not the `$BA83` main
+loop, so frame-step on **PC=$BB97** (not $BA83). To enter it: from the L3
+`$BA83` state, poke a COHERENT rocket object (`get_rocket` builds it from
+the bat: object_rocket $9B80-region: +0=$06, +2=bat_x+ ($04 or $0C), +4=
+bat_y+6, sprite dims) — an incoherent poke hangs the original (see the
+"scenario construction" notes). Then step on $BB97 and read the brick grid
+each frame to confirm it stays INTACT, and read object_rocket+$04 for the
+y-rise. Expect: bricks unchanged through the whole flight; at fly-off,
+`add_points_for_left_briks` ticks the score with the grid still intact.
