@@ -175,3 +175,28 @@ the residual is a transient destruction-flash/bg-reveal render detail — a
 brief diagnostic-only difference on destroyed cells (gameplay is correct:
 the brick is destroyed, points awarded, bg revealed). Pixel-matching the
 exact flash is low-value cosmetic, not a shimmer or shipped-game bug.
+
+## MEASURED (2026-06-05): residual down to f5=85px after the seed fix
+
+Ran `make capture-timeline-both` (port-QEMU vs ZEsarUX, ROI 8,32,248,128,
+max-diff 0) with the corrected L3 seed now wired into `L3_SEED_ENV`:
+
+    frame 0:  0/23040 px  [PASS]
+    frame 1:  0/23040 px  [PASS]   <- was ~188 px
+    frame 3:  4/23040 px  bounds=(95,67,101,70)
+    frame 5: 85/23040 px  bounds=(92,64,139,72)
+
+The **f1 residual dropped from ~188 px to 0** — the byte-correct seed
+(`BATTY_REPLAY_RANDOM=3793 BATTY_REPLAY_RANDOM_SEED=962A`) stops the port
+dropping the spurious SLOW bonus (its falling-letter pixels were polluting
+the brick-band ROI). So much of the old "~188 px shimmer residual" was
+actually the seed-mismatch spurious bonus, not the shimmer or the
+destruction render.
+
+What remains (f3=4, f5=85 px) is localized to the freshly-hit brick row
+(x≈92–139, y≈64–72) — the transient brick-destruction render (revealed
+background / the few-tick destroy edge) on cells the ball breaks between
+f3 and f5. Gameplay is correct (bricks destroyed + scored); the diff is a
+sub-100-px, few-tick cosmetic detail on the destroyed cells, confined to
+the destruction moment. This is the last frame-step residual — a captured-
+bg / destroy-edge render detail, low value to pixel-chase.
