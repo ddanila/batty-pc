@@ -107,14 +107,20 @@ Several paths use gameplay-equivalent but not byte-exact motion:
   the 8-entry ping-pong `{1,2,3,4,3,2,1,5}` indexed by `(misc_12>>2) & 7`
   (the GT cycle). The bird now does the correct 5-sprite wing-flap (was a
   3-sprite cycle); the cadence (+1/4 frames) already matched. The UFO
-  ($08) render keeps `% 3` (its anim_ufo table isn't GT'd yet). Two minor
-  refinements remain: (a) **phase** — the port starts the loop at
-  sprite_num 4 not 0 (it reads `misc_12` as a plain counter, `0xF0>>2 & 7
-  = 4`, whereas the original's `LAAD2` interprets `$F0` as 0); negligible
-  for a looping flap, exact-matching it needs porting LAAD2's `misc_12`
-  timer. (b) **direction mirror** — `LAA02` flips the sprite horizontally
-  when the bird crosses a facing hemisphere; not ported (needs a mirror
-  blit). Decode + GT in `notes/enemy-movement.md`.
+  ($08) render keeps `% 3`. **DONE — there is NO mirror to port
+  (2026-06-05).** The `LAA02` "direction mirror" is **dead code** in the
+  original: it computes a remapped sprite_num (`$0E - sprite_num` or
+  `(sprite_num^7)+7`) but **never stores it** — `LA9BC_5` immediately does
+  `LD A,(flag_2)`, overwriting `A`, with no `LD (IX+$01),A`. So the bird
+  never visually flips by facing. The GT confirms it: sprite_num
+  increments smoothly 4→5→6 across the f28 hemisphere flip (dir→0x2C
+  repick) with no remap jump. So the 8-entry ping-pong IS the complete
+  bird animation; `LAA02`'s only live effect is its tail (`flag_2`-gated
+  `LAA7D_1` target re-pick, already handled). The one residual is the loop
+  **phase** — the port starts at sprite_num 4 not 0 (reads `misc_12` as a
+  plain counter, `0xF0>>2 & 7 = 4`, vs `LAAD2`'s `$F0`→0); negligible for a
+  looping flap and per-enemy (the UFO's `$60` init already gives phase 0),
+  so left as-is. Decode + GT in `notes/enemy-movement.md`.
   **UFO ($08) also done (2026-06-05):** `anim_ufo` ($789E) is the same
   8-step ping-pong over 6 sprites — `{1,2,3,4,5,6,5,4}`. Added
   `SPR_UFO_4/5/6` ($84C4/$852C/$859A — growing-height UFO frames) and made
@@ -122,7 +128,8 @@ Several paths use gameplay-equivalent but not byte-exact motion:
   7`. Table-derived (no runtime GT — the L3 snapshot has a bird, not a
   UFO — but the `anim_ufo` table IS the authoritative frame mapping), and
   the UFO's phase is actually correct (its `prop_even[1]=$60` → sprite_num
-  0 at spawn). Same mirror caveat as the bird.
+  0 at spawn). No mirror needed (the `LAA02` remap is dead code — see the
+  bird entry above). So both enemy animations are now complete.
 - **rocket bonus flight** — now fully decoded (`notes/rocket-flight.md`).
   The **motion** is FAITHFUL (`handling_rocket` $A89A accel model + bat
   attach; the port's per-rocket counter is byte-equivalent because

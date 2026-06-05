@@ -491,3 +491,26 @@ and gated). To close: extract `spr_bird_4/5` into the frame table and port
 the `LAAD2` 8-step counter + the `LAA02` direction→frame mirror. The UFO
 ($08) shares this (the port delegates `handling_ufo_obj` to the bird) and
 also has a distinct non-sprite tail in the original — same sub-project.
+
+### LAA02 "direction mirror" is DEAD CODE — enemy sprite animation COMPLETE (2026-06-05)
+
+Re-reading `LAA02` exactly: it computes a remapped sprite_num when the
+bird crosses a facing hemisphere (`bit5(dir_now XOR dir_start)`):
+`A = $0E - sprite_num` (if `bit5(C)`) or `A = (sprite_num XOR 7) + 7`.
+But that result is **never stored** — the next label `LA9BC_5` immediately
+does `LD A,(flag_2)`, overwriting `A`, and there is no `LD (IX+$01),A`
+anywhere between the remap and `LA9BC_5`. So the remap is discarded; the
+bird does NOT visually mirror by direction. (LAA02's only live effect is
+its tail: `LD A,(flag_2); AND A; JP NZ,LAA7D_1` — the brick-hit target
+re-pick, already handled.)
+
+The GT confirms it: the sprite_num walk (f24=4, f28=5, f32=6) increments
+smoothly straight through the f28 hemisphere flip (dir 0x13 → 0x2C repick)
+— no remap jump. If `LAA02` flipped the sprite, sprite_num would jump to
+`$0E-5=9` etc. at f28; it doesn't.
+
+So the 8-entry ping-pong (`make`'d into `spr_bird_frames`) is the COMPLETE
+bird animation, and likewise for the UFO. The only residual is the loop
+start phase (sprite_num 4 vs 0 for the bird, from `misc_12` init `$F0` read
+as a plain counter) — cosmetically nil for a loop, per-enemy (the UFO's
+`$60` init is already phase 0), left as-is. Enemy sprite parity: DONE.
