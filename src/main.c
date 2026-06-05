@@ -2438,6 +2438,23 @@ static void print_briks_c(const unsigned char *cells) {
     }
 }
 
+/* Row-scoped variant of print_briks_c: paint only brick rows [r0, r1].
+ * Same per-row addressing (brik_addr_buf = 0x401 + row*0x100, attr base
+ * 0xA2 + row*0x20), used by the incremental band-cache rebuild so a single
+ * brick hit need not repaint the whole band. */
+static void print_briks_rows_c(const unsigned char *cells, int r0, int r1) {
+    int row, col;
+    for (row = r0; row <= r1; row++) {
+        unsigned int hl = 0x401u + (unsigned int)row * 0x100u;
+        const unsigned char *cell_row = &cells[row * LVL_COLS];
+        for (col = 0; col < LVL_COLS; col++) {
+            if (!(cell_row[col] & 0x80)) print_one_brik_buf_c(hl, cell_row[col]);
+            hl += 2;
+        }
+        brik_shadow_c(0xA2u + (unsigned int)row * 0x20u, cell_row);
+    }
+}
+
 /* Brick-band y range. print_briks_c writes to pixel rows 31..128 (the
  * 1-row top edge above the first brick row, 12 brick rows, and the
  * 1-row bottom edge below the last). */
@@ -2506,6 +2523,52 @@ static void render_brick_band(unsigned char level_idx) {
 
     print_briks_c(cells);
     print_border_shadow_c();
+}
+
+/* Row-scoped variant of render_brick_band for the incremental band-cache
+ * rebuild: re-composite only brick rows [r0, r1] (caller extends r1 by one
+ * for the vertical shadow) into char rows [cr0, cr1]. Mirrors
+ * render_brick_band's attr base-copy + destroyed-cell reset + brick paint +
+ * border-shadow, all bounded to the dirty window. Rendering whole rows (all
+ * columns) keeps the horizontal inter-brick shadow correct without
+ * cross-row tracking. */
+static void render_brick_band_rows(unsigned char level_idx,
+                                   int r0, int r1, int cr0, int cr1) {
+    int lvl_row, lvl_col, cr;
+    const unsigned char *cells = live_level;
+    const unsigned char *lattr = &level_attrs[(int)level_idx * ATTR_BAND_SIZE];
+    unsigned char bg_attr = bg_attr_per_cycle[level_idx & 3];
+
+    if (level_idx >= N_LEVELS) return;
+
+    /* Base attrs for the dirty char rows (ATTR_COLS == 32, contiguous). */
+    fast_memcpy(&attr_buff[cr0 * 32], &lattr[cr0 * ATTR_COLS],
+                (unsigned int)((cr1 - cr0 + 1) * 32));
+
+    for (lvl_row = r0; lvl_row <= r1; lvl_row++) {
+        for (lvl_col = 0; lvl_col < LVL_COLS; lvl_col++) {
+            unsigned char cell = cells[lvl_row * LVL_COLS + lvl_col];
+            if ((cell & 0xC0) != 0x80) continue;
+            {
+                int cc1 = 1 + 2 * lvl_col;
+                int cc2 = cc1 + 1;
+                int crr = 4 + lvl_row;
+                int left_live = (lvl_col > 0) &&
+                    !(cells[lvl_row * LVL_COLS + lvl_col - 1] & 0x80);
+                unsigned char latt = left_live
+                    ? (unsigned char)(bg_attr & 0xBF) : bg_attr;
+                attr_buff[crr * 32 + cc1] = latt;
+                attr_buff[crr * 32 + cc2] = bg_attr;
+                attr_buff[(crr + 1) * 32 + cc1] = latt;
+                attr_buff[(crr + 1) * 32 + cc2] = bg_attr;
+            }
+        }
+    }
+
+    print_briks_rows_c(cells, r0, r1);
+
+    /* Border-shadow (left col-1 dim) for the dirty char rows only. */
+    for (cr = cr0; cr <= cr1; cr++) attr_buff[cr * 32 + 1] &= 0xBF;
 }
 
 /* Port of the inner-border-line routine at LBE8B_2 ($BE99), adjusted to
@@ -2586,6 +2649,11 @@ static unsigned char prev_dirty_min_byte[DIRTY_SLOTS][PLAYFIELD_H];
 static unsigned char prev_dirty_max_byte[DIRTY_SLOTS][PLAYFIELD_H];
 static int static_bg_dirty = 1;
 static int static_bg_cache_dirty = 0;
+/* Dirty brick-row range [lo, hi] accumulated since the last band-cache
+ * build, so the rebuild can re-composite only the changed rows instead of
+ * the whole band. Default = whole band (a full rebuild). */
+static int brick_dirty_lo = 0;
+static int brick_dirty_hi = LVL_ROWS - 1;
 static int force_full_flush = 1;
 
 static unsigned long prev_score = 0xFFFFFFFFUL;
@@ -2828,24 +2896,65 @@ static void build_static_brick_band_cache(unsigned char level_idx) {
     unsigned char cycle   = (unsigned char)(level_idx & 3);
     int y;
     int cr;
+    int lo = brick_dirty_lo;
+    int hi = brick_dirty_hi;
 
-    paint_bg_window_to_buff(bg_attr, cycle,
-                            BRICK_BAND_Y_TOP,
-                            BRICK_BAND_Y_BOT - BRICK_BAND_Y_TOP + 1,
-                            1, 30);
-    render_brick_band(level_idx);
-    for (y = BRICK_BAND_Y_TOP; y <= BRICK_BAND_Y_BOT; y++) {
-        fast_memcpy(&bg_scr_buff[(y << 5) + 1],
-                    &scr_buff[(y << 5) + 1],
-                    30);
-    }
-    for (cr = 3; cr <= 16; cr++) {
-        fast_memcpy(&bg_attr_buff[cr << 5], &attr_buff[cr << 5], 32);
+    if (lo <= 0 && hi >= LVL_ROWS - 1) {
+        /* Whole band dirty: the proven full path. */
+        paint_bg_window_to_buff(bg_attr, cycle,
+                                BRICK_BAND_Y_TOP,
+                                BRICK_BAND_Y_BOT - BRICK_BAND_Y_TOP + 1,
+                                1, 30);
+        render_brick_band(level_idx);
+        for (y = BRICK_BAND_Y_TOP; y <= BRICK_BAND_Y_BOT; y++) {
+            fast_memcpy(&bg_scr_buff[(y << 5) + 1], &scr_buff[(y << 5) + 1], 30);
+        }
+        for (cr = 3; cr <= 16; cr++) {
+            fast_memcpy(&bg_attr_buff[cr << 5], &attr_buff[cr << 5], 32);
+        }
+    } else {
+        /* Incremental: re-composite only the dirty brick rows (+1 below for
+         * the vertical shadow). Pixel + char windows derived from the brick
+         * row -> y=32+row*8 (char row 4+row) mapping, generously bounded
+         * and clamped to the band. */
+        int hx  = (hi + 1 < LVL_ROWS) ? hi + 1 : hi;
+        int py0 = 32 + lo * 8 - 2;
+        int py1 = 32 + hx * 8 + 9;
+        int cr0 = 3 + lo;
+        int cr1 = 6 + hi;
+        if (py0 < BRICK_BAND_Y_TOP) py0 = BRICK_BAND_Y_TOP;
+        if (py1 > BRICK_BAND_Y_BOT) py1 = BRICK_BAND_Y_BOT;
+        if (cr0 < 3) cr0 = 3;
+        if (cr1 > 16) cr1 = 16;
+        paint_bg_window_to_buff(bg_attr, cycle, py0, py1 - py0 + 1, 1, 30);
+        render_brick_band_rows(level_idx, lo, hx, cr0, cr1);
+        for (y = py0; y <= py1; y++) {
+            fast_memcpy(&bg_scr_buff[(y << 5) + 1], &scr_buff[(y << 5) + 1], 30);
+        }
+        for (cr = cr0; cr <= cr1; cr++) {
+            fast_memcpy(&bg_attr_buff[cr << 5], &attr_buff[cr << 5], 32);
+        }
     }
     static_bg_cache_dirty = 0;
 }
 
 static void mark_static_bg_cache_dirty(void) {
+    /* Whole-band dirty (level entry, rocket clear, multi-cell changes). */
+    brick_dirty_lo = 0;
+    brick_dirty_hi = LVL_ROWS - 1;
+    static_bg_cache_dirty = 1;
+}
+
+/* Mark a single brick row dirty, unioning into the pending range. Lets the
+ * band-cache rebuild scope to just the rows a brick hit touched. */
+static void mark_brick_row_dirty(int row) {
+    if (!static_bg_cache_dirty) {
+        brick_dirty_lo = row;
+        brick_dirty_hi = row;
+    } else {
+        if (row < brick_dirty_lo) brick_dirty_lo = row;
+        if (row > brick_dirty_hi) brick_dirty_hi = row;
+    }
     static_bg_cache_dirty = 1;
 }
 
@@ -4242,7 +4351,7 @@ static int brick_hit_resolve(int col, int row, int axis) {
         score += pts;
     }
     *cell |= 0x80;
-    mark_static_bg_cache_dirty();
+    mark_brick_row_dirty(row);
     snd_q_push(SND_NORMAL_BRIK);            /* brick-break click */
     /* BIG_BALL (smash) bonus: ball ploughs through bricks rather
      * than bouncing — keep the bonus-spawn check below intact but
@@ -5092,7 +5201,7 @@ static void step_bullet_one(int b) {
                 if ((*cell & 0x0F) >= 6) pts *= 2;
                 score += pts;
                 *cell |= 0x80;
-                mark_static_bg_cache_dirty();
+                mark_brick_row_dirty(row);
                 brick_flash_spawn(col, row);
                 try_spawn_bonus(col, row);
                 hit = 1;

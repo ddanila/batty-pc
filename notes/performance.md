@@ -144,8 +144,31 @@ Interpretation:
   small-model DGROUP limit.
 - `make run` and `make run-86box` repack the floppy image every time so
   env-driven profile/sound flags do not go stale.
+- **Incremental brick-band cache rebuild (2026-06-05).** A brick hit used
+  to invalidate the whole static brick-band cache: `build_static_brick_band_
+  cache` re-painted the bg over all ~98 px-rows, ran `render_brick_band`
+  (which re-composites **all** 180 cells via `print_briks_c`), and copied
+  the whole band back. Now `mark_brick_row_dirty(row)` accumulates a dirty
+  brick-ROW range `[lo,hi]`, and the rebuild scopes paint + render + copy to
+  those rows (plus one below for the vertical inter-brick shadow) via
+  `render_brick_band_rows` / `print_briks_rows_c`. A single hit re-composites
+  ~3 rows (~45 cells + ~24 px-rows) instead of 180 cells + 98 px-rows —
+  roughly **4× less rebuild work per brick destroyed**, the common cost in
+  real (brick-heavy) play. The whole-band case (level entry, rocket clear)
+  still uses the proven full path. Rendering whole rows (all columns) keeps
+  the horizontal inter-brick shadow correct without per-cell tracking.
+  Verified correct: `test-brick-flash`, `test-midgame-brick-replay`,
+  `test-brick-scoring`, `test-ball-object-dirty-redraw`, and the visual
+  states all pass; the open-bounce profile baseline is unchanged (no
+  regression — that scenario destroys no bricks, so it can't show the win).
+  Quantifying it needs a brick-destruction profile scenario (see below).
 
 ## Next Likely Wins
+
+0. Add a brick-destruction profile scenario (ball or auto-fired bullets
+   repeatedly hitting bricks) so the incremental band rebuild above can be
+   measured, not just reasoned about. The current open-bounce profile
+   destroys no bricks.
 
 1. Reduce `buff_to_vga` bytes/frame and rect count. The automated profile
    now makes this the top measured bucket.
