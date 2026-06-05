@@ -2475,9 +2475,16 @@ static void render_brick_band(unsigned char level_idx) {
                     int cr  = 4 + lvl_row;
                     int cc1 = 1 + 2 * lvl_col;
                     int cc2 = cc1 + 1;
-                    attr_buff[cr * 32 + cc1] = bg_attr;
+                    /* A destroyed cell reveals the brick-band bg, which
+                     * carries the inter-brick gap shadow on its LEFT char
+                     * (the original keeps a non-bright left column at the
+                     * cell + its shadow row — GT: char-col 13 = $05 vs the
+                     * bright $45 right char). Dim the left char (clear the
+                     * bright bit) to match; the right char stays bg_attr. */
+                    unsigned char shad = (unsigned char)(bg_attr & 0xBF);
+                    attr_buff[cr * 32 + cc1] = shad;
                     attr_buff[cr * 32 + cc2] = bg_attr;
-                    attr_buff[(cr + 1) * 32 + cc1] = bg_attr;
+                    attr_buff[(cr + 1) * 32 + cc1] = shad;
                     attr_buff[(cr + 1) * 32 + cc2] = bg_attr;
                 }
             }

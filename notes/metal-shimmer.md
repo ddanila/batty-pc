@@ -252,3 +252,20 @@ brick-band bg texture so the revealed pixels match. Both are
 captured-asset / shadow-logic details; gameplay is unaffected (the diff is
 a few-tick, sub-100 px cosmetic at the destruction moment). Progressed
 from "188 px unknown" → "85 px, two named attr/texture sub-parts."
+
+## FIX 1 landed (2026-06-05): destroyed-cell left-char shadow → f5 85→50px
+
+Dimmed the LEFT char (cleared the bright bit) on the destroyed-cell attr
+reset in `render_brick_band` (both the cell row and its shadow row), to
+reproduce the original's inter-brick gap shadow that persists when a brick
+is removed. Re-measured `capture-timeline-both`:
+
+    before: f3=4  f5=85 px
+    after:  f3=4  f5=50 px   (bounds shrank to x92-127)
+
+So the left-char-shadow hypothesis held (residual dropped, none introduced).
+Safe for the static gates (only bit-7 destroyed cells are touched; level
+entry has none). Remaining f5=50px is sub-part (2): the brick-band BG
+PIXEL pattern behind destroyed bricks — the port's `bg_tile` (cycle 2)
+draws denser cyan-ink (palette 13) than the original's revealed bg (mostly
+black paper, palette 8). That's a captured-bg-texture detail (next).
