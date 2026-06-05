@@ -4635,6 +4635,25 @@ static void apply_replay_force_bonus(void) {
     try_spawn_bonus(col, row);
 }
 
+/* Plant a known brick for the per-row scoring gate.
+ * BATTY_FORCE_BRICK = "col,row,value" overwrites live_level[row*COLS+col]
+ * after the level load, so a bullet/ball can destroy a brick of a known row
+ * + colour and the points_table[row] (x2 for colour nibble >= 6) award is
+ * checkable. value 0x1X = single-hit (bit4 set) colour-X brick. */
+static void apply_replay_force_brick(void) {
+    const char *spec = getenv("BATTY_FORCE_BRICK");
+    char *e1, *e2;
+    long col, row, val;
+    if (spec == NULL) return;
+    col = strtol(spec, &e1, 0);
+    if (e1 == spec || *e1 != ',') return;
+    row = strtol(e1 + 1, &e2, 0);
+    if (e2 == e1 + 1 || *e2 != ',') return;
+    val = strtol(e2 + 1, NULL, 0);
+    if (col < 0 || col >= LVL_COLS || row < 0 || row >= LVL_ROWS) return;
+    live_level[row * LVL_COLS + col] = (unsigned char)val;
+}
+
 /* Bake a bullet-impact blast for the blast-animation gate.
  * BATTY_REPLAY_BLAST = "x,y" arms slot 0 at full duration; step_bullet_blast
  * decrements bullet_blast_ticks 1/frame (8 -> 0 over 8 frames = 4 frames x
@@ -6798,6 +6817,7 @@ static state_t run_level(void) {
         apply_replay_bonus_override();
         apply_replay_bomb_override();
         apply_replay_pts400_override();
+        apply_replay_force_brick();
         apply_replay_bullet_override();
         apply_replay_blast_override();
         apply_replay_force_bonus();

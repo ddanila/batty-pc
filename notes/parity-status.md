@@ -519,11 +519,19 @@ ticks/frame (derived frame 3/2/1/0 at f1/3/5/7) — the last visible
 per-frame animation. With this every per-frame animation in the game is
 gated.
 
-**Still NOT gated** (verified by code-comparison, low value / out of frame-
-step reach): scoring tables per row (needs precise ball-to-known-brick
-positioning) and the ball speed-up ramp (~1184-frame, too slow for a
-frame-step gate). Neither is high-value; the deterministic, high-confidence
-coverage is complete.
+**Per-row brick scoring also gated (2026-06-05).** `test-brick-scoring`
+(in `parity-check-full`) plants a known single-hit brick via a new
+`BATTY_FORCE_BRICK=col,row,value` hook and bakes a bullet just below it
+(BATTY_REPLAY_BULLET) so it rises into that exact cell on f1, destroying it.
+score starts at 0 on fresh L3 entry, so the probed score = the award.
+Asserts `points_table[row]` per row (120/70/10 at rows 0/5/11) and the x2
+metal-colour bonus (row 3 colour 6 -> 90*2 = 180), computed from the
+documented table — not the C scoring code.
+
+**Still NOT gated:** only the ball speed-up ramp (~1184-frame, too slow for
+a frame-step gate). Everything else — the full per-frame engine, all
+animations, the bonus economy end-to-end, and per-row scoring — is now
+gated. The deterministic, high-confidence regression coverage is COMPLETE.
 
 ## Bottom line (updated 2026-06-05)
 
