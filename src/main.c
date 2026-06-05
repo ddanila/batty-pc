@@ -4548,6 +4548,26 @@ static void apply_replay_bonus_override(void) {
     bonus_motion.frac = 0;
 }
 
+/* Bake a falling enemy bomb for the bomb-fall regression gate.
+ * BATTY_REPLAY_BOMB = "x,y". Same accel family as the bonus
+ * (motion_accel_step(&bomb_motion, 0x0008, 0x02)); put x clear of the bat
+ * to test pure fall (no bat-kill). */
+static void apply_replay_bomb_override(void) {
+    const char *spec = getenv("BATTY_REPLAY_BOMB");
+    char *endp, *endp2;
+    long x, y;
+    if (spec == NULL) return;
+    x = strtol(spec, &endp, 0);
+    if (endp == spec || *endp != ',') return;
+    y = strtol(endp + 1, &endp2, 0);
+    if (endp2 == endp + 1) return;
+    bomb_active = 1;
+    bomb_x = (int)x;
+    bomb_y = (int)y;
+    bomb_motion.acc = 0;
+    bomb_motion.frac = 0;
+}
+
 static void apply_replay_rocket_override(void) {
     if (getenv("BATTY_REPLAY_ROCKET_ACTIVE") == NULL) return;
     rocket_active = 1;
@@ -4651,6 +4671,9 @@ static void write_replay_probe(void) {
             (unsigned)bonus_active, (unsigned)bonus_type,
             (unsigned)(bonus_x & 0xFF), (unsigned)(bonus_y & 0xFF),
             (unsigned)bomb_active);
+    fprintf(f, "\nbomb_state=active%02X_x%02X_y%02X",
+            (unsigned)bomb_active, (unsigned)(bomb_x & 0xFF),
+            (unsigned)(bomb_y & 0xFF));
     fprintf(f, "\nnormal_launch_state=%02X%02X%02X%02X%02X",
             (unsigned)last_primary_launch_valid,
             (unsigned)last_primary_launch_x,
@@ -6644,6 +6667,7 @@ static state_t run_level(void) {
         apply_replay_ball_motion_override();
         apply_replay_enemy_object_override();
         apply_replay_bonus_override();
+        apply_replay_bomb_override();
         apply_replay_rocket_override();
         write_replay_probe();
         render_level_screen(i);

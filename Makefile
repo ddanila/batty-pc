@@ -80,7 +80,7 @@ PROFILE_WAIT   ?= 25
 PROFILE_BALL_OBJECT ?= 02008000A0001802020C000008070000000000000080
 PROFILE_BALL_STUCK  ?= 0
 
-.PHONY: all clean run run-86box profile-auto profile-86box read-profile floppy assets help run-original run-original-cheat snapshot candidates regions test test-hud test-bat-redraw-window test-ball-dirty-redraw test-ball-object-dirty-redraw test-rocket-flight-redraw test-rocket-completion-no-ball test-round-banner-border test-brick-flash test-rocket-bonus test-death-sparks test-normal-ball-launch test-ball-left-wall-escape test-l3-replay-seed test-midgame-brick-replay replay-l3-brick-flash replay-l3-brick-flash-both test-laffc-ball-frame1 test-bat-deflection test-enemy-descend test-rng-walk test-enemy-steer test-bonus-fall parity-check parity-check-full
+.PHONY: all clean run run-86box profile-auto profile-86box read-profile floppy assets help run-original run-original-cheat snapshot candidates regions test test-hud test-bat-redraw-window test-ball-dirty-redraw test-ball-object-dirty-redraw test-rocket-flight-redraw test-rocket-completion-no-ball test-round-banner-border test-brick-flash test-rocket-bonus test-death-sparks test-normal-ball-launch test-ball-left-wall-escape test-l3-replay-seed test-midgame-brick-replay replay-l3-brick-flash replay-l3-brick-flash-both test-laffc-ball-frame1 test-bat-deflection test-enemy-descend test-rng-walk test-enemy-steer test-bonus-fall test-bomb-fall parity-check parity-check-full
 
 all: $(EXE) $(ASSETS)
 
@@ -354,6 +354,9 @@ $(TEST_FLOPPY_OUT): $(TEST_EXE) $(ASSETS) $(FLOPPY_SRC)
 	if [ -n "$$BATTY_REPLAY_BONUS" ]; then \
 	    printf 'SET BATTY_REPLAY_BONUS=%s\r\n' "$$BATTY_REPLAY_BONUS" >> build/AUTOEXEC-T.BAT ; \
 	fi; \
+	if [ -n "$$BATTY_REPLAY_BOMB" ]; then \
+	    printf 'SET BATTY_REPLAY_BOMB=%s\r\n' "$$BATTY_REPLAY_BOMB" >> build/AUTOEXEC-T.BAT ; \
+	fi; \
 	if [ -n "$$BATTY_REPLAY_WAIT_KEY" ]; then \
 	    printf 'SET BATTY_REPLAY_WAIT_KEY=%s\r\n' "$$BATTY_REPLAY_WAIT_KEY" >> build/AUTOEXEC-T.BAT ; \
 	fi; \
@@ -492,6 +495,7 @@ parity-check-full:
 	$(MAKE) test-death-sparks
 	$(MAKE) test-rocket-bonus
 	$(MAKE) test-bonus-fall
+	$(MAKE) test-bomb-fall
 	$(MAKE) test-rocket-completion-no-ball
 	$(MAKE) test-rocket-flight-redraw
 	$(MAKE) test-midgame-brick-replay
@@ -646,6 +650,9 @@ test-round-banner-border:
 
 test-bonus-fall:
 	python3 scripts/test_bonus_fall.py
+
+test-bomb-fall:
+	python3 scripts/test_bomb_fall.py
 
 test-brick-flash: $(TEST_FLOPPY_OUT)
 	python3 scripts/test_brick_flash.py

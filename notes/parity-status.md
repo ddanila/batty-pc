@@ -412,15 +412,25 @@ constants + the 8.8 accumulator math. Matched the port exactly (no jitter
 slack needed in practice). This also unlocks future bonus-catch / effect
 gates (the bake hook is reusable).
 
+**Enemy bomb fall also gated (2026-06-05).** `test-bomb-fall` (in
+`parity-check-full`) mirrors the bonus-fall gate via a new
+`BATTY_REPLAY_BOMB=x,y` hook + a `bomb_state` probe line (bomb_y was not
+previously exposed). The bomb shares the bonus's accel call —
+`motion_accel_step(&bomb_motion, 0x0008, 0x02)` in step_bomb — so it
+guards the bomb's OWN 0x08/0x02 call site (bomb dodgeability) independently
+of the bonus gate. Same hand-computed checkpoints (y=46/65/97 at f20/40/60),
+matched exactly.
+
 **Still NOT gated** (verified by code-comparison / one-off GT capture, no
 standing automated gate): laser fire cadence + bullet-blast, bonus economy
-(drop RNG-gate) + effects + scoring tables, enemy bomb drop, the ball
-speed-up ramp, and the sprite-animation ping-pongs (bird/UFO/blast —
-deliberately not gated: sprite_num shares the ±1 boot-phase jitter, so an
-exact frame assertion is flaky). These are the genuine remaining
-test-coverage gaps if deeper regression protection is wanted; the bomb
-drop and pts-400 popup both reuse `motion_accel_step` and could be gated
-the same way as bonus-fall next.
+(drop RNG-gate) + effects + scoring tables, the ball speed-up ramp, and the
+sprite-animation ping-pongs (bird/UFO/blast — deliberately not gated:
+sprite_num shares the ±1 boot-phase jitter, so an exact frame assertion is
+flaky). These are the genuine remaining test-coverage gaps if deeper
+regression protection is wanted. Next-easiest: the **+400 popup**
+(`step_pts_400`, `motion_accel_step(0x0028, 0x80)`) — a DIFFERENT accel
+constant pair, so it exercises a code path the bonus/bomb gates don't;
+gateable via the same bake+probe template.
 
 ## Bottom line (updated 2026-06-05)
 
