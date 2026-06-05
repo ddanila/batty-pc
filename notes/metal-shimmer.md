@@ -200,3 +200,27 @@ f3 and f5. Gameplay is correct (bricks destroyed + scored); the diff is a
 sub-100-px, few-tick cosmetic detail on the destroyed cells, confined to
 the destruction moment. This is the last frame-step residual — a captured-
 bg / destroy-edge render detail, low value to pixel-chase.
+
+## PIXEL-LEVEL (2026-06-05): the f5=85px residual decomposed
+
+Examined `build/tl_port` vs `build/tl_orig` frame_0005.idx at the diff
+bounds (92,64,139,72). The 85 px are two brick-band render details on the
+freshly-destroyed cells (NOT a flash — the port draws no destruction
+flash, matching the original):
+
+1. **Black inter-brick-gap line at x=104** (left edge of brick cell col 6,
+   y=64..71): original = palette 0 (black), port = 8. The original keeps
+   the black grid-gap line at a destroyed cell's edge; the port's
+   revealed background fills it with the bg colour.
+2. **Revealed-cell colour** across cols 7–8 (x≈120–139): port = 13 vs
+   original = 8 (and a few px the other way). The destroyed-cell reveal
+   shows a different attr/colour, and a couple of px at x≈92–94 (15 vs 10).
+
+Both are brick-band BACKGROUND-pattern / attr details — the captured-bg
+approximation already flagged in `parity-gaps.md` ("non-brick cells in the
+brick band, frame-strip attrs, pre-dimmed shadow attrs still come from
+captured data"). They surface only at the transient moment a brick is
+destroyed (the cell then settles). Gameplay is fully correct. Pixel-
+matching needs re-capturing the exact brick-band bg pattern + per-cell
+revealed attrs — deep captured-asset work, very low value. This is the
+final, fully-decomposed frame-step residual.
