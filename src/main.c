@@ -4749,6 +4749,11 @@ static void write_replay_probe(void) {
             (unsigned)(bullet_y[0] & 0xFF));
     fprintf(f, "\nlaser_fire_state=shots%04X_cd%02X",
             (unsigned)dbg_shots_fired, (unsigned)bullet_cooldown);
+    fprintf(f, "\neffects_state=b2%02X_b3%02X_xtgt%02X_bball%02X_lives%02X",
+            (unsigned)ball2_active, (unsigned)ball3_active,
+            (unsigned)(bat_extra_tgt & 0xFF),
+            (unsigned)(big_ball_ticks != 0),
+            (unsigned)(lives & 0xFF));
     fprintf(f, "\nnormal_launch_state=%02X%02X%02X%02X%02X",
             (unsigned)last_primary_launch_valid,
             (unsigned)last_primary_launch_x,

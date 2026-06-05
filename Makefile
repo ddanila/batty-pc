@@ -80,7 +80,7 @@ PROFILE_WAIT   ?= 25
 PROFILE_BALL_OBJECT ?= 02008000A0001802020C000008070000000000000080
 PROFILE_BALL_STUCK  ?= 0
 
-.PHONY: all clean run run-86box profile-auto profile-86box read-profile floppy assets help run-original run-original-cheat snapshot candidates regions test test-hud test-bat-redraw-window test-ball-dirty-redraw test-ball-object-dirty-redraw test-rocket-flight-redraw test-rocket-completion-no-ball test-round-banner-border test-brick-flash test-rocket-bonus test-death-sparks test-normal-ball-launch test-ball-left-wall-escape test-l3-replay-seed test-midgame-brick-replay replay-l3-brick-flash replay-l3-brick-flash-both test-laffc-ball-frame1 test-bat-deflection test-enemy-descend test-rng-walk test-enemy-steer test-bonus-fall test-bomb-fall test-pts400-fall test-bullet-fly test-laser-cadence test-enemy-anim test-bonus-drop test-bonus-effects parity-check parity-check-full
+.PHONY: all clean run run-86box profile-auto profile-86box read-profile floppy assets help run-original run-original-cheat snapshot candidates regions test test-hud test-bat-redraw-window test-ball-dirty-redraw test-ball-object-dirty-redraw test-rocket-flight-redraw test-rocket-completion-no-ball test-round-banner-border test-brick-flash test-rocket-bonus test-death-sparks test-normal-ball-launch test-ball-left-wall-escape test-l3-replay-seed test-midgame-brick-replay replay-l3-brick-flash replay-l3-brick-flash-both test-laffc-ball-frame1 test-bat-deflection test-enemy-descend test-rng-walk test-enemy-steer test-bonus-fall test-bomb-fall test-pts400-fall test-bullet-fly test-laser-cadence test-enemy-anim test-bonus-drop test-bonus-effects test-bonus-effects2 parity-check parity-check-full
 
 all: $(EXE) $(ASSETS)
 
@@ -514,6 +514,7 @@ parity-check-full:
 	$(MAKE) test-enemy-anim
 	$(MAKE) test-bonus-drop
 	$(MAKE) test-bonus-effects
+	$(MAKE) test-bonus-effects2
 	$(MAKE) test-rocket-completion-no-ball
 	$(MAKE) test-rocket-flight-redraw
 	$(MAKE) test-midgame-brick-replay
@@ -689,6 +690,9 @@ test-bonus-drop:
 
 test-bonus-effects:
 	python3 scripts/test_bonus_effects.py
+
+test-bonus-effects2:
+	python3 scripts/test_bonus_effects2.py
 
 test-brick-flash: $(TEST_FLOPPY_OUT)
 	python3 scripts/test_brick_flash.py

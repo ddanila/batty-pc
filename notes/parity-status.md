@@ -486,15 +486,23 @@ codes differing from the 0xFF entry value are used, so the catch is
 unambiguous. Composes with `test-laser-cadence` (which bakes
 bonus_applied=0x01 directly): catch LASER -> 0x01 -> fires.
 
+**Bonus ACTUAL effects also gated (2026-06-05).** `test-bonus-effects2`
+(in `parity-check-full`) checks the visible gameplay effect each catch
+produces (beyond the bonus_applied flag), via a new `effects_state` probe
+line: MULTI_BALL spawns ball2+ball3, BIG_BAT sets the widen target to 8,
+BIG_BALL arms its timer, LIFE bumps lives 3->4. Bakes each bonus to be
+caught on f1; asserts against the documented effect constants. Deterministic
++ non-circular.
+
 **Still NOT gated** (verified by code-comparison, no standing gate): the
-bonus TYPE-pick table + per-type exclusions (the `next_random()` loop after
-the drop gate — would need an independent RNG-walk reimplementation to
-avoid circularity, the one piece where ZEsarUX GT would add real value),
-the bullet-blast 4-frame anim (cosmetic), the remaining bonus effects
-(MULTI_BALL ball-spawn, BIG_BALL, LIFE lives++ — need extra probe fields),
-scoring tables per row, and the ball speed-up ramp (~1184-frame, too slow
-for a frame-step gate). The drop DECISION + catch->effect linkage, the
-whole laser path, all per-frame motion, and the enemy animation are gated.
+bonus TYPE-pick table + per-type exclusions (the `next_random()` loop —
+would need an independent RNG-walk reimplementation to avoid circularity,
+the one piece where ZEsarUX GT would add real value), the bullet-blast
+4-frame anim (cosmetic), scoring tables per row, and the ball speed-up
+ramp (~1184-frame, too slow for a frame-step gate). The drop DECISION, the
+catch->effect linkage AND the actual effects, the whole laser path, all
+per-frame motion, and the enemy animation are now gated — the bonus system
+is gated end-to-end except the RNG type-pick mix.
 
 ## Bottom line (updated 2026-06-05)
 
