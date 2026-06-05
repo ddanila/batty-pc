@@ -202,3 +202,19 @@ bat_y+6, sprite dims) — an incoherent poke hangs the original (see the
 each frame to confirm it stays INTACT, and read object_rocket+$04 for the
 y-rise. Expect: bricks unchanged through the whole flight; at fly-off,
 `add_points_for_left_briks` ticks the score with the grid still intact.
+
+## Change B reassessed (2026-06-05): low-value, timing-unreproducible
+
+Change A (fly over intact bricks) is DONE + gated. On Change B (the
+sequential end-award), a closer look at `pause_short` changes the verdict:
+it is a **CPU busy-wait** (`pause_short: LD E,$FF; DEC E/JR NZ; DEC D/JR
+NZ`), so `D=$03` ≈ 765 Z80 iterations ≈ ~3 ms — NOT a frame delay. The
+180-cell tally is therefore a brief **~0.5–1 s score-count blip**, not a
+multi-second sequence, and its speed is tied to the Z80 clock — not
+reproducible on the port's (faster) CPU without an arbitrary fudge factor.
+Since Change A already awards the full score (correct total) and clears +
+advances correctly, Change B would only add a sub-second, non-byte-exact
+score-count animation at end-of-level. Net: low value + unreproducible
+timing → deferred indefinitely (not worth the frame-paced-loop +
+score-redraw machinery + the level-advance-gating risk). The rocket-clear
+is effectively parity-complete after Change A.

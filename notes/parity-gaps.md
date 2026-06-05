@@ -150,12 +150,18 @@ Several paths use gameplay-equivalent but not byte-exact motion:
   `make test-rocket-flight-redraw` (redraw == full flush),
   `test-rocket-completion-no-ball`, and `test-rocket-bonus` — all green
   (level still advances at fly-off via `award_left_bricks`).
-  **(2) End-award — still divergent:** `award_left_bricks` clears all
-  remaining bricks instantly at fly-off, but the original's
-  `add_points_for_left_briks` ($AF0D) ticks points up **sequentially**
-  (pause + sound per brick) and never clears them (the level transition
-  does). Change B in the `notes/rocket-flight.md` plan — a frame-paced
-  tally with a level-advance-gating risk; deferred pending greenlight.
+  **(2) End-award — minor, deferred as low-value.** `award_left_bricks`
+  clears all remaining bricks instantly at fly-off; the original's
+  `add_points_for_left_briks` ($AF0D) ticks points up brick-by-brick. BUT
+  the per-brick delay is `pause_short` (D=$03) — a **CPU busy-wait** (`DEC E`
+  ×255 inner, ×D outer ≈ 765 Z80 iters ≈ ~3 ms/brick), NOT a frame-pause. So
+  the whole tally is a brief **~0.5–1 s score-count blip** over the 180
+  cells, and being a busy-wait its exact speed is CPU-clock-dependent — NOT
+  reproducible on the port's faster CPU. The **score total is already
+  correct** (Change A's `award_left_bricks` awards every brick). So the only
+  residual is a sub-second, timing-unreproducible score-count animation at
+  end-of-level — low value, deferred. The rocket-clear is effectively
+  parity-complete after Change A (the flight, the main visible phase).
 
 These should be compared against ZEsarUX captures if they become
 visibly wrong.
