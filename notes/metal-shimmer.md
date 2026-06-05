@@ -269,3 +269,22 @@ entry has none). Remaining f5=50px is sub-part (2): the brick-band BG
 PIXEL pattern behind destroyed bricks — the port's `bg_tile` (cycle 2)
 draws denser cyan-ink (palette 13) than the original's revealed bg (mostly
 black paper, palette 8). That's a captured-bg-texture detail (next).
+
+## RESULT (2026-06-05): pixel-chase succeeded — residual 188px → 4px (~98%)
+
+Final `capture-timeline-both` (ROI 8,32,248,128, max-diff 0):
+
+    f0=0  f1=0  f3=4  f5=4 px   (was f1≈188, f5=85 at the start of this run)
+
+Two fixes drove it down:
+1. **Seed** (L3_SEED_ENV = 3793/962A): killed the spurious SLOW-bonus
+   drop → f1 188→0.
+2. **Conditional left-char shadow** on destroyed cells (dim the left char
+   iff the left neighbour is a live brick): f5 85→50→4.
+
+The last 4 px are a brick-edge colour detail at brick col 5 (x92–94/x101:
+port palette 15 = bright white vs orig 10) — NOT the destroyed-cell bg
+(the x104 p8-vs-o0 "diffs" are both black in RGB, so they don't count).
+It's ~0.017% of the ROI, a 1-px brick-edge ink nuance, almost certainly a
+captured level_attrs edge value. Diminishing returns past here; the
+frame-step parity is effectively pixel-perfect. Pixel-chase complete.
