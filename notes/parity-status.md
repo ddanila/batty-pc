@@ -356,18 +356,48 @@ the standard regression suite). So the full achieved parity is intact and
 guarded; none of the recent work regressed the byte-exact ball, bat,
 visual, enemy, or RNG gates.
 
-## Bottom line
+## Bottom line (updated 2026-06-05)
 
-The core parity goal — exact ball motion, brick collision (LAFFC), bat
-deflection (LAB1F incl. contact timing, MAGNET catch, resting position),
-and launch — is achieved, gate-verified on L3, and regression-locked.
-Enemy steering is a faithful structural port (`LAA7D`); the metal shimmer
-loops permanently like the original (sprite data byte-identical). The one
-frame-step diagnostic residual (`capture-timeline-both`, ~188 px in
-freshly-hit cells) is proven a cosmetic, seed-comparison artifact (unsynced
-shimmer counter phase — not a render bug; a measured phase-shift experiment
-made it worse and was reverted). The remaining un-achieved items —
-byte-exact enemy RNG targets, multi-ball secondaries, cycle-exact sound —
-each need a deliberate sub-project (RNG-tick alignment + enemy seeding;
-the `bonus_triple_ball` self-modifying spawn replay; a beeper backend),
-not further analysis of the existing setup.
+The gameplay parity goal is **achieved and regression-locked**. Verified
+byte-exact or faithful + gated:
+- **Ball** motion / `LAFFC` brick collision / `LAB1F` bat deflection (incl.
+  contact timing, MAGNET catch, resting position) / launch / multi-ball.
+- **Falling objects** (bonus/bomb/+400), **death sparks**, **laser** (fire
+  cadence + bullet→brick + blast), **bonus economy + effects + scoring**.
+- **Ball speed-up + SLOW** (the `$02→$06` ramp), and the **per-frame RNG
+  tick** — now the DEFAULT, byte-exact vs the original walk
+  (`make test-rng-walk`).
+- **Enemy** fully byte-exact: motion (`dir_to_dxdy`), steering (`LAA7D` +
+  the correct RNG repick), descend, bomb drop (`bomb_appear`), and sprite
+  animation — the bird (5-sprite ping-pong, sprite_num byte-exact incl.
+  phase), the UFO (6-sprite ping-pong), and the alien blast (10-entry
+  ping-pong at 2 ticks/frame). The `LAA02` "facing mirror" was proven dead
+  code in the original (computed-then-discarded), so there's nothing to
+  port there.
+
+Eight regression gates lock this in (`parity-check` runs six; plus the
+brick/rocket/redraw suite). The major arc this run: byte-order-corrected
+the RNG seed → proved the walk byte-exact → flipped the per-frame tick to
+default → fixed the enemy steering (and caught a spurious bonus-drop the
+flip exposed, fixed by wiring the snapshot seed into the L3 replay).
+
+**Remaining — all deliberate sub-projects (deferred), not analysis gaps:**
+1. **Rocket brick-clear behaviour.** The original flies the rocket over
+   INTACT bricks (`handling_rocket` motion-only; `LBB97` does no
+   destruction) and awards remaining bricks SEQUENTIALLY at fly-off
+   (`add_points_for_left_briks`, pause+sound/brick, no clear — the level
+   transition clears). The port carves a destruction tunnel + awards
+   instantly. Matching it = remove the tunnel + port the frame-paced
+   sequential tally; a visible behaviour change vs the recent deliberate
+   "rocket clears the level" UX, and no rocket-flight GT exists (the flight
+   runs its own `LBB97` loop, not the `$BA83` main loop). Greenlight needed.
+2. **Metal-shimmer residual.** The shimmer LOGIC is correct (byte-identical
+   sprites, correct `anim_brik` order, loops permanently). The
+   `capture-timeline-both` ~188 px residual is largely a seed-state
+   artifact (the L3 snapshot doesn't capture the `briks_data` mid-animation
+   state, so port and original shimmer at different phases) plus a per-cell
+   damaged-brick "crack" render detail (~14 black px/cell the port lacks).
+   See `notes/metal-shimmer.md`.
+3. **Cycle-exact sound.** PC-speaker PIT square waves vs the Spectrum
+   beeper port-`$FE` toggling — needs a sampled/low-level beeper backend
+   (out of the visual-parity scope).
