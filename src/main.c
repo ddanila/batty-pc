@@ -761,7 +761,11 @@ static void ball_delta_from_dir(unsigned char dir, int *dx, int *dy) {
  * background/window data; it does not paint a bright-white replacement
  * block. Keep the most recent cell live for a couple of ticks only so
  * dirty redraw includes print_one_brik_buf's wider 18x10 footprint. */
-#define BRICK_FLASH_TICKS 2
+/* The destroyed-cell region needs one full-dynamic frame to rebuild the
+ * band + flush; the next frame re-flushes the same rect automatically via
+ * carry_dirty_with_previous (single-buffer erase path), so a ball-only/
+ * object frame covers it. Was 2 (a redundant second full-dynamic frame). */
+#define BRICK_FLASH_TICKS 1
 static unsigned char brick_flash_ticks = 0;
 static int           brick_flash_x     = 0;
 static int           brick_flash_y     = 0;

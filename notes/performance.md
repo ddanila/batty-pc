@@ -233,6 +233,32 @@ Interpretation:
   mid-fire-anim. The remaining 21 are brick-hit frames (band + HUD blockers
   — the low-marginal tier per the note above).
 
+- **Brick destruction: one full-dynamic frame, not two (2026-06-05).**
+  `render_brick_flash` draws nothing — `brick_flash_ticks` only keeps the
+  destroyed cell's rect marked dirty (a BRICKS full-dynamic blocker). It was
+  2 ticks = 2 full-dynamic frames per hit, but the VGA is single-buffered
+  (fixed 0xA0000000, no page flip) and `carry_dirty_with_previous` already
+  re-flushes last frame's dirty rects (restoring them from the now-updated
+  cache). So frame N rebuilds the band + flushes the cell (erased on the hit
+  frame — no transient), and frame N+1 re-flushes that rect via the carry
+  even as a ball-only/object frame. Cut to 1 tick. Measured (profile-bricks):
+  `ball block bricks` 19 → 12 (the 7 redundant second-frames removed). In
+  that laser scenario the full-dynamic TOTAL is unchanged (those frames also
+  carry bullet/object blockers); the full→cheaper conversion lands in normal
+  (no-laser) brick-hit play, where the second flash frame has no other
+  blocker. Total-PIT is measurement-noisy run-to-run so the brick-blocker
+  frame count is the reliable signal. Correctness: test-brick-flash (no
+  stale cell vs L3 ref), midgame-brick-replay, brick-scoring, and the dirty
+  gates all pass.
+- **Plateau reached.** Across these iterations the dirty tiers now cover
+  every moving element (ball, bat incl. fire-anim, enemy, bonus, +400,
+  bullets, blasts, bomb) and brick hits cost one full-dynamic frame. The
+  laser worst case went 124 → 21 full-dynamic frames; the common case was
+  already 178/180 ball-only. The one structural driver left — the brick-hit
+  frame's own band-rebuild + HUD-score work — is genuinely small-payoff (the
+  full path already skips inactive objects). Further gains are micro
+  (VGA-flush coalescing) or need a real slow-scene to justify the risk.
+
 ## Next Likely Wins
 
 0. **Brick-change frames should NOT force a full-dynamic redraw.** This is
