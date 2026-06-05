@@ -431,15 +431,26 @@ y=48/72/112 at f10/20/30, matched exactly. The three falling-object gates
 (`bonus-fall`, `bomb-fall`, `pts400-fall`) now cover both
 `motion_accel_step` constant pairs in use.
 
+**Laser bullet flight also gated (2026-06-05).** `test-bullet-fly` (in
+`parity-check-full`) bakes an in-flight bullet via `BATTY_REPLAY_BULLET=x,y`
++ a `bullet_state` probe line and asserts it rises at the constant
+`BULLET_SPEED` (6 px/frame, `step_bullet_one`) — y=158/146/134 at f2/4/6
+from y0=170, in the window below the brick field so it travels without
+blasting. Matched exactly (the baked/hidden-ball scenario is frame-
+deterministic even for linear motion, despite the bullet moving 6 px from
+frame 1). Guards bullet travel speed; the laser FIRE CADENCE (cooldown)
+stays ungated because it needs held-fire input the capture harness can't
+drive.
+
 **Still NOT gated** (verified by code-comparison / one-off GT capture, no
-standing automated gate): laser fire cadence + bullet-blast, bonus economy
-(drop RNG-gate) + effects + scoring tables, the ball speed-up ramp, and the
-sprite-animation ping-pongs (bird/UFO/blast — deliberately not gated:
-sprite_num shares the ±1 boot-phase jitter, so an exact frame assertion is
-flaky). These are the genuine remaining test-coverage gaps if deeper
-regression protection is wanted. The motion primitives are now fully gated;
-the remaining items need RNG-seeded scenarios (laser/bonus-drop) or hit a
-known jitter wall (sprite anim), so they're a step up in effort.
+standing automated gate): laser FIRE cadence (cooldown — needs held-fire
+input) + bullet-blast anim, bonus economy (drop RNG-gate) + effects +
+scoring tables, the ball speed-up ramp, and the sprite-animation ping-pongs
+(bird/UFO/blast — deliberately not gated: sprite_num shares the ±1
+boot-phase jitter). All the deterministic per-frame MOTION (bonus, bomb,
++400 popup, bullet) is now gated; the remaining items need RNG-seeded
+scenarios (bonus-drop), held-input simulation (laser cadence), or hit the
+jitter wall (sprite anim) — each a meaningful step up in effort.
 
 ## Bottom line (updated 2026-06-05)
 

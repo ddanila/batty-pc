@@ -4589,6 +4589,24 @@ static void apply_replay_pts400_override(void) {
     pts_400_motion.frac = 0;
 }
 
+/* Bake an in-flight laser bullet for the bullet-motion gate.
+ * BATTY_REPLAY_BULLET = "x,y" into slot 0. The bullet rises at a constant
+ * BULLET_SPEED (6 px/frame) in step_bullet_one; probe it in the window
+ * below the brick field (y > 128) so it travels without blasting. */
+static void apply_replay_bullet_override(void) {
+    const char *spec = getenv("BATTY_REPLAY_BULLET");
+    char *endp, *endp2;
+    long x, y;
+    if (spec == NULL) return;
+    x = strtol(spec, &endp, 0);
+    if (endp == spec || *endp != ',') return;
+    y = strtol(endp + 1, &endp2, 0);
+    if (endp2 == endp + 1) return;
+    bullet_active[0] = 1;
+    bullet_x[0] = (int)x;
+    bullet_y[0] = (int)y;
+}
+
 static void apply_replay_rocket_override(void) {
     if (getenv("BATTY_REPLAY_ROCKET_ACTIVE") == NULL) return;
     rocket_active = 1;
@@ -4698,6 +4716,9 @@ static void write_replay_probe(void) {
     fprintf(f, "\npts400_state=active%02X_x%02X_y%02X",
             (unsigned)pts_400_active, (unsigned)(pts_400_x & 0xFF),
             (unsigned)(pts_400_y & 0xFF));
+    fprintf(f, "\nbullet_state=active%02X_x%02X_y%02X",
+            (unsigned)bullet_active[0], (unsigned)(bullet_x[0] & 0xFF),
+            (unsigned)(bullet_y[0] & 0xFF));
     fprintf(f, "\nnormal_launch_state=%02X%02X%02X%02X%02X",
             (unsigned)last_primary_launch_valid,
             (unsigned)last_primary_launch_x,
@@ -6693,6 +6714,7 @@ static state_t run_level(void) {
         apply_replay_bonus_override();
         apply_replay_bomb_override();
         apply_replay_pts400_override();
+        apply_replay_bullet_override();
         apply_replay_rocket_override();
         write_replay_probe();
         render_level_screen(i);
