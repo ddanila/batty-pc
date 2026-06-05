@@ -309,6 +309,19 @@ Interpretation:
   eliminated** — every ball state (moving, stuck, multi-ball, big-ball) is on
   the dirty path; BALLS only fires for a truly hidden primary.
 
+- **Per-frame restore scan bounded to the dirty rows (2026-06-05).** With
+  every moving object now tiered, the realistic profile's cost shifted to
+  the EVERY-FRAME floor: `restore_prev_dirty_from_static_cache` (in the
+  `paint_bg_to_buff` bucket) scanned all 192 pixel rows each frame even when
+  only ~12 were dirty (the common ball-only case = 88/180 frames). Now
+  `carry_dirty_with_previous` records the pixel-row span of the new
+  prev_dirty (free — it already scans all rows), and the restore iterates
+  only `[prev_dirty_y_lo, prev_dirty_y_hi]`. Measured (profile-ballbricks):
+  `paint_bg_to_buff` 8686 → 7570 (the scan overhead removed). All 8
+  dirty-redraw gates + the visual states pass (a too-narrow range would
+  leave a trail — none did). Init range is full so the first restore
+  (pre-carry) is safe; empty range (hi<lo) scans nothing.
+
 ## Next Likely Wins
 
 0. **Brick-change frames should NOT force a full-dynamic redraw.** This is

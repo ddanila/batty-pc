@@ -2661,6 +2661,11 @@ static unsigned char bg_attr_buff[768];
 #define DIRTY_SLOTS 2
 static unsigned char dirty_min_byte[DIRTY_SLOTS][PLAYFIELD_H];
 static unsigned char dirty_max_byte[DIRTY_SLOTS][PLAYFIELD_H];
+/* Pixel-row span of prev_dirty (set by carry_dirty_with_previous), so the
+ * per-frame restore scans only the rows touched last frame instead of all
+ * PLAYFIELD_H. Init full so the first restore (before any carry) is safe. */
+static int prev_dirty_y_lo = 0;
+static int prev_dirty_y_hi = PLAYFIELD_H - 1;
 static unsigned char prev_dirty_min_byte[DIRTY_SLOTS][PLAYFIELD_H];
 static unsigned char prev_dirty_max_byte[DIRTY_SLOTS][PLAYFIELD_H];
 static int static_bg_dirty = 1;
@@ -2988,7 +2993,7 @@ static void restore_prev_dirty_from_static_cache(void) {
     /* Restore only the byte ranges touched by moving sprites last
      * frame. Untouched rows and columns retain the cached static
      * background. */
-    for (y = 0; y < PLAYFIELD_H; y++) {
+    for (y = prev_dirty_y_lo; y <= prev_dirty_y_hi; y++) {
         int s;
         for (s = 0; s < DIRTY_SLOTS; s++) {
             if (prev_dirty_min_byte[s][y] != DIRTY_NONE) {
@@ -5818,6 +5823,10 @@ static void render_hud_to_buff(void);
 
 static void carry_dirty_with_previous(void) {
     int y;
+    /* The new prev = THIS frame's marks (current_*), so track their pixel-row
+     * span for next frame's restore to scan only those rows, not all 192. */
+    int y_lo = PLAYFIELD_H;
+    int y_hi = -1;
     for (y = 0; y < PLAYFIELD_H; y++) {
         unsigned char current_min0 = dirty_min_byte[0][y];
         unsigned char current_max0 = dirty_max_byte[0][y];
@@ -5835,7 +5844,13 @@ static void carry_dirty_with_previous(void) {
         prev_dirty_max_byte[0][y] = current_max0;
         prev_dirty_min_byte[1][y] = current_min1;
         prev_dirty_max_byte[1][y] = current_max1;
+        if (current_min0 != DIRTY_NONE || current_min1 != DIRTY_NONE) {
+            if (y < y_lo) y_lo = y;
+            if (y > y_hi) y_hi = y;
+        }
     }
+    prev_dirty_y_lo = y_lo;
+    prev_dirty_y_hi = y_hi;   /* hi < lo when nothing dirty -> restore scans none */
 }
 
 /* Full-frame compose. Walks the same scr_buff -> attr_buff -> VGA
