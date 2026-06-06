@@ -578,6 +578,7 @@ parity-check:
 # guards). Slower (many QEMU boots) — run before milestones / merges.
 parity-check-full:
 	$(MAKE) parity-check
+	$(MAKE) test-wall-bounce
 	$(MAKE) test-normal-ball-launch
 	$(MAKE) test-laffc-levels-sane
 	$(MAKE) test-hud
@@ -701,6 +702,13 @@ gate-laffc-long:
 # frame 1 (no ZEsarUX needed; asserts object_ball_1 == the Spectrum probe).
 test-laffc-ball-frame1:
 	python3 scripts/test_laffc_ball_frame1.py
+
+# Wall-bounce gate: the ball must reflect off the L/R side walls (and top)
+# via change_direction's $1F/$3F masks, not pin against them. Guards the
+# bounce_wall port in reflect_obj_dir (a swapped/off-by-one reflect pinned
+# the ball at x=8 / x=240, juggling -- notes/lessons.md, notes/wall-bounce.md).
+test-wall-bounce:
+	python3 scripts/test_wall_bounce.py
 
 # Bat-deflection gate: the LAB1F port in step_ball must reproduce the
 # Spectrum's deflected direction across bat positions (ground truth in

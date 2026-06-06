@@ -286,3 +286,15 @@ band REBUILD of the destroy render, regressing the L3 frame-step residual
 the brick-band cache / dirty-redraw / flash path is a parity change — re-run
 `capture-timeline-both`, don't trust the headless gates alone. See
 notes/metal-shimmer.md (BRICK_FLASH_TICKS regression).
+
+## Wall reflect masks: side = $1F (negate dx), top = $3F (negate dy)
+
+The ball's wall bounce (reflect_obj_dir) is the SAME change_direction
+($AC40) the brick path uses: `dir = ((dir ^ mask) + 1) & 0x3F`, with mask
+$1F for L/R walls and $3F for the top (bounce_wall $AC75). A long-standing
+port bug had them swapped + off by one (0x3F-dir / 0x1F-dir), so a ball
+hitting a side wall kept its dx INTO the wall and pinned/juggled at x=8 or
+x=240. Lesson: wall bounces had NO gate (the L3 ball gate never reaches a
+bare wall; `make test` is static-only) — that class of bug is invisible
+until a player hits it. `make test-wall-bounce` now guards it. See
+notes/wall-bounce.md.

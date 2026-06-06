@@ -1951,8 +1951,19 @@ static void ball_dir_delta_q8(unsigned char dir, unsigned char speed,
  * and (once unified) the multi-ball secondaries. */
 static void reflect_obj_dir(object_t *o, int flip_x, int flip_y) {
     unsigned char dir = o->dir;
-    if (flip_x) dir = (unsigned char)((0x3F - dir) & 0x3F);
-    if (flip_y) dir = (unsigned char)((0x1F - dir) & 0x3F);
+    /* Port of the original's bounce_wall ($AC75) -> change_direction
+     * ($AC40): dir = ((dir ^ mask) + 1) & 0x3F. The original passes
+     * mask=$1F for the LEFT/RIGHT walls (horizontal bounce, negate dx) and
+     * mask=$3F for the TOP wall (vertical bounce, negate dy) — the SAME
+     * change_direction LAFFC uses for brick faces (laffc_change_dir).
+     *
+     * The previous formulas (flip_x: 0x3F-dir, flip_y: 0x1F-dir) had the
+     * axes SWAPPED and were off by one: a ball hitting a side wall kept its
+     * dx pointing into the wall (e.g. dir 0x20 = (-255,0) -> 0x3F-0x20 =
+     * 0x1F = (-253,+24), still moving left), so it pinned at x=8 / x=240 and
+     * juggled its dy forever. Now matched to change_direction. */
+    if (flip_x) dir = (unsigned char)(((dir ^ 0x1F) + 1) & 0x3F);
+    if (flip_y) dir = (unsigned char)(((dir ^ 0x3F) + 1) & 0x3F);
     o->dir = dir;
 }
 static void ball_reflect_descriptor(int flip_x, int flip_y) {
