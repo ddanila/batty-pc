@@ -1,9 +1,24 @@
 #!/usr/bin/env python3
 """Regression test for ball reflection at the left wall near the bat.
 
-Seeds the primary ball just inside the left wall with an up-left
-descriptor. The old XOR-mask reflection kept the descriptor moving left,
-so the ball jittered along x=$08 instead of escaping back into the field.
+Seeds the primary ball just inside the left wall (x=$09, dir=$2C up-left,
+speed 2 — see the Makefile target) and asserts the 12-frame outcome of the
+left-wall bounce.
+
+Correct physics (bounce_wall $AC75 -> change_direction with mask $1F):
+a side wall negates dx and PRESERVES dy, so the up-left $2C reflects to
+($2C ^ $1F) + 1 = $34 — up-RIGHT, quadrant $30. The flight is fully
+deterministic (no RNG / counter_misc dependence): bounce on frame 1, then
+dx=+97/256*2 and dy=-230/256*2 per frame put the ball at exactly
+x=$0F, y=$8A after the 12 probed frames.
+
+HISTORY: this test originally asserted quadrant $00/$10 and x>$10 — values
+tuned to the buggy 0x3F-dir reflect, which flipped dy at a side wall
+(vertical flip). Under that bug the ball came off the wall moving DOWN
+into the bat seeded below, and the BAT's deflection shot it away — the
+test read that as a wall "escape" and enshrined the wrong physics. After
+the reflect fix (notes/wall-bounce.md) the genuine wall bounce leaves the
+wall up-right at a steep angle, and the old thresholds mis-fired.
 """
 
 from __future__ import annotations
@@ -74,10 +89,14 @@ def main() -> int:
         raise SystemExit(f"FAIL: frame probe did not stop after 12 frames: {frame_probe!r}")
     if speed != 0x02:
         raise SystemExit(f"FAIL: ball speed corrupted: speed=${speed:02X}")
-    if x <= 0x10:
-        raise SystemExit(f"FAIL: ball did not escape the left wall: x=${x:02X}, y=${y:02X}, dir=${direction:02X}")
-    if direction & 0x30 not in (0x00, 0x10):
-        raise SystemExit(f"FAIL: ball still points left after wall escape: dir=${direction:02X}")
+    if direction != 0x34:
+        raise SystemExit(
+            f"FAIL: left-wall reflect must negate dx and preserve dy "
+            f"($2C -> $34): dir=${direction:02X}, x=${x:02X}, y=${y:02X}")
+    if (x, y) != (0x0F, 0x8A):
+        raise SystemExit(
+            f"FAIL: 12-frame post-bounce position drifted (expect x=$0F "
+            f"y=$8A): x=${x:02X}, y=${y:02X}, dir=${direction:02X}")
 
     print(f"PASS ball_left_wall_escape: x=${x:02X}, y=${y:02X}, dir=${direction:02X}")
     return 0

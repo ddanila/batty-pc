@@ -78,3 +78,15 @@ buggy:  left  f8 x~=8  (pinned)                right f8 x~=240 (pinned)
 
 Thresholds: left `x>=24`, right `x<=220`. Wired into `parity-check-full`.
 Validated to PASS on the fix and FAIL on the reverted (buggy) formula.
+
+## Stale sibling test updated (2026-06-11)
+
+`test-ball-left-wall-escape` (predating this fix) had thresholds tuned to
+the BUGGY 0x3F-dir reflect: it expected the wall-hit ball in quadrant
+$00/$10 (downward) with x>$10 — which only "worked" because the vertical
+flip sent the ball DOWN into the bat seeded below it, and the BAT
+deflection produced the escape the test observed. With the correct $1F
+reflect the up-left $2C ball leaves the wall up-RIGHT as $34 (dy
+preserved) and sits at exactly x=$0F y=$8A after the 12 probed frames —
+the test now asserts those byte-exact values. First caught on the first
+parity-check-full run after the reflect fix.
