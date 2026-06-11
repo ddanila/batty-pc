@@ -159,6 +159,22 @@ movement reads `object_ball_1.dir/speed` but SPACE or timeout launch
 updates only the legacy integer `ball_dx/ball_dy` side state, and the
 16-bit DOS fixed-point overflow class where `x << 8` wraps for x >= 128.
 
+`make test-magnet-ball` covers the magnet ball physics (handling_ball
+LA27E_0..11). It boots L2 twice with a ball seeded inside the magnet's
+empty brick pocket aimed straight up, forcing the magnet ON in one run
+and OFF in the other via `BATTY_REPLAY_MAGNET`, and asserts the ON run
+curves/releases the ball (dir leaves the seeded $10) while the OFF run
+flies arrow-straight. See notes/magnets.md.
+
+`make test-brik-anim-pace` covers the level-intro all-metal-bricks
+shimmer pace (all_metal_briks_animation_snd $B765). The floppy is built
+with `BATTY_TEST_KEY_BEFORE_ANIM=1` so the port stuffs an ENTER into the
+BIOS keyboard buffer right before the animation; the gate asserts the
+PROBE.TXT `brik_anim_ticks` duration is >= 16 PIT edges (8 frames x 2
+full edge waits) and that the key survives the animation (it must
+release BATTY_REPLAY_WAIT_KEY — the old abort-on-any-key code consumed
+it at frame 0). See notes/metal-shimmer.md.
+
 `make test-ball-left-wall-escape` covers a seeded primary-ball wall
 reflection case that is hard to reach reliably through normal input. It
 starts the ball near the left wall with an up-left descriptor and stops

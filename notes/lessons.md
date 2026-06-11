@@ -305,6 +305,23 @@ bare wall; `make test` is static-only) — that class of bug is invisible
 until a player hits it. `make test-wall-bounce` now guards it. See
 notes/wall-bounce.md.
 
+## Don't invent input short-circuits in ported blocking sequences
+
+The original's blocking sequences (pause_long, the pre-round
+all-metal-bricks animation) read NO input. The port added "any key
+skips" conveniences to `play_brik_anim` — which in real play meant a
+key held or typematic-repeating at level entry (moving the bat,
+pressing FIRE) silently skipped the animation, reported as "the initial
+shimmer is very fast" (known-bugs #4). Worse, the consumed key was the
+player's gameplay input. Rule: when porting a timed sequence, reproduce
+its input semantics too — if the original doesn't read keys, don't; if
+you must support a quit key (ESC), PEEK the BIOS buffer
+(`_bios_keybrd(_KEYBRD_READY)`) and consume only that key, leaving
+everything else for the main loop. And pace HALT-style waits as full
+tick-edge waits (`do {} while (pit_ticks() == t)` twice), not
+`pit_ticks() - t < 2` from a mid-tick sample — the latter waits 1..2
+ticks, not 2.
+
 ## Global-counter-phase cadences need the counter PINNED in tests
 
 Anything gated on the global frame counter's low bits (= counter_misc:

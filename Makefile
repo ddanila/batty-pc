@@ -446,6 +446,12 @@ $(TEST_FLOPPY_OUT): $(TEST_EXE) $(ASSETS) $(FLOPPY_SRC)
 	if [ -n "$$BATTY_FORCE_FULL_FLUSH_EACH_FRAME" ]; then \
 	    printf 'SET BATTY_FORCE_FULL_FLUSH_EACH_FRAME=%s\r\n' "$$BATTY_FORCE_FULL_FLUSH_EACH_FRAME" >> build/AUTOEXEC-T.BAT ; \
 	fi; \
+	if [ -n "$$BATTY_REPLAY_MAGNET" ]; then \
+	    printf 'SET BATTY_REPLAY_MAGNET=%s\r\n' "$$BATTY_REPLAY_MAGNET" >> build/AUTOEXEC-T.BAT ; \
+	fi; \
+	if [ -n "$$BATTY_TEST_KEY_BEFORE_ANIM" ]; then \
+	    printf 'SET BATTY_TEST_KEY_BEFORE_ANIM=%s\r\n' "$$BATTY_TEST_KEY_BEFORE_ANIM" >> build/AUTOEXEC-T.BAT ; \
+	fi; \
 	printf 'BATTY\r\n' >> build/AUTOEXEC-T.BAT
 	mcopy -i $@ -o build/AUTOEXEC-T.BAT ::AUTOEXEC.BAT
 	@echo "Test floppy ready: $@  (full 4-state cycle)"
@@ -584,6 +590,8 @@ parity-check-full:
 	$(MAKE) test-frame-step
 	$(MAKE) replay-l3-entry
 	$(MAKE) test-wall-bounce
+	$(MAKE) test-magnet-ball
+	$(MAKE) test-brik-anim-pace
 	$(MAKE) test-normal-ball-launch
 	$(MAKE) test-laffc-levels-sane
 	$(MAKE) test-hud
@@ -739,6 +747,18 @@ test-laffc-ball-frame1:
 # the ball at x=8 / x=240, juggling -- notes/lessons.md, notes/wall-bounce.md).
 test-wall-bounce:
 	python3 scripts/test_wall_bounce.py
+
+# Magnet-ball gate: an ON magnet must curve the ball (+-1/64 dir per
+# frame while overlapping the 15x14 box, quantized release), an OFF
+# magnet must not (handling_ball LA27E_0..11 -- known-bugs.md #5).
+test-magnet-ball:
+	python3 scripts/test_magnet_ball.py
+
+# Intro-shimmer pace gate: the pre-round all-metal-bricks animation must
+# run 8 frames x 2 full PIT edges (all_metal_briks_animation_snd $B765)
+# and must NOT consume/abort on buffered input (known-bugs.md #4).
+test-brik-anim-pace:
+	python3 scripts/test_brik_anim_pace.py
 
 # Bat-deflection gate: the LAB1F port in step_ball must reproduce the
 # Spectrum's deflected direction across bat positions (ground truth in

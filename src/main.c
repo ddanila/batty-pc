@@ -11,6 +11,7 @@
  *     8-row char cell are renderer-side blank padding).
  *   - Index = markup char-code: 0..9 = digits, 0x0A..0x23 = A..Z. */
 
+#include <bios.h>
 #include <conio.h>
 #include <dos.h>
 #include <i86.h>
@@ -540,6 +541,41 @@ static const unsigned char magnets_per_level[N_LEVELS][1 + 2*MAGNETS_MAX_PER_LEV
     { 4, 0x8C,0x24, 0xC4,0x24, 0x8C,0x64, 0xC4,0x64 },         /* L14 */
     { 2, 0x4C,0x82, 0x9C,0x82, 0,0, 0,0 }                      /* L15 */
 };
+
+/* Runtime magnet state — port of magnets_quantity + magnet_properties
+ * ($8DB7/$8DB8). magnet_px/py keep the PAINT origin (x0,y0 from the
+ * level table); the original's slot stores (x0+5, y0+5) — the circle's
+ * physics box origin — with body size 15x14 px (slot +$0C/+$0D).
+ * magnet_on_state mirrors slot +$01: 1 = sprite $06 (ON, bit0 clear),
+ * 0 = sprite $07 (OFF). Set once per level entry by magnet_level_init
+ * (the print_magnets coin), flipped at random by magnet_random_toggle
+ * (print_one_magnet $8E72). */
+static unsigned char magnet_count = 0;
+static unsigned char magnet_px[MAGNETS_MAX_PER_LEVEL];
+static unsigned char magnet_py[MAGNETS_MAX_PER_LEVEL];
+static unsigned char magnet_on_state[MAGNETS_MAX_PER_LEVEL];
+/* Index of a magnet whose ON/OFF flip still needs its incremental
+ * circle redraw applied at the next frame compose (0xFF = none). */
+static unsigned char magnet_toggle_pending = 0xFF;
+#define MAGNET_BODY_W  15        /* slot +$0C */
+#define MAGNET_BODY_H  14        /* slot +$0D */
+
+/* Per-ball magnet capture blocks — port of the 4-byte LA270 (ball 1) /
+ * LA274 (ball 2) / LA278 (other) state:
+ *   cool:  +0  re-capture cooldown (2 frames after a release)
+ *   delta: +1  per-frame dir rotation while captured (+1/-1, 0 = free)
+ *   exit:  +2  quantized release direction, recomputed every frame
+ *   idx:   +3  capturing magnet's slot index
+ * Index by ball object (OBJ_BALL_1/2/3 -> 0/1/2). */
+static unsigned char ball_mag_cool[3];
+static unsigned char ball_mag_delta[3];
+static unsigned char ball_mag_exit[3];
+static unsigned char ball_mag_idx[3];
+
+/* PIT-tick duration of the last completed level-intro shimmer pass,
+ * exported via PROBE.TXT (brik_anim_ticks=) so the regression test can
+ * assert the original's pacing (8 frames x 2 interrupt edges = ~16). */
+static unsigned long brik_anim_probe_ticks = 0;
 
 /* Mirror of `briks_colors` at $AEEC. Original ASM uses
  *   LD HL,briks_colors-$01 ; CALL hl_add_a (A = cell low nibble 1..14)
@@ -2960,48 +2996,151 @@ static void buff_to_vga(void) {
     }
 }
 
-/* Port of print_magnets ($8D4C) — paints each magnet specified in
- * magnets_per_level[level_idx]. Original draws spr_magnet_circle_off
- * at (x, y) then on a 50% random coin-flip overlays
- * spr_magnet_circle_on at (x, y+5). For the deterministic test we
- * paint both unconditionally (matches the GT capture moment where
- * the coin flipped "on"). Inherits each cell's attr — no override,
- * same monochrome rule as other moving sprites. */
-static void render_magnets(unsigned char level_idx) {
+/* Set up the level's runtime magnet state — the state half of
+ * print_magnets ($8D4C). Coordinates from magnets_per_level; the
+ * initial ON/OFF coin is the original's per-magnet
+ * `CALL random_generate / LD A,(random_number) / RRA / JR C,stay-ON`:
+ * ADVANCES the RNG once per magnet, keeps the magnet ON when bit0==1.
+ * (An earlier render-time coin sampled without advancing — so every
+ * magnet on the level shared one coin — and drew OFF on bit0==1,
+ * inverted. Now the coin is rolled once here, and render_magnets /
+ * the toggle just read the state.)
+ *
+ * Test-mode pin (BATTYALL): slots 0/1 ON, 2/3 OFF, no RNG consumed —
+ * keeps the state4 level-entry captures deterministic. */
+static void magnet_level_init(unsigned char level_idx) {
     const unsigned char *rec;
-    unsigned char n;
     int i;
+    magnet_count = 0;
+    magnet_toggle_pending = 0xFF;
+    for (i = 0; i < 3; i++) {
+        ball_mag_cool[i] = 0;
+        ball_mag_delta[i] = 0;
+        ball_mag_exit[i] = 0;
+        ball_mag_idx[i] = 0;
+    }
+    for (i = 0; i < MAGNETS_MAX_PER_LEVEL; i++) magnet_on_state[i] = 0;
     if (level_idx >= N_LEVELS) return;
     rec = magnets_per_level[level_idx];
-    n = rec[0];
-    for (i = 0; i < n; i++) {
-        int x = rec[1 + 2*i];
-        int y = rec[1 + 2*i + 1];
+    magnet_count = rec[0];
+    for (i = 0; i < magnet_count; i++) {
+        magnet_px[i] = rec[1 + 2*i];
+        magnet_py[i] = rec[1 + 2*i + 1];
+        magnet_on_state[i] = test_mode_pin_blink
+            ? (unsigned char)(i < 2)
+            : (unsigned char)(random_lo(next_random()) & 1);
+    }
+    /* Replay hook: force the initial ON/OFF pattern (low 4 bits = slots
+     * 0..3) so the magnet physics tests get a deterministic field. */
+    {
+        const char *p = getenv("BATTY_REPLAY_MAGNET");
+        if (p != NULL && *p != '\0') {
+            char *endp;
+            unsigned long v = strtoul(p, &endp, 16);
+            if (*endp == '\0') {
+                for (i = 0; i < magnet_count; i++)
+                    magnet_on_state[i] = (unsigned char)((v >> i) & 1);
+            }
+        }
+    }
+}
+
+/* Port of print_magnets ($8D4C), render half — paints each magnet from
+ * the runtime state set by magnet_level_init. Inherits each cell's attr
+ * — no override, same monochrome rule as other moving sprites. */
+static void render_magnets(unsigned char level_idx) {
+    int i;
+    (void)level_idx;
+    for (i = 0; i < magnet_count; i++) {
+        int x = magnet_px[i];
+        int y = magnet_py[i];
         /* Draw order matches the original's print_magnets ($8D4C):
          *   sprite_num $06 = spr_magnet_circle_ON (lightning, w=4, h=30
          *                    with SMC) — drawn UNCONDITIONALLY first.
          *   sprite_num $07 = spr_magnet_circle_OFF (bare outline, w=3,
-         *                    h=23) — drawn CONDITIONALLY after coin.
+         *                    h=23) — drawn CONDITIONALLY for an OFF slot.
          * (Iter 21 had this backwards, treating $06 as the "off state"
          * and $07 as the "on overlay"; gfx_screen_elements actually
          * maps $06 → spr_magnet_circle_on and $07 → spr_magnet_circle_off.)
          *
          * Both blits use the SAME (x, y) — original's `ADD A,$05` to
          * (IX+$04) between calls is dead state since ix_buf_addr_calc
-         * only runs once.
-         *
-         * Coin-pin in test mode: slots 0/1 SKIP the OFF overlay (= GT
-         * shows them as pure lightning, ~70% set pixels). Slots 2/3
-         * DRAW the OFF overlay (= GT shows them at ~43% set with the
-         * outline replacing the lightning's bright body). Normal play
-         * follows the original coin flip from print_magnets. */
+         * only runs once. Note this means the ON sprite's bottom "spark"
+         * rows (23..29) are painted under BOTH states and persist
+         * regardless of later toggles, exactly like the original (the
+         * toggle redraw is 23 rows tall — circle only). */
         blit_masked_to_scr_buff_ptr(spr_magnet_on, x, y);
-        /* Magnet on/off coin-flip: the original print_magnets reads
-         * random_number+$01 without advancing (read-current) -> rng_sample. */
-        if (test_mode_pin_blink ? (i >= 2) : (random_lo(rng_sample()) & 1)) {
+        if (!magnet_on_state[i]) {
             blit_masked_to_scr_buff_ptr(spr_magnet_off, x, y);
         }
     }
+}
+
+/* Port of print_one_magnet ($8E72), called from the main-loop top when
+ * the read-current `random_number+$01 == $99` gate fires (LB9E8_2,
+ * ~1/256 per frame): pick a uniform random magnet (rejection over &3 —
+ * each retry ADVANCES the RNG like the original's CALL random_generate),
+ * flip its ON/OFF state, queue the sweep sound, and leave the circle
+ * redraw for the next frame compose. Count==0 returns before any RNG
+ * use (RET Z) — so non-magnet levels never perturb the RNG walk. */
+static void snd_q_push(unsigned char id);             /* defined below */
+#define SND_MAGNET        0x0D    /* lives here, above its first use;
+                                   * siblings are defined at the snd_q block */
+
+static void magnet_random_toggle(void) {
+    unsigned char a, b;
+    if (magnet_count == 0) return;
+    b = (unsigned char)(magnet_count - 1);
+    do {
+        a = (unsigned char)(random_lo(next_random()) & 0x03);
+    } while (a > b);
+    magnet_on_state[a] ^= 1;
+    magnet_toggle_pending = a;
+    snd_q_push(SND_MAGNET);
+}
+
+/* Apply a pending toggle's incremental redraw — the visual half of
+ * print_one_magnet + the restore window in restore_objs_and_magnet
+ * ($987A: 4 chars x $17 rows at the paint origin). The toggle redraws
+ * the CIRCLE only: sprite $07 (OFF) is natively 23 rows; for ON the
+ * original's spr_magnet_circle_on height byte is $17=23 outside
+ * print_magnets' temporary $1E SMC, so the bottom spark rows (23..29)
+ * are never repainted (they persist from level paint regardless of
+ * state). Must run while scr_buff holds clean background in the window
+ * (frame-compose top, after the prev-dirty restore, before objects are
+ * drawn) because the result is baked into the static bg cache. */
+static void apply_magnet_toggle_visual(void) {
+    static unsigned char spr_magnet_on_h23[242];
+    unsigned char i = magnet_toggle_pending;
+    int x, y, yy;
+    int byte_lo, byte_hi;
+    if (i == 0xFF) return;
+    magnet_toggle_pending = 0xFF;
+    if (i >= magnet_count) return;
+    x = magnet_px[i];
+    y = magnet_py[i];
+    if (magnet_on_state[i]) {
+        if (spr_magnet_on_h23[0] == 0) {
+            fast_memcpy(spr_magnet_on_h23, spr_magnet_on,
+                        sizeof(spr_magnet_on_h23));
+            spr_magnet_on_h23[1] = 0x17;     /* 30 -> 23 rows */
+        }
+        blit_masked_to_scr_buff_ptr(spr_magnet_on_h23, x, y);
+    } else {
+        blit_masked_to_scr_buff_ptr(spr_magnet_off, x, y);
+    }
+    /* Bake the window into the static bg cache (the magnet is part of
+     * the cached background) and mark it for the VGA flush. 5 bytes
+     * covers the 4-byte sprite at any sub-byte shift. */
+    byte_lo = x >> 3;
+    byte_hi = byte_lo + 4;
+    if (byte_hi > 31) byte_hi = 31;
+    for (yy = y; yy < y + 0x17 && yy < PLAYFIELD_H; yy++) {
+        fast_memcpy(&bg_scr_buff[(yy << 5) + byte_lo],
+                    &scr_buff[(yy << 5) + byte_lo],
+                    (unsigned int)(byte_hi - byte_lo + 1));
+    }
+    mark_dirty_bytes(y, 0x17, byte_lo, byte_hi);
 }
 
 static void render_hud_to_buff(void);
@@ -3552,6 +3691,7 @@ typedef struct { unsigned char id; unsigned char state; } sound_slot_t;
 #define SND_TRIPLE_BALL   0x0A
 #define SND_SHOT          0x0B
 #define SND_BAT_RESIZE_2  0x0C
+/* SND_MAGNET 0x0D — defined above magnet_random_toggle (first use) */
 
 static sound_slot_t snd_q[SQ_SLOTS];
 
@@ -3574,6 +3714,7 @@ static void snd_q_push(unsigned char id) {
                 case SND_BAT_RESIZE_1:snd_q[i].state = 0xC0; break;  /* matches \$3212 push */
                 case SND_TRIPLE_BALL: snd_q[i].state = 0x10; break;  /* matches \$3072 push */
                 case SND_ALIEN_BLAST: snd_q[i].state = 0x30; break;
+                case SND_MAGNET:      snd_q[i].state = 0x18; break;  /* C starts $18 */
                 default:              snd_q[i].state = 0; break;
             }
             return;
@@ -3661,6 +3802,17 @@ static int snd_tick_one(sound_slot_t *s) {
             /* $C241: D=$0A,E=$30. */
             sound_beep_cont_de(0x0A, 0x30);
             return 1;
+        }
+
+        case SND_MAGNET: {
+            /* play_sound_magnet ($C151): a blocking 24-step sweep —
+             * per-beep period C climbs from $18 (descending pitch) over
+             * E=$18 iterations via sound_beep2. Approximated as a queued
+             * per-frame descending sweep, consistent with the rest of
+             * the PC-speaker layer (see parity-gaps.md). */
+            sound_beep_cont_d(0x02, s->state);
+            s->state += 4;
+            return s->state >= 0x18 + 0x60;
         }
 
         default:
@@ -5076,6 +5228,13 @@ static void write_replay_probe(void) {
     fprintf(f, "enemy_repicks=arrival%u_margin%u_turns%u\n",
             dbg_enemy_arrival_repicks, dbg_enemy_margin_repicks,
             dbg_enemy_turn_calls);
+    fprintf(f, "brik_anim_ticks=%lu\n", brik_anim_probe_ticks);
+    fprintf(f, "magnet_state=count%02X_on%02X%02X%02X%02X_ball0_c%02X_d%02X_e%02X_i%02X\n",
+            (unsigned)magnet_count,
+            (unsigned)magnet_on_state[0], (unsigned)magnet_on_state[1],
+            (unsigned)magnet_on_state[2], (unsigned)magnet_on_state[3],
+            (unsigned)ball_mag_cool[0], (unsigned)ball_mag_delta[0],
+            (unsigned)ball_mag_exit[0], (unsigned)ball_mag_idx[0]);
     fprintf(f, "object_ball_1=");
     for (i = 0; i < (int)sizeof(object_t); i++) {
         fprintf(f, "%02X", ((unsigned char *)&objects[OBJ_BALL_1])[i]);
@@ -5647,6 +5806,137 @@ static void ball_speed_ramp_tick(void) {
     if (ball3_active && objects[OBJ_BALL_3].speed < 6) objects[OBJ_BALL_3].speed++;
 }
 
+/* ---- Magnet ball physics — port of handling_ball's LA27E_0..11 ------- */
+
+/* obj_compare ($AC22) against magnet slot i: the slot's stored origin is
+ * the paint origin +5 on both axes (print_magnets' post-draw ADD $05s),
+ * body 15x14 px (slot +$0C/+$0D). Carry = overlap. Note the original's
+ * asymmetry: strict `<` against the ball's body when the magnet is to
+ * the right/below, `<=` against the magnet's body otherwise. */
+static int magnet_ball_overlap(const object_t *o, unsigned char i) {
+    unsigned char mx = (unsigned char)(magnet_px[i] + 5);
+    unsigned char my = (unsigned char)(magnet_py[i] + 5);
+    if (mx >= o->x_coord) {
+        if ((unsigned char)(mx - o->x_coord) >= o->w_body_px) return 0;
+    } else {
+        if ((unsigned char)(o->x_coord - mx) > MAGNET_BODY_W) return 0;
+    }
+    if (my >= o->y_coord) {
+        if ((unsigned char)(my - o->y_coord) >= o->h_body_px) return 0;
+    } else {
+        if ((unsigned char)(o->y_coord - my) > MAGNET_BODY_H) return 0;
+    }
+    return 1;
+}
+
+/* Captured-frame move (the LA27E_4 keep-captured path): move the ball
+ * with the CURVED dir (LAD69) and clamp to the margins WITHOUT
+ * reflecting (check_margins $AC6C — a captured ball hugs the wall, it
+ * doesn't bounce), then run the brick collision as if the dir were the
+ * quantized EXIT dir (the original temporarily swaps +$06, CALLs
+ * LA27E_24, and keeps the collision's dir only if it changed). The
+ * LA27E_24 bat-contact and bottom-exit checks are unreachable while
+ * captured (the deepest magnet box ends at y~165 < the y>=167 bat
+ * contact and far above y>=192) and are omitted; ball-vs-enemy contact
+ * runs in the main loop regardless of this path. */
+static void magnet_captured_move(object_t *o, unsigned char exit_dir) {
+    int dx_q8, dy_q8, next_x, next_y, hit;
+    long nx_q8, ny_q8;
+    unsigned char curved = o->dir;
+    int x_max = 0xF8 - (int)o->w_body_px;   /* check_right_margin */
+    ball_dir_delta_q8(o->dir, o->speed, &dx_q8, &dy_q8);
+    nx_q8 = ((long)o->x_coord << 8) + o->x_coord_hi + dx_q8;
+    ny_q8 = ((long)o->y_coord << 8) + o->y_coord_hi + dy_q8;
+    next_x = (int)(nx_q8 >> 8);
+    next_y = (int)(ny_q8 >> 8);
+    if (next_x < BALL_X_MIN)  { next_x = BALL_X_MIN;  nx_q8 = (long)next_x << 8; }
+    else if (next_x > x_max)  { next_x = x_max;       nx_q8 = (long)next_x << 8; }
+    if (next_y < BALL_Y_TOP)  { next_y = BALL_Y_TOP;  ny_q8 = (long)next_y << 8; }
+    o->dir = exit_dir;
+    hit = laffc_collision(o, o->x_coord, o->y_coord, next_x, next_y);
+    if (hit == 0) hit = brick_collision(o->x_coord, o->y_coord, next_x, next_y);
+    if (hit == 3) {
+        nx_q8 = ((long)o->x_coord << 8) | (nx_q8 & 0xFF);
+        ny_q8 = ((long)o->y_coord << 8) | (ny_q8 & 0xFF);
+        next_x = o->x_coord; next_y = o->y_coord;
+    } else if (hit == 1) {
+        reflect_obj_dir(o, 0, 1);
+        next_y = o->y_coord;
+        ny_q8 = ((long)o->y_coord << 8) + o->y_coord_hi;
+    } else if (hit == 2) {
+        reflect_obj_dir(o, 1, 0);
+        next_x = o->x_coord;
+        nx_q8 = ((long)o->x_coord << 8) + o->x_coord_hi;
+    }
+    if (o->dir == exit_dir) o->dir = curved;   /* no collision: stay curved */
+    o->x_coord = (unsigned char)next_x;
+    o->y_coord = (unsigned char)next_y;
+    o->x_coord_hi = (unsigned char)(nx_q8 & 0xFF);
+    o->y_coord_hi = (unsigned char)(ny_q8 & 0xFF);
+}
+
+/* Per-frame magnet state machine for one ball — the block at the top of
+ * handling_ball (LA27E_0..11). si = 0/1/2 for OBJ_BALL_1/2/3 (the
+ * original's LA270/LA274/LA278 blocks). Returns 1 when the frame was
+ * fully handled (ball captured: curved move done — skip the normal
+ * step), 0 to proceed with the normal step (a release rewrites dir to
+ * the quantized exit first; a fresh capture only registers state — the
+ * curving starts NEXT frame, like the original). */
+static int magnet_ball_frame(object_t *o, unsigned char si) {
+    if (ball_mag_cool[si]) {           /* post-release re-capture cooldown */
+        ball_mag_cool[si]--;
+        return 0;
+    }
+    if (ball_mag_delta[si]) {          /* captured: curve the trajectory */
+        unsigned char dir = (unsigned char)((o->dir + ball_mag_delta[si]) & 0x3F);
+        unsigned char ex;
+        unsigned char mi = ball_mag_idx[si];
+        o->dir = dir;
+        /* Quantized exit dir, recomputed every captured frame:
+         * (dir+2) & $3C, nudged ±4 off the pure up/down/left/right
+         * codes (LA27E_1..3). Always a multiple of 4. */
+        ex = (unsigned char)((dir + 2) & 0x3C);
+        if ((ex & 0x0F) == 0) {
+            if (dir & 0x0C) ex = (unsigned char)((ex - 4) & 0x3F);
+            else            ex = (unsigned char)((ex + 4) & 0x3F);
+        }
+        ball_mag_exit[si] = ex;
+        if (!magnet_on_state[mi] || !magnet_ball_overlap(o, mi)) {
+            /* LA27E_5: release — exit dir, 2-frame cooldown, then the
+             * NORMAL move/collision path runs this frame (LA27E_23). */
+            ball_mag_cool[si]  = 2;
+            ball_mag_delta[si] = 0;
+            o->dir = ex;
+            return 0;
+        }
+        magnet_captured_move(o, ex);
+        return 1;
+    }
+    /* Free: scan ON magnets for a capture (LA27E_6..11). First overlap
+     * wins; delta = ±1 from the dir quadrant XOR the ball-above-centre
+     * test ((IY+$04)+4 vs ball y). */
+    {
+        unsigned char i;
+        for (i = 0; i < magnet_count; i++) {
+            unsigned char b = 0;
+            if (!magnet_on_state[i]) continue;       /* BIT 0,(IY+$01) */
+            if (!magnet_ball_overlap(o, i)) continue;
+            if (((o->dir + 0x10) & 0x3F) >= 0x20) b = 0xFE;
+            if ((unsigned char)(magnet_py[i] + 5 + 4) >= o->y_coord) b ^= 0xFE;
+            ball_mag_delta[si] = (unsigned char)(0xFF ^ b);  /* $FF or $01 */
+            ball_mag_idx[si]   = i;
+            break;
+        }
+    }
+    return 0;
+}
+
+static void magnet_ball_state_clear(unsigned char si) {
+    /* LA27E_25 bottom-exit / LBC10: zero the cooldown + delta bytes. */
+    ball_mag_cool[si]  = 0;
+    ball_mag_delta[si] = 0;
+}
+
 static void step_ball(void) {
     int next_x, next_y;
     int dx_q8, dy_q8;
@@ -5672,6 +5962,12 @@ static void step_ball(void) {
         objects[OBJ_BALL_1].y_coord_hi = 0;
         return;
     }
+    /* Magnet capture/curve/release (LA27E_0..11) — runs before the
+     * normal move, may rewrite dir (release) or fully handle the frame
+     * (captured). A stuck ball can't overlap a magnet box (boxes end
+     * far above the bat), so running this after the stuck early-out
+     * matches the original's effective behaviour. */
+    if (magnet_ball_frame(&objects[OBJ_BALL_1], 0)) return;
     ball_dir_delta_q8(objects[OBJ_BALL_1].dir, objects[OBJ_BALL_1].speed,
                       &dx_q8, &dy_q8);
     next_x_q8 = ((long)BALL_X << 8) + objects[OBJ_BALL_1].x_coord_hi + dx_q8;
@@ -5775,6 +6071,7 @@ static void step_ball(void) {
      * keep playing. Otherwise run the death animation, decrement
      * lives, and respawn primary stuck on the bat. */
     if (next_y >= PLAYFIELD_H) {
+        magnet_ball_state_clear(0);          /* LA27E_25 zeroes the LA270 pair */
         if (ball2_active || ball3_active) {
             BALL_HIDE();
             return;
@@ -5854,6 +6151,11 @@ static void step_extra_ball(unsigned char *in_active,
     int x_max     = PLAYFIELD_W - 8 - ball_sz;
     (void)in_dx; (void)in_dy;          /* legacy integer deltas unused now */
     if (!*in_active) return;
+    /* Magnet capture/curve/release — the original runs ONE handling_ball
+     * per ball, so extras share the exact same LA27E_0..11 block (their
+     * own LA274/LA278 state). */
+    if (magnet_ball_frame(o, (unsigned char)(obj_idx == OBJ_BALL_2 ? 1 : 2)))
+        return;
     ball_dir_delta_q8(o->dir, o->speed, &dx_q8, &dy_q8);
     next_x_q8 = ((long)o->x_coord << 8) + o->x_coord_hi + dx_q8;
     next_y_q8 = ((long)o->y_coord << 8) + o->y_coord_hi + dy_q8;
@@ -5873,6 +6175,7 @@ static void step_extra_ball(unsigned char *in_active,
         snd_q_push(SND_BAT_BEAT);
     }
     if (next_y >= PLAYFIELD_H) {        /* off the bottom: deactivate */
+        magnet_ball_state_clear((unsigned char)(obj_idx == OBJ_BALL_2 ? 1 : 2));
         *in_active = 0;
         o->sprite_set = 0x82;
         return;
@@ -6045,6 +6348,12 @@ static void redraw_full_with_ball(unsigned char level_idx) {
         prev_high_score = high_score;
         mark_dirty_bytes(0, FRAME_TOP_H_PX, 0, 31);
     }
+    /* A magnet toggled this frame: redraw its circle now, while scr_buff
+     * holds clean background in the window (objects not yet drawn), and
+     * bake it into the static bg cache. After a full static rebuild the
+     * blit is redundant (render_magnets painted from state) but
+     * harmless — and the dirty mark is still needed. */
+    apply_magnet_toggle_visual();
     prof_bg_pit += prof_elapsed();
 
     /* The frame itself is static and baked into bg_scr_buff/bg_attr_buff. */
@@ -6695,36 +7004,54 @@ static void brik_anim_apply_frame(unsigned char frame_idx) {
 }
 
 /* Run the 8-frame brick-shimmer pass over the current level's bricks.
- * 2 PIT ticks per frame = 16 ticks = ~0.32 s total. The "solid" frame
- * (spr_brik_5, index 4) emits a quick metallic beep — port of the
+ * Port of all_metal_briks_animation_snd ($B765): each anim frame is
+ * preceded by EXACTLY two 50Hz interrupts (`EI/HALT/EI/HALT/DI`), then
+ * drawn — 16 ticks = ~0.32 s total. The "solid" frame (spr_brik_5,
+ * index 4) emits a quick metallic beep — port of the
  * play_sound_metal_brik call gated on the "any-metal-brick" check at
- * $B73F. ESC quits, any other key short-circuits. */
+ * $B73F.
+ *
+ * The original is NOT interruptible by input. An earlier port version
+ * aborted on any buffered key, which let a held/typematic-repeating key
+ * at level entry (moving the bat, pressing FIRE) skip the animation
+ * almost entirely (known-bugs #4 "initial shimmer very fast"). Now only
+ * ESC reacts (quit, a port convention); other keys are left IN the BIOS
+ * buffer for the main loop. The same version also waited
+ * `pit_ticks()-t < 2` from a mid-tick sample = 1..2 ticks per frame;
+ * the two do{}while edge-waits below are the HALT equivalent: always
+ * two full interrupt edges. */
 static int play_brik_anim(void) {
     int step;
     int ping_played = 0;    /* SMC trick in original: one_play_sound_metal_brik
                              * rewrites itself to RET after the first call, so
                              * the ping fires once even though spr_brik_5 appears
                              * twice in anim_brik. */
+    brik_anim_probe_ticks = pit_ticks();
     for (step = 0; step < 8; step++) {
         unsigned long t;
         unsigned char frame = brik_anim_order[step];
+        int two;
+        for (two = 0; two < 2; two++) {         /* EI/HALT twice */
+            t = pit_ticks();
+            do {
+                sound_tick();
+                /* Peek (no consume) so a buffered gameplay key survives
+                 * to the main loop; only ESC is taken, to quit. */
+                if ((_bios_keybrd(_KEYBRD_READY) & 0xFF) == 27) {
+                    (void)getch();
+                    sound_silence();
+                    return 1;
+                }
+            } while (pit_ticks() == t);
+        }
         brik_anim_apply_frame(frame);
         buff_to_vga_rect_bytes(32, 96, 1, 30);
         if (frame == 4 && !ping_played) {
             sound_beep_cont_d(0x18, 0x30);      /* play_sound_metal_brik */
             ping_played = 1;
         }
-        t = pit_ticks();
-        while (pit_ticks() - t < 2UL) {
-            sound_tick();
-            if (kbhit()) {
-                int k = getch();
-                if (k == 27) return 1;
-                sound_silence();
-                return 0;
-            }
-        }
     }
+    brik_anim_probe_ticks = pit_ticks() - brik_anim_probe_ticks;
     sound_silence();
     return 0;
 }
@@ -6950,6 +7277,7 @@ static void respawn_primary_ball(void) {
      * (LD B,$23 / clear_hl_buff). Any stale beep from the just-died
      * frame would otherwise carry over into the new life. */
     snd_q_silence_all();
+    magnet_ball_state_clear(0);
     ball_stuck     = 1;
     stuck_ticks    = 0;
     stuck_offset_x = BALL_X_OFFSET_ON_BAT;
@@ -7238,10 +7566,28 @@ static state_t run_level(void) {
         apply_replay_multiball();
         apply_replay_bigball();
         apply_replay_rocket_override();
+        /* Magnet runtime state (count/coords/initial ON-OFF coins +
+         * per-ball capture blocks) — after the RNG seed override so the
+         * coins consume the seeded walk like the original print_magnets,
+         * before render_level_screen which paints from this state. */
+        magnet_level_init(i);
         write_replay_probe();
         render_level_screen(i);
         if (show_round_banner((unsigned int)round_number + 1)) return ST_QUIT;
         render_level_screen(i);                /* re-paint to clear the banner */
+        /* Test hook: stuff one ENTER into the BIOS keyboard buffer right
+         * before the intro shimmer. The original animation is NOT
+         * interruptible by input; the regression test asserts the key
+         * neither aborts nor is eaten by the animation (it must survive
+         * to release BATTY_REPLAY_WAIT_KEY below). With the old abort-on-
+         * any-key behaviour the key is consumed, WAIT_KEY blocks forever
+         * and the test times out with no probe. */
+        if (getenv("BATTY_TEST_KEY_BEFORE_ANIM") != NULL) {
+            union REGS r;
+            r.h.ah = 0x05;              /* INT 16h: store keystroke */
+            r.w.cx = 0x1C0D;            /* scancode $1C, ascii CR (ENTER) */
+            int86(0x16, &r, &r);
+        }
         if (play_brik_anim()) return ST_QUIT;
         /* Replay parity hook: block here until the harness sends a key,
          * giving the original side a matching breakpoint to halt at and
@@ -7364,6 +7710,15 @@ static state_t run_level(void) {
             if (now != last_tick) {
                 last_tick = now;
                 frame_ticked = 1;
+                /* Magnet random toggle (LB9E8_2 top: read-current
+                 * `random_number+$01 == $99` -> print_one_magnet). Must
+                 * sample BEFORE this frame's per-frame RNG tick, like
+                 * the original (the check reads last frame's value).
+                 * Pinned off in test mode (BATTYALL) so the level-entry
+                 * visual captures stay deterministic — same trick as
+                 * the menu blink / running-dot pins. */
+                if (!test_mode_pin_blink && random_d == 0x99)
+                    magnet_random_toggle();
                 /* Per-frame RNG tick (original LB9E8_2: one `CALL
                  * random_generate` per main-loop pass). Gated so the
                  * default on-demand model is byte-unchanged. */

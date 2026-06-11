@@ -420,3 +420,34 @@ Verified: `make parity-check` green, `make test-brick-flash` green,
 `make test-frame-step` green at the exact documented floor
 (0,0,0,4,0,4,1). User-visible: a two-hit brick's first hit now plays the
 8-frame shimmer once and stops (known-bugs.md #3 resolved).
+
+## FIXED (2026-06-11): the LEVEL-INTRO shimmer pace (known-bugs #4)
+
+Manual testing flagged the PRE-ROUND all-metal-bricks pass as "very
+fast" (the on-hit pass was fine after the #3 fix). The original
+(`all_metal_briks_animation_snd` $B765) waits TWO 50Hz interrupts per
+anim frame (`EI/HALT/EI/HALT/DI`, draw after the wait) and reads no
+input — 8 frames ≈ 16 edges ≈ 320 ms, uninterruptible. The port's
+`play_brik_anim` had two inventions:
+
+1. `while (pit_ticks() - t < 2)` from a mid-tick sample = 1..2 ticks
+   per frame (~25% fast on average); and
+2. **abort on any buffered keypress** — the real "very fast": a key
+   held / typematic-repeating at level entry (player moving the bat
+   into position or pressing FIRE) skipped the whole animation.
+
+Fix: per frame, two full `do {} while (pit_ticks() == t)` edge waits
+(the HALT equivalent), draw after the wait; non-ESC keys are PEEKED
+(`_bios_keybrd(_KEYBRD_READY)`) and left in the BIOS buffer for the
+main loop; only ESC is consumed (quit, a port convention).
+
+Gate: `make test-brik-anim-pace` — the floppy is built with
+`BATTY_TEST_KEY_BEFORE_ANIM=1`, which makes the port stuff one ENTER
+into the BIOS buffer right before the animation. The fixed pass must
+report `brik_anim_ticks` ∈ [16, 40] in PROBE.TXT (measured: exactly 16)
+AND the stuffed key must survive to release `BATTY_REPLAY_WAIT_KEY` —
+with the abort bug the key dies at anim frame 0 and the probe reports
+~0 ticks. Verified after the fix: `make test` (5 visual states),
+`parity-check`, and `test-frame-step` all green (the intro anim runs
+before the replay alignment point, so timing changes there can't shift
+the frame-step gate).

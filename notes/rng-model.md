@@ -1,5 +1,24 @@
 # RNG model — per-frame tick vs advance-on-read
 
+> **CORRECTION 2026-06-11 (magnet coin-flip class):** the consumer
+> classification below lists the print_magnets ON/OFF coin as
+> read-current of `random_number+$01`. The disasm
+> (`routines/magnets.asm` L8D4C_0) actually does
+> `CALL random_generate / LD A,(random_number) / RRA` per magnet — an
+> ADVANCE-then-read of the LOW byte, once per magnet, keeping the magnet
+> ON when bit0==1. The port's old render-time coin was additionally
+> inverted (drew OFF on bit0==1) and sampled once for all magnets.
+> Fixed with the magnet runtime system (see notes/magnets.md): the coin
+> now rolls `next_random() & 1` per magnet in `magnet_level_init`.
+> Net RNG-walk effect: +count advances at level paint on magnet levels
+> only; L1/L3 (all existing gates) have no magnets — gates unaffected,
+> verified (`test-rng-walk`, LAFFC ball gate green). Two more magnet
+> consumers landed with the same change, both matching the original:
+> the LB9E8_2 toggle gate (read-current `random_d == $99`, sampled
+> before the per-frame tick) and the print_one_magnet slot pick
+> (advance per rejection retry; returns before any RNG use when
+> count==0).
+
 This is the blocker for byte-exact parity of every RNG-dependent
 behaviour: enemy target headings (see `notes/enemy-movement.md`), bonus
 drop type/chance, enemy/bomb spawn timing, the magnet coin-flip, death
