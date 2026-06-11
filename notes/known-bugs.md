@@ -5,7 +5,36 @@ visual-regression test (= mid-game state we don't snapshot). Listed
 here so the next iter has a target. When fixing, add a section to
 `per-level-profile.md` or the relevant area doc; remove from here.
 
-(none currently)
+4. **Initial hard-block shimmer plays much too fast** (the on-hit shimmer
+   is fine). The pre-round all-metal-bricks animation
+   (`all_metal_briks_animation_snd` $B765) shows each of the 8 anim_brik
+   frames for exactly TWO 50Hz interrupts (`EI/HALT/EI/HALT/DI`, ~40ms)
+   and is NOT interruptible by input. The port's `play_brik_anim`:
+   (a) waits `pit_ticks() - t < 2` from a mid-tick sample = 1..2 ticks
+   (~30ms avg, 25% fast), and (b) — the big one — ABORTS the whole
+   animation on any buffered keypress (a port invention). Keys held /
+   typematic-repeating at level entry (very common: moving the bat into
+   position, pressing FIRE) skip the animation almost entirely.
+   FIX: wait two full tick edges per frame (HALT-equivalent), draw after
+   the wait, and don't consume/abort on non-ESC keys.
+
+5. **Magnets don't affect the ball** (they should bend its trajectory
+   while ON). The port renders magnets at level paint but the entire
+   runtime system is missing: (a) the per-frame random toggle
+   (`LB9E8_2`: when `random_number+1 == $99`, `print_one_magnet` $8E72
+   picks a random magnet, flips its $06/$07 ON/OFF sprite state, redraws
+   the circle + plays a sound); (b) the ball capture/curve physics at the
+   top of `handling_ball` (LA27E_0..11): while a ball overlaps an ON
+   magnet's 15×14 box (slot coords = paint x0+5,y0+5, obj_compare $AC22),
+   its direction rotates ±1/64 per frame (sign from the dir quadrant and
+   ball-above/below-centre test), and it releases with a quantized exit
+   dir `(dir+2)&$3C` (±4 nudge off the pure axes) + a 2-frame
+   re-capture cooldown when the magnet turns OFF or the ball leaves the
+   box. Also found while decoding: the port's initial coin-flip is
+   read-current (`rng_sample`) and INVERTED — the original `print_magnets`
+   does `CALL random_generate` per magnet (advances!) and keeps the
+   magnet ON when bit0==1 (`RRA / JR C,skip-OFF`); the port draws OFF
+   when bit0==1 and gives every magnet on the level the same coin.
 
 ---
 
