@@ -34,7 +34,7 @@ ball dir 0x20 = (-255, 0)  (pure left)  hits left wall
 
 ## The original (ground truth)
 
-`bounce_wall` ($AC75) calls `change_direction` ($AC40) with explicit masks:
+`bounce_wall` ($AC75) calls `change_direction` ($ACEE) with explicit masks:
 
 ```
 bounce_wall:

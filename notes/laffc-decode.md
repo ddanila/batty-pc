@@ -100,8 +100,13 @@ toward** that are also solid.
   `H`) and bounces off the **shallower-penetrated axis**, clearing the
   other axis bits and re-deciding (`JP LAFFC_17/18`).
 
-`change_direction` (`$AD5C…`, decoded): `dir = ((dir XOR B) + 1) AND
-$3F`, B=$1F flips the vertical component, B=$3F flips horizontal.
+`change_direction` (`$ACEE`, decoded): `dir = ((dir XOR B) + 1) AND
+$3F`, B=$1F flips the HORIZONTAL component (side walls), B=$3F flips
+VERTICAL (top) — per `bounce_wall` ($AC75): `B=$3F` before
+`check_top_margin`, `B=$1F` before `check_left/right_margin`. (An
+earlier revision of this note had the two swapped and the address as
+$AD5C; wall-bounce.md + lessons.md + the port agree on this corrected
+reading.)
 
 ## Phase 7 — destroy / half-hit / shimmer (LAFFC_30..LAFFC_38)
 

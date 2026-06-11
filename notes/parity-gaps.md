@@ -60,14 +60,15 @@ Several paths use gameplay-equivalent but not byte-exact motion:
   decode + validation in `notes/bat-deflection.md`.
 - **metal-brick shimmer** is the remaining L3 frame-step residual, now
   fully decoded (see `notes/metal-shimmer.md`; the earlier "sliding
-  window" description was wrong). It is a *ball-hit-triggered, then
-  permanent* per-brick shimmer: hitting an undestructible brick registers
+  window" description was wrong, and so was the later "permanent shimmer"
+  one — see the 2026-06-11 CORRECTION there). It is a *ball-hit-triggered,
+  ONE-PASS* per-brick shimmer: hitting an undestructible brick registers
   it in one of 5 `briks_data` slots (`LAFFC_34`), and `fill_briks_data`/
-  `metal_brik_anim` ($B6A9) then cycle it through `anim_brik`'s 8 brick
-  sprites ({2,6,3,7,4,5,5,1}, 2 ticks each) forever. The port stubs this
-  (`render_brick_flash_to_buff` is a no-op). Cosmetic (no gameplay
-  effect), so it's a self-contained render feature; implementation path in
-  the note.
+  `metal_brik_anim` ($B6A9) cycle it through `anim_brik`'s 8 brick
+  sprites ({2,6,3,7,4,5,5,1}, 2 ticks each) for ONE ~15-tick pass — the
+  `(c+1)&$0F` wrap to 0 frees the slot (0 = free marker). The port has the
+  system (`brick_hit_anim`) but currently loops it forever — that is
+  known-bugs.md #3, pending fix. Cosmetic (no gameplay effect).
 - big-bat resize timing is matched visually but not a literal port of
   the original bit-gated state machine.
 - **alien-explosion cadence** — FIXED (2026-06-05). GT capture (poke the

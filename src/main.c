@@ -1952,7 +1952,7 @@ static void ball_dir_delta_q8(unsigned char dir, unsigned char speed,
 static void reflect_obj_dir(object_t *o, int flip_x, int flip_y) {
     unsigned char dir = o->dir;
     /* Port of the original's bounce_wall ($AC75) -> change_direction
-     * ($AC40): dir = ((dir ^ mask) + 1) & 0x3F. The original passes
+     * ($ACEE): dir = ((dir ^ mask) + 1) & 0x3F. The original passes
      * mask=$1F for the LEFT/RIGHT walls (horizontal bounce, negate dx) and
      * mask=$3F for the TOP wall (vertical bounce, negate dy) — the SAME
      * change_direction LAFFC uses for brick faces (laffc_change_dir).
@@ -4420,7 +4420,7 @@ static int brick_hit_resolve(int col, int row, int axis) {
     return axis;
 }
 
-/* change_direction at $AD5C: dir = ((dir XOR mask) + 1) & 0x3F. mask
+/* change_direction at $ACEE: dir = ((dir XOR mask) + 1) & 0x3F. mask
  * $1F flips the horizontal component (left/right bounce), $3F the
  * vertical (up/down). */
 static unsigned char laffc_change_dir(unsigned char dir, unsigned char mask) {
@@ -6487,6 +6487,9 @@ static void reset_brick_hit_anim(void) {
     }
 }
 
+/* NOTE: the restart-existing-slot dedupe below is a port invention; the
+ * original (LAFFC_35) only scans for a FREE slot, so re-hitting a brick
+ * mid-anim occupies a second briks_data slot. See notes/known-bugs.md #3. */
 static void brick_hit_anim_spawn(int col, int row) {
     int i;
     for (i = 0; i < BRICK_HIT_ANIM_SLOTS; i++) {
@@ -6511,11 +6514,10 @@ static void step_brick_hit_anim(void) {
     int i;
     for (i = 0; i < BRICK_HIT_ANIM_SLOTS; i++) {
         if (!brick_hit_anim_ticks[i]) continue;
-        /* Free the slot only when the brick is destroyed (cell bit 7) —
-         * metal_brik_anim's `BIT 7,(HL) -> mark slot free`. An
-         * undestructible (metal) brick is never destroyed, so it
-         * shimmers PERMANENTLY once hit; a multi-hit brick shimmers until
-         * its final hit sets bit 7. */
+        /* Destroyed brick (cell bit 7) frees the slot — metal_brik_anim's
+         * `BIT 7,(HL) -> mark slot free`. That is an EARLY-out only: in
+         * the original the anim also ends on its own after one pass (see
+         * the counter note below). */
         {
             int col = brick_hit_anim_col[i];
             int row = brick_hit_anim_row[i];
@@ -6525,8 +6527,12 @@ static void step_brick_hit_anim(void) {
                 continue;
             }
         }
-        /* Cycle the 8-frame (x2-tick) counter forever instead of stopping
-         * after one pass — matches the original counter `(c+1) & $0F`. */
+        /* KNOWN-WRONG (notes/known-bugs.md #3): this wraps back to tick 1
+         * and shimmers forever. In the original, `INC A / AND $0F` wrapping
+         * to 0 marks the briks_data slot FREE (fill_briks_data skips
+         * counter==0), so the anim plays ONE ~15-tick pass and stops, for
+         * metal and multi-hit bricks alike — with the LAST frame left
+         * persisted on the surviving brick. */
         if (++brick_hit_anim_ticks[i] > BRICK_HIT_ANIM_TICKS)
             brick_hit_anim_ticks[i] = 1;
     }

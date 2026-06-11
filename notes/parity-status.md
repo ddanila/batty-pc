@@ -299,8 +299,10 @@ and `laffc-decode.md` for the detailed trail.
    swap; the frame->sprite mapping is verified correct, so it's a 1-frame
    phase/order offset) PLUS damaged-brick/background render detail on
    destructible cells (the port lacks ~14 black "crack" px per cell). The
-   metal shimmer now loops permanently like the original (was: stopped
-   after one pass). Closing the rest is several per-cell cosmetic render
+   metal shimmer was changed to loop permanently — WRONG, the original
+   plays ONE ~15-tick pass per hit and stops (`(c+1)&$0F` wrap to 0 =
+   slot free); see metal-shimmer.md CORRECTION 2026-06-11 and
+   known-bugs.md #3. Closing the rest is several per-cell cosmetic render
    details, not one bug — deep work with diminishing returns; no gameplay
    effect.
 

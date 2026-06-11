@@ -49,8 +49,9 @@ trapped at `0xAD8F`. We named it "the brick-field blitter" in
 `notes/sprites.md` (Phase A1) and built a whole narrative around it:
 multi-pass compositor, sprite cache as pre-shifted bricks, "days of
 Z80 RE" to port. When we finally read the named disasm, `0xAD8F` was
-`all_metal_briks_frame` — the metal-brick *shimmer animation*, called
-once-per-N-frames from a side path, not the level paint at all. The
+`all_metal_briks_frame` — one frame of the PRE-ROUND all-metal-bricks
+animation (driven by `all_metal_briks_animation_snd` from
+`game_restart`), not the level paint at all. The
 actual level paint (`print_briks` at `0xADE1`) shares the same inner
 8-row × 2-byte blit, which is why the trap looked plausible.
 
@@ -295,7 +296,7 @@ a gate behind it.
 ## Wall reflect masks: side = $1F (negate dx), top = $3F (negate dy)
 
 The ball's wall bounce (reflect_obj_dir) is the SAME change_direction
-($AC40) the brick path uses: `dir = ((dir ^ mask) + 1) & 0x3F`, with mask
+($ACEE) the brick path uses: `dir = ((dir ^ mask) + 1) & 0x3F`, with mask
 $1F for L/R walls and $3F for the top (bounce_wall $AC75). A long-standing
 port bug had them swapped + off by one (0x3F-dir / 0x1F-dir), so a ball
 hitting a side wall kept its dx INTO the wall and pinned/juggled at x=8 or

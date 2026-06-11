@@ -1,9 +1,16 @@
 # Metal-brick shimmer — decode (the last L3 frame-step residual)
 
+> **CORRECTION 2026-06-11 (see bottom section): the shimmer is ONE
+> ~15-tick pass per hit, NOT permanent.** The "permanent" reading below
+> misses that the `(c+1) & $0F` wrap to 0 marks the briks_data slot FREE
+> (`fill_briks_data` skips counter==0). The "Port status — FIXED" change
+> below actually INTRODUCED a user-visible bug (notes/known-bugs.md #3).
+
 The one persistent residual on the byte-exact L3 frame-step gate is the
 undestructible ("metal") brick shimmer. Earlier notes guessed a
 "sliding-window / constant animation"; the disasm shows it is actually a
-**ball-hit-triggered, then permanent, per-brick shimmer**. Cosmetic (metal
+**ball-hit-triggered, then permanent, per-brick shimmer** [WRONG — one
+pass; see CORRECTION 2026-06-11]. Cosmetic (metal
 bricks are indestructible regardless), but it is a real per-frame visual
 difference, so it's the measurable parity residual.
 
@@ -36,16 +43,17 @@ metal_brik_anim:
   idx = (counter + 1) & $FE            ; 2 ticks per frame
   sprite = anim_brik[idx/2]            ; DEFW table, 2 bytes/entry
   draw sprite (8 rows x 2 bytes) to screen (+1/+2) AND buffer (+3/+4)
-  counter = (counter + 1) & $0F        ; cycles 0..15, never "finishes"
+  counter = (counter + 1) & $0F        ; WRONG reading: 0 = slot FREE, so
+                                       ; the wrap at 15 ENDS the anim
 ```
 
 `anim_brik` = 8 frames cycling the brick sprites:
-`spr_brik_2, _6, _3, _7, _4, _5, _5, _1`. Because the counter only wraps
+`spr_brik_2, _6, _3, _7, _4, _5, _5, _1`. ~~Because the counter only wraps
 `& $0F` and a metal cell's bit 7 is never set, **a hit metal brick
-shimmers forever** (cycling those 8 brick appearances, 2 ticks each). That
-permanent cycle is what the earlier notes saw as a "constant animation".
+shimmers forever**~~ [WRONG — counter==0 is the free-slot marker;
+see CORRECTION 2026-06-11].
 
-## Port status — FIXED (was: stopped after one pass)
+## Port status — FIXED (was: stopped after one pass) [THIS "FIX" WAS WRONG — see CORRECTION 2026-06-11]
 
 The port already had the system (`brick_hit_anim`: 5 slots, the
 `{2,6,3,7,4,5,5,1}` `anim_brik` order, per-frame render into `scr_buff`,
@@ -367,3 +375,32 @@ BRICK_FLASH_TICKS class of regression (4px → 88–134px) now fails a suite
 instead of waiting for a manual re-measure. If a future fix legitimately
 lowers the floor (e.g. capture-phase alignment), tighten TL_GATE_BUDGETS in
 the Makefile.
+
+## CORRECTION (2026-06-11): the shimmer is ONE PASS per hit, not permanent
+
+Manual testing flagged multi-hit bricks animating forever
+(notes/known-bugs.md #3); re-reading the disasm shows the "permanent
+shimmer" decode above was a misread, for BOTH brick kinds:
+
+- The `briks_data` slot counter (`+$00`) doubles as the FREE/ACTIVE flag.
+  Spawn (`LAFFC_35/36`) scans for `+0 == 0` and `INC`s it to 1.
+- `fill_briks_data` ($B694) runs `LD A,(IY+$00) / AND A /
+  CALL NZ,metal_brik_anim` — a counter of **0 is skipped as free**.
+- `metal_brik_anim` ($B6A9) ends with `INC A / AND $0F`, so the counter
+  runs 1..15 and `(15+1) & $0F = 0` **frees the slot**. One ~15-tick pass
+  (8 anim_brik frames, ~2 ticks each), then the animation STOPS — metal
+  and multi-hit bricks alike. The `BIT 7,(HL)` destroyed check is only an
+  EARLY out. Nothing shimmers permanently.
+- Each frame is drawn to screen AND buffer before the increment, so the
+  LAST frame stays persisted on the surviving brick (the "hit" look).
+- The original also does NOT dedupe by brick: a re-hit mid-anim takes a
+  second free slot (the port's restart-existing-slot dedupe is an
+  invention).
+
+So the port's ORIGINAL behaviour (free the slot after one 16-tick pass)
+was correct, and the "FIXED to cycle forever" change above introduced the
+known-bugs.md #3 regression. The L3 measurements in this note are
+unaffected (briks_data is empty at the L3 capture point — see the
+2026-06-05 CORRECTION). Same wrong claim propagated to parity-gaps.md and
+parity-status.md (fixed 2026-06-11) and to the `step_brick_hit_anim`
+comment in src/main.c (now marked KNOWN-WRONG pending the behaviour fix).
