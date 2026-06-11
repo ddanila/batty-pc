@@ -404,3 +404,19 @@ unaffected (briks_data is empty at the L3 capture point — see the
 2026-06-05 CORRECTION). Same wrong claim propagated to parity-gaps.md and
 parity-status.md (fixed 2026-06-11) and to the `step_brick_hit_anim`
 comment in src/main.c (now marked KNOWN-WRONG pending the behaviour fix).
+
+## FIXED (2026-06-11): one-pass behaviour restored
+
+`step_brick_hit_anim` now ports the counter literally:
+`ticks = (ticks + 1) & 0x0F` — ticks run 1..15 and the wrap to 0 frees
+the slot (`BRICK_HIT_ANIM_TICKS` removed). Render keeps
+`frame_idx = (tick-1) >> 1` (verified mapping: tick 15 -> frame 7 =
+spr_brik_1 = the normal brick, so expiry is visually seamless against
+the static band cache). The spawn dedupe invention was also dropped —
+`brick_hit_anim_spawn` now mirrors LAFFC_35/36 (first free slot, start
+at 1; a re-hit mid-anim takes a second slot).
+
+Verified: `make parity-check` green, `make test-brick-flash` green,
+`make test-frame-step` green at the exact documented floor
+(0,0,0,4,0,4,1). User-visible: a two-hit brick's first hit now plays the
+8-frame shimmer once and stops (known-bugs.md #3 resolved).

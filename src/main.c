@@ -776,10 +776,10 @@ static int           brick_flash_y     = 0;
 static void render_brick_flash_to_buff(void);    /* forward decl — defined alongside brick_collision */
 
 /* Original briks_data: up to five simultaneous hard-brick shimmer
- * animations after a non-destroying hit. Each slot lasts 16 ticks:
- * anim_brik's eight frames, two ticks per frame. */
+ * animations after a non-destroying hit. The slot counter mirrors the
+ * original's `(c+1) & $0F`: ticks 1..15 (anim_brik's 8 frames, ~2 ticks
+ * each), then the wrap to 0 frees the slot — one pass, not a loop. */
 #define BRICK_HIT_ANIM_SLOTS 5
-#define BRICK_HIT_ANIM_TICKS 16
 static unsigned char brick_hit_anim_ticks[BRICK_HIT_ANIM_SLOTS];
 static unsigned char brick_hit_anim_col[BRICK_HIT_ANIM_SLOTS];
 static unsigned char brick_hit_anim_row[BRICK_HIT_ANIM_SLOTS];
@@ -6487,19 +6487,11 @@ static void reset_brick_hit_anim(void) {
     }
 }
 
-/* NOTE: the restart-existing-slot dedupe below is a port invention; the
- * original (LAFFC_35) only scans for a FREE slot, so re-hitting a brick
- * mid-anim occupies a second briks_data slot. See notes/known-bugs.md #3. */
+/* Mirror of LAFFC_35/36: take the FIRST free briks_data slot (counter==0),
+ * start its counter at 1. No per-brick dedupe — re-hitting a brick mid-anim
+ * occupies a second slot, exactly like the original. */
 static void brick_hit_anim_spawn(int col, int row) {
     int i;
-    for (i = 0; i < BRICK_HIT_ANIM_SLOTS; i++) {
-        if (brick_hit_anim_ticks[i]
-            && brick_hit_anim_col[i] == (unsigned char)col
-            && brick_hit_anim_row[i] == (unsigned char)row) {
-            brick_hit_anim_ticks[i] = 1;
-            return;
-        }
-    }
     for (i = 0; i < BRICK_HIT_ANIM_SLOTS; i++) {
         if (!brick_hit_anim_ticks[i]) {
             brick_hit_anim_ticks[i] = 1;
@@ -6527,14 +6519,11 @@ static void step_brick_hit_anim(void) {
                 continue;
             }
         }
-        /* KNOWN-WRONG (notes/known-bugs.md #3): this wraps back to tick 1
-         * and shimmers forever. In the original, `INC A / AND $0F` wrapping
-         * to 0 marks the briks_data slot FREE (fill_briks_data skips
-         * counter==0), so the anim plays ONE ~15-tick pass and stops, for
-         * metal and multi-hit bricks alike — with the LAST frame left
-         * persisted on the surviving brick. */
-        if (++brick_hit_anim_ticks[i] > BRICK_HIT_ANIM_TICKS)
-            brick_hit_anim_ticks[i] = 1;
+        /* metal_brik_anim's `INC A / AND $0F`: the wrap to 0 marks the slot
+         * FREE (fill_briks_data skips counter==0), so the anim plays ONE
+         * ~15-tick pass (8 frames, last = spr_brik_1, the normal brick
+         * look) and stops — metal and multi-hit bricks alike. */
+        brick_hit_anim_ticks[i] = (unsigned char)((brick_hit_anim_ticks[i] + 1) & 0x0F);
     }
 }
 
