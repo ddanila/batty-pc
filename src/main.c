@@ -2556,13 +2556,20 @@ static void render_brick_band(unsigned char level_idx) {
     print_border_shadow_c();
 }
 
-/* Row-scoped variant of render_brick_band for the incremental band-cache
- * rebuild: re-composite only brick rows [r0, r1] (caller extends r1 by one
- * for the vertical shadow) into char rows [cr0, cr1]. Mirrors
- * render_brick_band's attr base-copy + destroyed-cell reset + brick paint +
- * border-shadow, all bounded to the dirty window. Rendering whole rows (all
- * columns) keeps the horizontal inter-brick shadow correct without
- * cross-row tracking. */
+/* Row-scoped variant of print_briks_c: re-composite brick rows [r0, r1]
+ * into char rows [cr0, cr1] (= [4+r0, 5+r1]: cell rows + the last row's
+ * shadow row). Used by the incremental band-cache rebuild.
+ *
+ * Boundary care (the source of the destroyed-brick leftovers,
+ * known-bugs.md #1/#2): char row cr0 doubles as row r0-1's SHADOW row,
+ * and cr1 doubles as row r1+1's CELL row. The level_attrs base copy
+ * resurrects the captured LIVE look for both, so the destroyed-cell
+ * reset loop must extend one brick row beyond [r0, r1] on each side —
+ * with each attr write guarded to the base-copied range (rows outside
+ * it keep their current, already-correct values). Pixel edges interlock
+ * the same way (a brick writes its top/bottom edge one pixel row into
+ * the neighbouring cell row); the caller's window and the two edge
+ * fix-ups below keep those rows canonical. */
 static void render_brick_band_rows(unsigned char level_idx,
                                    int r0, int r1, int cr0, int cr1) {
     int lvl_row, lvl_col, cr;
@@ -2572,11 +2579,12 @@ static void render_brick_band_rows(unsigned char level_idx,
 
     if (level_idx >= N_LEVELS) return;
 
-    /* Base attrs for the dirty char rows (ATTR_COLS == 32, contiguous). */
+    /* Base attrs for the recomposited char rows (ATTR_COLS == 32). */
     fast_memcpy(&attr_buff[cr0 * 32], &lattr[cr0 * ATTR_COLS],
                 (unsigned int)((cr1 - cr0 + 1) * 32));
 
-    for (lvl_row = r0; lvl_row <= r1; lvl_row++) {
+    for (lvl_row = r0 - 1; lvl_row <= r1 + 1; lvl_row++) {
+        if (lvl_row < 0 || lvl_row >= LVL_ROWS) continue;
         for (lvl_col = 0; lvl_col < LVL_COLS; lvl_col++) {
             unsigned char cell = cells[lvl_row * LVL_COLS + lvl_col];
             if ((cell & 0xC0) != 0x80) continue;
@@ -2588,17 +2596,80 @@ static void render_brick_band_rows(unsigned char level_idx,
                     !(cells[lvl_row * LVL_COLS + lvl_col - 1] & 0x80);
                 unsigned char latt = left_live
                     ? (unsigned char)(bg_attr & 0xBF) : bg_attr;
-                attr_buff[crr * 32 + cc1] = latt;
-                attr_buff[crr * 32 + cc2] = bg_attr;
-                attr_buff[(crr + 1) * 32 + cc1] = latt;
-                attr_buff[(crr + 1) * 32 + cc2] = bg_attr;
+                if (crr >= cr0 && crr <= cr1) {
+                    attr_buff[crr * 32 + cc1] = latt;
+                    attr_buff[crr * 32 + cc2] = bg_attr;
+                }
+                if (crr + 1 >= cr0 && crr + 1 <= cr1) {
+                    attr_buff[(crr + 1) * 32 + cc1] = latt;
+                    attr_buff[(crr + 1) * 32 + cc2] = bg_attr;
+                }
             }
         }
     }
 
     print_briks_rows_c(cells, r0, r1);
 
-    /* Border-shadow (left col-1 dim) for the dirty char rows only. */
+    /* Edge fix-up 1: row r1's print zeroed its bottom-edge row, which in
+     * the full ascending paint is overwritten by row r1+1's body row 0
+     * where that brick is live — re-paint those two bytes plus the
+     * side-edge bit clears print_one_brik would apply on that row. */
+    if (r1 + 1 < LVL_ROWS) {
+        unsigned int hl = 0x401u + (unsigned int)(r1 + 1) * 0x100u;
+        for (lvl_col = 0; lvl_col < LVL_COLS; lvl_col++) {
+            if (!(cells[(r1 + 1) * LVL_COLS + lvl_col] & 0x80)) {
+                int col_byte = 1 + 2 * lvl_col;
+                scr_buff[hl]     = spr_brik_1[0];
+                scr_buff[hl + 1] = spr_brik_1[1];
+                if (col_byte != 1)  scr_buff[hl - 1] &= 0xFE;
+                if (col_byte != 29) scr_buff[hl + 2] &= 0x7F;
+            }
+            hl += 2;
+        }
+    }
+    /* Edge fix-up 4: row r1's body row 7 (pixel row 39+8*r1, bg-erased
+     * and re-painted above) is canonically overwritten by row r1+1's
+     * TOP-edge zeros where that brick is live — re-apply them. */
+    if (r1 + 1 < LVL_ROWS) {
+        unsigned int hl = 0x401u + (unsigned int)(r1 + 1) * 0x100u - 32u;
+        for (lvl_col = 0; lvl_col < LVL_COLS; lvl_col++) {
+            if (!(cells[(r1 + 1) * LVL_COLS + lvl_col] & 0x80)) {
+                scr_buff[hl]     = 0;
+                scr_buff[hl + 1] = 0;
+            }
+            hl += 2;
+        }
+    }
+    /* Edge fix-up 3: print's brik_shadow_c(r1) dimmed char row 5+r1,
+     * which is row r1+1's CELL row — in the full ascending paint, row
+     * r1+1's own print re-brightens its live cells' attrs right after.
+     * Re-apply that write since r1+1 isn't printed here. */
+    if (r1 + 1 < LVL_ROWS) {
+        for (lvl_col = 0; lvl_col < LVL_COLS; lvl_col++) {
+            unsigned char cell = cells[(r1 + 1) * LVL_COLS + lvl_col];
+            if (!(cell & 0x80)) {
+                unsigned char a = briks_colors[cell & 0x0F];
+                attr_buff[(5 + r1) * 32 + 1 + 2 * lvl_col]     = a;
+                attr_buff[(5 + r1) * 32 + 2 + 2 * lvl_col]     = a;
+            }
+        }
+    }
+    /* Edge fix-up 2: a destroyed cell in row r0 sits under row r0-1's
+     * bottom-edge zeros; the caller's bg repaint erased them — restore
+     * where the brick above is live. */
+    if (r0 > 0) {
+        unsigned int hl = 0x401u + (unsigned int)r0 * 0x100u;
+        for (lvl_col = 0; lvl_col < LVL_COLS; lvl_col++) {
+            if ((cells[r0 * LVL_COLS + lvl_col] & 0x80)
+                && !(cells[(r0 - 1) * LVL_COLS + lvl_col] & 0x80)) {
+                scr_buff[hl]     = 0;
+                scr_buff[hl + 1] = 0;
+            }
+            hl += 2;
+        }
+    }
+
+    /* Border-shadow (left col-1 dim) for the recomposited char rows. */
     for (cr = cr0; cr <= cr1; cr++) attr_buff[cr * 32 + 1] &= 0xBF;
 }
 
@@ -2776,6 +2847,21 @@ static void mark_dirty_rect_px(int x_start, int y_start, int width, int height) 
 
 static void mark_dirty_sprite_rect(unsigned int spr, int x, int y) {
     mark_dirty_rect_px(x, y, (int)sprites_blob[spr] * 8, sprites_blob[spr + 1]);
+}
+
+/* Cell-aligned dirty mark for sprites that also rewrite char-cell ATTRS
+ * (the colour-clash attr blit): an attr write recolours the WHOLE 8x8
+ * cell, so the flush must cover every pixel row of every touched cell,
+ * not just the sprite's own rows. Otherwise the boundary cells' rows
+ * outside the sprite keep the clash colour on VGA after the attr is
+ * restored — the enemy fly-over residue of known-bugs.md #2.
+ * X needs no rounding (dirty ranges are byte == cell granular). */
+static void mark_dirty_cell_rect_px(int x, int y, int w, int h) {
+    int y0, y1;
+    if (h <= 0) return;
+    y0 = y & ~7;
+    y1 = (y + h - 1) | 7;
+    mark_dirty_rect_px(x, y0, w, y1 - y0 + 1);
 }
 
 static void mark_all_dirty(void) {
@@ -2964,29 +3050,48 @@ static void build_static_brick_band_cache(unsigned char level_idx) {
         for (cr = 3; cr <= 16; cr++) {
             fast_memcpy(&bg_attr_buff[cr << 5], &attr_buff[cr << 5], 32);
         }
+        /* The rebuild rewrote scr_buff/attr_buff well beyond the brick
+         * flash's small dirty rect (whole rows, shadow attrs on the row
+         * below, the 32-byte attr rows). Flush every pixel row of every
+         * touched attr cell, or the parts outside the flash rect go stale
+         * on VGA — the post-destroy leftovers of known-bugs.md #1. */
+        mark_dirty_bytes(3 * 8, (16 - 3 + 1) * 8, 0, 31);
         prof_band_rows += 14;
     } else {
-        /* Incremental: re-composite only the dirty brick rows (+1 below for
-         * the vertical shadow). Pixel + char windows derived from the brick
-         * row -> y=32+row*8 (char row 4+row) mapping, generously bounded
-         * and clamped to the band. */
-        int hx  = (hi + 1 < LVL_ROWS) ? hi + 1 : hi;
-        int py0 = 32 + lo * 8 - 2;
-        int py1 = 32 + hx * 8 + 9;
-        int cr0 = 3 + lo;
-        int cr1 = 6 + hi;
-        if (py0 < BRICK_BAND_Y_TOP) py0 = BRICK_BAND_Y_TOP;
-        if (py1 > BRICK_BAND_Y_BOT) py1 = BRICK_BAND_Y_BOT;
-        if (cr0 < 3) cr0 = 3;
-        if (cr1 > 16) cr1 = 16;
+        /* Incremental: re-composite [R0, R1] = the dirty brick rows
+         * widened by one row each side, so every attr/pixel the window
+         * inherits from a neighbour row is re-derived rather than left
+         * stale (see render_brick_band_rows' boundary notes). Pixel
+         * window = the rows' bodies + R1's bottom-edge row; the shared
+         * top-edge row (31 + 8*R0) is not bg-erased — print re-zeros it
+         * only under live R0 bricks, which is the canonical content. */
+        int R0  = (lo > 0) ? lo - 1 : 0;
+        int R1  = (hi + 1 < LVL_ROWS) ? hi + 1 : LVL_ROWS - 1;
+        int py0 = 32 + R0 * 8;
+        int py1 = 40 + R1 * 8;
+        int cr0 = 4 + R0;
+        int cr1 = 5 + R1;
         paint_bg_window_to_buff(bg_attr, cycle, py0, py1 - py0 + 1, 1, 30);
-        render_brick_band_rows(level_idx, lo, hx, cr0, cr1);
+        /* Re-draw the inner border line columns the bg repaint erased
+         * (canonical order: the line is drawn before the bricks, which
+         * then overwrite it — mirror inner_border_line_c's bands). */
         for (y = py0; y <= py1; y++) {
+            if ((y >= 50 && y < 78) || (y >= 106 && y < 134)) {
+                scr_buff[y * 32 + 1]  &= 0x7F;
+                scr_buff[y * 32 + 30] &= 0xFE;
+            }
+        }
+        render_brick_band_rows(level_idx, R0, R1, cr0, cr1);
+        /* Capture from the shared top-edge row down (print touches it). */
+        for (y = py0 - 1; y <= py1; y++) {
             fast_memcpy(&bg_scr_buff[(y << 5) + 1], &scr_buff[(y << 5) + 1], 30);
         }
         for (cr = cr0; cr <= cr1; cr++) {
             fast_memcpy(&bg_attr_buff[cr << 5], &attr_buff[cr << 5], 32);
         }
+        /* Flush every pixel row of every recomposited attr cell, plus
+         * the shared top-edge pixel row (same rule as the full branch). */
+        mark_dirty_bytes(py0 - 1, (cr1 * 8 + 7) - (py0 - 1) + 1, 0, 31);
         prof_band_rows += (unsigned long)(cr1 - cr0 + 1);
     }
     t1 = pit_current_ticks();
@@ -5918,6 +6023,9 @@ static void redraw_full_with_ball(unsigned char level_idx) {
         static_bg_dirty = 1;
     }
 
+    /* Clear BEFORE the static branch so build_static_brick_band_cache's
+     * window mark survives into this frame's flush. */
+    clear_dirty_ranges(dirty_min_byte, dirty_max_byte);
     if (static_bg_dirty) {
         build_static_background(level_idx);
         static_bg_dirty = 0;
@@ -5931,7 +6039,6 @@ static void redraw_full_with_ball(unsigned char level_idx) {
     } else {
         restore_prev_dirty_from_static_cache();
     }
-    clear_dirty_ranges(dirty_min_byte, dirty_max_byte);
     if (!static_bg_dirty && score_dirty && can_local_hud) {
         update_static_hud_top(level_idx);
         prev_score = score;
@@ -6016,7 +6123,8 @@ static void redraw_full_with_ball(unsigned char level_idx) {
         blit_sprite_attrs_to_buff(enemy->x_coord, enemy->y_coord,
                                    spr_w_px, spr_h_px, bg_attr);
         blit_masked_to_scr_buff(spr, enemy->x_coord, enemy->y_coord);
-        mark_dirty_rect_px(enemy->x_coord, enemy->y_coord, spr_w_px, spr_h_px);
+        mark_dirty_cell_rect_px(enemy->x_coord, enemy->y_coord,
+                                spr_w_px, spr_h_px);
     }
     if (bonus_active) {
         unsigned int spr = spr_for_bonus(bonus_type);
@@ -6169,7 +6277,8 @@ static void render_enemy_to_buff_and_mark(unsigned char bg_attr) {
     blit_sprite_attrs_to_buff(enemy->x_coord, enemy->y_coord,
                               spr_w_px, spr_h_px, bg_attr);
     blit_masked_to_scr_buff(spr, enemy->x_coord, enemy->y_coord);
-    mark_dirty_rect_px(enemy->x_coord, enemy->y_coord, spr_w_px, spr_h_px);
+    mark_dirty_cell_rect_px(enemy->x_coord, enemy->y_coord,
+                            spr_w_px, spr_h_px);
 }
 
 static void render_simple_objects_to_buff_and_mark(unsigned char bg_attr) {

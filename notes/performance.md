@@ -397,3 +397,58 @@ Interpretation:
 4. Localize lives changes the same way score changes are localized.
 5. Split magnet rendering from top HUD rows so score localization is safe on
    magnet levels too.
+
+## Stale-VGA fixes (2026-06-11): flush granularity + band-rebuild boundaries
+
+User-visible leftovers (known-bugs.md #1/#2: glitches after brick
+destruction, inverted-colour residue after enemy fly-overs) turned out to
+be three stale-VGA / cache-pollution defects in the dirty-redraw system.
+Reproduced and now gated by `make test-enemy-brick-residue`: 80 frames of
+the L3 brick-flash scenario (ball destroying bricks + enemy crossing the
+band, RNG + counter pinned), dirty path screendump vs a
+`BATTY_FORCE_FULL_FLUSH_EACH_FRAME` baseline. NOTE the oracle choice: the
+older dirty-vs-`FORCE_BALL_FULL_REDRAW` gates can NOT see this defect
+class — both sides flush by the same dirty ranges, so identical staleness
+cancels out. The full-flush baseline pins VGA == buffers every frame.
+
+1. **Attr clash needs cell-granular flushing.** The enemy (and blast)
+   attr blit recolours whole 8x8 char cells, but the dirty mark covered
+   only the sprite's pixel rows. Rows of boundary cells flushed mid-pass
+   with the clash attr were excluded from the final restore flush, so
+   they kept the clash colour (bricks rendered with the enemy's bg attr =
+   the "inverted colour" residue). Fix: `mark_dirty_cell_rect_px` —
+   Y-expand the enemy's dirty rect to cell boundaries (X is already
+   byte == cell granular). Cost: up to 14 extra rows in the enemy's rect.
+
+2. **The incremental band-cache rebuild never flushed its own writes.**
+   `build_static_brick_band_cache` rewrites whole band rows (pixels bytes
+   1..30, attr rows all 32 bytes) but relied on the brick flash's 18x10
+   dirty rect; everything else it changed (shadow attrs on the row below,
+   left-dim, neighbouring cells) went stale on VGA. Fix: the rebuild
+   marks its window dirty (`clear_dirty_ranges` moved ahead of the static
+   branch in `redraw_full_with_ball` so the marks survive). Cost: a
+   band-window flush on destroy frames only (<= 2 per destroy).
+
+3. **The rebuild window left boundary rows non-canonical**, polluting the
+   band CACHE itself (then spread by restores — this is why leftovers
+   appeared "when aliens fly over"). The interlocks: char row cr0 doubles
+   as row r0-1's shadow row and cr1 as row r1+1's cell row, so the
+   level_attrs base-copy resurrected captured-live attrs on destroyed
+   boundary cells; vertically adjacent bricks write their top/bottom
+   edges one pixel row into each other's cells; `brik_shadow_c(r1)` dims
+   row r1+1's live cells which only row r1+1's own print would
+   re-brighten; and the bg repaint erased the inner border line columns.
+   Fix (all in `render_brick_band_rows` + the incremental branch):
+   recomposite [lo-1 .. hi+1], guard the destroyed-reset writes to the
+   base-copied char-row range, and apply 4 edge fix-ups (r1+1 body row 0
+   + side-edge bits; r0-1 bottom-edge zeros over destroyed r0 cells;
+   r1+1 top-edge zeros; r1+1 live-cell attr re-brighten) plus the inner
+   border line re-clear. The window is exactly self-consistent: every
+   dirty (destroyed) row's full neighbourhood is re-derived, and the two
+   outermost shared edge rows are patched per the full ascending paint
+   order's overwrite semantics.
+
+Perf note: the destroy-frame flush grew (band window vs flash rect), but
+only on rebuild frames; steady-state ball/object frames are unchanged.
+The enemy's dirty rect is taller by up to 14 rows while an enemy is
+on screen.

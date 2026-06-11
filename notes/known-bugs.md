@@ -5,34 +5,37 @@ visual-regression test (= mid-game state we don't snapshot). Listed
 here so the next iter has a target. When fixing, add a section to
 `per-level-profile.md` or the relevant area doc; remove from here.
 
-## 1. Background glitches / leftovers after a brick is destroyed (2026-06-11)
-
-Small stray pixels remain on the background where a brick used to be,
-after it gets destroyed. Likely suspects (unverified): the dirty-rect
-union not covering the full footprint of the destroy-time effects —
-`brick_flash_spawn` / `brick_hit_anim` draw into `scr_buff` over the
-brick cell, while `mark_brick_row_dirty` (src/main.c:3008) only scopes
-the band-cache rebuild to the brick's own 8-px row; anything the flash
-or shimmer touched outside that row/byte range never gets restored from
-`bg_scr_buff` by `restore_prev_dirty_from_static_cache`
-(src/main.c:3019).
-
-## 2. Inverted-colour leftovers after aliens fly over bricks (2026-06-11)
-
-When an enemy passes over the brick area, it leaves residue behind with
-the colour INVERTED. The inversion strongly implicates the XOR shadow
-blit case: in `blit_masked_to_scr_buff_ptr` (src/main.c:~1568),
-`mask=0, pix=1` TOGGLES the background bit (`scr_buff' = (mask|scr) ^
-pix`, the dotted bat-shadow effect). If the enemy's dirty byte-range for
-that frame doesn't include the shadow columns (mask=0 bytes may sit
-outside whatever extent gets recorded into `prev_dirty_min/max_byte`),
-the toggled bits are never restored from the static cache and stay
-flipped — i.e. inverted background. Check what extent the enemy draw
-path records vs the sprite's full (mask+shadow) footprint.
+(none currently)
 
 ---
 
 Resolved history:
+
+(bugs #1 "background leftovers after a brick is destroyed" and #2
+"inverted-colour leftovers after aliens fly over bricks" resolved
+2026-06-11 — neither original hypothesis was right; both were
+stale-VGA/flush-granularity defects, reproduced with the new
+`make test-enemy-brick-residue` gate (dirty path vs a
+FORCE_FULL_FLUSH_EACH_FRAME baseline; the existing dirty-vs-full-redraw
+gates can't see these because both sides flush identically). Three
+mechanisms, full story in `notes/performance.md` "Stale-VGA fixes":
+  1. The enemy's colour-clash attr blit recolours whole 8x8 cells but
+     only the sprite's own pixel rows were marked dirty — boundary-cell
+     rows flushed during the fly-over kept the clash colour after the
+     attrs were restored. Fixed: `mark_dirty_cell_rect_px`.
+  2. The incremental band-cache rebuild rewrote whole rows + 32-byte
+     attr rows but relied on the 18x10 brick-flash rect for flushing —
+     everything outside went stale. Fixed: the rebuild marks its window.
+  3. The rebuild window itself left boundary rows non-canonical
+     (level_attrs base-copy resurrecting live attrs on destroyed
+     boundary-row cells; interlocking brick top/bottom edge rows; the
+     R1-row shadow dimming row R1+1's live cells; the erased inner
+     border line) — polluting the band CACHE, which restores then spread
+     to the screen. Fixed: window widened one brick row each side +
+     guarded boundary resets + 4 edge fix-ups in
+     `render_brick_band_rows`.
+Gates: parity-check-full incl. test-frame-step at the documented floor,
+plus the new test-enemy-brick-residue.)
 
 (bug #3 "multi-hit bricks shimmer continuously" resolved 2026-06-11:
 `step_brick_hit_anim` now mirrors the original's `(c+1) & $0F` literally —
