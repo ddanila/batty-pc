@@ -1,9 +1,11 @@
 # Per-level visual-diff profile
 
 `BATTY_LEVEL=N make test` (N = 1..15) diffs `state4_level1` against
-`build/level_gt/level_NN.scr`. **All 15 levels are pixel-perfect**
-[REGRESSED — at least L9 has drifted; see the 2026-06-11 section below
-before trusting this table].
+`build/level_gt/level_NN.scr`. **All 15 levels are pixel-perfect**,
+now enforced by the fail-gated `make test-levels-sweep` (in
+parity-check-full). The 2026-06-11 "L9 drift" below was root-caused to
+the screendump racing a LIVE alien, not render drift — see the RESOLVED
+section.
 
 ## REGRESSION SPOTTED (2026-06-11): L9 drifted to 186 px — TODO, separate look
 
@@ -60,6 +62,66 @@ attr / shadow nuance or a stale GT), not a sprite bug.
    exists, this table can rot silently again — per lessons.md, either
    recapture/fix to 0 or give each level its own gated number; INFO is
    an alibi.
+
+## RESOLVED (2026-06-11): it was the screendump racing a LIVE alien
+
+Executed the plan above; the trail led somewhere unexpected.
+
+**Sweep** (step 1): only L3 (185 px) and L9 (186 px) drifted; the other
+13 were 0 px. Not magnet-correlated (L3 has none), not cycle-correlated
+(L3 cycle 2, L9 cycle 0; siblings pass).
+
+**Localize** (step 2): the "scattered everywhere" reading of the diff
+PNG was a thumbnail-scale misread (red diff vs grey context). The
+actual diffs sat ENTIRELY in x 64..87, y 9..23 — a 24×16 box. Decisive
+facts, in the order they landed:
+
+- Identical 191-px footprint on both levels, colours tracking each
+  level's cycle ink — one artefact, two levels.
+- GT L3 == GT L7 in the region, ours-L3 != both, while ours-L7 passes —
+  so the artefact is something drawn at RUNTIME, not static render.
+- 24×16 at x=64 = exactly the UFO sprite (prop_even w=$18 h=$10) at the
+  enemy spawn slot `prop_x_coord[0] = $40`.
+- `enemy_prepare` spawns only when bricks-remaining < $2C (44). Starting
+  destructible counts: L3=26, L5=9, L9=7 — and L5 is the one level the
+  original exempts from enemies entirely. {immediate-spawn levels} −
+  {L5} = **exactly {L3, L9}**.
+- The state4 dump lands ~1.5 s after the level-entry ENTER ≈ gameplay
+  frame ~10 (1.2 s banner + 0.32 s shimmer eat the rest) — and a
+  probe-halt timeline of L3 entry shows the descending UFO occupying
+  EXACTLY 64,9..87,23 at frame 10, with frames 40/60 pixel-clean vs GT
+  (the dirty path erases the fly-over correctly; no stale ghost).
+- The GTs are alien-free by construction (modded-batty trap fires
+  before the alien is composed), so a live alien anywhere in frame is
+  an automatic "drift".
+
+So: no render regression, no GT corruption, nothing to bisect (step 3
+moot — the race's outcome flipped with incidental entry-timing changes
+across the campaign, e.g. shimmer-length fixes). The earlier
+FORCE_FULL_FLUSH_EACH_FRAME=1 "clean" run that suggested stale VGA was
+itself a timing artefact: full-flushing slows level entry enough that
+the dump landed before the spawn.
+
+**Fix:** `enemy_prepare` now returns early under BATTYALL
+(`test_mode_pin_blink`) — natural alien spawns are pinned off in test
+mode, same philosophy as the menu-blink / running-dot / magnet-toggle
+pins. Every test that needs an alien seeds one via
+`BATTY_REPLAY_ENEMY_OBJECT`, which bypasses the spawner; the RNG walk
+is unchanged (enemy_prepare's reads are rng_sample, no advance). L3/L9
+state4: pixel-identical after the pin. Caveat: the informational
+`gate-laffc-long` (frames up to 40) now lacks the port-side alien the
+ZEsarUX side still spawns — its frame-40 residual gains ~a sprite of
+diff; it is not in any suite, re-baseline if it's ever gated.
+
+**Blind-spot closed** (step 4): `make test-levels-sweep` boots all 15
+levels and FAIL-gates state4 at 0 px each; wired into parity-check-full.
+
+**Bycatch — a real bug found by the triage harness:** the A/B
+dirty-vs-fullflush repro built for the (wrong) stale-VGA theory found a
+genuine ~21 px black trailing residue at a descending UFO's upper edge
+rows (frame-50 halt, RNG+counter pinned, measured (83..87, 49..57) on
+L1). See `scripts/repro_enemy_flyover_trail.py` (expected-FAIL repro,
+not yet wired) and the pending entry in notes/known-bugs.md.
 
 ## Current per-level numbers
 

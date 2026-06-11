@@ -159,6 +159,16 @@ movement reads `object_ball_1.dir/speed` but SPACE or timeout launch
 updates only the legacy integer `ball_dx/ball_dy` side state, and the
 16-bit DOS fixed-point overflow class where `x << 8` wraps for x >= 128.
 
+`make test-levels-sweep` FAIL-gates state4 for every one of the 15
+levels (a `BATTY_LEVEL=N make test` boot each). `make test` alone gates
+only the default L1; the other levels used to be INFO-only, which hid
+the L3/L9 alien-race artefact for an unknown stretch of the campaign
+(see notes/per-level-profile.md "RESOLVED (2026-06-11)"). Slow (15 QEMU
+boots) — wired into parity-check-full. Related pin: BATTYALL disables
+NATURAL alien spawns (enemy_prepare early-return) so the level-entry
+captures are deterministic; tests seed aliens via
+BATTY_REPLAY_ENEMY_OBJECT.
+
 `make test-magnet-ball` covers the magnet ball physics (handling_ball
 LA27E_0..11). It boots L2 twice with a ball seeded inside the magnet's
 empty brick pocket aimed straight up, forcing the magnet ON in one run

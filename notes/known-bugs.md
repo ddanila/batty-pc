@@ -7,17 +7,28 @@ here so the next iter has a target. When fixing, add a section to
 
 (none currently)
 
-(Not user-reported, but pending a separate look: L9's `state4` visual
-diff has drifted to 186 px (INFO-only — non-default levels aren't
-FAIL-gated), contradicting per-level-profile.md's 15/15 pixel-perfect
-table. Predates the 2026-06-11 fixes (verified at clean `aec8d43`).
-Investigation plan — sweep, localize, GT audit, bisect from `73b3013`,
-then FAIL-gate all 15 levels — is written out in
-`notes/per-level-profile.md`, "REGRESSION SPOTTED (2026-06-11)".)
+(Not user-reported, but pending: **enemy fly-over leaves ~21 px of
+black trailing residue on the dirty-redraw path** — found 2026-06-11 as
+bycatch of the L3/L9 state4 triage. A fresh-spawn UFO seeded at (64,1)
+descending 50 deterministic frames (RNG + counter pinned, probe-halt
+captures) shows dirty=black vs full-compose=texture at its upper edge
+rows, measured (83..87, 49..57) on L1. Repro (expected-FAIL):
+`python3 scripts/repro_enemy_flyover_trail.py` — once fixed, rename to
+test_* and wire into parity-check-full. Context in
+notes/per-level-profile.md "RESOLVED (2026-06-11)", Bycatch.)
 
 ---
 
 Resolved history:
+
+(the "L9 state4 drift 186 px" entry that used to sit here was resolved
+2026-06-11: not render drift at all — the state4 screendump races the
+LIVE alien on the only two levels (L3/L9) whose starting brick count is
+under the $2C spawn gate (L5 is enemy-exempt). Fixed by pinning natural
+alien spawns off under BATTYALL (enemy_prepare early-return; tests seed
+via BATTY_REPLAY_ENEMY_OBJECT) and FAIL-gating all 15 levels via
+`make test-levels-sweep`. Full triage trail in
+notes/per-level-profile.md "RESOLVED (2026-06-11)".)
 
 (bug #4 "initial hard-block shimmer very fast" resolved 2026-06-11: the
 port's `play_brik_anim` aborted on ANY buffered keypress (a port

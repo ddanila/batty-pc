@@ -5309,6 +5309,16 @@ static void enemy_prepare(void) {
     object_t *e = &objects[OBJ_ENEMY];
     const unsigned char *prop;
     unsigned char r;
+    /* Test-mode pin (BATTYALL): no NATURAL alien spawns — the same
+     * determinism trick as the menu-blink / running-dot / magnet-toggle
+     * pins. On levels whose starting brick count is already below the
+     * 0x2C spawn gate (L3: 26, L9: 7 — L5 is exempted below), an alien
+     * spawns within the first gameplay frame and the wall-clock state4
+     * screendump races its descent — the L3/L9 "186 px drift"
+     * (notes/per-level-profile.md, 2026-06-11). The GT is alien-free by
+     * construction. Tests that need an alien seed one explicitly via
+     * BATTY_REPLAY_ENEMY_OBJECT, which bypasses this spawner. */
+    if (test_mode_pin_blink) return;
     /* Original $9EAA returns immediately when current_level == 4 —
      * L4 has no enemies at all. Earlier port added a bouncing spark
      * here as extra challenge; removed for byte-exact parity. */
