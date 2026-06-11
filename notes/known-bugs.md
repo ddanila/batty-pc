@@ -7,6 +7,14 @@ here so the next iter has a target. When fixing, add a section to
 
 (none currently)
 
+(Not user-reported, but pending a separate look: L9's `state4` visual
+diff has drifted to 186 px (INFO-only — non-default levels aren't
+FAIL-gated), contradicting per-level-profile.md's 15/15 pixel-perfect
+table. Predates the 2026-06-11 fixes (verified at clean `aec8d43`).
+Investigation plan — sweep, localize, GT audit, bisect from `73b3013`,
+then FAIL-gate all 15 levels — is written out in
+`notes/per-level-profile.md`, "REGRESSION SPOTTED (2026-06-11)".)
+
 ---
 
 Resolved history:
