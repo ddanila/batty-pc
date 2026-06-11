@@ -72,6 +72,11 @@ def main():
                     help='comma-separated frame indices present in both dirs')
     ap.add_argument('--max-diff', type=int, default=0,
                     help='per-frame pixel-diff ceiling for PASS (default 0)')
+    ap.add_argument('--budgets', default=None,
+                    help='comma-separated per-frame ceilings aligned with '
+                         '--frames (overrides --max-diff). Lets a gate pin '
+                         'known residuals exactly, e.g. the L3 frame-step '
+                         'floor 0,0,0,4,0,4,1 for frames 0-6.')
     ap.add_argument('--roi', default=None,
                     help='x0,y0,x1,y1 (x1/y1 exclusive) to restrict the diff; '
                          'e.g. 8,32,248,128 = the brick play region used by '
@@ -79,6 +84,13 @@ def main():
     args = ap.parse_args()
 
     frames = [int(t) for t in args.frames.split(',') if t.strip()]
+    budgets = None
+    if args.budgets is not None:
+        budgets = [int(t) for t in args.budgets.split(',') if t.strip()]
+        if len(budgets) != len(frames):
+            print(f'--budgets needs one value per frame '
+                  f'({len(frames)}), got {len(budgets)}')
+            return 2
     roi = tuple(int(v) for v in args.roi.split(',')) if args.roi else None
     if roi is not None and len(roi) != 4:
         print(f'--roi must be x0,y0,x1,y1, got {args.roi!r}')
@@ -88,7 +100,8 @@ def main():
     orig = Path(args.original)
 
     failures = 0
-    for n in frames:
+    for i, n in enumerate(frames):
+        ceiling = budgets[i] if budgets is not None else args.max_diff
         pp = port / f'frame_{n:04d}.idx'
         op = orig / f'frame_{n:04d}.idx'
         if not pp.exists() or not op.exists():
@@ -97,18 +110,20 @@ def main():
             failures += 1
             continue
         count, bounds = diff_bounds(load_idx(pp), load_idx(op), roi)
-        tag = 'PASS' if count <= args.max_diff else 'FAIL'
-        if count > args.max_diff:
+        tag = 'PASS' if count <= ceiling else 'FAIL'
+        if count > ceiling:
             failures += 1
         loc = f' bounds={bounds}' if bounds else ''
-        print(f'  frame {n:>4}: {count:>6}/{npx} px differ [{tag}]{loc}')
+        lim = f' (<= {ceiling})' if budgets is not None else ''
+        print(f'  frame {n:>4}: {count:>6}/{npx} px differ [{tag}]{lim}{loc}')
 
     roi_note = f' roi={roi}' if roi else ''
+    limits = args.budgets if budgets is not None else f'{args.max_diff}px'
     if failures == 0:
-        print(f'PASS: {len(frames)} frames within {args.max_diff}px '
+        print(f'PASS: {len(frames)} frames within {limits} '
               f'(port == original){roi_note}')
     else:
-        print(f'FAIL: {failures}/{len(frames)} frames exceed {args.max_diff}px')
+        print(f'FAIL: {failures}/{len(frames)} frames exceed {limits}')
     return failures
 
 

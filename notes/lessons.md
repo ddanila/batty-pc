@@ -287,6 +287,11 @@ the brick-band cache / dirty-redraw / flash path is a parity change — re-run
 `capture-timeline-both`, don't trust the headless gates alone. See
 notes/metal-shimmer.md (BRICK_FLASH_TICKS regression).
 
+UPDATE (2026-06-11): this is now ENFORCED — `make test-frame-step` pins the
+documented floor (frames 0-6 vs budgets 0,0,0,4,0,4,1 in the brick ROI) and
+runs as part of `parity-check-full`, so the manual-discipline rule above has
+a gate behind it.
+
 ## Wall reflect masks: side = $1F (negate dx), top = $3F (negate dy)
 
 The ball's wall bounce (reflect_obj_dir) is the SAME change_direction

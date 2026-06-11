@@ -356,3 +356,14 @@ brick-hit-frame perf nicety. **Lesson:** any change to the brick-band /
 dirty-redraw / flash path must re-run `capture-timeline-both`, not just the
 headless gates — `test-brick-flash` checks erase cleanup, not the
 destruction transient's full-dynamic render. (Added to lessons.md.)
+
+## GATED (2026-06-11): `make test-frame-step` pins the floor
+
+The frame-step measurement is now a regression gate wired into
+`parity-check-full`: it re-runs the L3 capture (port QEMU + ZEsarUX) over
+frames 0–6 and asserts the documented floor exactly — budgets
+`0,0,0,4,0,4,1` in the brick ROI (`compare_timelines.py --budgets`). The
+BRICK_FLASH_TICKS class of regression (4px → 88–134px) now fails a suite
+instead of waiting for a manual re-measure. If a future fix legitimately
+lowers the floor (e.g. capture-phase alignment), tighten TL_GATE_BUDGETS in
+the Makefile.

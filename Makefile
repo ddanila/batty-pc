@@ -578,6 +578,7 @@ parity-check:
 # guards). Slower (many QEMU boots) — run before milestones / merges.
 parity-check-full:
 	$(MAKE) parity-check
+	$(MAKE) test-frame-step
 	$(MAKE) test-wall-bounce
 	$(MAKE) test-normal-ball-launch
 	$(MAKE) test-laffc-levels-sane
@@ -697,6 +698,30 @@ capture-timeline-both: $(ZESARUX)
 gate-laffc-long:
 	$(MAKE) capture-timeline-both LAFFC_FLAG=1 \
 	    TL_FRAMES=1,5,10,20,40 TL_CMP_FRAMES=0,1,5,10,20,40
+
+# Frame-step parity GATE: capture-timeline-both pinned to the documented
+# L3 residual floor (notes/metal-shimmer.md): f0/f1/f2/f4 = 0 px exact,
+# f3/f5 <= 4 px and f6 <= 1 px (the capture-phase transient at the brick-
+# destruction moment -- PORT f3 == ORIG f5 byte-for-byte). ANY brick-band /
+# dirty-redraw / flash render change that drifts the destroy transient
+# fails here (this is the gate that would have caught the BRICK_FLASH_TICKS
+# 2->1 regression, 4px -> 88-134px, which the headless suites missed).
+# Needs ZEsarUX (built from tools/zesarux); ~25s.
+TL_GATE_FRAMES     = 1,2,3,4,5,6
+TL_GATE_CMP_FRAMES = 0,1,2,3,4,5,6
+TL_GATE_BUDGETS    = 0,0,0,4,0,4,1
+test-frame-step: $(ZESARUX)
+	@rm -f $(TEST_FLOPPY_OUT)
+	@$(L3_SEED_ENV) BATTY_REPLAY_WAIT_KEY=1 \
+	    BATTY_VISUAL_PROBE_FRAMES=$(TL_GATE_FRAMES) $(MAKE) $(TEST_FLOPPY_OUT)
+	python3 scripts/capture_frame_timeline.py --floppy $(TEST_FLOPPY_OUT) \
+	    --frames $(TL_GATE_FRAMES) --wait-key --out build/tl_port
+	python3 scripts/capture_frame_timeline_original.py --snapshot $(SNAPSHOT) \
+	    --frames $(TL_GATE_CMP_FRAMES) --zesarux $(ZESARUX) \
+	    --setup-from-replay $(SETUP_REPLAY) --out build/tl_orig
+	python3 scripts/compare_timelines.py --port build/tl_port \
+	    --original build/tl_orig --frames $(TL_GATE_CMP_FRAMES) \
+	    --roi $(TL_ROI) --budgets $(TL_GATE_BUDGETS)
 
 # Headless regression locking in the byte-exact LAFFC ball state at L3
 # frame 1 (no ZEsarUX needed; asserts object_ball_1 == the Spectrum probe).
