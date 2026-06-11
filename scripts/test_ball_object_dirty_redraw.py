@@ -30,6 +30,14 @@ def build_floppy(force_full: bool) -> None:
             "BATTY_REPLAY_BALL_STUCK": "0",
             "BATTY_REPLAY_ENEMY_OBJECT": ENEMY_OBJECT,
             "BATTY_VISUAL_PROBE_FRAMES": "12",
+            # Pin the counter_misc phase: the enemy steer gates on the
+            # GLOBAL counter (&3), so without the pin the dirty and full
+            # boots land on random phases and the enemy's 12-frame path
+            # differs by 1-2 px between the captures — a constant ~145px
+            # sprite XOR that read as a dirty-redraw failure (same
+            # mechanism as the test-enemy-steer flake; it passed only
+            # when both boots happened to share a phase, ~1 in 4).
+            "BATTY_REPLAY_COUNTER": "0",
         }
     )
     if force_full:

@@ -368,9 +368,14 @@ Interpretation:
   can never be too narrow (it changes the scan range only, not the flushed
   output — so it can't introduce a trail); all 8 dirty-redraw gates + visual
   states pass. (Note: `test-ball-object-dirty-redraw` flaked once then passed
-  twice — a pre-existing SLEEP-timed-screendump capture flake, unrelated to
-  the scan range.) With both scan loops bounded, the every-frame floor is now
-  just the restore memcpy + the VGA flush — both intrinsic.
+  twice — guessed at the time to be a SLEEP-timed-screendump capture flake;
+  root-caused 2026-06-11 as the counter_misc PHASE: the enemy steer gates on
+  the global counter's &3, so the test's dirty and full boots landed on
+  random phases and the enemy's 12-frame path differed by 1-2 px — a
+  constant ~145px sprite XOR, passing only when both boots shared a phase.
+  Fixed by pinning BATTY_REPLAY_COUNTER=0 in the test. Unrelated to the
+  scan range either way.) With both scan loops bounded, the every-frame
+  floor is now just the restore memcpy + the VGA flush — both intrinsic.
 
 ## Next Likely Wins
 

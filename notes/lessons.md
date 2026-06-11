@@ -315,3 +315,13 @@ papers over it; the fix is determinism: BATTY_REPLAY_COUNTER=<hex> pins
 pit_frame_counter at the WAIT_KEY release. Pick the pin so probe frames sit
 mid-interval, far from the cadence boundaries (steer test: phase 2, turns
 at f=2,6,...,22 vs probes at 16/20/24). See notes/enemy-movement.md.
+
+Second instance (same day): A/B comparison tests are bitten too, not just
+GT assertions. test-ball-object-dirty-redraw boots TWICE (dirty vs full
+floppy) and diffs the screens; with an active enemy seeded, the two boots'
+random phases gave the enemy 12-frame paths 1-2 px apart — a constant
+~145px "dirty-redraw failure" that was really the same phase roulette
+(passed only when both boots shared a phase, ~1/4). It had been
+misdiagnosed as a SLEEP/screendump flake in performance.md. Rule: ANY test
+that boots the game more than once and compares outputs must pin
+BATTY_REPLAY_COUNTER if a steer/cadence-driven object is on screen.
