@@ -303,3 +303,15 @@ x=240. Lesson: wall bounces had NO gate (the L3 ball gate never reaches a
 bare wall; `make test` is static-only) — that class of bug is invisible
 until a player hits it. `make test-wall-bounce` now guards it. See
 notes/wall-bounce.md.
+
+## Global-counter-phase cadences need the counter PINNED in tests
+
+Anything gated on the global frame counter's low bits (= counter_misc:
+enemy steer &3, ball speed ramp &7, bat resize, sprite flicker) has a
+boot-wall-clock-random phase at the replay WAIT_KEY release — a probe-frame
+assertion on such behavior WILL flake (test-enemy-steer did: phase 0 boots
+read dir one steer-step ahead). Widening tolerances (the old ±1 x slack)
+papers over it; the fix is determinism: BATTY_REPLAY_COUNTER=<hex> pins
+pit_frame_counter at the WAIT_KEY release. Pick the pin so probe frames sit
+mid-interval, far from the cadence boundaries (steer test: phase 2, turns
+at f=2,6,...,22 vs probes at 16/20/24). See notes/enemy-movement.md.

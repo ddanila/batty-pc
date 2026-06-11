@@ -102,6 +102,19 @@ the same global 4-frame phase. The port gated on the per-object
 to gate on `pit_frame_counter & 3` (the port's per-frame PIT counter = the
 original's `counter_misc`); `misc_12` still drives the sprite animation.
 
+**Test-determinism consequence (fixed 2026-06-11).** Because the gate is
+the GLOBAL counter, its `&3` phase at the replay WAIT_KEY release was
+boot-wall-clock roulette — so `test-enemy-steer` flaked: on boots landing
+on phase 0 the 4-frame turn slid one frame across the probe checkpoints and
+dir read one step ahead (0x12/0x13/0x14 at f16/20/24). Now
+`BATTY_REPLAY_COUNTER=<hex>` pins `pit_frame_counter` at the WAIT_KEY
+release (main.c, after the wake-key getch), and the steer test bakes
+phase 2: swept all 4 phases — 0 reproduces the flake deterministically,
+1/2/3 reproduce the GT dirs, and 2 also matches x exactly (167/167/165)
+with the probe frames maximally far from the turn boundaries (turns at
+f=2,6,...,22). Any counter_misc-phase-gated test (speed ramp &7, bat
+resize, anims) can reuse the same pin.
+
 ## Enemy seed for the flag-on acceptance test
 
 L3 enemy at frame 0 (probed, 22 bytes):

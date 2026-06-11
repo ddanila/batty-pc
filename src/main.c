@@ -7150,6 +7150,27 @@ static state_t run_level(void) {
             }
             (void)getch();
         }
+        /* Replay determinism hook: pin the global frame counter (= the
+         * original's counter_misc) at the aligned start. The counter has
+         * been ticking since boot, so its low-bit PHASE at this point is
+         * wall-clock roulette — and the enemy steer (&3), the ball speed
+         * ramp (&7), and other counter_misc-gated cadences all key off it.
+         * Un-pinned, a 4-frame steer turn can slide across a probe frame
+         * run-to-run (the test-enemy-steer flake). Hex value; pinned AFTER
+         * the WAIT_KEY release so frame 1 sees counter == pin+1, making
+         * every counter_misc-phase decision deterministic per seed. */
+        {
+            const char *pc = getenv("BATTY_REPLAY_COUNTER");
+            if (pc != NULL && *pc != '\0') {
+                char *endp;
+                unsigned long v = strtoul(pc, &endp, 16);
+                if (*endp == '\0') {
+                    _disable();
+                    pit_frame_counter = v;
+                    _enable();
+                }
+            }
+        }
         cycle = (unsigned char)(i & 3);
         bg_attr = bg_attr_per_cycle[i & 3];
         start     = bios_ticks();

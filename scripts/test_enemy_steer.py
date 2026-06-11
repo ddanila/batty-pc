@@ -15,17 +15,19 @@ steered the wrong way (dir 0x0E->0x0C, x drifting right) — this gate is what
 caught that, so it guards against any RNG-walk / steering regression.
 
 Bakes the byte-correct f0 seed (RANDOM=3793, RANDOM_SEED=962A; per-frame
-tick is the default now) and the fresh enemy descriptor, then probes
-object_enemy at f16/f20/f24. Asserts the steering DECISION exactly — `dir`
-(0x11/0x12/0x13) and `y` (the descent) — and `x` within +-1 of the GT.
-The +-1 x slack is deliberate: the QEMU boot / WAIT_KEY release phase
-jitters run-to-run, shifting a 4-frame turn by one frame and the x by 1 px
-(the sub-pixel fraction likewise drifts). `dir`/`y` are phase-stable, so
-they carry the regression signal (a wrong RNG walk flips dir to 0x0E etc.).
+tick is the default now), the fresh enemy descriptor, AND the counter_misc
+phase pin (BATTY_REPLAY_COUNTER=2, see SEED_COUNTER below), then probes
+object_enemy at f16/f20/f24 and asserts x, y, AND dir EXACTLY against the
+GT. The pin removes the old run-to-run jitter (the steer cadence gates on
+the GLOBAL counter's &3 phase, formerly boot-wall-clock random — boots
+landing on phase 0 read dir one steer-step ahead and flaked this test).
+With the phase pinned the run is byte-deterministic (validated 3/3
+identical incl. exact x), so the former +-1 x slack is gone.
 
 ZEsarUX-free (port-only); needs QEMU + mtools. See notes/enemy-movement.md
 and notes/rng-model.md.
 """
+import os
 import re
 import subprocess
 import sys
@@ -36,6 +38,15 @@ FLOPPY = "build/batty-test.img"
 
 SEED_RANDOM = "3793"
 SEED_RANDOM_SEED = "962A"
+# Pin the global frame counter (counter_misc) phase at the WAIT_KEY release.
+# The steer cadence is gated on the GLOBAL counter (&3), whose phase at the
+# aligned start was boot-wall-clock roulette — the 4-frame turn slid across
+# a probe frame run-to-run and dir read one step early (the old flake;
+# phase 0 reproduces it deterministically: dir 0x12/0x13/0x14). Swept all 4
+# phases: 1/2/3 reproduce the ZEsarUX GT dirs; phase 2 also matches x
+# EXACTLY (167/167/165) and puts the probe frames (16/20/24) maximally far
+# from the turn boundaries (turns at f=2,6,...,22). Overridable for sweeps.
+SEED_COUNTER = os.environ.get("BATTY_REPLAY_COUNTER_OVERRIDE", "2")
 BAT_OBJECT  = "01017400AD000000040DEFAE1C0A74AD040DF0008380"
 BALL_OBJECT = "02006C004E001F03020CEEF008076C4E020C0000008C"
 FRESH_ENEMY = "0900A80001001001030FDA35180CA801030FF0701000"
@@ -55,6 +66,7 @@ def probe_enemy(frame: int):
         f"BATTY_REPLAY_BAT_OBJECT={BAT_OBJECT} BATTY_REPLAY_BALL_STUCK=0 "
         f"BATTY_REPLAY_BALL_OBJECT={BALL_OBJECT} "
         f"BATTY_REPLAY_ENEMY_OBJECT={FRESH_ENEMY} "
+        f"BATTY_REPLAY_COUNTER={SEED_COUNTER} "
         f"BATTY_VISUAL_PROBE_FRAMES={frame}"
     )
     subprocess.run(f"{env} make {FLOPPY}", shell=True, cwd=ROOT,
@@ -80,10 +92,10 @@ def main() -> int:
             ok = False
             continue
         x, y, d = b[2], b[4], b[6]
-        good = (abs(x - ex) <= 1 and y == ey and d == ed)
+        good = (x == ex and y == ey and d == ed)
         ok = ok and good
         print(f"  frame {frame}: x={x} y={y} dir=0x{d:02X} "
-              f"[{'PASS' if good else 'FAIL'}] (expect x={ex}+-1 y={ey} dir=0x{ed:02X})")
+              f"[{'PASS' if good else 'FAIL'}] (expect x={ex} y={ey} dir=0x{ed:02X})")
     if ok:
         print("PASS enemy_steer: port steering matches the original "
               "(dir 0x11->0x12->0x13, x 167->167->165) — RNG-dependent, GT-validated")
