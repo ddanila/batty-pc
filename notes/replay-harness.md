@@ -66,8 +66,28 @@ cleanly. The original setup NOPs the `$BA6C` call to
 the port's static level-entry renderer; otherwise the original's
 pre-round metal-brick shimmer leaves a different lower brick band even
 though the probed object and level bytes match. `--fail-on-diff` returns
-0 with `l3_entry: 0/23040 px differ` and `PASS` on every state-probe
-row.
+0 with `l3_entry: 0/23040 px differ` and `PASS` on every fail-gated
+state-probe row.
+
+**Gate semantics corrected (2026-06-11).** The known-bugs "regressed 0 →
+1885 px" entry turned out stale on both counts: the SCREEN compares
+0/23040 px again (the render was fixed by the intervening campaigns), and
+the residual FAIL was 4 *probe-row* mismatches (`object_ball_1/bat_1/
+enemy`, `random_number`) that can never match by construction — the
+original is probed while paused at `$BA83`, but the port's `PROBE.TXT` is
+REWRITTEN by its ESC handler at harness teardown (replay_harness always
+sends `esc` so QEMU exits), i.e. after the wake tap let the port play on
+(RNG ticked, enemy spawned, stuck ball snapped to `$A6`). The mismatches
+GREW as the port got more faithful (per-frame RNG tick default, enemy
+spawn, stuck-ball snap) — a faithfulness improvement read as a gate
+regression. Fixes: `--fail-on-diff` now fail-gates captures + REQUIRED
+probe rows only (volatile rows stay INFO); `l3-entry.json` declares the
+stable rows required (`bricks_quantity/current_level/round_number/
+current_level_copy`) and probes `random_number` at its REAL address
+`$8D48` (it used to read `$8E17` — an echo of the setup pin, which is
+where the note's phantom "original=8E49" came from); the port is seeded
+with the true f0 RNG (`3793/962A`). Gate green again, screen still
+pixel-exact-gated.
 
 `replay-l3-brick-flash` is a port-side smoke run. It validates replay
 timing, QEMU driving, and capture extraction. The Make target rebuilds

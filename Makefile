@@ -582,6 +582,7 @@ parity-check:
 parity-check-full:
 	$(MAKE) parity-check
 	$(MAKE) test-frame-step
+	$(MAKE) replay-l3-entry
 	$(MAKE) test-wall-bounce
 	$(MAKE) test-normal-ball-launch
 	$(MAKE) test-laffc-levels-sane
@@ -890,10 +891,13 @@ replay-l3-brick-flash-both: $(ZESARUX)
 # Object overrides use the original's probed state at $BA83 (LB9E8_2,
 # the original's main-loop entry, BEFORE handling_bat / enemy_prepare
 # run on this frame), so the port's pause-time objects exactly match
-# the original's probe values.
+# the original's probe values. RNG seeded to the snapshot's true f0
+# state (random_number $8D48 = 3793, random_seed = 962A — same values
+# the frame-step gate uses; the old 8E49 was a stale readback of the
+# wrong address $8E17).
 replay-l3-entry: $(ZESARUX)
 	rm -f $(TEST_FLOPPY_OUT)
-	BATTY_LEVEL=3 BATTY_START_LEVEL=1 BATTY_REPLAY_PROBE=1 BATTY_REPLAY_WAIT_KEY=1 BATTY_REPLAY_RANDOM=8E49 BATTY_REPLAY_BAT_OBJECT=01007400AD000000040D00001C0A00000000F0008380 BATTY_REPLAY_BALL_OBJECT=02008400A0000803020C00000807000000000000C08C BATTY_REPLAY_ENEMY_OBJECT=00017800880000000318000018180000000050440000 $(MAKE) $(TEST_FLOPPY_OUT)
+	BATTY_LEVEL=3 BATTY_START_LEVEL=1 BATTY_REPLAY_PROBE=1 BATTY_REPLAY_WAIT_KEY=1 BATTY_REPLAY_RANDOM=3793 BATTY_REPLAY_RANDOM_SEED=962A BATTY_REPLAY_BAT_OBJECT=01007400AD000000040D00001C0A00000000F0008380 BATTY_REPLAY_BALL_OBJECT=02008400A0000803020C00000807000000000000C08C BATTY_REPLAY_ENEMY_OBJECT=00017800880000000318000018180000000050440000 $(MAKE) $(TEST_FLOPPY_OUT)
 	python3 scripts/replay_harness.py replays/l3-entry.json --side both --compare --fail-on-diff
 
 tools/zesarux/src/zesarux:

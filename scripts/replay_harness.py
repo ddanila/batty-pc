@@ -533,7 +533,16 @@ def compare_outputs(spec: ReplaySpec, port_dir: Path, original_dir: Path,
                 print(f"    {tag} {name}: {preview_value(port_val)}")
             else:
                 print(f"    {tag} {name}: port={port_val} original={orig_val}")
-            if not same and (fail_on_diff or required):
+            # Only REQUIRED probe rows fail-gate. --fail-on-diff used to
+            # promote INFO rows too, which is wrong by construction for
+            # moment-dependent rows: the original is probed while paused
+            # at the aligned breakpoint, but the port's PROBE.TXT is
+            # rewritten by its ESC handler at harness teardown — after
+            # the wake tap let it play on — so object/RNG rows compare
+            # different moments and can never reliably match. The
+            # captures (screendumps) are the parity signal and stay
+            # gated under --fail-on-diff below.
+            if not same and required:
                 failures += 1
     missing_required = sorted(required_probe_rows - set(common))
     for name in missing_required:

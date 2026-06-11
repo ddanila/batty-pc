@@ -6,7 +6,13 @@
   },
   "comparison": {
     "aligned_start": true,
-    "note": "Both runners are paused at the original's LB9E8_2 main-loop entry. The capture fires while still paused; the trailing 'enter' tap wakes the port so QEMU can exit cleanly."
+    "required_probe_rows": [
+      "bricks_quantity",
+      "current_level",
+      "round_number",
+      "current_level_copy"
+    ],
+    "note": "Both runners are paused at the original's LB9E8_2 main-loop entry. The capture fires while still paused; the trailing 'enter' tap wakes the port so QEMU can exit cleanly. The SCREEN capture is the parity gate. Only the stable rows above fail-gate: the port's PROBE.TXT is rewritten by its ESC handler at harness teardown (after the wake tap let it play on), so moment-dependent rows (objects, random_number) compare different instants by construction and stay diagnostic INFO."
   },
   "port": {
     "floppy": "build/batty-test.img",
@@ -30,7 +36,7 @@
       {"name": "bricks_quantity", "address": "0xB7E9", "length": 1},
       {"name": "current_level", "address": "0xB7EA", "length": 1},
       {"name": "round_number", "address": "0xB7EB", "length": 1},
-      {"name": "random_number", "address": "0x8E17", "length": 2},
+      {"name": "random_number", "address": "0x8D48", "length": 2},
       {"name": "object_ball_1", "address": "0x9AD0", "length": 22},
       {"name": "object_bat_1", "address": "0x9B54", "length": 22},
       {"name": "object_enemy", "address": "0x9B96", "length": 22},
