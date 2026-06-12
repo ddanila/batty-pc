@@ -1163,7 +1163,9 @@ static unsigned char sprites_blob[SPRITES_BLOB_SIZE];
 #define SPR_BIRD_2       (0x866A - 0x7A8C)   /* = 0xbde */
 #define SPR_BIRD_3       (0x86C6 - 0x7A8C)   /* = 0xc3a */
 #define SPR_BIRD_4       (0x8722 - 0x7A8C)   /* = 0xc96 */
-#define SPR_BIRD_5       (0x8778 - 0x7A8C)   /* = 0xcec (the taller frame-7 pose) */
+#define SPR_BIRD_5       (0x8778 - 0x7A8C)   /* = 0xcec (frame-7 pose; h=17 at
+                                              * runtime — the gfx_inverse overrun
+                                              * patch in the Makefile asset rule) */
 
 /* Frame tables for alien animation. The original advances object+$01
  * (sprite_num) +1 every 4 frames over an 8-step cycle (IX+$13=$70 high
@@ -1603,17 +1605,24 @@ static void blit_masked_sprite(unsigned int sprite_off, int x_px, int y_px,
     blit_masked_sprite_ptr(sprites_blob + sprite_off, x_px, y_px, ink, paper);
 }
 
-/* Original blit into the 1-bit scr_buff: per byte,
- *   scr_buff' = (mask | scr_buff) ^ pixel
- * mirroring sub_94BC. Three useful pixel outcomes:
- *   - mask=1, pix=0  -> bit forced to 1 (solid body, ink colour in
- *     the buff_to_vga pass).
- *   - mask=1, pix=1  -> bit forced to 0 (sprite's internal texture,
- *     paper colour).
- *   - mask=0, pix=1  -> bit inverted (XOR shadow — toggles the bg
- *     pattern bit at that pixel; what produces the dotted bat-shadow
- *     band on rows 10..12).
- *   - mask=0, pix=0  -> bit preserved (transparent).
+/* Masked blit into the 1-bit scr_buff: per byte,
+ *   scr_buff' = (~mask & scr_buff) | (mask & pix)
+ * i.e. mask=1 bits take the pix bit (1 = ink, 0 = paper at the
+ * buff_to_vga pass), mask=0 bits are PRESERVED (transparent).
+ *
+ * Encoding note (the full story is in notes/bird-render-parity.md):
+ * this operates on the TAPE sprite encoding (assets/sprites.bin). The
+ * original blits `(mask | scr) ^ pix` on data its boot-time
+ * gfx_inverse pass transformed to pix^mask — the two compositions are
+ * bit-identical on mask=1 bits. On mask=0 bits the original would XOR
+ * stray pix bits into the background, but NO shipped sprite has pix
+ * bits outside its mask (verified exhaustively over all 49 sprites;
+ * the single exception is one bit in bird_4's garbage 15th row — see
+ * the note), so the preserve-semantics here is equivalent. An earlier
+ * version of this comment described `(mask|scr)^pix` outcomes
+ * including an "XOR shadow" — that table never matched this code and
+ * misled a whole triage; the dotted bat shadow comes from mask=1
+ * dither bits, not XOR.
  * Handles non-byte-aligned x by emitting each source byte across two
  * destination bytes with a per-row shift. */
 static void blit_masked_to_scr_buff_ptr(const unsigned char *src,

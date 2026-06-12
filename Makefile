@@ -216,10 +216,23 @@ assets/bg_tile.bin: build/level_gt/level_01.scr scripts/extract_bg_tile.py
 # (offsets recorded in main.c). Format per sprite: (width_bytes,
 # height_rows) + rows of (mask, pixel) pairs per byte-column,
 # drawn via blit_masked_sprite.
+# The tape slice is patched to reproduce the original's BOOT-TIME state
+# (notes/bird-render-parity.md, sprite-encoding decode): the game's
+# gfx_inverse pass (preparation.asm) XORs each sprite's pix bytes with
+# its mask, and bird_4's header claims 15 rows where the layout allots
+# only 14 -- the walk overruns 3 pairs into spr_bird_5, net-corrupting
+# its header height ($12^$03 = $11 -> the original draws 17 rows, not
+# 18) and leaving its first data pair UN-transformed (live pix 00 under
+# mask $30 renders INK via the original's (m|s)^pix; the port's
+# (~m&d)|(m&p) needs pix=$30 for the same ink). Everything else is
+# encoding-equivalent between tape data + the port blit and live data +
+# the original blit (verified byte-exhaustively over all 49 sprites
+# against the in-game snapshot).
 assets/sprites.bin: original/blocks/03_DATA_headless.dat.bin Makefile
-	@python3 -c "import sys; b=open('$<','rb').read(); \
-		open('$@','wb').write(b[0x128c:0x2546])"
-	@echo "wrote $@ ($$(wc -c < $@) bytes)"
+	@python3 -c "import sys; b=bytearray(open('$<','rb').read()[0x128c:0x2546]); \
+		b[0x0CED]=0x11; b[0x0CEF]=0x30; \
+		open('$@','wb').write(bytes(b))"
+	@echo "wrote $@ ($$(wc -c < $@) bytes, bird_5 boot-state patch)"
 
 # Bottom decorative sprite + arrow combined: 32x13 each (4 bytes
 # width × 13 rows) stored bottom-to-top per sub_b5f8h's convention.

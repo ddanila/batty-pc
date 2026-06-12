@@ -7,25 +7,14 @@ here so the next iter has a target. When fixing, add a section to
 
 (none currently)
 
-(Not user-reported, but pending — the bird/UFO ORIGINAL-parity work
-program in `notes/bird-render-parity.md`:
+(The bird/UFO render-parity program is fully closed as of 2026-06-12:
+the LAAD2 anim stepper is ported, both compose paths follow the $9AD0
+slot-paint order, and the sprite-encoding decode (gfx_inverse + the
+bird_4-overrun corruption of spr_bird_5) is reproduced at asset level;
+the f24 "rings"/38px were HUD score+blink vs the scoreless test HUD,
+not a render gap. Full story in notes/bird-render-parity.md.)
 
-1. **Anim cadence/table vs the original**: the port's bird/ufo anim is
-   frame-deterministic but approximates LAAD2 (+$12 cadence counter,
-   +$13 nibble range): the UFO's true period is 3 frames (from its $60
-   seed), the port uses 4; `spr_ufo_frames` is 2 entries short
-   (anim_ufo has 10: 1,2,3,4,5,6,5,4,3,2). FIX: port LAAD2 literally,
-   validate the sprite_num walk via the f24 oracle harness; re-pin
-   test-enemy-anim.
-2. **Sprite data**: sprites.bin's enemy pix bytes ≠ the in-game
-   snapshot's live data (`live_pix = blob_pix XOR mask`; bird frames
-   have mask≠0 rows where the renders genuinely differ, e.g.
-   spr_bird_3's missing XOR-shadow dither tail), plus unexplained
-   ring structures flanking the bird on BOTH sides at f24 (38 px
-   port-vs-original delta). Decode + selective re-extract per the
-   work program; validate with replays/l3-enemy-flyover.json.
-
-Resolved from the same triage (all fixed 2026-06-12, gate
+(Resolved from the same triage (all fixed 2026-06-12, gate
 `make test-enemy-flyover-redraw` + the dirty-redraw A/B family green):
 the "~21 px in-flight delta" was the simple and full compose paths
 drawing the bomb and enemy in OPPOSITE order (visible while a fresh

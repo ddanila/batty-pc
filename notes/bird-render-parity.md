@@ -135,3 +135,55 @@ on sprite_num (+$01) — original f24 sprite_num = 4, same as the port.
    like spr_magnet_circle_on height and spr_bonus_rocket_1 — patch
    selectively, not wholesale). Validate with the f24 oracle harness
    until port==original in the bird ROI.
+
+
+## RESOLVED (2026-06-12, third pass): findings 3+4 dissolve — full decode
+
+Both remaining findings turned out to be artifacts of mis-modelling,
+plus two real bytes. The complete story:
+
+**The encoding (finding 3).** The game's boot pass `gfx_inverse`
+(preparation.asm) walks the sprite-pointer table chain from gfx_bat and
+XORs every sprite's pix bytes with its mask bytes IN PLACE — that's the
+whole `live_pix = blob_pix XOR mask` relation, uniform across all 49
+sprites (verified byte-exhaustively, masks untouched). The chain's
+duplicate entries all occur an ODD number of times (bat_gun_x ×3,
+bird_1..3 ×3 via anim_bird's 11-entry walked list; the unlabeled plain
+ufo/blast lists before the $0000 stop exist precisely so each enemy
+sprite nets exactly one XOR despite the duped anim tables living AFTER
+the terminator). The port's actual blit `(~m&d)|(m&p)` on TAPE data is
+bit-identical to the original's `(m|s)^pix` on LIVE data for every
+mask=1 bit, and NO shipped sprite has pix bits outside its mask (single
+exception below), so mask=0 preserve-semantics is equivalent too.
+There was never a data bug — the earlier "renders a DIFFERENT image"
+ASCII comparison used the FICTIONAL formula from the stale comment
+above blit_masked_to_scr_buff_ptr (now rewritten to match the code).
+
+**The two real bytes.** bird_4's header claims 15 rows but the layout
+allots 14: gfx_inverse overruns 3 pairs into spr_bird_5, (a) XORing its
+header height $12^$03 = $11 — the original draws bird_5 with 17 rows,
+not 18 — and (b) double-XORing bird_5's first data pair back to its
+tape value, which the original then renders as INK (live pix 00 under
+mask $30 -> (1|s)^0 = 1) where the port rendered PAPER. Both are now
+reproduced at the asset level (the sprites.bin Makefile rule patches
+hdr h -> $11 and pair-0 pix -> $30). bird_4's own garbage 15th row
+(bird_5's header bytes read as a row) renders equivalently in the port
+by luck of the same XOR algebra, except ONE bit (pix bit outside mask —
+the only such bit in the game) that the original XORs into the
+background; accepted, ~1 px under a garbage row.
+
+**The "rings" (finding 4).** Not bird-related at all: clustering each
+side's f24 capture against the static GT shows the original's extra
+blobs at rows 12..28 in three groups (x 16..62 / 103..129 / 175..238)
+= the 1UP/HI/2UP HUD areas — the live original had accumulated score
+(the seeded ball broke bricks) and HUD blink state vs the alien-free,
+score-zero GT and the port's BATTYALL scoreless HUD. The bird blob
+itself matches between port and original. The 38 px f24 "delta" was
+HUD, inherent to comparing a scoreless test HUD against the live
+original — not a render gap.
+
+**Net state.** Bird/UFO render parity is now fully decoded and closed:
+anim driver (LAAD2), draw order ($9AD0 slots), sprite encoding
+(gfx_inverse + the bird_5 overrun bytes). No open items remain in this
+note. Gates: enemy anim/flyover/dirty A/B, make test 7/7, frame-step
+floor, laffc-ball byte-exact — all green with the patched asset.
