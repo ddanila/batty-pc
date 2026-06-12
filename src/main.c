@@ -1177,12 +1177,14 @@ static const unsigned int spr_bird_frames[8] = {
     SPR_BIRD_1, SPR_BIRD_2, SPR_BIRD_3, SPR_BIRD_4,
     SPR_BIRD_3, SPR_BIRD_2, SPR_BIRD_1, SPR_BIRD_5
 };
-/* anim_ufo ($789E) is the same 8-step ping-pong shape as the bird, over
- * 6 UFO sprites: 1,2,3,4,5,6,5,4. Indexed by the shared sprite_num
- * ((misc_12>>2) & 7 from handling_bird_obj, which the UFO delegates to). */
-static const unsigned int spr_ufo_frames[8]  = {
-    SPR_UFO_1, SPR_UFO_2, SPR_UFO_3, SPR_UFO_4,
-    SPR_UFO_5, SPR_UFO_6, SPR_UFO_5, SPR_UFO_4
+/* anim_ufo ($789E) — TEN entries, a full ping-pong over the 6 UFO
+ * sprites: 1,2,3,4,5,6,5,4,3,2. The UFO's +$13 = $90 walks sprite_num
+ * 0..9 through all ten (the table was previously truncated to 8 and
+ * indexed `& 7`, skipping the 3,2 tail — notes/bird-render-parity.md).
+ * Indexed by the LAAD2-stepped sprite_num. */
+static const unsigned int spr_ufo_frames[10]  = {
+    SPR_UFO_1, SPR_UFO_2, SPR_UFO_3, SPR_UFO_4, SPR_UFO_5,
+    SPR_UFO_6, SPR_UFO_5, SPR_UFO_4, SPR_UFO_3, SPR_UFO_2
 };
 
 #define SPR_400_POINTS   (0x7ABE - 0x7A8C)   /* = 0x032 */
@@ -1225,7 +1227,8 @@ static const unsigned int spr_spark_frames[5] = {
     SPR_SPARK_1, SPR_SPARK_2, SPR_SPARK_3, SPR_SPARK_4, SPR_SPARK_5
 };
 #define BLAST_FRAMES 10
-#define BLAST_TICKS_PER_FRAME 2
+/* (blast cadence now comes from LAAD2 / step_obj_anim: the kill sites
+ * seed +$12=$50 -> one anim_alien_blast step every 2 frames) */
 /* Spark: each frame decays in duration (rough port of the original's
  * "halve the timer each frame" mechanic). 8/4/2/1/1 ticks total. */
 #define SPARK_FRAMES 5
@@ -1952,22 +1955,50 @@ static void handling_spark_obj(object_t *o) {
     o->x_coord = (unsigned char)nx;
     o->y_coord = (unsigned char)ny;
 }
-/* Port of handling_blast at $AA30. Advances the blast frame counter
- * via misc_12 (tick) and sprite_num (frame index = misc_12 / 3 mod 5).
- * Original deactivates when sprite_num reaches 9; we deactivate when
- * we've shown all BLAST_FRAMES frames. */
+/* Literal port of LAAD2 ($AAD2) — the original's shared per-object
+ * sprite-animation stepper (bird, ufo, blast; the bat/bullet use it
+ * too but keep their own port approximations for now). +$12 (misc_12)
+ * is a cadence counter: while >= $40 it just loses $40 per call; on
+ * underflow the sprite frame +$01 advances LINEARLY and wraps via
+ * +$13's (misc_13) nibbles — HIGH nibble = last frame, LOW = first —
+ * and the counter reloads as ((res<<2)&$C0)|res. Seeds: bird
+ * $F0/$70 -> frames 0..7 every 4 frames; UFO $60/$90 -> frames 0..9
+ * every 3 frames (after one 2-call lead-in); blast $50/$90 -> frames
+ * 0..9 every 2 frames. (The original also re-derives the sprite's
+ * w/h via calc_write_spr_addr here; the port reads dims at render
+ * time, so that part is unnecessary.) See notes/bird-render-parity.md
+ * for the decode + the dead facing-mirror block this replaces. */
+static void step_obj_anim(object_t *o) {
+    unsigned char a = o->misc_12;
+    if (a >= 0x40) {
+        o->misc_12 = (unsigned char)(a - 0x40);
+        return;
+    }
+    {
+        unsigned char e = (unsigned char)((o->sprite_num & 0x3F) + 1);
+        unsigned char d = o->misc_13;
+        if ((unsigned char)((d >> 4) & 0x0F) < e)
+            e = (unsigned char)(d & 0x0F);
+        o->sprite_num = e;
+    }
+    o->misc_12 = (unsigned char)(((a << 2) & 0xC0) | a);
+}
+
+/* Port of handling_blast at $AA30: force +$13=$90 (frames 0..9), step
+ * LAAD2, free the slot the moment sprite_num reaches 9 (`CP $09 /
+ * RET NZ / SET 7`). Kill sites seed +$12=$50 / sprite_num=0 like the
+ * original kill_enemy ($A4C4), giving the 2-frames-per-step cadence. */
 static void handling_blast_obj(object_t *o) {
-    o->misc_12++;
-    if (o->misc_12 >= BLAST_FRAMES * BLAST_TICKS_PER_FRAME) {
+    o->misc_13 = 0x90;
+    step_obj_anim(o);
+    if ((o->sprite_num & 0x3F) == 9) {
         /* Clear sprite_set to 0 (= empty slot) so enemy_prepare can
          * spawn a fresh alien next time the spawn conditions hit. The
          * original "SET 7,(IX+\$00)" leaves sprite_set as \$8A; combined
          * with our enemy_prepare check of "sprite_set != 0" that would
          * permanently block respawns for the rest of the level. */
         o->sprite_set = 0;
-        return;
     }
-    o->sprite_num = (unsigned char)(o->misc_12 / BLAST_TICKS_PER_FRAME);
 }
 static void handling_400pts_obj(object_t *o){ (void)o; }
 
@@ -2075,16 +2106,16 @@ static void handling_bird_obj(object_t *o) {
         o->y_coord++;
         return;
     }
-    /* Sprite animation: the original keeps sprite_num (IX+$01) as an
-     * INDEPENDENT counter that enemy_prepare inits to 0; LAAD2 bumps it +1
-     * every 4 frames over an 8-step cycle (IX+$13 high nibble). Bumping a
-     * separate counter (not deriving sprite_num from misc_12) makes it
-     * start at 0 like the original — `(misc_12>>2)&7` started the bird
-     * mid-loop at 4 (misc_12 inits to $F0). misc_12 is the 4-frame tick.
-     * Bird/UFO render maps 0..7 through the 8-entry ping-pong tables. */
-    o->misc_12++;
-    if ((o->misc_12 & 3) == 0)
-        o->sprite_num = (unsigned char)((o->sprite_num + 1) & 7);
+    /* Sprite animation: the literal LAAD2 stepper (per-object +$12
+     * cadence, +$13 nibble frame range). The bird's $F0/$70 seed gives
+     * the same 4-frame walk as the old `misc_12++ / &3` approximation
+     * (test-enemy-anim's pinned f8..f24 walk is unchanged), but the
+     * UFO's $60/$90 seed animates every 3 frames over TEN anim_ufo
+     * entries — the old code ran it at 4 frames over 8. The original
+     * calls LAAD2 at the handler tail (LA902_3/LA9BC_3); within-frame
+     * position doesn't matter since rendering happens after all
+     * handlers. */
+    step_obj_anim(o);
     bomb_appear(o);
     /* Steer every 4 frames. The original gates on the GLOBAL counter_misc
      * (`LD A,(counter_misc); AND $03; CALL Z,LAA7D`), not a per-object
@@ -4197,7 +4228,7 @@ static void bonus_apply(unsigned char type) {
                     e->h_body_px = 13;
                     e->sprite_set = 0x0A;
                     e->sprite_num = 0;
-                    e->misc_12 = 0;
+                    e->misc_12 = 0x50;   /* kill_enemy $A4C4 seed */
                     score += 350;
                     snd_q_push(SND_ALIEN_BLAST);
                 }
@@ -5399,7 +5430,7 @@ static void kill_enemy_by_bat(void) {
     e->h_body_px = 13;
     e->sprite_set = 0x0A;
     e->sprite_num = 0;
-    e->misc_12 = 0;                                 /* reset tick counter */
+    e->misc_12 = 0x50;          /* kill_enemy $A4C4: LD (IY+$12),$50 */
     score += 350;                                   /* $0350 BCD */
     snd_q_push(SND_ALIEN_BLAST);                    /* port of $C1A8 */
 }
@@ -5431,7 +5462,7 @@ static void kill_enemy_by_ball_rect(int bx_l, int by_t, int bw, int bh) {
     e->h_body_px = 13;
     e->sprite_set = 0x0A;
     e->sprite_num = 0;
-    e->misc_12 = 0;
+    e->misc_12 = 0x50;          /* kill_enemy $A4C4 seed */
     score += 350;
     snd_q_push(SND_ALIEN_BLAST);
 }
@@ -5531,7 +5562,7 @@ static void step_bullet_one(int b) {
             enemy->h_body_px = 13;
             enemy->sprite_set = 0x0A;       /* transition to 5-frame blast */
             enemy->sprite_num = 0;
-            enemy->misc_12    = 0;
+            enemy->misc_12    = 0x50;   /* kill_enemy $A4C4 seed */
             score += 350;
             snd_q_push(SND_ALIEN_BLAST);
             bullet_active[b] = 0;
@@ -6482,8 +6513,8 @@ static void redraw_full_with_ball(unsigned char level_idx) {
             spr = spr_blast_frames[frame];
         } else {
             spr = (enemy->sprite_set == 0x09)
-                ? spr_bird_frames[enemy->sprite_num & 7]   /* 8-step ping-pong */
-                : spr_ufo_frames[enemy->sprite_num & 7];   /* UFO 8-step ping-pong */
+                ? spr_bird_frames[enemy->sprite_num & 7]    /* anim_bird 0..7 */
+                : spr_ufo_frames[enemy->sprite_num % 10];  /* anim_ufo 0..9 */
         }
         spr_w_px = sprites_blob[spr]     * 8;
         spr_h_px = sprites_blob[spr + 1];
@@ -6607,8 +6638,8 @@ static void render_enemy_to_buff_and_mark(unsigned char bg_attr) {
         spr = spr_blast_frames[frame];
     } else {
         spr = (enemy->sprite_set == 0x09)
-            ? spr_bird_frames[enemy->sprite_num & 7]   /* 8-step ping-pong */
-            : spr_ufo_frames[enemy->sprite_num & 7];   /* UFO 8-step ping-pong */
+            ? spr_bird_frames[enemy->sprite_num & 7]    /* anim_bird 0..7 */
+            : spr_ufo_frames[enemy->sprite_num % 10];  /* anim_ufo 0..9 */
     }
     spr_w_px = sprites_blob[spr] * 8;
     spr_h_px = sprites_blob[spr + 1];

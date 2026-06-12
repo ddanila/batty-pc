@@ -99,7 +99,23 @@ on sprite_num (+$01) — original f24 sprite_num = 4, same as the port.
 0. [DONE 2026-06-12] Finding 1's actual fix: slot-paint order in both
    compose paths; gate `test-enemy-flyover-redraw` wired in.
 
-1. Port LAAD2 literally (`step_obj_anim`: +$12 cadence, +$13 nibble
+1. [DONE 2026-06-12] LAAD2 ported literally as `step_obj_anim` (+$12
+   cadence, +$13 nibble wrap) and wired into bird/ufo (replacing the
+   `misc_12++ / &3` approximation) and blast (handler forces +$13=$90,
+   frees the slot at sprite_num==9; the four kill sites now seed
+   +$12=$50 / sprite_num=0 like kill_enemy $A4C4). `spr_ufo_frames`
+   extended to the 10-entry anim_ufo ping-pong (1,2,3,4,5,6,5,4,3,2),
+   indexed `% 10`; the UFO now animates at its true 3-frame period.
+   The bird's $F0/$70 walk is IDENTICAL to the old approximation
+   (verified: test-enemy-anim's pinned f8..f24 walk passes unchanged),
+   so no visual change for birds — the UFO cadence/tail-frames and the
+   blast's exact $50 lead-in are the parity gains, validated against
+   the disasm (no UFO-level oracle replay exists; L3 is a bird round).
+   Gates green: enemy anim/descend/steer, flyover-redraw,
+   ball-object/brick-residue A/B, make test 7/7, frame-step floor,
+   laffc-ball byte-exact.
+
+   Original item text (kept for context): Port LAAD2 literally (`step_obj_anim`: +$12 cadence, +$13 nibble
    wrap) for bird/ufo (+blast: seeds $50/$90, free at frame 9); replace
    the port's `misc_12++ / &3` approximation (right 4-frame period for
    the bird, but LAAD2's reload `((res<<2)&$C0)|res` gives the UFO a
