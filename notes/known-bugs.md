@@ -7,19 +7,16 @@ here so the next iter has a target. When fixing, add a section to
 
 (none currently)
 
-(Not user-reported, but pending — the bird/UFO render parity work
-program in `notes/bird-render-parity.md` (2026-06-12 oracle triage of
-the former "~21 px in-flight delta"):
+(Not user-reported, but pending — the bird/UFO ORIGINAL-parity work
+program in `notes/bird-render-parity.md`:
 
-1. **Anim driver**: the port animates bird/ufo on the global PIT phase
-   (`(pit_frame_counter & 3) == 0`) instead of the original's
-   per-object LAAD2 cadence (+$12 counter, +$13 nibble range) — this
-   is what made the dirty-vs-full repro show ~21 px (two boots reach
-   the same game frame at different PIT values → different anim steps;
-   the two port PATHS agree: 0 px at the aligned f24). The UFO table is
-   also 2 entries short (anim_ufo has 10: 1,2,3,4,5,6,5,4,3,2). FIX:
-   port LAAD2 literally; repro `repro_enemy_flyover_trail.py` should
-   then go 0 px → rename to test_* and wire in; re-pin test-enemy-anim.
+1. **Anim cadence/table vs the original**: the port's bird/ufo anim is
+   frame-deterministic but approximates LAAD2 (+$12 cadence counter,
+   +$13 nibble range): the UFO's true period is 3 frames (from its $60
+   seed), the port uses 4; `spr_ufo_frames` is 2 entries short
+   (anim_ufo has 10: 1,2,3,4,5,6,5,4,3,2). FIX: port LAAD2 literally,
+   validate the sprite_num walk via the f24 oracle harness; re-pin
+   test-enemy-anim.
 2. **Sprite data**: sprites.bin's enemy pix bytes ≠ the in-game
    snapshot's live data (`live_pix = blob_pix XOR mask`; bird frames
    have mask≠0 rows where the renders genuinely differ, e.g.
@@ -28,11 +25,16 @@ the former "~21 px in-flight delta"):
    port-vs-original delta). Decode + selective re-extract per the
    work program; validate with replays/l3-enemy-flyover.json.
 
-The other two findings from the same harness are resolved: the
-frame-12 top-band 247 px diff was a real full-path bug
-(restore_top_frame_center ran AFTER the object compose — fixed
-2026-06-12, A/B 0 px at f12); the frame-100 713 px diff was the
-multi-checkpoint counter-phase measurement artifact (lessons.md).)
+Resolved from the same triage (all fixed 2026-06-12, gate
+`make test-enemy-flyover-redraw` + the dirty-redraw A/B family green):
+the "~21 px in-flight delta" was the simple and full compose paths
+drawing the bomb and enemy in OPPOSITE order (visible while a fresh
+bomb still overlaps its parent UFO; both paths now follow the
+original's $9AD0 slot-paint order — balls < bullets <
+bomb/bonus/pts400 < enemy < rocket); the frame-12 top-band 247 px diff
+was restore_top_frame_center running AFTER the object compose; the
+frame-100 713 px diff was the multi-checkpoint counter-phase
+measurement artifact (lessons.md).)
 
 ---
 

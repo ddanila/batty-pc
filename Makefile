@@ -91,7 +91,7 @@ PROFILE_BAT_LASER   ?= 01017400AD000000040DEFAE1C0A74AD040DF0000180
 # whole-band rebuild baseline. `make profile-bricks` vs `... FULL_BAND=1`.
 FULL_BAND           ?=
 
-.PHONY: all clean run run-86box profile-auto profile-bricks profile-ballbricks profile-multiball profile-86box read-profile floppy assets help run-original run-original-cheat snapshot candidates regions test test-hud test-bat-redraw-window test-ball-dirty-redraw test-ball-object-dirty-redraw test-bullet-dirty-redraw test-bomb-dirty-redraw test-bat-fire-dirty-redraw test-multiball-dirty-redraw test-bigball-dirty-redraw test-stuck-ball-dirty-redraw test-enemy-brick-residue test-rocket-flight-redraw test-rocket-completion-no-ball test-round-banner-border test-brick-flash test-rocket-bonus test-death-sparks test-normal-ball-launch test-ball-left-wall-escape test-l3-replay-seed test-midgame-brick-replay replay-l3-brick-flash replay-l3-brick-flash-both test-laffc-ball-frame1 test-bat-deflection test-enemy-descend test-rng-walk test-enemy-steer test-bonus-fall test-bomb-fall test-pts400-fall test-bullet-fly test-laser-cadence test-enemy-anim test-bonus-drop test-bonus-effects test-bonus-effects2 test-bonus-typepick test-bullet-blast test-brick-scoring test-ball-speed-ramp test-levels-sweep parity-check parity-check-full
+.PHONY: all clean run run-86box profile-auto profile-bricks profile-ballbricks profile-multiball profile-86box read-profile floppy assets help run-original run-original-cheat snapshot candidates regions test test-hud test-bat-redraw-window test-ball-dirty-redraw test-ball-object-dirty-redraw test-bullet-dirty-redraw test-bomb-dirty-redraw test-bat-fire-dirty-redraw test-multiball-dirty-redraw test-bigball-dirty-redraw test-stuck-ball-dirty-redraw test-enemy-brick-residue test-rocket-flight-redraw test-rocket-completion-no-ball test-round-banner-border test-brick-flash test-rocket-bonus test-death-sparks test-normal-ball-launch test-ball-left-wall-escape test-l3-replay-seed test-midgame-brick-replay replay-l3-brick-flash replay-l3-brick-flash-both test-laffc-ball-frame1 test-bat-deflection test-enemy-descend test-rng-walk test-enemy-steer test-bonus-fall test-bomb-fall test-pts400-fall test-bullet-fly test-laser-cadence test-enemy-anim test-bonus-drop test-bonus-effects test-bonus-effects2 test-bonus-typepick test-bullet-blast test-brick-scoring test-ball-speed-ramp test-levels-sweep test-enemy-flyover-redraw parity-check parity-check-full
 
 all: $(EXE) $(ASSETS)
 
@@ -593,6 +593,7 @@ parity-check-full:
 	$(MAKE) test-magnet-ball
 	$(MAKE) test-brik-anim-pace
 	$(MAKE) test-levels-sweep
+	$(MAKE) test-enemy-flyover-redraw
 	$(MAKE) test-normal-ball-launch
 	$(MAKE) test-laffc-levels-sane
 	$(MAKE) test-hud
@@ -766,6 +767,15 @@ test-brik-anim-pace:
 # notes/per-level-profile.md 2026-06-11). Slow: 15 QEMU boots.
 test-levels-sweep:
 	python3 scripts/test_levels_sweep.py
+
+# Enemy fly-over + bomb-drop A/B gate: the dirty and full compose paths
+# must render an alien with a freshly dropped (still overlapping) bomb
+# identically -- both follow the original's $9AD0 slot-paint order
+# (balls < bullets < bomb/bonus/pts400 < enemy < rocket). Caught the
+# draw-order divergence + the top-frame-centre erase
+# (notes/bird-render-parity.md).
+test-enemy-flyover-redraw:
+	python3 scripts/test_enemy_flyover_redraw.py
 
 # Bat-deflection gate: the LAB1F port in step_ball must reproduce the
 # Spectrum's deflected direction across bat positions (ground truth in

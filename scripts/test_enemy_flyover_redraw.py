@@ -1,28 +1,27 @@
 #!/usr/bin/env python3
-"""REPRO (expected-FAIL, ~21 px): in-flight compose delta between the
-dirty and full render paths next to a flying alien.
+"""Enemy fly-over + bomb-drop dirty-redraw gate.
 
-History: built 2026-06-11 during the L3/L9 state4 triage as a
-"trailing residue" repro. The 2026-06-12 follow-up decomposed the
-finding (notes/per-level-profile.md UPDATE + known-bugs.md):
+Seeds a fresh-spawn UFO at (64,1) descending for 50 deterministic
+frames (single probe-halt checkpoint per boot — multi-checkpoint A/B is
+invalid, lessons.md) and compares the dirty-redraw screen against a
+FORCE_FULL_FLUSH_EACH_FRAME baseline. By frame 50 the UFO has dropped a
+bomb that still overlaps its parent — the exact scenario that exposed
+THREE bugs during the 2026-06-11/12 triage (notes/bird-render-parity.md):
 
-- NOT persistent: captures at frames 60/70/80/100 after the fly-over
-  are 0 px. The 21 px exists only WHILE the sprite is in flight
-  (frame-50 halt, UFO at y 51..66; black-vs-texture at rows 49..57 of
-  its column) — one of the two paths mis-handles the sprite's
-  XOR-shadow over the bg texture. Deciding WHICH needs the original as
-  oracle (ZEsarUX A/B with a seeded alien), not dirty-vs-full.
-- The frame-12 top-band diff this harness also exposed was a real
-  full-path bug (restore_top_frame_center after the object compose),
-  FIXED 2026-06-12 — f12 A/B is now 0 px.
-- Multi-checkpoint variants of this harness are INVALID (counter phase
-  re-randomizes at each halt — lessons.md, third instance). This script
-  uses a single frame-50 checkpoint per boot, which is sound.
+1. restore_top_frame_center ran AFTER the object compose in the full
+   path, erasing sprite slices over the top-frame centre (fixed).
+2. The simple and full compose paths drew the bomb and the enemy in
+   OPPOSITE order, so the bomb/UFO overlap rendered differently per
+   path — a deterministic 21 px A/B delta at identical probed object
+   state (fixed: both paths now follow the original's $9AD0 slot-paint
+   order — balls < bullets < bomb/bonus/pts400 < enemy < rocket).
+3. The frame-100-class divergences in earlier variants were the
+   multi-checkpoint counter-phase artifact, not bugs.
 
-Once the in-flight delta is resolved against the original, make the
-expected diff 0, rename to test_* and wire into parity-check-full.
+The gate locks 0 px: any future drift between the two compose paths
+around a flying alien + falling bomb fails here.
 
-    python3 scripts/repro_enemy_flyover_trail.py
+    make test-enemy-flyover-redraw
 """
 
 from __future__ import annotations
@@ -38,7 +37,7 @@ from test_visual import PALETTE_RGB, make_diff_png, ppm_inner_to_indices, run_qe
 
 
 TEST_FLOPPY = Path("build/batty-test.img")
-OUT = Path("build/repro_enemy_flyover_trail")
+OUT = Path("build/test_enemy_flyover_redraw")
 # Fresh-spawn UFO, exactly the enemy_prepare ($9EAA) state: sprite_set=08,
 # x=0x40 (the drifting levels' spawn slot), y=1, dir=$10 (down), speed 1,
 # body 24x16, misc_12/13 = prop_even $60/$90, target (+$14) = $10.
@@ -108,14 +107,14 @@ def main() -> int:
 
     diff = roi_diff(dirty, full, ROI)
     if diff != 0:
-        make_diff_png(dirty, full, OUT / "flyover_trail_diff.png")
+        make_diff_png(dirty, full, OUT / "flyover_redraw_diff.png")
         raise SystemExit(
-            f"REPRODUCED (expected): enemy fly-over leaves {diff} px of dirty-path "
+            f"FAIL: enemy fly-over + bomb overlap leaves {diff} px of dirty-path "
             f"residue vs the full-flush baseline [roi {ROI}] "
-            f"(diff -> {OUT}/flyover_trail_diff.png)"
+            f"(diff -> {OUT}/flyover_redraw_diff.png)"
         )
-    print(f"PASS (bug fixed?): dirty redraw leaves no fly-over "
-          f"residue in the top band [roi {ROI}]")
+    print(f"PASS enemy_flyover_redraw: dirty redraw leaves no fly-over "
+          f"residue around the alien + bomb [roi {ROI}]")
     return 0
 
 

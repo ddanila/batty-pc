@@ -27,13 +27,27 @@ on sprite_num (+$01) — original f24 sprite_num = 4, same as the port.
 
 ## Findings (verified)
 
-1. **The two PORT paths agree**: port-dirty vs port-full at f24 = 0 px
-   in the bird ROI. Combined with the f60/70/80/100 healing (previous
-   session), the repro's "21 px" at f50 is NOT a dirty-path bug — it is
-   the **anim-phase A/B artifact**: the port's bird/ufo anim step is
-   gated on `(pit_frame_counter & 3) == 0`, and the PIT value at game
-   frame N differs between a dirty boot and a (slower) full-flush boot,
-   so the two boots draw different anim steps at the same game frame.
+1. **The "21 px at f50" was the bomb/enemy DRAW ORDER** — RESOLVED
+   2026-06-12 (second pass). The first version of this note blamed an
+   "anim-phase A/B artifact" via a `(pit & 3)` gate — WRONG on
+   re-reading: the anim counter is per-object (`misc_12++`), hence
+   frame-deterministic (only the STEER gates on the global counter).
+   The decisive measurements: f50 probes are byte-identical between the
+   dirty and full boots (same enemy position AND sprite_num) yet 21 px
+   differ; a third mode (BATTY_FORCE_BALL_FULL_REDRAW = full COMPOSE +
+   dirty FLUSH) matches full-flush exactly → the bug was in the
+   simple-path COMPOSE. The probe also showed `bomb_state=active01` at
+   (75,42), overlapping the UFO at (82,44): the simple path drew
+   enemy-then-bomb, the full path bomb-then-enemy — the 21 px were the
+   overlap rendered with opposite stacking. The original paints objects
+   in $9AD0 slot order (balls 1-3, bullets, bats, bonus/bomb/pts400
+   shared slot $9B80, ENEMY $9B96, rocket $9BAC — later = on top), so
+   bomb-under-enemy is correct. FIX: both compose paths reordered to
+   the slot order (this also corrected bonus-vs-enemy and
+   extra-balls-on-top-of-everything stacking in both paths). Gate:
+   `make test-enemy-flyover-redraw` (the promoted repro, now 0 px;
+   wired into parity-check-full). All dirty-redraw A/B gates +
+   parity-check + test-frame-step green after the reorder.
 
 2. **LAAD2 decode ($AAD2)** — the original's shared per-object anim
    stepper (bird, ufo, blast, bat, bullet): `+$12` is a cadence counter
@@ -82,13 +96,22 @@ on sprite_num (+$01) — original f24 sprite_num = 4, same as the port.
 
 ## Work program (next session)
 
+0. [DONE 2026-06-12] Finding 1's actual fix: slot-paint order in both
+   compose paths; gate `test-enemy-flyover-redraw` wired in.
+
 1. Port LAAD2 literally (`step_obj_anim`: +$12 cadence, +$13 nibble
-   wrap) for bird/ufo (+blast: seeds $50/$90, free at frame 9); drop the
-   global-phase counter; extend `spr_ufo_frames` to the 10-entry
-   anim_ufo order; index tables by sprite_num directly. Re-run
-   `repro_enemy_flyover_trail.py` — expected to go 0 px (finding 1);
-   then rename to test_* and wire into parity-check-full. Check
-   `test-enemy-anim` (it pins the current invented walk and will need
+   wrap) for bird/ufo (+blast: seeds $50/$90, free at frame 9); replace
+   the port's `misc_12++ / &3` approximation (right 4-frame period for
+   the bird, but LAAD2's reload `((res<<2)&$C0)|res` gives the UFO a
+   3-frame period from its $60 seed — different cadence); extend
+   `spr_ufo_frames` to the 10-entry anim_ufo order; index tables by
+   sprite_num directly. NOTE the anim is already frame-deterministic —
+   this item is ORIGINAL-PARITY work (cadence + table), not an A/B fix.
+   Validate sprite_num against the original via the f24 oracle harness
+   (both sides showed 4 at f24 with the current code, so differences
+   surface at other frames/cadences — probe a few frames of the walk on
+   both sides). Check `test-enemy-anim` (it pins the current invented
+   walk and will need
    re-pinning to LAAD2 semantics).
 2. Decode the rings (finding 4) and reconcile the sprite-data encoding
    (finding 3) — candidate fix: re-extract/patch the enemy sprites from

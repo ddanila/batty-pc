@@ -6425,6 +6425,41 @@ static void redraw_full_with_ball(unsigned char level_idx) {
         }
     }
 
+    /* Moving objects in the ORIGINAL's slot-paint order ($9AD0 table,
+     * call_for_all_obj walks it low->high, so later slots paint ON TOP):
+     *   balls 1-3 < bullets < bats < bonus/bomb/pts400 (shared $9B80
+     *   slot) < ENEMY ($9B96) < rocket ($9BAC).
+     * The two compose paths used to disagree (simple drew enemy before
+     * the bomb, full after) — with a fresh bomb still overlapping its
+     * parent UFO the paths rendered different pixels (the f50 21px A/B
+     * delta, notes/bird-render-parity.md). The enemy paints OVER the
+     * bomb/bonus; the rocket paints over everything. */
+    if (ball2_active) {
+        render_ball_to_buff(objects[OBJ_BALL_2].x_coord,
+                            objects[OBJ_BALL_2].y_coord, bg_attr);
+        mark_dirty_rect_px(objects[OBJ_BALL_2].x_coord,
+                           objects[OBJ_BALL_2].y_coord, 16, 12);
+    }
+    if (ball3_active) {
+        render_ball_to_buff(objects[OBJ_BALL_3].x_coord,
+                            objects[OBJ_BALL_3].y_coord, bg_attr);
+        mark_dirty_rect_px(objects[OBJ_BALL_3].x_coord,
+                           objects[OBJ_BALL_3].y_coord, 16, 12);
+    }
+    render_bullet_to_buff();
+    for (i = 0; i < N_BULLETS; i++) {
+        if (bullet_active[i]) {
+            mark_dirty_rect_px(bullet_x[i], bullet_y[i], 8, 8);
+        }
+    }
+    if (any_bullet_blast()) {
+        render_bullet_blast_to_buff();
+        for (i = 0; i < N_BULLETS; i++) {
+            if (bullet_blast_ticks[i]) {
+                mark_dirty_rect_px(bullet_blast_x[i], bullet_blast_y[i], 16, 8);
+            }
+        }
+    }
     if (bomb_active) {
         blit_masked_to_scr_buff_ptr(spr_bomb_data, bomb_x, bomb_y);
         mark_dirty_rect_px(bomb_x, bomb_y, 16, 16);
@@ -6432,6 +6467,11 @@ static void redraw_full_with_ball(unsigned char level_idx) {
     if (pts_400_active) {
         blit_masked_to_scr_buff(pts_marker_spr, pts_400_x, pts_400_y);
         mark_dirty_sprite_rect(pts_marker_spr, pts_400_x, pts_400_y);
+    }
+    if (bonus_active) {
+        unsigned int spr = spr_for_bonus(bonus_type);
+        render_bonus_to_buff(bg_attr);
+        mark_dirty_sprite_rect(spr, bonus_x, bonus_y);
     }
     if ((enemy->sprite_set & 0x7F) != 0 && !(enemy->sprite_set & 0x80)) {
         unsigned int spr;
@@ -6453,41 +6493,10 @@ static void redraw_full_with_ball(unsigned char level_idx) {
         mark_dirty_cell_rect_px(enemy->x_coord, enemy->y_coord,
                                 spr_w_px, spr_h_px);
     }
-    if (bonus_active) {
-        unsigned int spr = spr_for_bonus(bonus_type);
-        render_bonus_to_buff(bg_attr);
-        mark_dirty_sprite_rect(spr, bonus_x, bonus_y);
-    }
-    render_bullet_to_buff();
-    for (i = 0; i < N_BULLETS; i++) {
-        if (bullet_active[i]) {
-            mark_dirty_rect_px(bullet_x[i], bullet_y[i], 8, 8);
-        }
-    }
-    if (any_bullet_blast()) {
-        render_bullet_blast_to_buff();
-        for (i = 0; i < N_BULLETS; i++) {
-            if (bullet_blast_ticks[i]) {
-                mark_dirty_rect_px(bullet_blast_x[i], bullet_blast_y[i], 16, 8);
-            }
-        }
-    }
     if (rocket_active) {
         unsigned int spr = current_rocket_spr();
         render_rocket_to_buff();
         mark_dirty_sprite_rect(spr, rocket_x, rocket_y);
-    }
-    if (ball2_active) {
-        render_ball_to_buff(objects[OBJ_BALL_2].x_coord,
-                            objects[OBJ_BALL_2].y_coord, bg_attr);
-        mark_dirty_rect_px(objects[OBJ_BALL_2].x_coord,
-                           objects[OBJ_BALL_2].y_coord, 16, 12);
-    }
-    if (ball3_active) {
-        render_ball_to_buff(objects[OBJ_BALL_3].x_coord,
-                            objects[OBJ_BALL_3].y_coord, bg_attr);
-        mark_dirty_rect_px(objects[OBJ_BALL_3].x_coord,
-                           objects[OBJ_BALL_3].y_coord, 16, 12);
     }
     /* (restore_top_frame_center used to run here — moved BEFORE the
      * object compose so it can't erase sprites overlapping the frame
@@ -6611,15 +6620,26 @@ static void render_enemy_to_buff_and_mark(unsigned char bg_attr) {
 }
 
 static void render_simple_objects_to_buff_and_mark(unsigned char bg_attr) {
-    if (pts_400_active) {
-        blit_masked_to_scr_buff(pts_marker_spr, pts_400_x, pts_400_y);
-        mark_dirty_sprite_rect(pts_marker_spr, pts_400_x, pts_400_y);
+    /* Same slot-paint ORDER as redraw_full_with_ball and the original's
+     * $9AD0 object table (later slots paint on top): balls < bullets <
+     * bomb/bonus/pts400 (shared $9B80 slot) < ENEMY. The paths used to
+     * disagree (this one drew the enemy FIRST), so a fresh bomb still
+     * overlapping its parent UFO rendered differently on the dirty path
+     * vs the full path — the f50 21px A/B delta
+     * (notes/bird-render-parity.md). */
+    /* Multi-ball extras: full 16×12 moving balls, same dirty treatment as
+     * the primary (the carry erases last frame's position). */
+    if (ball2_active) {
+        render_ball_to_buff(objects[OBJ_BALL_2].x_coord,
+                            objects[OBJ_BALL_2].y_coord, bg_attr);
+        mark_dirty_rect_px(objects[OBJ_BALL_2].x_coord,
+                           objects[OBJ_BALL_2].y_coord, 16, 12);
     }
-    render_enemy_to_buff_and_mark(bg_attr);
-    if (bonus_active) {
-        unsigned int spr = spr_for_bonus(bonus_type);
-        render_bonus_to_buff(bg_attr);
-        mark_dirty_sprite_rect(spr, bonus_x, bonus_y);
+    if (ball3_active) {
+        render_ball_to_buff(objects[OBJ_BALL_3].x_coord,
+                            objects[OBJ_BALL_3].y_coord, bg_attr);
+        mark_dirty_rect_px(objects[OBJ_BALL_3].x_coord,
+                           objects[OBJ_BALL_3].y_coord, 16, 12);
     }
     /* Laser bullets + impact blasts: small fast sprites, redrawable on the
      * dirty path like the ball. render_*_to_buff blit into scr_buff; mark
@@ -6648,20 +6668,16 @@ static void render_simple_objects_to_buff_and_mark(unsigned char bg_attr) {
         blit_masked_to_scr_buff_ptr(spr_bomb_data, bomb_x, bomb_y);
         mark_dirty_rect_px(bomb_x, bomb_y, 16, 16);
     }
-    /* Multi-ball extras: full 16×12 moving balls, same dirty treatment as
-     * the primary (the carry erases last frame's position). */
-    if (ball2_active) {
-        render_ball_to_buff(objects[OBJ_BALL_2].x_coord,
-                            objects[OBJ_BALL_2].y_coord, bg_attr);
-        mark_dirty_rect_px(objects[OBJ_BALL_2].x_coord,
-                           objects[OBJ_BALL_2].y_coord, 16, 12);
+    if (pts_400_active) {
+        blit_masked_to_scr_buff(pts_marker_spr, pts_400_x, pts_400_y);
+        mark_dirty_sprite_rect(pts_marker_spr, pts_400_x, pts_400_y);
     }
-    if (ball3_active) {
-        render_ball_to_buff(objects[OBJ_BALL_3].x_coord,
-                            objects[OBJ_BALL_3].y_coord, bg_attr);
-        mark_dirty_rect_px(objects[OBJ_BALL_3].x_coord,
-                           objects[OBJ_BALL_3].y_coord, 16, 12);
+    if (bonus_active) {
+        unsigned int spr = spr_for_bonus(bonus_type);
+        render_bonus_to_buff(bg_attr);
+        mark_dirty_sprite_rect(spr, bonus_x, bonus_y);
     }
+    render_enemy_to_buff_and_mark(bg_attr);
 }
 
 /* Repaint + flush the (non-moving) bat on a dirty-redraw frame. Normally
