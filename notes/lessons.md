@@ -343,3 +343,17 @@ random phases gave the enemy 12-frame paths 1-2 px apart — a constant
 misdiagnosed as a SLEEP/screendump flake in performance.md. Rule: ANY test
 that boots the game more than once and compares outputs must pin
 BATTY_REPLAY_COUNTER if a steer/cadence-driven object is on screen.
+
+Third instance (2026-06-12): **the BATTY_REPLAY_COUNTER pin does NOT
+survive checkpoint halts.** A multi-checkpoint VISUAL_PROBE_FRAMES
+timeline halts at each checkpoint for wall-clock time while the PIT
+keeps ticking, so the counter PHASE at each resume is re-randomized —
+and two A/B boots (dirty vs full-flush) halt for different durations,
+diverging phase-gated behaviour (the enemy's repick timing) after the
+first halt. Chasing the fly-over trail, a frames-50..100 A/B showed a
+"713 px clash-attr bug" at frame 100 that was really the two boots'
+UFOs steered to different positions; single-checkpoint runs at frame
+100 are byte-identical (probes confirmed lockstep sims). Rule: for A/B
+screen comparisons, only the FIRST checkpoint of a timeline is valid —
+use one checkpoint per boot, or re-pin the counter on every checkpoint
+wake.

@@ -123,6 +123,19 @@ rows (frame-50 halt, RNG+counter pinned, measured (83..87, 49..57) on
 L1). See `scripts/repro_enemy_flyover_trail.py` (expected-FAIL repro,
 not yet wired) and the pending entry in notes/known-bugs.md.
 
+UPDATE 2026-06-12 (follow-up session): the bycatch decomposed into
+three. (1) NOT persistent — post-fly-over captures are 0 px, so there
+is no lingering trail; the 21 px is an IN-FLIGHT compose delta between
+the dirty and full paths next to the live sprite (still open, needs the
+ZEsarUX oracle — see known-bugs.md). (2) A real full-path bug found and
+FIXED: `restore_top_frame_center` ran after the object compose,
+erasing any sprite slice overlapping the top-frame centre (x 64..87,
+y<24) on full-path frames — alien/ball flicker; now runs before the
+compose, frame-12 A/B 0 px, all gates green at the documented floor.
+(3) A methodology trap: multi-checkpoint A/B timelines re-randomize the
+counter phase at each halt (lessons.md, third instance) — the "frame
+100 / 713 px" scare was that artifact, not a bug.
+
 ## Current per-level numbers
 
 | Level | Cycle | Diff (px) | Residual location                                |

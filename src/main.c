@@ -6364,6 +6364,14 @@ static void redraw_full_with_ball(unsigned char level_idx) {
      * blit is redundant (render_magnets painted from state) but
      * harmless — and the dirty mark is still needed. */
     apply_magnet_toggle_visual();
+    /* Repair the top-frame centre (bytes 8..10, rows 0..23) BEFORE any
+     * moving object is composed. This call used to sit at the END of the
+     * compose (after the enemy/balls), where it ERASED the slice of any
+     * sprite overlapping the frame centre — an alien or ball transiting
+     * x 64..87 / y < 24 flickered out on every full-path frame (found
+     * 2026-06-12 via the fly-over A/B harness, frame-12 247px diff vs
+     * the dirty path, which correctly draws sprites over the frame). */
+    restore_top_frame_center(cycle, level_idx);
     prof_bg_pit += prof_elapsed();
 
     /* The frame itself is static and baked into bg_scr_buff/bg_attr_buff. */
@@ -6481,7 +6489,9 @@ static void redraw_full_with_ball(unsigned char level_idx) {
         mark_dirty_rect_px(objects[OBJ_BALL_3].x_coord,
                            objects[OBJ_BALL_3].y_coord, 16, 12);
     }
-    restore_top_frame_center(cycle, level_idx);
+    /* (restore_top_frame_center used to run here — moved BEFORE the
+     * object compose so it can't erase sprites overlapping the frame
+     * centre; see the comment at the new call site above.) */
     prof_bricks_pit += prof_elapsed();
 
     if (force_full_flush) {

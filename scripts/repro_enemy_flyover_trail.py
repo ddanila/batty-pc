@@ -1,21 +1,26 @@
 #!/usr/bin/env python3
-"""REPRO (expected-FAIL today): enemy fly-over leaves a small trailing
-residue on the dirty-redraw path.
+"""REPRO (expected-FAIL, ~21 px): in-flight compose delta between the
+dirty and full render paths next to a flying alien.
 
-Found 2026-06-11 while triaging the L3/L9 state4 drift (which turned
-out to be the screendump racing the LIVE alien — see
-notes/per-level-profile.md; the top band itself heals correctly). This
-A/B harness, however, surfaced a real, separate defect: a fresh-spawn
-UFO seeded at (64, 1) descending for 50 deterministic frames leaves
-~21 px of black trailing residue at its upper edge rows (measured
-(83..87, 49..57), dirty=black vs full-flush=texture ink) — the dirty
-path's handling of the vacated rows misses pixels the full-compose
-baseline renders correctly.
+History: built 2026-06-11 during the L3/L9 state4 triage as a
+"trailing residue" repro. The 2026-06-12 follow-up decomposed the
+finding (notes/per-level-profile.md UPDATE + known-bugs.md):
 
-Both boots halt at the SAME game frame (VISUAL_PROBE_FRAMES=50) with
-RNG + counter phase pinned, so the diff is a pure render-path delta,
-not timing. NOT wired into any suite yet — this is the repro for the
-next fix; once green, rename to test_* and wire into parity-check-full.
+- NOT persistent: captures at frames 60/70/80/100 after the fly-over
+  are 0 px. The 21 px exists only WHILE the sprite is in flight
+  (frame-50 halt, UFO at y 51..66; black-vs-texture at rows 49..57 of
+  its column) — one of the two paths mis-handles the sprite's
+  XOR-shadow over the bg texture. Deciding WHICH needs the original as
+  oracle (ZEsarUX A/B with a seeded alien), not dirty-vs-full.
+- The frame-12 top-band diff this harness also exposed was a real
+  full-path bug (restore_top_frame_center after the object compose),
+  FIXED 2026-06-12 — f12 A/B is now 0 px.
+- Multi-checkpoint variants of this harness are INVALID (counter phase
+  re-randomizes at each halt — lessons.md, third instance). This script
+  uses a single frame-50 checkpoint per boot, which is sound.
+
+Once the in-flight delta is resolved against the original, make the
+expected diff 0, rename to test_* and wire into parity-check-full.
 
     python3 scripts/repro_enemy_flyover_trail.py
 """

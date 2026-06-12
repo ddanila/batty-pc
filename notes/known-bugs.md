@@ -7,15 +7,24 @@ here so the next iter has a target. When fixing, add a section to
 
 (none currently)
 
-(Not user-reported, but pending: **enemy fly-over leaves ~21 px of
-black trailing residue on the dirty-redraw path** — found 2026-06-11 as
-bycatch of the L3/L9 state4 triage. A fresh-spawn UFO seeded at (64,1)
-descending 50 deterministic frames (RNG + counter pinned, probe-halt
-captures) shows dirty=black vs full-compose=texture at its upper edge
-rows, measured (83..87, 49..57) on L1. Repro (expected-FAIL):
-`python3 scripts/repro_enemy_flyover_trail.py` — once fixed, rename to
-test_* and wire into parity-check-full. Context in
-notes/per-level-profile.md "RESOLVED (2026-06-11)", Bycatch.)
+(Not user-reported, but pending: **~21 px in-flight compose delta
+between the dirty and full render paths next to a flying alien over
+textured background** — what's left of the 2026-06-11 "trailing
+residue" finding after the 2026-06-12 follow-up. NOT persistent:
+single-checkpoint A/B captures at frames 60/70/80/100 after the
+fly-over are 0 px — the screen heals completely; the delta exists only
+while the sprite is in flight (frame-50 capture, UFO at y 51..66,
+black-vs-texture at rows 49..57 of its column). One of the two paths
+mis-handles the sprite's XOR-shadow over the bg texture; deciding WHICH
+needs the original as oracle (a ZEsarUX A/B with a seeded alien), not
+the dirty-vs-full comparison. Repro:
+`python3 scripts/repro_enemy_flyover_trail.py` (expected-FAIL, 21 px).
+The other two findings from that harness are resolved: the frame-12
+top-band 247 px diff was a real full-path bug (restore_top_frame_center
+ran AFTER the object compose, erasing sprite slices over the frame
+centre — fixed 2026-06-12, A/B now 0 px at f12); the frame-100 713 px
+diff was a measurement artifact (multi-checkpoint timelines re-randomize
+the counter phase at every halt — see the lessons.md entry).)
 
 ---
 
