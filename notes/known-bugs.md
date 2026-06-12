@@ -7,24 +7,32 @@ here so the next iter has a target. When fixing, add a section to
 
 (none currently)
 
-(Not user-reported, but pending: **~21 px in-flight compose delta
-between the dirty and full render paths next to a flying alien over
-textured background** — what's left of the 2026-06-11 "trailing
-residue" finding after the 2026-06-12 follow-up. NOT persistent:
-single-checkpoint A/B captures at frames 60/70/80/100 after the
-fly-over are 0 px — the screen heals completely; the delta exists only
-while the sprite is in flight (frame-50 capture, UFO at y 51..66,
-black-vs-texture at rows 49..57 of its column). One of the two paths
-mis-handles the sprite's XOR-shadow over the bg texture; deciding WHICH
-needs the original as oracle (a ZEsarUX A/B with a seeded alien), not
-the dirty-vs-full comparison. Repro:
-`python3 scripts/repro_enemy_flyover_trail.py` (expected-FAIL, 21 px).
-The other two findings from that harness are resolved: the frame-12
-top-band 247 px diff was a real full-path bug (restore_top_frame_center
-ran AFTER the object compose, erasing sprite slices over the frame
-centre — fixed 2026-06-12, A/B now 0 px at f12); the frame-100 713 px
-diff was a measurement artifact (multi-checkpoint timelines re-randomize
-the counter phase at every halt — see the lessons.md entry).)
+(Not user-reported, but pending — the bird/UFO render parity work
+program in `notes/bird-render-parity.md` (2026-06-12 oracle triage of
+the former "~21 px in-flight delta"):
+
+1. **Anim driver**: the port animates bird/ufo on the global PIT phase
+   (`(pit_frame_counter & 3) == 0`) instead of the original's
+   per-object LAAD2 cadence (+$12 counter, +$13 nibble range) — this
+   is what made the dirty-vs-full repro show ~21 px (two boots reach
+   the same game frame at different PIT values → different anim steps;
+   the two port PATHS agree: 0 px at the aligned f24). The UFO table is
+   also 2 entries short (anim_ufo has 10: 1,2,3,4,5,6,5,4,3,2). FIX:
+   port LAAD2 literally; repro `repro_enemy_flyover_trail.py` should
+   then go 0 px → rename to test_* and wire in; re-pin test-enemy-anim.
+2. **Sprite data**: sprites.bin's enemy pix bytes ≠ the in-game
+   snapshot's live data (`live_pix = blob_pix XOR mask`; bird frames
+   have mask≠0 rows where the renders genuinely differ, e.g.
+   spr_bird_3's missing XOR-shadow dither tail), plus unexplained
+   ring structures flanking the bird on BOTH sides at f24 (38 px
+   port-vs-original delta). Decode + selective re-extract per the
+   work program; validate with replays/l3-enemy-flyover.json.
+
+The other two findings from the same harness are resolved: the
+frame-12 top-band 247 px diff was a real full-path bug
+(restore_top_frame_center ran AFTER the object compose — fixed
+2026-06-12, A/B 0 px at f12); the frame-100 713 px diff was the
+multi-checkpoint counter-phase measurement artifact (lessons.md).)
 
 ---
 
