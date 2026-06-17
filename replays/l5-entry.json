@@ -1,0 +1,16 @@
+{
+ "name": "l5-entry",
+ "description": "Drive the original to LEVEL 5 entry (the boundary-metal-brick level where known-bugs #6 lived) for oracle frame-stepping beyond L3. Mechanism (per capture_levels_modded.py): poke the level counter $B7EA to the level index (L5 = 4) and set PC=$BA24 (= CALL briks_calc -> full level-init: loads level 5's bricks into current_level_copy and paints), then run to the main-loop entry $BA83. The $BA6C metal-brick shimmer call is NOPed to match the static level-entry render, and the RNG is pinned, exactly like l3-brick-flash.",
+ "timebase": {"unit": "seconds"},
+ "original": {
+  "snapshot_from": "build/snapshots/20260513T202101Z",
+  "setup": [
+   {"op": "enter_cpu_step"},
+   {"op": "write_memory", "address": "0xBA6C", "bytes": ["0x00", "0x00", "0x00"]},
+   {"op": "write_memory", "address": "0xB7EA", "bytes": ["0x04", "0x04"]},
+   {"op": "write_memory", "address": "0x8E17", "bytes": ["0x8E", "0x49"]},
+   {"op": "set_register", "register": "PC", "value": "0xBA24"},
+   {"op": "run_until_pc", "pc": "0xBA83", "max_opcodes": 5000000}
+  ]
+ }
+}

@@ -57,6 +57,7 @@ FULL_EXTRA_GATES = [
     "test-enemy-brick-residue", "test-bat-redraw-window",
     "test-ball-left-wall-escape", "test-l3-replay-seed",
     "test-ball-paths-no-tunnel", "test-sprite-attr-parity",
+    "test-laffc-ball-l5-metal",
 ]
 
 

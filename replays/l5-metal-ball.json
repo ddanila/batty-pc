@@ -1,0 +1,20 @@
+{
+ "name": "l5-metal-ball",
+ "description": "L5 (boundary-metal level) + a ball seeded just above the row-0 metal brick at col 0 (x=0x0C, y=0x18) heading straight DOWN (dir=0x10) at speed 6 -- the exact known-bugs #6 scenario the LAFFC edge-mask fix addresses. Drives the ORIGINAL through it so the port's L5 boundary-metal bounce can be checked against the real game (oracle confirmation beyond L3). Setup reaches L5 entry (poke $B7EA=4, PC=$BA24, run to $BA83), then pokes object_ball_1 at $9AD0 with the seeded descriptor.",
+ "timebase": {"unit": "seconds"},
+ "original": {
+  "snapshot_from": "build/snapshots/20260513T202101Z",
+  "setup": [
+   {"op": "enter_cpu_step"},
+   {"op": "write_memory", "address": "0xBA6C", "bytes": ["0x00", "0x00", "0x00"]},
+   {"op": "write_memory", "address": "0xB7EA", "bytes": ["0x04", "0x04"]},
+   {"op": "write_memory", "address": "0x8E17", "bytes": ["0x8E", "0x49"]},
+   {"op": "set_register", "register": "PC", "value": "0xBA24"},
+   {"op": "run_until_pc", "pc": "0xBA83", "max_opcodes": 5000000},
+   {"op": "write_memory", "address": "0x9AD0",
+    "bytes": ["0x02","0x00","0x0C","0x00","0x18","0x00","0x10","0x06",
+              "0x02","0x0C","0xEE","0xF0","0x08","0x07","0x6C","0x4E",
+              "0x02","0x0C","0x00","0x00","0x00","0x8C"]}
+  ]
+ }
+}

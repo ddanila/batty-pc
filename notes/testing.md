@@ -242,6 +242,19 @@ the ball must never escape the playfield walls (x in [8,244], y >= 8) — a
 reflect/collision bug that pushed it past a wall fails across the whole
 sweep matrix.
 
+`make test-laffc-ball-l5-metal` broadens the byte-exact ball-vs-brick oracle
+BEYOND L3. The L3 frame-step gate couldn't see #6 (it lived on the
+edge-metal levels L5/L7). The original can be driven to ANY level — poke the
+level counter `$B7EA` to the level index and set PC=`$BA24` (= `briks_calc`
+level-init, loads that level's bricks), then run to `$BA83` (per
+`capture_levels_modded.py`; replays/l5-entry.json + l5-metal-ball.json). This
+gate seeds the #6 scenario on L5 (ball down into the row-0 col-0 metal
+brick) and asserts the port's trajectory equals the ORIGINAL's captured via
+ZEsarUX (f1 x12 y25 dir0x30 — bounce up; f3 up; f5 top-wall bounce). The
+port matches byte-exact, so this is a fast ZEsarUX-free regression that locks
+the #6 fix against the real game. The same poke-`$B7EA`+`$BA24` recipe
+generalizes to any level for future oracle gates.
+
 ## CI (`.github/workflows/parity-check.yml`)
 
 Hosted GitHub runners have no KVM, so QEMU runs under TCG emulation that is

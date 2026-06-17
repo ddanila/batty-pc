@@ -623,6 +623,7 @@ parity-check-full:
 	$(MAKE) test-ball-no-tunnel FULL=1
 	$(MAKE) test-ball-paths-no-tunnel
 	$(MAKE) test-sprite-attr-parity
+	$(MAKE) test-laffc-ball-l5-metal
 	$(MAKE) test-frame-step
 	$(MAKE) replay-l3-entry
 	$(MAKE) test-wall-bounce
@@ -778,6 +779,13 @@ test-frame-step: $(ZESARUX)
 # frame 1 (no ZEsarUX needed; asserts object_ball_1 == the Spectrum probe).
 test-laffc-ball-frame1:
 	python3 scripts/test_laffc_ball_frame1.py
+
+# Byte-exact ball-vs-brick parity on a NON-L3 level (broadens the oracle):
+# the L5 row-0 boundary-metal bounce (the #6 scenario) must match the
+# original's trajectory (captured via replays/l5-metal-ball.json). Locks the
+# #6 LAFFC edge-mask fix against the real game, where L3 coverage couldn't.
+test-laffc-ball-l5-metal:
+	python3 scripts/test_laffc_ball_l5_metal.py
 
 # Wall-bounce gate: the ball must reflect off the L/R side walls (and top)
 # via change_direction's $1F/$3F masks, not pin against them. Guards the
