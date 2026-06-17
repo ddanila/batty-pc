@@ -267,8 +267,11 @@ serial `make parity-check-full`.
 
 Reliability net: a wait-key gate that reads a probe written at level init
 (`probe_phase=init`, i.e. a missed `BATTY_REPLAY_WAIT_KEY` wake on a slow
-boot) re-boots via `test_visual.boot_until_gameplay()` until it sees a real
-checkpoint write (`probe_phase=play`). This self-heal let the fixed
+boot) re-boots until it sees a real checkpoint write (`probe_phase=play`).
+This is centralized: `capture_frame_timeline.py` (the shared driver all ~20
+wait-key + `BATTY_REPLAY_PROBE` gates route through) retries the boot
+internally on a `probe_phase=init` read; gates that drive `run_qemu`
+directly (the no-tunnel sweeps) use `test_visual.boot_until_gameplay()`. This self-heal let the fixed
 boot-waits be trimmed (capture_frame_timeline 12→10 s, seeded gates 9→8 s).
 
 ## Per-level testing via `BATTY_LEVEL` env

@@ -99,7 +99,25 @@ def main():
 
     print(f'booting {args.floppy} headless (boot wait {args.boot_wait}s), '
           f'checkpoints={frames}...')
-    run_qemu(Path(args.floppy), script, out / 'qemu.log')
+    # Reliability net (shared by every --wait-key + BATTY_REPLAY_PROBE gate):
+    # the port writes PROBE.TXT with the seeded pre-gameplay state at level
+    # init (probe_phase=init) BEFORE the wait-key pause. If the wake key is
+    # missed on a slow boot, the gameplay loop never runs and the gate would
+    # read that stale seed state. Re-boot until PROBE.TXT reports a real
+    # checkpoint write (probe_phase=play). Only kicks in when --wait-key and a
+    # PROBE is present (so non-probe screen gates are unaffected).
+    attempts = int(os.environ.get('BATTY_BOOT_ATTEMPTS', '3')) if args.wait_key else 1
+    from test_visual import read_probe_dict
+    for attempt in range(attempts):
+        run_qemu(Path(args.floppy), script, out / 'qemu.log')
+        if attempts == 1:
+            break
+        phase = read_probe_dict(args.floppy).get('probe_phase')
+        if phase is None or phase == 'play':
+            break  # no probe to check, or a real checkpoint — done
+        if attempt + 1 < attempts:
+            print(f'  (retry {attempt + 1}: probe_phase={phase} — wake likely '
+                  f'missed on a slow boot)')
 
     # Decode each capture and verify consecutive frames differ.
     rc = 0
