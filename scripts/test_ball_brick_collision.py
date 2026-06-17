@@ -177,6 +177,13 @@ def evaluate(case: dict, bricks0: int) -> tuple[bool, str]:
         return True, "skipped (out of band)"
     if "final_y" not in case:
         return False, case.get("err", "no result")
+    # Field-bounds invariant: the ball must never escape the playfield walls
+    # (x in [8,244], y >= 8). A collision/reflect bug that pushes it past a
+    # wall would surface here across the whole sweep matrix.
+    fx, fy = case["final_x"], case["final_y"]
+    if fx < 8 or fx > 244 or fy < 8:
+        return False, (f"ESCAPED field: ball at x={fx} y={fy} "
+                       f"(dir 0x{case['final_dir']:02X}) past a wall")
     destroyed = (case["cell_now"] & 0x80) != 0
     count_dropped = case["bricks_now"] < bricks0
     bounced = case["final_dir"] != case["direction"]

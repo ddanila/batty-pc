@@ -619,6 +619,7 @@ parity-check-full:
 	$(MAKE) parity-check
 	$(MAKE) test-ball-no-tunnel FULL=1
 	$(MAKE) test-ball-paths-no-tunnel
+	$(MAKE) test-sprite-attr-parity
 	$(MAKE) test-frame-step
 	$(MAKE) replay-l3-entry
 	$(MAKE) test-wall-bounce
@@ -810,6 +811,13 @@ test-enemy-attr-parity:
 # extra/captured ball's centre never sits inside a solid brick.
 test-ball-paths-no-tunnel:
 	python3 scripts/test_ball_paths_no_tunnel.py
+
+# Generalized sprite attribute-parity (known-bugs.md #7 class for ALL moving
+# sprites): a falling bonus / enemy bomb / laser bullet seeded over the L3
+# brick band must leave every cell attr unchanged (attr_buff == bg_attr_buff)
+# -- moving objects blit pixels only, never recolour (print_obj_to_buff).
+test-sprite-attr-parity:
+	python3 scripts/test_sprite_attr_parity.py
 
 # Magnet-ball gate: an ON magnet must curve the ball (+-1/64 dir per
 # frame while overlapping the 15x14 box, quantized release), an OFF

@@ -231,6 +231,17 @@ lives in. PROBE.TXT now dumps `object_ball_2/3`; the gate seeds multiball
 that no ACTIVE ball's CENTRE sits inside a solid brick cell (a bounced ball
 snaps to the cell edge — centre outside). Wired into parity-check-full.
 
+`make test-sprite-attr-parity` generalizes the #7 attr invariant to ALL
+moving sprites: a falling bonus / enemy bomb / laser bullet seeded over the
+L3 brick band (primary ball stuck, so nothing hits a brick) must leave
+`attr_buff == bg_attr_buff` for every one of the 768 cells. Locks "moving
+objects blit pixels only, never recolour" for the sprites beyond the enemy.
+
+The `test-ball-no-tunnel` sweep also carries a **field-bounds invariant**:
+the ball must never escape the playfield walls (x in [8,244], y >= 8) — a
+reflect/collision bug that pushed it past a wall fails across the whole
+sweep matrix.
+
 ## CI (`.github/workflows/parity-check.yml`)
 
 Hosted GitHub runners have no KVM, so QEMU runs under TCG emulation that is

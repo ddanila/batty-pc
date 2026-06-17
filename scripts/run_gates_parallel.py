@@ -56,7 +56,7 @@ FULL_EXTRA_GATES = [
     "test-bigball-dirty-redraw", "test-stuck-ball-dirty-redraw",
     "test-enemy-brick-residue", "test-bat-redraw-window",
     "test-ball-left-wall-escape", "test-l3-replay-seed",
-    "test-ball-paths-no-tunnel",
+    "test-ball-paths-no-tunnel", "test-sprite-attr-parity",
 ]
 
 
