@@ -18,10 +18,12 @@ double-reflect zones).
 ZEsarUX-free (QEMU only). Exit 0 = all PASS.
 """
 import argparse
-import re
 import subprocess
 import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent))
+from test_visual import boot_until_gameplay
 
 FLOPPY = "build/batty-test.img"
 # Normal bat at x=116 width 28; ball 8 wide, dropped at y=0x96.
@@ -71,33 +73,14 @@ CATCH_CASES = [
 ]
 
 
-SEED_Y = 0x96  # BALL_BASE byte 4: the drop height the ball starts at.
-
-
-def _probe_once(frame, probe):
-    """One boot+wake+read. Returns object_ball_1 bytes or None."""
-    probe.unlink(missing_ok=True)
-    subprocess.run([sys.executable, "scripts/capture_frame_timeline.py",
-                    "--floppy", FLOPPY, "--frames", str(frame), "--wait-key",
-                    "--out", "build/tl_bat"], stdout=subprocess.DEVNULL)
-    subprocess.run(["mcopy", "-n", "-i", FLOPPY, "::PROBE.TXT", str(probe)],
-                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    if not probe.exists():
-        return None
-    m = re.search(r"object_ball_1=([0-9A-Fa-f]+)", probe.read_text())
-    return bytes.fromhex(m.group(1)) if m else None
-
-
-def _probe_ball(start_x, indir, frame, bat_obj, attempts=3):
-    """Build the seeded floppy once, then boot+wake+read with a retry on a
-    stale read. The port writes PROBE.TXT with the SEED state at level init
-    (main.c:7668) *before* the BATTY_REPLAY_WAIT_KEY pause; if the wake key
-    misses (rare slow-boot host-timing race) the gameplay loop never runs
-    and we read that unmoved seed state. A real drop-to-bat ALWAYS moves the
-    ball off its seed y/x/dir, so an unmoved read means the wake didn't land
-    -> re-boot and try again. Deterministic outcome, no fixed-margin guess."""
+def _probe_ball(start_x, indir, frame, bat_obj):
+    """Build the seeded floppy once, then boot+wake+read with a retry if the
+    wake key was missed. The port writes PROBE.TXT with the SEED state at
+    level init (probe_phase=init) BEFORE the BATTY_REPLAY_WAIT_KEY pause; a
+    missed wake (rare slow-boot host-timing race) leaves that unmoved seed
+    state. boot_until_gameplay re-boots until it sees a checkpoint write
+    (probe_phase=play). Deterministic outcome, no fixed-margin guess."""
     Path(FLOPPY).unlink(missing_ok=True)
-    probe = Path("build/PROBE_laffc.txt")
     env = (
         f"BATTY_LEVEL=3 BATTY_START_LEVEL=1 BATTY_REPLAY_WAIT_KEY=1 "
         f"BATTY_LAFFC=1 BATTY_REPLAY_PROBE=1 BATTY_REPLAY_RANDOM=8E49 "
@@ -107,17 +90,16 @@ def _probe_ball(start_x, indir, frame, bat_obj, attempts=3):
     )
     subprocess.run(f"{env} make {FLOPPY}", shell=True,
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    b = None
-    for attempt in range(attempts):
-        b = _probe_once(frame, probe)
-        unmoved = (b is not None and b[2] == start_x and b[4] == SEED_Y
-                   and b[6] == indir)
-        if b is not None and not unmoved:
-            return b
-        if attempt + 1 < attempts:
-            print(f"    (retry: stale/unmoved probe for start_x={start_x} "
-                  f"in=0x{indir:02X} — wake likely missed)", file=sys.stderr)
-    return b
+
+    def drive():
+        subprocess.run([sys.executable, "scripts/capture_frame_timeline.py",
+                        "--floppy", FLOPPY, "--frames", str(frame), "--wait-key",
+                        "--out", "build/tl_bat"], stdout=subprocess.DEVNULL)
+
+    probe = boot_until_gameplay(FLOPPY, drive,
+                                label=f"bat start_x={start_x} in=0x{indir:02X}")
+    hexs = probe.get("object_ball_1", "")
+    return bytes.fromhex(hexs) if hexs else None
 
 
 def dir_at(start_x: int, indir: int, frame: int) -> int:

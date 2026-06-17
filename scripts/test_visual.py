@@ -135,6 +135,61 @@ def run_qemu(floppy: Path, script: list, log_path: Path):
         log.close()
 
 
+def test_floppy(default: str = "build/batty-test.img") -> str:
+    """The test floppy image path. Honours BATTY_TEST_FLOPPY so the parallel
+    runner can give each concurrent gate its own image (scripts/
+    run_gates_parallel.py); defaults to the shared serial path."""
+    import os
+    return os.environ.get("BATTY_TEST_FLOPPY", default)
+
+
+def read_probe_dict(floppy) -> dict:
+    """Read PROBE.TXT off `floppy` into a key->value dict ({} if absent).
+    Accepts both `k=v` and `k:v` lines; skips comments."""
+    try:
+        raw = subprocess.check_output(["mtype", "-i", str(floppy), "::PROBE.TXT"],
+                                      stderr=subprocess.STDOUT).decode("ascii", "replace")
+    except subprocess.CalledProcessError:
+        return {}
+    out = {}
+    for line in raw.splitlines():
+        if line.startswith("#"):
+            continue
+        if "=" in line:
+            k, v = line.split("=", 1)
+        elif ":" in line:
+            k, v = line.split(":", 1)
+        else:
+            continue
+        out[k.strip()] = v.strip()
+    return out
+
+
+def boot_until_gameplay(floppy, drive_fn, attempts: int = 3, label: str = ""):
+    """Run drive_fn() (boot QEMU + send the BATTY_REPLAY_WAIT_KEY wake),
+    then read PROBE.TXT; retry if it is the pre-gameplay seed write.
+
+    The port writes PROBE.TXT with the seeded pre-gameplay state at level
+    init (probe_phase=init) BEFORE the wait-key pause. If the wake key is
+    missed (a rare slow-boot host-timing race) the gameplay loop never runs
+    and the file stays at that init write — a spurious result. A real
+    checkpoint write tags probe_phase=play, so we re-boot until we see it
+    (or exhaust attempts). Returns the probe dict (last attempt if all
+    stale, so callers still surface a clear failure)."""
+    probe = {}
+    for attempt in range(attempts):
+        drive_fn()
+        probe = read_probe_dict(floppy)
+        if probe.get("probe_phase") == "play":
+            return probe
+        if attempt + 1 < attempts:
+            import sys as _sys
+            print(f"    (retry {attempt + 1}/{attempts - 1}: wake missed / "
+                  f"probe_phase={probe.get('probe_phase', 'absent')}{(' ' + label) if label else ''})",
+                  file=_sys.stderr)
+    return probe
+
+
 def make_diff_png(actual_idx: bytes, expected_idx: bytes, out_path: Path):
     """Write a side-by-side diff (red where pixels disagree)."""
     try:

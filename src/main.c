@@ -669,6 +669,13 @@ static unsigned char launch_probe_active = 0;
 static unsigned int  frame_probe_frames = 0;
 static unsigned int  frame_probe_countdown = 0;
 static unsigned char frame_probe_active = 0;
+/* 0 while the level-init PROBE.TXT write (the seeded pre-gameplay state)
+ * is emitted; set to 1 once the gameplay main loop is entered. The harness
+ * reads `probe_phase` to tell a real checkpoint write apart from the init
+ * write it would see if a BATTY_REPLAY_WAIT_KEY wake key was missed (a slow
+ * boot host-timing race), so it can re-boot instead of trusting stale seed
+ * state. See scripts/test_visual.py read_gameplay_probe(). */
+static unsigned char probe_from_gameplay = 0;
 /* Deterministic mid-game capture checkpoints. BATTY_VISUAL_PROBE_FRAMES
  * is a comma-separated list of ascending absolute frame indices; the
  * port runs to each in turn, halts (so the harness can grab a drift-free
@@ -5255,6 +5262,7 @@ static void write_replay_probe(void) {
     if (getenv("BATTY_REPLAY_PROBE") == NULL) return;
     f = fopen("PROBE.TXT", "wt");
     if (!f) return;
+    fprintf(f, "probe_phase=%s\n", probe_from_gameplay ? "play" : "init");
     fprintf(f, "round_number=%02X\n", (unsigned)round_number);
     fprintf(f, "current_level=%02X\n", (unsigned)current_level_idx_var);
     fprintf(f, "bricks_quantity=%02X\n", (unsigned)live_bricks_remaining());
@@ -7665,6 +7673,7 @@ static state_t run_level(void) {
          * coins consume the seeded walk like the original print_magnets,
          * before render_level_screen which paints from this state. */
         magnet_level_init(i);
+        probe_from_gameplay = 0;     /* this PROBE write = pre-gameplay seed */
         write_replay_probe();
         render_level_screen(i);
         if (show_round_banner((unsigned int)round_number + 1)) return ST_QUIT;
@@ -7717,6 +7726,7 @@ static state_t run_level(void) {
         }
         cycle = (unsigned char)(i & 3);
         bg_attr = bg_attr_per_cycle[i & 3];
+        probe_from_gameplay = 1;     /* PROBE writes below are checkpoints */
         start     = bios_ticks();
         last_tick = pit_ticks();
         for (;;) {

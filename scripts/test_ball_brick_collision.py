@@ -38,7 +38,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from test_visual import run_qemu
+from test_visual import run_qemu, boot_until_gameplay
 
 FLOPPY = Path("build/batty-test.img")
 OUT = Path("build/test_ball_no_tunnel")
@@ -69,26 +69,17 @@ def build_floppy(env: str) -> None:
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
 
 
-def parse_probe(text: str) -> dict:
-    out = {}
-    for line in text.splitlines():
-        if "=" in line and not line.startswith("#"):
-            k, v = line.split("=", 1)
-            out[k.strip()] = v.strip()
-    return out
-
-
-def boot_and_read(sleep_extra: float) -> dict:
-    subprocess.run(["mdel", "-i", str(FLOPPY), "::PROBE.TXT"],
-                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
-    run_qemu(FLOPPY, ["SLEEP 9.0", "sendkey ret", f"SLEEP {1.0 + sleep_extra}"],
-             OUT / "qemu.log")
-    try:
-        raw = subprocess.check_output(["mtype", "-i", str(FLOPPY), "::PROBE.TXT"],
-                                      stderr=subprocess.STDOUT).decode("ascii", "replace")
-    except subprocess.CalledProcessError:
-        return {}
-    return parse_probe(raw)
+def boot_and_read(sleep_extra: float, label: str = "") -> dict:
+    """Boot the seeded floppy, run to the FRAME_PROBE halt, read PROBE.TXT.
+    Retries via boot_until_gameplay if a missed BATTY_REPLAY_WAIT_KEY wake
+    left the pre-gameplay seed write (probe_phase=init) — which would
+    otherwise read as a false 'ball never reached the brick' PASS."""
+    def drive():
+        subprocess.run(["mdel", "-i", str(FLOPPY), "::PROBE.TXT"],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+        run_qemu(FLOPPY, ["SLEEP 8.0", "sendkey ret", f"SLEEP {1.0 + sleep_extra}"],
+                 OUT / "qemu.log")
+    return boot_until_gameplay(FLOPPY, drive, label=label)
 
 
 def is_solid(v: int) -> bool:

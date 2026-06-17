@@ -39,7 +39,7 @@ def main():
     ap.add_argument('--frames', default='30,60,90',
                     help='comma-separated ascending absolute frame indices')
     ap.add_argument('--out', default='build/frame_timeline')
-    ap.add_argument('--boot-wait', type=float, default=12.0)
+    ap.add_argument('--boot-wait', type=float, default=10.0)
     ap.add_argument('--fps', type=float, default=50.0,
                     help='game frame rate, for sizing the wait between checkpoints')
     ap.add_argument('--require-motion', action='store_true',
