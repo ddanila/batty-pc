@@ -5,16 +5,18 @@ on:
     branches: ["**"]
   pull_request:
 
-# Hosted GitHub runners have no KVM, so QEMU runs under TCG (slower than real
-# time). The first attempt failed because the harness waited for frames with
-# wall-clock sleeps (run 27697521157: every QEMU gate diverged). That is now
-# fixed by the BATTY_SERIAL_PROBE frame-completion signal — the port emits a
-# COM1 marker at each halt and the harness waits for it (deterministic on any
-# speed). The parity-qemu job below uses it with generous timeouts; it is
-# observational (continue-on-error) for now and will be promoted to a hard
-# gate once it is confirmed green on a real runner. The fast emulator-free
-# job is always a hard gate. ZEsarUX-oracle gates stay local
-# (`make parity-check-full`).
+# Hosted GitHub runners have no KVM, so QEMU runs under TCG (much slower than
+# real time). Two findings:
+#  1. The original wall-clock frame waits made every QEMU gate DIVERGE on TCG
+#     (run 27697521157). FIXED by the BATTY_SERIAL_PROBE frame-completion
+#     signal — the port emits a COM1 marker at each halt and the harness
+#     WAITSERIALs on it, so captures are frame-exact at any emulation speed.
+#  2. With that, QEMU gates are CORRECT on TCG but the full suite is still
+#     impractically SLOW (an hour+), so it stays a LOCAL gate
+#     (`make parity-check-parallel`). CI runs a small QEMU SMOKE instead — a
+#     couple of fast gates — to prove the build boots + the serial frame path
+#     works on a clean runner, in a few minutes.
+# ZEsarUX-oracle gates stay local (`make parity-check-full`).
 jobs:
   build-and-source-gates:
     runs-on: ubuntu-latest
@@ -28,15 +30,17 @@ jobs:
           make test-death-sparks
           make test-rocket-bonus
 
-  parity-qemu:
+  qemu-smoke:
     runs-on: ubuntu-latest
-    continue-on-error: true   # promote to a hard gate once confirmed green
+    env:
+      BATTY_SERIAL_PROBE: "1"        # deterministic frame waits (TCG-safe)
+      BATTY_BOOT_WAIT: "20"          # head-start; WAITSERIAL covers the rest
+      BATTY_SERIAL_TIMEOUT: "240"    # generous per-marker wait for slow TCG
     steps:
       - uses: actions/checkout@v4
       - name: Install QEMU + mtools
         run: sudo apt-get update && sudo apt-get install -y qemu-system-x86 mtools
-      - name: Parallel QEMU parity (fast core, deterministic serial waits)
-        env:
-          BATTY_BOOT_WAIT: "20"        # head-start; WAITSERIAL covers the rest
-          BATTY_SERIAL_TIMEOUT: "240"  # generous per-marker wait for slow TCG
-        run: make parity-check-parallel J=2
+      - name: QEMU smoke (boot + deterministic frame-step on a clean runner)
+        run: |
+          make test-enemy-descend
+          make test-enemy-attr-parity
