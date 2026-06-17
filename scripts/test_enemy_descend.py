@@ -26,12 +26,13 @@ Exit 0 if every checkpoint matches; nonzero otherwise. ZEsarUX-free
 (port-only, like test_bat_deflection_port.py); needs QEMU + mtools.
 """
 import re
+import os
 import subprocess
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-FLOPPY = "build/batty-test.img"
+FLOPPY = os.environ.get("BATTY_TEST_FLOPPY", "build/batty-test.img")
 
 # Authoritative fresh enemy descriptor (22-byte object_t), read from the
 # original at the spawn frame: sprite_set=09, x=A8(168), y=01, dir=10,

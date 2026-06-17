@@ -31,6 +31,7 @@ No ZEsarUX oracle needed -- the invariant is intrinsic to the rules.
 from __future__ import annotations
 
 import argparse
+import os
 import math
 import re
 import subprocess
@@ -40,7 +41,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 from test_visual import run_qemu, boot_until_gameplay
 
-FLOPPY = Path("build/batty-test.img")
+FLOPPY = Path(os.environ.get("BATTY_TEST_FLOPPY", "build/batty-test.img"))
 OUT = Path("build/test_ball_no_tunnel")
 
 TAIL = "020CEEF008076C4E020C0000008C"

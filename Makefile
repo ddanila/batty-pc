@@ -50,8 +50,12 @@ LEVEL1_SNAP_RAM   ?= build/snapshots/20260513T202101Z/ram_4000_FFFF.bin
 FLOPPY_SRC      ?= vendor/msdos/floppy-minimal.img
 # `make run`: normal interactive boot image.
 FLOPPY_OUT       = build/batty.img
-# `make test`: full 4-state visual-regression image.
-TEST_FLOPPY_OUT  = build/batty-test.img
+# `make test`: full 4-state visual-regression image. Honours BATTY_TEST_FLOPPY
+# so scripts/run_gates_parallel.py can give each concurrent gate its own image
+# (build/batty-test-<i>.img); the AUTOEXEC scratch is derived per-floppy so
+# concurrent assembly never collides on one file.
+TEST_FLOPPY_OUT  = $(if $(BATTY_TEST_FLOPPY),$(BATTY_TEST_FLOPPY),build/batty-test.img)
+AUTOEXEC_T       = build/AUTOEXEC-T-$(notdir $(basename $(TEST_FLOPPY_OUT))).BAT
 
 ZESARUX ?= tools/zesarux/src/zesarux
 ZESARUX_CONFIGURE_OPTS ?= --enable-sdl2
@@ -347,126 +351,126 @@ $(TEST_FLOPPY_OUT): $(TEST_EXE) $(ASSETS) $(FLOPPY_SRC)
 	@# never sees the host's env. The line is only emitted when the host
 	@# var is non-empty, so `make test` defaults to L1 as before.
 	@if [ -n "$$BATTY_LEVEL" ]; then \
-	    printf '@ECHO OFF\r\nSET BATTYALL=1\r\nSET BATTY_LEVEL=%s\r\n' "$$BATTY_LEVEL" > build/AUTOEXEC-T.BAT ; \
+	    printf '@ECHO OFF\r\nSET BATTYALL=1\r\nSET BATTY_LEVEL=%s\r\n' "$$BATTY_LEVEL" > $(AUTOEXEC_T) ; \
 	else \
-	    printf '@ECHO OFF\r\nSET BATTYALL=1\r\n' > build/AUTOEXEC-T.BAT ; \
+	    printf '@ECHO OFF\r\nSET BATTYALL=1\r\n' > $(AUTOEXEC_T) ; \
 	fi; \
 	if [ -n "$$BATTY_START_LEVEL" ]; then \
-	    printf 'SET BATTY_START_LEVEL=%s\r\n' "$$BATTY_START_LEVEL" >> build/AUTOEXEC-T.BAT ; \
+	    printf 'SET BATTY_START_LEVEL=%s\r\n' "$$BATTY_START_LEVEL" >> $(AUTOEXEC_T) ; \
 	fi; \
 	if [ -n "$$BATTY_REPLAY_PROBE" ]; then \
-	    printf 'SET BATTY_REPLAY_PROBE=%s\r\n' "$$BATTY_REPLAY_PROBE" >> build/AUTOEXEC-T.BAT ; \
+	    printf 'SET BATTY_REPLAY_PROBE=%s\r\n' "$$BATTY_REPLAY_PROBE" >> $(AUTOEXEC_T) ; \
 	fi; \
 	if [ -n "$$BATTY_REPLAY_RANDOM" ]; then \
-	    printf 'SET BATTY_REPLAY_RANDOM=%s\r\n' "$$BATTY_REPLAY_RANDOM" >> build/AUTOEXEC-T.BAT ; \
+	    printf 'SET BATTY_REPLAY_RANDOM=%s\r\n' "$$BATTY_REPLAY_RANDOM" >> $(AUTOEXEC_T) ; \
 	fi; \
 	if [ -n "$$BATTY_REPLAY_RANDOM_SEED" ]; then \
-	    printf 'SET BATTY_REPLAY_RANDOM_SEED=%s\r\n' "$$BATTY_REPLAY_RANDOM_SEED" >> build/AUTOEXEC-T.BAT ; \
+	    printf 'SET BATTY_REPLAY_RANDOM_SEED=%s\r\n' "$$BATTY_REPLAY_RANDOM_SEED" >> $(AUTOEXEC_T) ; \
 	fi; \
 	if [ -n "$$BATTY_REPLAY_COUNTER" ]; then \
-	    printf 'SET BATTY_REPLAY_COUNTER=%s\r\n' "$$BATTY_REPLAY_COUNTER" >> build/AUTOEXEC-T.BAT ; \
+	    printf 'SET BATTY_REPLAY_COUNTER=%s\r\n' "$$BATTY_REPLAY_COUNTER" >> $(AUTOEXEC_T) ; \
 	fi; \
 	if [ -n "$$BATTY_RNG_PERFRAME" ]; then \
-	    printf 'SET BATTY_RNG_PERFRAME=%s\r\n' "$$BATTY_RNG_PERFRAME" >> build/AUTOEXEC-T.BAT ; \
+	    printf 'SET BATTY_RNG_PERFRAME=%s\r\n' "$$BATTY_RNG_PERFRAME" >> $(AUTOEXEC_T) ; \
 	fi; \
 	if [ -n "$$BATTY_REPLAY_BAT_OBJECT" ]; then \
-	    printf 'SET BATTY_REPLAY_BAT_OBJECT=%s\r\n' "$$BATTY_REPLAY_BAT_OBJECT" >> build/AUTOEXEC-T.BAT ; \
+	    printf 'SET BATTY_REPLAY_BAT_OBJECT=%s\r\n' "$$BATTY_REPLAY_BAT_OBJECT" >> $(AUTOEXEC_T) ; \
 	fi; \
 	if [ -n "$$BATTY_REPLAY_BALL_OBJECT" ]; then \
-	    printf 'SET BATTY_REPLAY_BALL_OBJECT=%s\r\n' "$$BATTY_REPLAY_BALL_OBJECT" >> build/AUTOEXEC-T.BAT ; \
+	    printf 'SET BATTY_REPLAY_BALL_OBJECT=%s\r\n' "$$BATTY_REPLAY_BALL_OBJECT" >> $(AUTOEXEC_T) ; \
 	fi; \
 	if [ -n "$$BATTY_REPLAY_BALL_STUCK" ]; then \
-	    printf 'SET BATTY_REPLAY_BALL_STUCK=%s\r\n' "$$BATTY_REPLAY_BALL_STUCK" >> build/AUTOEXEC-T.BAT ; \
+	    printf 'SET BATTY_REPLAY_BALL_STUCK=%s\r\n' "$$BATTY_REPLAY_BALL_STUCK" >> $(AUTOEXEC_T) ; \
 	fi; \
 	if [ -n "$$BATTY_HIDE_BALL" ]; then \
-	    printf 'SET BATTY_HIDE_BALL=%s\r\n' "$$BATTY_HIDE_BALL" >> build/AUTOEXEC-T.BAT ; \
+	    printf 'SET BATTY_HIDE_BALL=%s\r\n' "$$BATTY_HIDE_BALL" >> $(AUTOEXEC_T) ; \
 	fi; \
 	if [ -n "$$BATTY_SUPPRESS_NO_BALL_DEATH" ]; then \
-	    printf 'SET BATTY_SUPPRESS_NO_BALL_DEATH=%s\r\n' "$$BATTY_SUPPRESS_NO_BALL_DEATH" >> build/AUTOEXEC-T.BAT ; \
+	    printf 'SET BATTY_SUPPRESS_NO_BALL_DEATH=%s\r\n' "$$BATTY_SUPPRESS_NO_BALL_DEATH" >> $(AUTOEXEC_T) ; \
 	fi; \
 	if [ -n "$$BATTY_REPLAY_BALL_VEL" ]; then \
-	    printf 'SET BATTY_REPLAY_BALL_VEL=%s\r\n' "$$BATTY_REPLAY_BALL_VEL" >> build/AUTOEXEC-T.BAT ; \
+	    printf 'SET BATTY_REPLAY_BALL_VEL=%s\r\n' "$$BATTY_REPLAY_BALL_VEL" >> $(AUTOEXEC_T) ; \
 	fi; \
 	if [ -n "$$BATTY_REPLAY_ENEMY_OBJECT" ]; then \
-	    printf 'SET BATTY_REPLAY_ENEMY_OBJECT=%s\r\n' "$$BATTY_REPLAY_ENEMY_OBJECT" >> build/AUTOEXEC-T.BAT ; \
+	    printf 'SET BATTY_REPLAY_ENEMY_OBJECT=%s\r\n' "$$BATTY_REPLAY_ENEMY_OBJECT" >> $(AUTOEXEC_T) ; \
 	fi; \
 	if [ -n "$$BATTY_REPLAY_ROCKET_ACTIVE" ]; then \
-	    printf 'SET BATTY_REPLAY_ROCKET_ACTIVE=%s\r\n' "$$BATTY_REPLAY_ROCKET_ACTIVE" >> build/AUTOEXEC-T.BAT ; \
+	    printf 'SET BATTY_REPLAY_ROCKET_ACTIVE=%s\r\n' "$$BATTY_REPLAY_ROCKET_ACTIVE" >> $(AUTOEXEC_T) ; \
 	fi; \
 	if [ -n "$$BATTY_REPLAY_BONUS" ]; then \
-	    printf 'SET BATTY_REPLAY_BONUS=%s\r\n' "$$BATTY_REPLAY_BONUS" >> build/AUTOEXEC-T.BAT ; \
+	    printf 'SET BATTY_REPLAY_BONUS=%s\r\n' "$$BATTY_REPLAY_BONUS" >> $(AUTOEXEC_T) ; \
 	fi; \
 	if [ -n "$$BATTY_REPLAY_BOMB" ]; then \
-	    printf 'SET BATTY_REPLAY_BOMB=%s\r\n' "$$BATTY_REPLAY_BOMB" >> build/AUTOEXEC-T.BAT ; \
+	    printf 'SET BATTY_REPLAY_BOMB=%s\r\n' "$$BATTY_REPLAY_BOMB" >> $(AUTOEXEC_T) ; \
 	fi; \
 	if [ -n "$$BATTY_REPLAY_PTS400" ]; then \
-	    printf 'SET BATTY_REPLAY_PTS400=%s\r\n' "$$BATTY_REPLAY_PTS400" >> build/AUTOEXEC-T.BAT ; \
+	    printf 'SET BATTY_REPLAY_PTS400=%s\r\n' "$$BATTY_REPLAY_PTS400" >> $(AUTOEXEC_T) ; \
 	fi; \
 	if [ -n "$$BATTY_REPLAY_BULLET" ]; then \
-	    printf 'SET BATTY_REPLAY_BULLET=%s\r\n' "$$BATTY_REPLAY_BULLET" >> build/AUTOEXEC-T.BAT ; \
+	    printf 'SET BATTY_REPLAY_BULLET=%s\r\n' "$$BATTY_REPLAY_BULLET" >> $(AUTOEXEC_T) ; \
 	fi; \
 	if [ -n "$$BATTY_AUTO_FIRE" ]; then \
-	    printf 'SET BATTY_AUTO_FIRE=%s\r\n' "$$BATTY_AUTO_FIRE" >> build/AUTOEXEC-T.BAT ; \
+	    printf 'SET BATTY_AUTO_FIRE=%s\r\n' "$$BATTY_AUTO_FIRE" >> $(AUTOEXEC_T) ; \
 	fi; \
 	if [ -n "$$BATTY_FORCE_SPAWN_BONUS" ]; then \
-	    printf 'SET BATTY_FORCE_SPAWN_BONUS=%s\r\n' "$$BATTY_FORCE_SPAWN_BONUS" >> build/AUTOEXEC-T.BAT ; \
+	    printf 'SET BATTY_FORCE_SPAWN_BONUS=%s\r\n' "$$BATTY_FORCE_SPAWN_BONUS" >> $(AUTOEXEC_T) ; \
 	fi; \
 	if [ -n "$$BATTY_REPLAY_BLAST" ]; then \
-	    printf 'SET BATTY_REPLAY_BLAST=%s\r\n' "$$BATTY_REPLAY_BLAST" >> build/AUTOEXEC-T.BAT ; \
+	    printf 'SET BATTY_REPLAY_BLAST=%s\r\n' "$$BATTY_REPLAY_BLAST" >> $(AUTOEXEC_T) ; \
 	fi; \
 	if [ -n "$$BATTY_FORCE_BRICK" ]; then \
-	    printf 'SET BATTY_FORCE_BRICK=%s\r\n' "$$BATTY_FORCE_BRICK" >> build/AUTOEXEC-T.BAT ; \
+	    printf 'SET BATTY_FORCE_BRICK=%s\r\n' "$$BATTY_FORCE_BRICK" >> $(AUTOEXEC_T) ; \
 	fi; \
 	if [ -n "$$BATTY_REPLAY_BALL_RAMP" ]; then \
-	    printf 'SET BATTY_REPLAY_BALL_RAMP=%s\r\n' "$$BATTY_REPLAY_BALL_RAMP" >> build/AUTOEXEC-T.BAT ; \
+	    printf 'SET BATTY_REPLAY_BALL_RAMP=%s\r\n' "$$BATTY_REPLAY_BALL_RAMP" >> $(AUTOEXEC_T) ; \
 	fi; \
 	if [ -n "$$BATTY_REPLAY_MULTIBALL" ]; then \
-	    printf 'SET BATTY_REPLAY_MULTIBALL=%s\r\n' "$$BATTY_REPLAY_MULTIBALL" >> build/AUTOEXEC-T.BAT ; \
+	    printf 'SET BATTY_REPLAY_MULTIBALL=%s\r\n' "$$BATTY_REPLAY_MULTIBALL" >> $(AUTOEXEC_T) ; \
 	fi; \
 	if [ -n "$$BATTY_REPLAY_BIGBALL" ]; then \
-	    printf 'SET BATTY_REPLAY_BIGBALL=%s\r\n' "$$BATTY_REPLAY_BIGBALL" >> build/AUTOEXEC-T.BAT ; \
+	    printf 'SET BATTY_REPLAY_BIGBALL=%s\r\n' "$$BATTY_REPLAY_BIGBALL" >> $(AUTOEXEC_T) ; \
 	fi; \
 	if [ -n "$$BATTY_REPLAY_WAIT_KEY" ]; then \
-	    printf 'SET BATTY_REPLAY_WAIT_KEY=%s\r\n' "$$BATTY_REPLAY_WAIT_KEY" >> build/AUTOEXEC-T.BAT ; \
+	    printf 'SET BATTY_REPLAY_WAIT_KEY=%s\r\n' "$$BATTY_REPLAY_WAIT_KEY" >> $(AUTOEXEC_T) ; \
 	fi; \
 	if [ -n "$$BATTY_LAUNCH_FRAMES" ]; then \
-	    printf 'SET BATTY_LAUNCH_FRAMES=%s\r\n' "$$BATTY_LAUNCH_FRAMES" >> build/AUTOEXEC-T.BAT ; \
+	    printf 'SET BATTY_LAUNCH_FRAMES=%s\r\n' "$$BATTY_LAUNCH_FRAMES" >> $(AUTOEXEC_T) ; \
 	fi; \
 	if [ -n "$$BATTY_FRAME_PROBE" ]; then \
-	    printf 'SET BATTY_FRAME_PROBE=%s\r\n' "$$BATTY_FRAME_PROBE" >> build/AUTOEXEC-T.BAT ; \
+	    printf 'SET BATTY_FRAME_PROBE=%s\r\n' "$$BATTY_FRAME_PROBE" >> $(AUTOEXEC_T) ; \
 	fi; \
 	if [ -n "$$BATTY_VISUAL_PROBE_FRAMES" ]; then \
-	    printf 'SET BATTY_VISUAL_PROBE_FRAMES=%s\r\n' "$$BATTY_VISUAL_PROBE_FRAMES" >> build/AUTOEXEC-T.BAT ; \
+	    printf 'SET BATTY_VISUAL_PROBE_FRAMES=%s\r\n' "$$BATTY_VISUAL_PROBE_FRAMES" >> $(AUTOEXEC_T) ; \
 	fi; \
 	if [ -n "$$BATTY_LAFFC" ]; then \
-	    printf 'SET BATTY_LAFFC=%s\r\n' "$$BATTY_LAFFC" >> build/AUTOEXEC-T.BAT ; \
+	    printf 'SET BATTY_LAFFC=%s\r\n' "$$BATTY_LAFFC" >> $(AUTOEXEC_T) ; \
 	fi; \
 	if [ -n "$$BATTY_LEGACY_COLLISION" ]; then \
-	    printf 'SET BATTY_LEGACY_COLLISION=%s\r\n' "$$BATTY_LEGACY_COLLISION" >> build/AUTOEXEC-T.BAT ; \
+	    printf 'SET BATTY_LEGACY_COLLISION=%s\r\n' "$$BATTY_LEGACY_COLLISION" >> $(AUTOEXEC_T) ; \
 	fi; \
 	if [ -n "$$BATTY_HOLD_ROUND_BANNER" ]; then \
-	    printf 'SET BATTY_HOLD_ROUND_BANNER=%s\r\n' "$$BATTY_HOLD_ROUND_BANNER" >> build/AUTOEXEC-T.BAT ; \
+	    printf 'SET BATTY_HOLD_ROUND_BANNER=%s\r\n' "$$BATTY_HOLD_ROUND_BANNER" >> $(AUTOEXEC_T) ; \
 	fi; \
 	if [ -n "$$BATTY_HOLD_ROCKET_CLEAR" ]; then \
-	    printf 'SET BATTY_HOLD_ROCKET_CLEAR=%s\r\n' "$$BATTY_HOLD_ROCKET_CLEAR" >> build/AUTOEXEC-T.BAT ; \
+	    printf 'SET BATTY_HOLD_ROCKET_CLEAR=%s\r\n' "$$BATTY_HOLD_ROCKET_CLEAR" >> $(AUTOEXEC_T) ; \
 	fi; \
 	if [ -n "$$BATTY_FORCE_BAT_FULL_REDRAW" ]; then \
-	    printf 'SET BATTY_FORCE_BAT_FULL_REDRAW=%s\r\n' "$$BATTY_FORCE_BAT_FULL_REDRAW" >> build/AUTOEXEC-T.BAT ; \
+	    printf 'SET BATTY_FORCE_BAT_FULL_REDRAW=%s\r\n' "$$BATTY_FORCE_BAT_FULL_REDRAW" >> $(AUTOEXEC_T) ; \
 	fi; \
 	if [ -n "$$BATTY_FORCE_BALL_FULL_REDRAW" ]; then \
-	    printf 'SET BATTY_FORCE_BALL_FULL_REDRAW=%s\r\n' "$$BATTY_FORCE_BALL_FULL_REDRAW" >> build/AUTOEXEC-T.BAT ; \
+	    printf 'SET BATTY_FORCE_BALL_FULL_REDRAW=%s\r\n' "$$BATTY_FORCE_BALL_FULL_REDRAW" >> $(AUTOEXEC_T) ; \
 	fi; \
 	if [ -n "$$BATTY_FORCE_FULL_FLUSH_EACH_FRAME" ]; then \
-	    printf 'SET BATTY_FORCE_FULL_FLUSH_EACH_FRAME=%s\r\n' "$$BATTY_FORCE_FULL_FLUSH_EACH_FRAME" >> build/AUTOEXEC-T.BAT ; \
+	    printf 'SET BATTY_FORCE_FULL_FLUSH_EACH_FRAME=%s\r\n' "$$BATTY_FORCE_FULL_FLUSH_EACH_FRAME" >> $(AUTOEXEC_T) ; \
 	fi; \
 	if [ -n "$$BATTY_REPLAY_MAGNET" ]; then \
-	    printf 'SET BATTY_REPLAY_MAGNET=%s\r\n' "$$BATTY_REPLAY_MAGNET" >> build/AUTOEXEC-T.BAT ; \
+	    printf 'SET BATTY_REPLAY_MAGNET=%s\r\n' "$$BATTY_REPLAY_MAGNET" >> $(AUTOEXEC_T) ; \
 	fi; \
 	if [ -n "$$BATTY_TEST_KEY_BEFORE_ANIM" ]; then \
-	    printf 'SET BATTY_TEST_KEY_BEFORE_ANIM=%s\r\n' "$$BATTY_TEST_KEY_BEFORE_ANIM" >> build/AUTOEXEC-T.BAT ; \
+	    printf 'SET BATTY_TEST_KEY_BEFORE_ANIM=%s\r\n' "$$BATTY_TEST_KEY_BEFORE_ANIM" >> $(AUTOEXEC_T) ; \
 	fi; \
-	printf 'BATTY\r\n' >> build/AUTOEXEC-T.BAT
-	mcopy -i $@ -o build/AUTOEXEC-T.BAT ::AUTOEXEC.BAT
+	printf 'BATTY\r\n' >> $(AUTOEXEC_T)
+	mcopy -i $@ -o $(AUTOEXEC_T) ::AUTOEXEC.BAT
 	@echo "Test floppy ready: $@  (full 4-state cycle)"
 
 run:
@@ -593,6 +597,17 @@ parity-check:
 	$(MAKE) test-enemy-steer
 	$(MAKE) test-ball-no-tunnel
 	$(MAKE) test-enemy-attr-parity
+
+# Parallel runner for the QEMU-only gates (the whole parity-check fast core,
+# plus the parity-check-full feature gates with --full). Each gate runs on
+# its own floppy image (BATTY_TEST_FLOPPY) so they execute concurrently —
+# same gates, same assertions, ~Jx faster. ZEsarUX gates (frame-step /
+# replay) are excluded (single ZRCP port) — run those via parity-check-full.
+#   make parity-check-parallel J=8        # fast core, 8-wide
+#   make parity-check-parallel J=8 FULL=1 # + feature gates
+J ?= 8
+parity-check-parallel:
+	python3 scripts/run_gates_parallel.py --jobs $(J) $(if $(FULL),--full,)
 
 # Comprehensive regression suite: the fast core PLUS every standalone
 # feature/render gate that previously was NOT wired into any aggregate

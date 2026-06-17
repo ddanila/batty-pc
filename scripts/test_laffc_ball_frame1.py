@@ -24,12 +24,13 @@ extracts object_ball_1, and asserts x/xf/y/yf/dir. Exit 0 = all PASS.
     make test-laffc-ball-frame1
 """
 import argparse
+import os
 import re
 import subprocess
 import sys
 from pathlib import Path
 
-FLOPPY = 'build/batty-test.img'
+FLOPPY = os.environ.get("BATTY_TEST_FLOPPY", "build/batty-test.img")
 SEED = ('BATTY_LEVEL=3 BATTY_START_LEVEL=1 BATTY_REPLAY_WAIT_KEY=1 BATTY_LAFFC=1 '
         'BATTY_REPLAY_PROBE=1 BATTY_REPLAY_RANDOM=8E49 '
         'BATTY_REPLAY_BAT_OBJECT=01017400AD000000040DEFAE1C0A74AD040DF0008380 '

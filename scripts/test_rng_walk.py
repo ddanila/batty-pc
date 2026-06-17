@@ -32,12 +32,13 @@ for RNG-dependent parity (enemy steering target, bonus drops).
 ZEsarUX-free (port-only); needs QEMU + mtools. See notes/rng-model.md.
 """
 import re
+import os
 import subprocess
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-FLOPPY = "build/batty-test.img"
+FLOPPY = os.environ.get("BATTY_TEST_FLOPPY", "build/batty-test.img")
 
 # f0 seed (byte-correct): random_number D:E = 37:93 -> RANDOM=3793;
 # random_seed (LE 16-bit) = 962A.

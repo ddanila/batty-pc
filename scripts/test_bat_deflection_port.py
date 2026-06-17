@@ -18,6 +18,7 @@ double-reflect zones).
 ZEsarUX-free (QEMU only). Exit 0 = all PASS.
 """
 import argparse
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -25,7 +26,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 from test_visual import boot_until_gameplay
 
-FLOPPY = "build/batty-test.img"
+FLOPPY = os.environ.get("BATTY_TEST_FLOPPY", "build/batty-test.img")
 # Normal bat at x=116 width 28; ball 8 wide, dropped at y=0x96.
 BAT_OBJECT = "01017400AD000000040DEFAE1C0A74AD040DF0008380"
 BALL_BASE = "0200800096000C03020CEEF008078096020C0000008C"

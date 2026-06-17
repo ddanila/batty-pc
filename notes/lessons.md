@@ -344,6 +344,20 @@ misdiagnosed as a SLEEP/screendump flake in performance.md. Rule: ANY test
 that boots the game more than once and compares outputs must pin
 BATTY_REPLAY_COUNTER if a steer/cadence-driven object is on screen.
 
+## Parallelizing the suite: per-floppy isolation, not per-process
+
+The serial-only constraint (below) was lifted by making the floppy path an
+env var (`BATTY_TEST_FLOPPY`) instead of a hardcoded literal: each concurrent
+gate gets its own `build/batty-test-<i>.img` AND its own AUTOEXEC scratch
+(`AUTOEXEC_T` derived from the floppy name in the Makefile — the scratch
+file was the *other* shared-state collision, easy to miss). Pre-build the
+shared `TEST_EXE` once before fanning out so workers don't race on
+`build/main-test.obj`. ZEsarUX gates can't parallelize this way — they bind
+a single ZRCP port (10000) + one snapshot — so the parallel runner covers
+only the QEMU-only gates; ZEsarUX gates stay serial. Net result: same gates,
+same assertions, ~Jx faster (`make parity-check-parallel J=8`). See
+notes/testing.md.
+
 ## Floppy-based tests share ONE image — never run two concurrently
 
 Every headless gate builds and boots `build/batty-test.img` and reads back

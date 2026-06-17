@@ -29,12 +29,13 @@ where a bg_attr recolour (0x45) is plainly wrong.
 from __future__ import annotations
 
 import re
+import os
 import subprocess
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-FLOPPY = "build/batty-test.img"
+FLOPPY = os.environ.get("BATTY_TEST_FLOPPY", "build/batty-test.img")
 
 FRESH_ENEMY = "0900A80001001001030FDA35180CA801030FF0701000"
 BAT_OBJECT  = "01017400AD000000040DEFAE1C0A74AD040DF0008380"

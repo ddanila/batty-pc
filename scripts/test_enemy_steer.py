@@ -34,7 +34,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-FLOPPY = "build/batty-test.img"
+FLOPPY = os.environ.get("BATTY_TEST_FLOPPY", "build/batty-test.img")
 
 SEED_RANDOM = "3793"
 SEED_RANDOM_SEED = "962A"

@@ -221,6 +221,31 @@ they are EQUAL across the sprite's footprint — i.e. the enemy changed no
 cell attr. ZEsarUX-free; the original's behaviour was confirmed by an
 oracle attr read (build/orig_flyover, notes/bird-render-parity.md).
 
+## Running the suite in parallel (`make parity-check-parallel J=8`)
+
+The gates are boot-dominated (~10 s/boot) and historically serial because
+every script hardcoded the one floppy `build/batty-test.img`. Now the floppy
+path is read from **`BATTY_TEST_FLOPPY`** (default unchanged): the Makefile's
+`TEST_FLOPPY_OUT` honours it and derives a per-floppy AUTOEXEC scratch
+(`AUTOEXEC_T`), and the gate scripts read it via
+`os.environ.get("BATTY_TEST_FLOPPY", …)` / `test_visual.test_floppy()`. So
+each gate can run on its own image with no collision.
+
+`scripts/run_gates_parallel.py` pre-builds the shared `TEST_EXE` once (so
+workers don't race on `build/main-test.obj`), then runs the QEMU-only gates
+concurrently, each with `BATTY_TEST_FLOPPY=build/batty-test-<i>.img`. Same
+gates, same assertions — just concurrent (~Jx faster: the fast core drops
+from ~15 min to a few). ZEsarUX gates (`test-frame-step`, `replay-l3-entry`,
+`capture-timeline-both`, `replay-l3-brick-flash-both`) are EXCLUDED — they
+drive a single ZRCP port (10000) and a shared snapshot, so run those via the
+serial `make parity-check-full`.
+
+Reliability net: a wait-key gate that reads a probe written at level init
+(`probe_phase=init`, i.e. a missed `BATTY_REPLAY_WAIT_KEY` wake on a slow
+boot) re-boots via `test_visual.boot_until_gameplay()` until it sees a real
+checkpoint write (`probe_phase=play`). This self-heal let the fixed
+boot-waits be trimmed (capture_frame_timeline 12→10 s, seeded gates 9→8 s).
+
 ## Per-level testing via `BATTY_LEVEL` env
 
 ```sh
