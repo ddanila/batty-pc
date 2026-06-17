@@ -344,6 +344,24 @@ misdiagnosed as a SLEEP/screendump flake in performance.md. Rule: ANY test
 that boots the game more than once and compares outputs must pin
 BATTY_REPLAY_COUNTER if a steer/cadence-driven object is on screen.
 
+## Two-layer test parallelism: cap inner jobs or you re-trigger the TCG flake
+
+The slow gates (bat-deflection, ball-no-tunnel) parallelize their own case
+loops (each case on its own floppy via BATTY_TEST_FLOPPY — and the per-case
+`make` MUST pass that env or TEST_FLOPPY_OUT won't resolve to the per-case
+path and the build silently no-ops, reading -1). Standalone that's a big
+win (bat-deflection 162s -> 23s on 14 cores). BUT under run_gates_parallel
+(outer fan-out), inner×outer can exceed core count, and too many concurrent
+QEMUs each run SLOWER than real time — which breaks the harness's
+wall-clock frame waits (the port hasn't reached frame N when the capture
+fires) and every gate "diverges". Same failure mode as hosted-CI TCG.
+Fix: gates use a MODEST inner pool (2) when BATTY_TEST_FLOPPY is set (=
+running under the outer runner) and a high pool standalone. Net fast-core:
+538s serial -> 178s (outer only) -> 99s (outer + capped inner) on 14 cores.
+The deeper fix (make the harness wait for the port to REPORT it reached
+frame N, instead of a wall-clock sleep) would remove the fragility entirely
+and is the prerequisite for QEMU-on-CI.
+
 ## Parallelizing the suite: per-floppy isolation, not per-process
 
 The serial-only constraint (below) was lifted by making the floppy path an

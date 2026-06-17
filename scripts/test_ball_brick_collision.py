@@ -64,34 +64,52 @@ def ball_seed(x: int, y: int, direction: int, speed: int) -> str:
     return f"0200{x:02X}00{y:02X}00{direction:02X}{speed:02X}{TAIL}"
 
 
-def build_floppy(env: str) -> None:
-    FLOPPY.unlink(missing_ok=True)
-    subprocess.run(f"{env} make {FLOPPY}", shell=True,
+# Cases are independent — run them on their own floppies, concurrently. High
+# concurrency standalone; modest under run_gates_parallel.py (BATTY_TEST_FLOPPY
+# set) so the outer fan-out + inner pool don't oversubscribe cores (too many
+# concurrent QEMUs run slower than real time, breaking wall-clock frame waits).
+INNER_JOBS = int(os.environ.get(
+    "BATTY_INNER_JOBS",
+    "2" if os.environ.get("BATTY_TEST_FLOPPY") else str(min(7, os.cpu_count() or 4))))
+
+
+def case_floppy(idx: int) -> Path:
+    base = str(FLOPPY)
+    stem = base[:-4] if base.endswith(".img") else base
+    return Path(f"{stem}-c{idx}.img")
+
+
+def build_floppy(env: str, floppy: Path) -> None:
+    floppy.unlink(missing_ok=True)
+    # BATTY_TEST_FLOPPY makes TEST_FLOPPY_OUT == this per-case path so the
+    # Makefile rule builds it (with a per-floppy AUTOEXEC scratch).
+    subprocess.run(f"BATTY_TEST_FLOPPY={floppy} {env} make {floppy}", shell=True,
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
 
 
-def boot_and_read(sleep_extra: float, label: str = "") -> dict:
+def boot_and_read(sleep_extra: float, floppy: Path, idx: int = 0,
+                  label: str = "") -> dict:
     """Boot the seeded floppy, run to the FRAME_PROBE halt, read PROBE.TXT.
     Retries via boot_until_gameplay if a missed BATTY_REPLAY_WAIT_KEY wake
     left the pre-gameplay seed write (probe_phase=init) — which would
     otherwise read as a false 'ball never reached the brick' PASS."""
     boot_wait = os.environ.get("BATTY_BOOT_WAIT", "8")  # CI can raise this
     def drive():
-        subprocess.run(["mdel", "-i", str(FLOPPY), "::PROBE.TXT"],
+        subprocess.run(["mdel", "-i", str(floppy), "::PROBE.TXT"],
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
-        run_qemu(FLOPPY, [f"SLEEP {boot_wait}", "sendkey ret",
-                          f"SLEEP {1.0 + sleep_extra}"], OUT / "qemu.log")
-    return boot_until_gameplay(FLOPPY, drive, label=label)
+        run_qemu(floppy, [f"SLEEP {boot_wait}", "sendkey ret",
+                          f"SLEEP {1.0 + sleep_extra}"], OUT / f"qemu_{idx}.log")
+    return boot_until_gameplay(floppy, drive, label=label)
 
 
 def is_solid(v: int) -> bool:
     return (v & 0x80) == 0
 
 
-def read_initial_grid(level: int) -> tuple[bytes, int]:
+def read_initial_grid(level: int, floppy: Path, idx: int) -> tuple[bytes, int]:
     build_floppy(f"BATTY_LEVEL={level} BATTY_START_LEVEL=1 "
-                 f"BATTY_REPLAY_PROBE=1 BATTY_FRAME_PROBE=1")
-    p = boot_and_read(0.5)
+                 f"BATTY_REPLAY_PROBE=1 BATTY_FRAME_PROBE=1", floppy)
+    p = boot_and_read(0.5, floppy, idx, label=f"grid L{level}")
     g = bytes.fromhex(p.get("current_level_copy", ""))
     if len(g) != 180:
         raise SystemExit(f"FAIL L{level}: bad initial grid ({len(g)} cells)")
@@ -117,7 +135,7 @@ def pick_targets(grid: bytes, vsense: str, max_cols: int) -> list[tuple[int, int
     return targets
 
 
-def run_case(level, row, col, vsense, direction, speed) -> dict | None:
+def run_case(level, row, col, vsense, direction, speed, floppy, idx) -> dict | None:
     brick_top = 32 + row * 8
     brick_bot = brick_top + 8
     brick_left = 8 + col * 16
@@ -139,8 +157,9 @@ def run_case(level, row, col, vsense, direction, speed) -> dict | None:
            f"BATTY_REPLAY_BAT_OBJECT={BAT_OBJECT} "
            f"BATTY_REPLAY_BALL_OBJECT={ball_seed(x, y, direction, speed)} "
            f"BATTY_REPLAY_BALL_STUCK=0 BATTY_FRAME_PROBE={frames}")
-    build_floppy(env)
-    p = boot_and_read(frames * 0.05)
+    build_floppy(env, floppy)
+    p = boot_and_read(frames * 0.05, floppy, idx,
+                      label=f"L{level} r{row} c{col} {vsense} spd{speed}")
     g = bytes.fromhex(p.get("current_level_copy", ""))
     b = bytes.fromhex(p.get("object_ball_1", ""))
     if len(g) != 180 or len(b) != 22:
@@ -203,22 +222,56 @@ def main() -> int:
         approaches = args.approaches.split(",")
         max_cols = args.max_cols
 
-    fails, total = [], 0
+    import concurrent.futures
+    # Pre-build the shared TEST_EXE once so concurrent per-case `make` calls
+    # don't race on build/main-test.obj.
+    subprocess.run(["make", "build/batty-test.exe"],
+                   stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT, check=True)
+
+    # Read the initial grids (one boot per level) concurrently, each on its
+    # own floppy.
+    grids = {}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=INNER_JOBS) as ex:
+        futs = {ex.submit(read_initial_grid, lv, case_floppy(i), i): lv
+                for i, lv in enumerate(levels)}
+        for fut in concurrent.futures.as_completed(futs):
+            grids[futs[fut]] = fut.result()
+
+    # Enumerate every case, then run them all concurrently (own floppy each).
+    work = []
     for level in levels:
-        grid0, bricks0 = read_initial_grid(level)
+        grid0, bricks0 = grids[level]
         for ap_name in approaches:
             vsense, direction = APPROACHES[ap_name]
             for (row, col) in pick_targets(grid0, vsense, max_cols):
                 for speed in speeds:
-                    case = run_case(level, row, col, vsense, direction, speed)
-                    if case is None:
-                        continue
-                    total += 1
-                    ok, reason = evaluate(case, bricks0)
-                    print(f"  L{level:2d} r{row} c{col:2d} {ap_name:6s} spd{speed} "
-                          f"f{case.get('frames','?'):>2}: [{'PASS' if ok else 'FAIL'}] {reason}")
-                    if not ok:
-                        fails.append((level, row, col, ap_name, speed, reason))
+                    work.append((level, row, col, ap_name, vsense, direction,
+                                 speed, bricks0))
+
+    fails, total = [], 0
+    lines = [None] * len(work)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=INNER_JOBS) as ex:
+        futs = {}
+        for i, (level, row, col, ap_name, vsense, direction, speed, b0) in enumerate(work):
+            futs[ex.submit(run_case, level, row, col, vsense, direction, speed,
+                           case_floppy(i), i)] = i
+        for fut in concurrent.futures.as_completed(futs):
+            i = futs[fut]
+            level, row, col, ap_name, vsense, direction, speed, b0 = work[i]
+            case = fut.result()
+            if case is None:
+                lines[i] = None
+                continue
+            ok, reason = evaluate(case, b0)
+            lines[i] = (f"  L{level:2d} r{row} c{col:2d} {ap_name:6s} spd{speed} "
+                        f"f{case.get('frames','?'):>2}: [{'PASS' if ok else 'FAIL'}] {reason}")
+            if not ok:
+                fails.append((level, row, col, ap_name, speed, reason))
+
+    for ln in lines:
+        if ln is not None:
+            print(ln)
+            total += 1
 
     print()
     if fails:
