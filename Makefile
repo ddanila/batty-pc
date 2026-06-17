@@ -618,6 +618,7 @@ parity-check-parallel:
 parity-check-full:
 	$(MAKE) parity-check
 	$(MAKE) test-ball-no-tunnel FULL=1
+	$(MAKE) test-ball-paths-no-tunnel
 	$(MAKE) test-frame-step
 	$(MAKE) replay-l3-entry
 	$(MAKE) test-wall-bounce
@@ -802,6 +803,13 @@ endif
 # attr_buff == bg_attr_buff under a bird seeded over L3 bricks. ZEsarUX-free.
 test-enemy-attr-parity:
 	python3 scripts/test_enemy_attr_parity.py
+
+# No-tunnel coverage for the non-primary collision paths (known-bugs.md #6
+# secondary leads): step_extra_ball (multiball) + magnet_captured_move. Both
+# call the same LAFFC the #6 edge-mask fix lives in; this guards that an
+# extra/captured ball's centre never sits inside a solid brick.
+test-ball-paths-no-tunnel:
+	python3 scripts/test_ball_paths_no_tunnel.py
 
 # Magnet-ball gate: an ON magnet must curve the ball (+-1/64 dir per
 # frame while overlapping the 15x14 box, quantized release), an OFF

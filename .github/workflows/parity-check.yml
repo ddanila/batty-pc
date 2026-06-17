@@ -5,40 +5,28 @@ on:
     branches: ["**"]
   pull_request:
 
+# CI scope decision (calibrated against run 27697521157):
+# Hosted GitHub runners have no KVM, so QEMU runs under TCG emulation that is
+# SLOWER than real time. The gate harness waits for game frames with
+# wall-clock sleeps (boot-wait + delta/fps), which assume ~real-time frame
+# execution — under TCG the port hasn't finished N frames when the capture
+# fires, so the probe lands on the wrong frame and EVERY QEMU gate "diverges"
+# (observed: bat-deflection 14/14, laffc-ball 5/5, ... over a 21-min job).
+# A bigger BATTY_BOOT_WAIT does NOT fix this — it would need a
+# frame-completion-aware harness (poll until the port reports it reached
+# frame N) or a KVM/self-hosted runner. So hosted CI runs only the fast,
+# deterministic, emulator-free signal; the full QEMU suite runs locally via
+# `make parity-check-parallel` (and the ZEsarUX-oracle gates via
+# `make parity-check-full`).
 jobs:
-  # Fast, reliable signal: the DOS port compiles (in-tree OpenWatcom
-  # linux-amd64, auto-selected by the Makefile on Linux) and the
-  # emulator-free source-level regression gates pass. No QEMU, so this is
-  # quick and deterministic on hosted runners.
   build-and-source-gates:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Build the DOS test EXE (compile check)
+      - name: Build the DOS test EXE (compile check, in-tree linux-amd64 OpenWatcom)
         run: make build/batty-test.exe
       - name: Source-level regression gates (no emulator)
         run: |
           make test-l3-replay-seed
           make test-death-sparks
           make test-rocket-bonus
-
-  # Full QEMU-only parity suite, run in parallel (each gate on its own
-  # floppy). Hosted GitHub runners have no KVM, so QEMU runs under TCG
-  # emulation — much slower than a local boot — hence BATTY_BOOT_WAIT is
-  # raised generously and the probe_phase retry net (boot_until_gameplay)
-  # absorbs the occasional slow boot. This job is OBSERVATIONAL for now
-  # (continue-on-error) because the TCG timing has not been calibrated on a
-  # real runner; once it is reliably green, drop continue-on-error to make
-  # it a hard gate. ZEsarUX-oracle gates are excluded (single ZRCP port) —
-  # run those locally via `make parity-check-full`.
-  parity-qemu:
-    runs-on: ubuntu-latest
-    continue-on-error: true
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install QEMU + mtools
-        run: sudo apt-get update && sudo apt-get install -y qemu-system-x86 mtools
-      - name: Parallel QEMU parity (fast core)
-        env:
-          BATTY_BOOT_WAIT: "30"
-        run: make parity-check-parallel J=2

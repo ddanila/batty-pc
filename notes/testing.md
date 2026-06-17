@@ -221,6 +221,31 @@ they are EQUAL across the sprite's footprint — i.e. the enemy changed no
 cell attr. ZEsarUX-free; the original's behaviour was confirmed by an
 oracle attr read (build/orig_flyover, notes/bird-render-parity.md).
 
+`make test-ball-paths-no-tunnel` extends the no-tunnel invariant to the
+NON-primary collision paths (known-bugs #6's secondary leads):
+`step_extra_ball` (multiball) and `magnet_captured_move` (a ball captured +
+curved inside an ON magnet). Both call the same `laffc_collision(); if
+(hit==0) brick_collision()` the primary uses — the path the #6 edge-mask fix
+lives in. PROBE.TXT now dumps `object_ball_2/3`; the gate seeds multiball
+(L1) + a magnet-ON ball (L2 pocket) and asserts, at several probed frames,
+that no ACTIVE ball's CENTRE sits inside a solid brick cell (a bounced ball
+snaps to the cell edge — centre outside). Wired into parity-check-full.
+
+## CI (`.github/workflows/parity-check.yml`)
+
+Hosted GitHub runners have no KVM, so QEMU runs under TCG emulation that is
+SLOWER than real time — and the gate harness waits for game frames with
+wall-clock sleeps (boot-wait + delta/fps). Under TCG the port hasn't
+finished N frames when the capture fires, so EVERY QEMU gate lands on the
+wrong frame and "diverges" (calibration run 27697521157: bat-deflection
+14/14, laffc-ball 5/5, over a 21-min job). A bigger `BATTY_BOOT_WAIT` does
+not fix it; it needs a frame-completion-aware harness or a KVM/self-hosted
+runner. So CI runs only the fast, deterministic, emulator-free signal (build
+the EXE via the in-tree linux-amd64 OpenWatcom + the source-level gates
+l3-replay-seed / death-sparks / rocket-bonus, ~7 s). The QEMU suite runs
+locally via `make parity-check-parallel`; ZEsarUX-oracle gates via
+`make parity-check-full`.
+
 ## Running the suite in parallel (`make parity-check-parallel J=8`)
 
 The gates are boot-dominated (~10 s/boot) and historically serial because

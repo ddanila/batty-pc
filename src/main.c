@@ -5291,6 +5291,16 @@ static void write_replay_probe(void) {
     for (i = 0; i < (int)sizeof(object_t); i++) {
         fprintf(f, "%02X", ((unsigned char *)&objects[OBJ_ENEMY])[i]);
     }
+    /* Extra balls (multiball) — so the collision-invariant sweep can probe
+     * step_extra_ball's path (no-tunnel) the same way it probes the primary. */
+    fprintf(f, "\nobject_ball_2=");
+    for (i = 0; i < (int)sizeof(object_t); i++) {
+        fprintf(f, "%02X", ((unsigned char *)&objects[OBJ_BALL_2])[i]);
+    }
+    fprintf(f, "\nobject_ball_3=");
+    for (i = 0; i < (int)sizeof(object_t); i++) {
+        fprintf(f, "%02X", ((unsigned char *)&objects[OBJ_BALL_3])[i]);
+    }
     /* Bonus/bomb state (the original shares object_bonus $9B80 for both).
      * Used to verify RNG-dependent drops match the original (e.g. that the
      * RNG-perframe flip + seed do not spawn a spurious bonus). */
