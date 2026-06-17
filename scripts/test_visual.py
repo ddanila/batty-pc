@@ -103,11 +103,17 @@ def expected_from_scr(scr_path: Path):
     return decode(scr_path.read_bytes())
 
 
-def run_qemu(floppy: Path, script: list, log_path: Path):
-    """Drive QEMU via -monitor stdio. `script` is a list of either
-    'SLEEP <secs>' or raw monitor commands."""
+def run_qemu(floppy: Path, script: list, log_path: Path, serial_path=None):
+    """Drive QEMU via -monitor stdio. `script` is a list of:
+      'SLEEP <secs>'        — wall-clock wait
+      'WAITSERIAL <n> [to]' — wait until the port has emitted >= n 'PROBE'
+                              markers on COM1 (deterministic frame-reached
+                              signal; needs serial_path + a BATTY_SERIAL_PROBE
+                              floppy). Optional timeout `to` secs (default 40).
+      anything else         — a raw QEMU monitor command.
+    serial_path: if given, COM1 is captured to that file (`-serial file:`)."""
     log = log_path.open('wb')
-    proc = subprocess.Popen([
+    cmd = [
         'qemu-system-i386',
         '-drive', f'if=floppy,format=raw,file={floppy}',
         '-boot', 'a',
@@ -115,11 +121,29 @@ def run_qemu(floppy: Path, script: list, log_path: Path):
         '-display', 'none',
         '-monitor', 'stdio',
         '-no-reboot',
-    ], stdin=subprocess.PIPE, stdout=log, stderr=log)
+    ]
+    if serial_path is not None:
+        Path(serial_path).write_bytes(b'')   # truncate prior markers
+        cmd += ['-serial', f'file:{serial_path}']
+    proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=log, stderr=log)
     try:
         for step in script:
             if step.startswith('SLEEP '):
                 time.sleep(float(step.split()[1]))
+            elif step.startswith('WAITSERIAL '):
+                parts = step.split()
+                want = int(parts[1])
+                timeout = float(parts[2]) if len(parts) > 2 else 40.0
+                deadline = time.time() + timeout
+                while time.time() < deadline:
+                    try:
+                        n = Path(serial_path).read_bytes().count(b'PROBE')
+                    except (OSError, TypeError):
+                        n = 0
+                    if n >= want:
+                        break
+                    time.sleep(0.1)
+                time.sleep(0.15)   # let the post-marker screen settle
             else:
                 proc.stdin.write((step + '\n').encode())
                 proc.stdin.flush()

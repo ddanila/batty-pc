@@ -469,6 +469,9 @@ $(TEST_FLOPPY_OUT): $(TEST_EXE) $(ASSETS) $(FLOPPY_SRC)
 	if [ -n "$$BATTY_TEST_KEY_BEFORE_ANIM" ]; then \
 	    printf 'SET BATTY_TEST_KEY_BEFORE_ANIM=%s\r\n' "$$BATTY_TEST_KEY_BEFORE_ANIM" >> $(AUTOEXEC_T) ; \
 	fi; \
+	if [ -n "$$BATTY_SERIAL_PROBE" ]; then \
+	    printf 'SET BATTY_SERIAL_PROBE=%s\r\n' "$$BATTY_SERIAL_PROBE" >> $(AUTOEXEC_T) ; \
+	fi; \
 	printf 'BATTY\r\n' >> $(AUTOEXEC_T)
 	mcopy -i $@ -o $(AUTOEXEC_T) ::AUTOEXEC.BAT
 	@echo "Test floppy ready: $@  (full 4-state cycle)"

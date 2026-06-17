@@ -80,6 +80,13 @@ def main():
     # original's post-setup $BA83), then `sendkey ret` wakes it into the
     # frame loop; the probe then halts at each --frames checkpoint, counted
     # from entry just like the original side's $BA83 trips.
+    # When the floppy was built with BATTY_SERIAL_PROBE, the port emits a
+    # 'PROBE' marker on COM1 each time it REACHES a checkpoint, so the harness
+    # waits for that marker (WAITSERIAL) instead of a wall-clock sleep — frame-
+    # exact on any emulation speed (TCG/oversubscribed). The frame-0 wait-key
+    # pause is unmarked (it's pre-gameplay), so markers count the checkpoints.
+    serial = os.environ.get('BATTY_SERIAL_PROBE')
+    serial_path = (out / 'serial.txt') if serial else None
     script = [f'SLEEP {args.boot_wait}']
     ppm_paths = []
     if args.wait_key:
@@ -87,10 +94,15 @@ def main():
         ppm_paths.append((0, zero))
         script.append(f'screendump {zero}')
     prev = 0
+    marker = 0
     for i, n in enumerate(frames):
         if args.wait_key or i > 0:
-            delta = n - prev
             script.append('sendkey ret')
+        marker += 1
+        if serial:
+            script.append(f'WAITSERIAL {marker}')
+        elif args.wait_key or i > 0:
+            delta = n - prev
             script.append(f'SLEEP {delta / args.fps + 0.5:.3f}')
         ppm = out / f'frame_{n:04d}.ppm'
         ppm_paths.append((n, ppm))
@@ -98,7 +110,7 @@ def main():
         prev = n
 
     print(f'booting {args.floppy} headless (boot wait {args.boot_wait}s), '
-          f'checkpoints={frames}...')
+          f'checkpoints={frames}, serial={"on" if serial else "off"}...')
     # Reliability net (shared by every --wait-key + BATTY_REPLAY_PROBE gate):
     # the port writes PROBE.TXT with the seeded pre-gameplay state at level
     # init (probe_phase=init) BEFORE the wait-key pause. If the wake key is
@@ -109,7 +121,7 @@ def main():
     attempts = int(os.environ.get('BATTY_BOOT_ATTEMPTS', '3')) if args.wait_key else 1
     from test_visual import read_probe_dict
     for attempt in range(attempts):
-        run_qemu(Path(args.floppy), script, out / 'qemu.log')
+        run_qemu(Path(args.floppy), script, out / 'qemu.log', serial_path=serial_path)
         if attempts == 1:
             break
         phase = read_probe_dict(args.floppy).get('probe_phase')

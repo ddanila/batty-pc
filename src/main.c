@@ -5256,6 +5256,27 @@ static void write_replay_briks_data(FILE *f) {
     }
 }
 
+/* Tell the harness, via COM1, that the port has REACHED a probe checkpoint
+ * (frame N) and written PROBE.TXT — so it can capture/quit deterministically
+ * instead of guessing with a wall-clock sleep. QEMU `-serial file:...`
+ * captures these bytes live (flushed per write), which is robust to slow/TCG
+ * emulation where wall-clock frame waits land on the wrong frame. COM1 THR @
+ * 0x3F8; bounded spin on the LSR THR-empty bit (0x20 @ 0x3FD) so it never
+ * hangs and is a harmless no-op when no serial backend is attached. Opt-in
+ * via BATTY_SERIAL_PROBE so existing wall-clock callers are unaffected. */
+static unsigned char serial_probe_enabled = 0;
+
+static void serial_probe_signal(void) {
+    static const char msg[] = "PROBE\r\n";
+    int k;
+    if (!serial_probe_enabled) return;
+    for (k = 0; msg[k] != '\0'; k++) {
+        unsigned int spin = 0;
+        while (!(inp(0x3FD) & 0x20) && ++spin < 60000u) { }
+        outp(0x3F8, (unsigned char)msg[k]);
+    }
+}
+
 static void write_replay_probe(void) {
     FILE *f;
     int i;
@@ -7905,6 +7926,7 @@ static state_t run_level(void) {
                         if (launch_probe_countdown > 0) launch_probe_countdown--;
                         if (launch_probe_countdown == 0) {
                             write_replay_probe();
+                            serial_probe_signal();
                             return ST_QUIT;
                         }
                     }
@@ -7912,6 +7934,7 @@ static state_t run_level(void) {
                         if (frame_probe_countdown > 0) frame_probe_countdown--;
                         if (frame_probe_countdown == 0) {
                             write_replay_probe();
+                            serial_probe_signal();
                             return ST_QUIT;
                         }
                     }
@@ -8046,6 +8069,7 @@ static state_t run_level(void) {
                      * A single-value probe has count==1 and quits here,
                      * exactly as the original single-shot path did. */
                     write_replay_probe();
+                    serial_probe_signal();   /* reached frame N -> tell harness */
                     while (!kbhit()) {
                         sound_tick();
                     }
@@ -8158,6 +8182,7 @@ int main(void) {
     }
     if (getenv("BATTY_FORCE_FULL_FLUSH_EACH_FRAME") != NULL) force_full_flush_each_frame = 1;
     if (getenv("BATTY_SUPPRESS_NO_BALL_DEATH") != NULL) suppress_no_ball_death = 1;
+    if (getenv("BATTY_SERIAL_PROBE") != NULL) serial_probe_enabled = 1;
     if (getenv("BATTY_AUTO_FIRE") != NULL) auto_fire = 1;
     if (getenv("BATTY_FULL_BAND_REBUILD") != NULL) force_full_band_rebuild = 1;
     {
