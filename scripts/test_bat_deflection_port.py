@@ -71,19 +71,12 @@ CATCH_CASES = [
 ]
 
 
-def _probe_ball(start_x, indir, frame, bat_obj):
-    Path(FLOPPY).unlink(missing_ok=True)
-    probe = Path("build/PROBE_laffc.txt")
+SEED_Y = 0x96  # BALL_BASE byte 4: the drop height the ball starts at.
+
+
+def _probe_once(frame, probe):
+    """One boot+wake+read. Returns object_ball_1 bytes or None."""
     probe.unlink(missing_ok=True)
-    env = (
-        f"BATTY_LEVEL=3 BATTY_START_LEVEL=1 BATTY_REPLAY_WAIT_KEY=1 "
-        f"BATTY_LAFFC=1 BATTY_REPLAY_PROBE=1 BATTY_REPLAY_RANDOM=8E49 "
-        f"BATTY_REPLAY_BAT_OBJECT={bat_obj} BATTY_REPLAY_BALL_STUCK=0 "
-        f"BATTY_REPLAY_BALL_OBJECT={ball_object_hex(start_x, indir)} "
-        f"BATTY_VISUAL_PROBE_FRAMES={frame}"
-    )
-    subprocess.run(f"{env} make {FLOPPY}", shell=True,
-                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     subprocess.run([sys.executable, "scripts/capture_frame_timeline.py",
                     "--floppy", FLOPPY, "--frames", str(frame), "--wait-key",
                     "--out", "build/tl_bat"], stdout=subprocess.DEVNULL)
@@ -93,6 +86,38 @@ def _probe_ball(start_x, indir, frame, bat_obj):
         return None
     m = re.search(r"object_ball_1=([0-9A-Fa-f]+)", probe.read_text())
     return bytes.fromhex(m.group(1)) if m else None
+
+
+def _probe_ball(start_x, indir, frame, bat_obj, attempts=3):
+    """Build the seeded floppy once, then boot+wake+read with a retry on a
+    stale read. The port writes PROBE.TXT with the SEED state at level init
+    (main.c:7668) *before* the BATTY_REPLAY_WAIT_KEY pause; if the wake key
+    misses (rare slow-boot host-timing race) the gameplay loop never runs
+    and we read that unmoved seed state. A real drop-to-bat ALWAYS moves the
+    ball off its seed y/x/dir, so an unmoved read means the wake didn't land
+    -> re-boot and try again. Deterministic outcome, no fixed-margin guess."""
+    Path(FLOPPY).unlink(missing_ok=True)
+    probe = Path("build/PROBE_laffc.txt")
+    env = (
+        f"BATTY_LEVEL=3 BATTY_START_LEVEL=1 BATTY_REPLAY_WAIT_KEY=1 "
+        f"BATTY_LAFFC=1 BATTY_REPLAY_PROBE=1 BATTY_REPLAY_RANDOM=8E49 "
+        f"BATTY_REPLAY_BAT_OBJECT={bat_obj} BATTY_REPLAY_BALL_STUCK=0 "
+        f"BATTY_REPLAY_BALL_OBJECT={ball_object_hex(start_x, indir)} "
+        f"BATTY_VISUAL_PROBE_FRAMES={frame}"
+    )
+    subprocess.run(f"{env} make {FLOPPY}", shell=True,
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    b = None
+    for attempt in range(attempts):
+        b = _probe_once(frame, probe)
+        unmoved = (b is not None and b[2] == start_x and b[4] == SEED_Y
+                   and b[6] == indir)
+        if b is not None and not unmoved:
+            return b
+        if attempt + 1 < attempts:
+            print(f"    (retry: stale/unmoved probe for start_x={start_x} "
+                  f"in=0x{indir:02X} — wake likely missed)", file=sys.stderr)
+    return b
 
 
 def dir_at(start_x: int, indir: int, frame: int) -> int:
