@@ -81,26 +81,32 @@ def main():
     # frame loop; the probe then halts at each --frames checkpoint, counted
     # from entry just like the original side's $BA83 trips.
     # When the floppy was built with BATTY_SERIAL_PROBE, the port emits a
-    # 'PROBE' marker on COM1 each time it REACHES a checkpoint, so the harness
-    # waits for that marker (WAITSERIAL) instead of a wall-clock sleep — frame-
-    # exact on any emulation speed (TCG/oversubscribed). The frame-0 wait-key
-    # pause is unmarked (it's pre-gameplay), so markers count the checkpoints.
+    # 'PROBE' marker on COM1 at every halt — the wait-key pause AND each
+    # checkpoint — so the harness waits for the marker (WAITSERIAL) instead
+    # of a wall-clock sleep. Frame-exact on ANY emulation speed (slow TCG,
+    # oversubscribed cores). The pause marker also makes the boot
+    # deterministic: the wake is sent only after the port is provably at the
+    # $BA83 pause, so it can't be lost on a slow boot.
     serial = os.environ.get('BATTY_SERIAL_PROBE')
     serial_path = (out / 'serial.txt') if serial else None
+    swait = os.environ.get('BATTY_SERIAL_TIMEOUT', '60')   # per-marker, secs
     script = [f'SLEEP {args.boot_wait}']
     ppm_paths = []
+    marker = 0
     if args.wait_key:
         zero = out / 'frame_0000.ppm'
         ppm_paths.append((0, zero))
+        if serial:
+            marker += 1                       # the pause emits the 1st marker
+            script.append(f'WAITSERIAL {marker} {swait}')
         script.append(f'screendump {zero}')
     prev = 0
-    marker = 0
     for i, n in enumerate(frames):
         if args.wait_key or i > 0:
             script.append('sendkey ret')
-        marker += 1
         if serial:
-            script.append(f'WAITSERIAL {marker}')
+            marker += 1
+            script.append(f'WAITSERIAL {marker} {swait}')
         elif args.wait_key or i > 0:
             delta = n - prev
             script.append(f'SLEEP {delta / args.fps + 0.5:.3f}')

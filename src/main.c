@@ -7729,6 +7729,7 @@ static state_t run_level(void) {
          * no wall-clock drift. The wake key is consumed below so it
          * doesn't double as the next main-loop input. */
         if (getenv("BATTY_REPLAY_WAIT_KEY") != NULL) {
+            serial_probe_signal();   /* boot+intro done, AT the $BA83 pause */
             while (!kbhit()) {
                 sound_tick();
             }

@@ -61,7 +61,13 @@ FULL_EXTRA_GATES = [
 
 
 def run_gate(gate: str, idx: int) -> dict:
-    env = dict(os.environ, BATTY_TEST_FLOPPY=f"build/batty-test-{idx}.img")
+    # BATTY_SERIAL_PROBE makes the capture_frame_timeline gates wait for the
+    # port's COM1 frame-reached marker instead of a wall-clock sleep, so they
+    # stay frame-exact even when the concurrent fan-out slows each QEMU below
+    # real time (the failure mode that broke them under oversubscription/TCG).
+    env = dict(os.environ,
+               BATTY_TEST_FLOPPY=f"build/batty-test-{idx}.img",
+               BATTY_SERIAL_PROBE="1")
     t0 = time.time()
     p = subprocess.run(["make", gate], env=env,
                        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)

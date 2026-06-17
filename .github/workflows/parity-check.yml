@@ -5,19 +5,16 @@ on:
     branches: ["**"]
   pull_request:
 
-# CI scope decision (calibrated against run 27697521157):
-# Hosted GitHub runners have no KVM, so QEMU runs under TCG emulation that is
-# SLOWER than real time. The gate harness waits for game frames with
-# wall-clock sleeps (boot-wait + delta/fps), which assume ~real-time frame
-# execution — under TCG the port hasn't finished N frames when the capture
-# fires, so the probe lands on the wrong frame and EVERY QEMU gate "diverges"
-# (observed: bat-deflection 14/14, laffc-ball 5/5, ... over a 21-min job).
-# A bigger BATTY_BOOT_WAIT does NOT fix this — it would need a
-# frame-completion-aware harness (poll until the port reports it reached
-# frame N) or a KVM/self-hosted runner. So hosted CI runs only the fast,
-# deterministic, emulator-free signal; the full QEMU suite runs locally via
-# `make parity-check-parallel` (and the ZEsarUX-oracle gates via
-# `make parity-check-full`).
+# Hosted GitHub runners have no KVM, so QEMU runs under TCG (slower than real
+# time). The first attempt failed because the harness waited for frames with
+# wall-clock sleeps (run 27697521157: every QEMU gate diverged). That is now
+# fixed by the BATTY_SERIAL_PROBE frame-completion signal — the port emits a
+# COM1 marker at each halt and the harness waits for it (deterministic on any
+# speed). The parity-qemu job below uses it with generous timeouts; it is
+# observational (continue-on-error) for now and will be promoted to a hard
+# gate once it is confirmed green on a real runner. The fast emulator-free
+# job is always a hard gate. ZEsarUX-oracle gates stay local
+# (`make parity-check-full`).
 jobs:
   build-and-source-gates:
     runs-on: ubuntu-latest
@@ -30,3 +27,16 @@ jobs:
           make test-l3-replay-seed
           make test-death-sparks
           make test-rocket-bonus
+
+  parity-qemu:
+    runs-on: ubuntu-latest
+    continue-on-error: true   # promote to a hard gate once confirmed green
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install QEMU + mtools
+        run: sudo apt-get update && sudo apt-get install -y qemu-system-x86 mtools
+      - name: Parallel QEMU parity (fast core, deterministic serial waits)
+        env:
+          BATTY_BOOT_WAIT: "20"        # head-start; WAITSERIAL covers the rest
+          BATTY_SERIAL_TIMEOUT: "240"  # generous per-marker wait for slow TCG
+        run: make parity-check-parallel J=2
