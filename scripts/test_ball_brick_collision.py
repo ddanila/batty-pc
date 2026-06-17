@@ -75,11 +75,12 @@ def boot_and_read(sleep_extra: float, label: str = "") -> dict:
     Retries via boot_until_gameplay if a missed BATTY_REPLAY_WAIT_KEY wake
     left the pre-gameplay seed write (probe_phase=init) — which would
     otherwise read as a false 'ball never reached the brick' PASS."""
+    boot_wait = os.environ.get("BATTY_BOOT_WAIT", "8")  # CI can raise this
     def drive():
         subprocess.run(["mdel", "-i", str(FLOPPY), "::PROBE.TXT"],
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
-        run_qemu(FLOPPY, ["SLEEP 8.0", "sendkey ret", f"SLEEP {1.0 + sleep_extra}"],
-                 OUT / "qemu.log")
+        run_qemu(FLOPPY, [f"SLEEP {boot_wait}", "sendkey ret",
+                          f"SLEEP {1.0 + sleep_extra}"], OUT / "qemu.log")
     return boot_until_gameplay(FLOPPY, drive, label=label)
 
 

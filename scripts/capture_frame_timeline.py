@@ -26,11 +26,18 @@ identical unless --require-motion is passed (used to prove the
 multi-checkpoint stepping actually advances the simulation).
 """
 import argparse
+import os
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 from test_visual import run_qemu, ppm_inner_to_indices, PLAYFIELD_W, PLAYFIELD_H
+
+# Default DOS boot-wait. Local boots are ~8-9s (so 10s is a safe margin);
+# slower CI runners can raise it via BATTY_BOOT_WAIT without slowing local
+# runs or editing scripts. The probe_phase retry net (test_visual.
+# boot_until_gameplay) still catches an occasional slow boot on top.
+DEFAULT_BOOT_WAIT = float(os.environ.get("BATTY_BOOT_WAIT", "10"))
 
 
 def main():
@@ -39,7 +46,7 @@ def main():
     ap.add_argument('--frames', default='30,60,90',
                     help='comma-separated ascending absolute frame indices')
     ap.add_argument('--out', default='build/frame_timeline')
-    ap.add_argument('--boot-wait', type=float, default=10.0)
+    ap.add_argument('--boot-wait', type=float, default=DEFAULT_BOOT_WAIT)
     ap.add_argument('--fps', type=float, default=50.0,
                     help='game frame rate, for sizing the wait between checkpoints')
     ap.add_argument('--require-motion', action='store_true',

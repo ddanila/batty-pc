@@ -1,0 +1,44 @@
+name: parity-check
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  # Fast, reliable signal: the DOS port compiles (in-tree OpenWatcom
+  # linux-amd64, auto-selected by the Makefile on Linux) and the
+  # emulator-free source-level regression gates pass. No QEMU, so this is
+  # quick and deterministic on hosted runners.
+  build-and-source-gates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the DOS test EXE (compile check)
+        run: make build/batty-test.exe
+      - name: Source-level regression gates (no emulator)
+        run: |
+          make test-l3-replay-seed
+          make test-death-sparks
+          make test-rocket-bonus
+
+  # Full QEMU-only parity suite, run in parallel (each gate on its own
+  # floppy). Hosted GitHub runners have no KVM, so QEMU runs under TCG
+  # emulation — much slower than a local boot — hence BATTY_BOOT_WAIT is
+  # raised generously and the probe_phase retry net (boot_until_gameplay)
+  # absorbs the occasional slow boot. This job is OBSERVATIONAL for now
+  # (continue-on-error) because the TCG timing has not been calibrated on a
+  # real runner; once it is reliably green, drop continue-on-error to make
+  # it a hard gate. ZEsarUX-oracle gates are excluded (single ZRCP port) —
+  # run those locally via `make parity-check-full`.
+  parity-qemu:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install QEMU + mtools
+        run: sudo apt-get update && sudo apt-get install -y qemu-system-x86 mtools
+      - name: Parallel QEMU parity (fast core)
+        env:
+          BATTY_BOOT_WAIT: "30"
+        run: make parity-check-parallel J=2
