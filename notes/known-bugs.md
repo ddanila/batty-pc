@@ -5,45 +5,7 @@ visual-regression test (= mid-game state we don't snapshot). Listed
 here so the next iter has a target. When fixing, add a section to
 `per-level-profile.md` or the relevant area doc; remove from here.
 
-6. **Ball teleported through red bricks** (manual play, 2026-06-12):
-   the ball flew straight through some red bricks without destroying
-   them and without deflecting. Candidate leads, in rough order:
-   - The MAGNET captured-frame path (new in the bug-#5 fix,
-     `magnet_captured_move`): it moves the ball then runs collisions
-     with the temporarily-swapped exit dir — if the hit/unwind logic
-     misfires there, a captured/just-released ball could pass through
-     a brick. Red bricks near a magnet would fit ("red" = attr $57
-     class). Repro idea: seed a ball into a magnet box adjacent to a
-     brick row (L2 pocket borders bricks on all sides) and step it.
-   - High-speed tunneling: at speed 6 a q8.8 step can cross most of a
-     cell; LAFFC handles straddles on L3 but
-     `laffc_collision -> brick_collision` fallback coverage on other
-     layouts/cell types is less proven (test-laffc-levels-sane is a
-     sanity sweep, not a per-cell gate).
-   - Note: `use_laffc` gates the primary ball's LAFFC path in
-     step_ball, but `magnet_captured_move` and `step_extra_ball` call
-     laffc_collision unconditionally — check divergent behaviour when
-     BATTY_LAFFC is off (manual `make run` floppies!) vs on (test
-     floppies): the manual-play default may exercise the less-gated
-     path. Record exact level + brick colour when re-spotted.
-
-7. **Bird's background looks black — possibly wrong vs the original**
-   (manual play, 2026-06-12): the flying bird renders on a black
-   per-cell background. The port's enemy render recolours the alien's
-   char cells to the playfield `bg_attr`
-   (`blit_sprite_attrs_to_buff(..., bg_attr)` — e.g. L1: bright yellow
-   ink on BLACK paper, so the cells go black around the sprite). The
-   user recalls the original may reuse the BRICK colours / underlying
-   cell colours instead (unverified — might be wrong). To check
-   against the original: what attr the original's print_sprite_attrib
-   ($B656) actually writes for the enemy fly-over (read its callers /
-   the attr source register at the call site), and what the L3/L9
-   capture shows for cells the alien crosses over bricks vs over
-   texture. The f24 oracle harness (replays/l3-enemy-flyover.json) can
-   answer this directly — compare attr bytes at the bird's cells, port
-   vs ZEsarUX .scr. Note bug #2's fix history already touched the
-   clash-attr machinery (mark_dirty_cell_rect_px) — the QUESTION here
-   is the attr VALUE, not the dirty coverage.
+(none currently)
 
 (The bird/UFO render-parity program is fully closed as of 2026-06-12:
 the LAAD2 anim stepper is ported, both compose paths follow the $9AD0
@@ -66,6 +28,43 @@ measurement artifact (lessons.md).)
 ---
 
 Resolved history:
+
+(bug #6 "ball teleported through red bricks" resolved 2026-06-17: NOT
+tunneling by speed — max ball step is ~6 px/frame vs an 8x16 cell, so the
+bbox always overlaps. It was an INVERTED open-face edge test in the port's
+`laffc_collision` phase-4 mask. The original (LAFFC) starts D=$0F (all
+faces open) and CLEARS a face only when its neighbour is solid AND the cell
+is NOT against that playfield boundary — so a brick against a boundary
+keeps that boundary face OPEN. The port had `Lx!=$08 && EMPTY`,
+`Hy>=$21 && EMPTY`, etc. — the negation, leaving a boundary brick's edge
+face CLOSED. A ball straight down (dir $10) into a row-0 (Hy=$20) METAL
+brick whose right neighbour was empty then took a no-op horizontal "bounce"
+(dir ($10^$1F)+1 = $10, unchanged) and fell straight through; metal can't
+be destroyed so it showed as a clean pass-through (destructible bricks
+masked it by breaking regardless of the bounce axis). Fix: the four mask
+conditions now match the disasm (`Lx==$08 || EMPTY`, `Hy<$21 || EMPTY`,
+`Hy>=$78 || EMPTY`, `Lx==$E8 || EMPTY`). INTERIOR cells are unchanged
+(edge term false), so L3 byte-exact ball parity holds (test-laffc-ball-frame1
+green at f1/5/40/100/150). Found + gated by the new collision-invariant
+sweep `make test-ball-no-tunnel` (seeds a ball one step from a solid brick
+across levels x approaches x speeds; FAILs if it crosses a still-solid
+brick unhit). Full root cause in notes/laffc-decode.md.)
+
+(bug #7 "bird's background looks black / wrong vs the original" resolved
+2026-06-17: the premise was misdiagnosed. The port force-recoloured the
+flying enemy's whole bounding box to `bg_attr`
+(`blit_sprite_attrs_to_buff(enemy..., bg_attr)`). The original does NOT:
+moving objects are drawn by `print_obj_to_buff` ($B82C), PIXELS only —
+`print_sprite_attrib` ($B656) is called only 4 times, all in the static
+`game_screen_draw_to_buffer`. So the bird keeps each cell's underlying attr
+(bg over texture, the BRICK's attr over bricks) = ZX colour-clash. Verified
+vs the ZEsarUX oracle: the bird's cell attrs are byte-identical to the
+static L3 GT across the fly-over. Fix: dropped both enemy recolour calls +
+the now-dead `blit_sprite_attrs_to_buff` helper; the enemy blits pixels
+only like every other moving object. This also dissolves the bug-#2
+stale-clash-attr class. Gate: `make test-enemy-attr-parity`. Full story in
+notes/bird-render-parity.md.)
+
 
 (the "L9 state4 drift 186 px" entry that used to sit here was resolved
 2026-06-11: not render drift at all — the state4 screendump races the

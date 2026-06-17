@@ -1683,31 +1683,13 @@ static void blit_masked_to_scr_buff(unsigned int sprite_off,
     blit_masked_to_scr_buff_ptr(sprites_blob + sprite_off, x_px, y_px);
 }
 
-/* Port of print_sprite_attrib @ $B656. Sets `attr` in every attr_buff
- * char cell the sprite's bounding box overlaps, so a buff_to_vga pass
- * colours the sprite (and any bg pattern bits in the same cells)
- * with the new ink/paper. Mirrors the original's per-cell colour-clash
- * behaviour where a sprite repaints its cells' attrs without checking
- * which bits inside the cell are sprite vs bg. */
-static void blit_sprite_attrs_to_buff(int x_px, int y_px,
-                                       int w_px, int h_px,
-                                       unsigned char attr) {
-    int col_lo = x_px / 8;
-    int col_hi = (x_px + w_px - 1) / 8;
-    int row_lo = y_px / 8;
-    int row_hi = (y_px + h_px - 1) / 8;
-    int r, c;
-    if (col_lo < 0) col_lo = 0;
-    if (row_lo < 0) row_lo = 0;
-    if (col_hi >= ATTR_COLS) col_hi = ATTR_COLS - 1;
-    if (row_hi >= ATTR_ROWS) row_hi = ATTR_ROWS - 1;
-    for (r = row_lo; r <= row_hi; r++) {
-        for (c = col_lo; c <= col_hi; c++) {
-            attr_buff[r * 32 + c] = attr;
-        }
-    }
-}
-
+/* (Removed blit_sprite_attrs_to_buff — the print_sprite_attrib-style
+ * per-cell recolour was only ever used to paint the enemy's cells to
+ * bg_attr, which the original never does: moving objects blit pixels only
+ * via print_obj_to_buff ($B82C) and keep each cell's underlying brick/bg
+ * attr (ZX colour-clash). See known-bugs #7 and the enemy compose paths.
+ * The static playfield/border attrs still use the clipped variant below
+ * via the bat path; the level paint sets brick attrs directly.) */
 static void blit_masked_sprite_ptr(const unsigned char *src,
                                     int x_px, int y_px,
                                     unsigned char ink, unsigned char paper) {
@@ -4790,16 +4772,30 @@ static int laffc_collision(object_t *o, int prev_x, int prev_y, int new_x, int n
         if (!landed) return 0;
     }
 #undef LAFFC_SOLID
-    /* phase 4: open-face mask (bit0 L, 1 R, 2 U, 3 D). LAFFC clears a bit
-     * when that neighbour is SOLID or past a playfield edge, so a set bit
-     * = an OPEN (empty/destroyed) face the ball can reflect off. */
+    /* phase 4: open-face mask (bit0 L, 1 R, 2 U, 3 D). The original (LAFFC,
+     * disasm ~$B019) starts D=$0F (ALL faces open) and CLEARS a face only
+     * when its neighbour is SOLID *and* the cell is not against that
+     * playfield boundary:
+     *   right (bit1): RES unless Lx==$E8 [right wall] or right empty
+     *   left  (bit0): RES unless Lx==$08 [left wall]  or left empty
+     *   up    (bit2): RES unless Hy <$21 [top row]    or above empty
+     *   down  (bit3): RES unless Hy>=$78 [bottom row]  or below empty
+     * So a brick AGAINST a boundary keeps that boundary face OPEN (the ball
+     * bounces off it). An earlier port INVERTED this (`Lx!=$08 && EMPTY`,
+     * `Hy>=$21 && EMPTY`, ...), which left a boundary brick's edge face
+     * CLOSED -- known-bugs #6: a ball straight down (dir $10) into a row-0
+     * (Hy=$20) metal brick whose right neighbour is empty got a no-op
+     * horizontal "bounce" (dir ($10^$1F)+1 = $10, unchanged) and fell
+     * straight through. For INTERIOR cells the two forms are identical (the
+     * edge term is false), so L3 ball parity is unchanged; only boundary
+     * bricks differ. Gate: test-ball-no-tunnel. */
 #define LAFFC_EMPTY(rr,cc) ((rr) < 0 || (rr) >= LVL_ROWS || (cc) < 0 || \
         (cc) >= LVL_COLS || (live_level[(rr) * LVL_COLS + (cc)] & 0x80))
     mask = 0;
-    if (Lx != 0x08 && LAFFC_EMPTY(row, col - 1)) mask |= 1;
-    if (Lx != 0xE8 && LAFFC_EMPTY(row, col + 1)) mask |= 2;
-    if (Hy >= 0x21 && LAFFC_EMPTY(row - 1, col)) mask |= 4;
-    if (Hy <  0x78 && LAFFC_EMPTY(row + 1, col)) mask |= 8;
+    if (Lx == 0x08 || LAFFC_EMPTY(row, col - 1)) mask |= 1;
+    if (Lx == 0xE8 || LAFFC_EMPTY(row, col + 1)) mask |= 2;
+    if (Hy <  0x21 || LAFFC_EMPTY(row - 1, col)) mask |= 4;
+    if (Hy >= 0x78 || LAFFC_EMPTY(row + 1, col)) mask |= 8;
 #undef LAFFC_EMPTY
     /* phase 5: gate by direction (LAFFC_13..17). Leaves at most one of
      * {left,right} and one of {up,down}. */
@@ -5341,6 +5337,17 @@ static void write_replay_probe(void) {
     write_replay_briks_data(f);
     fprintf(f, "\ncurrent_level_copy=");
     for (i = 0; i < LVL_CELLS; i++) fprintf(f, "%02X", live_level[i]);
+    /* Full 32x24 attr buffer, plus the static-background attr snapshot
+     * (bg_attr_buff, set after the level's first full paint). A moving
+     * object must NOT alter any cell's attr vs the original — moving
+     * sprites only blit pixels (print_obj_to_buff $B82C), they never call
+     * print_sprite_attrib. test-enemy-attr-parity asserts attr_buff equals
+     * bg_attr_buff under a flying enemy (= the bird shows ZX colour-clash
+     * in the underlying brick/bg colour, not recoloured to bg_attr). */
+    fprintf(f, "\nattr_buff=");
+    for (i = 0; i < 768; i++) fprintf(f, "%02X", attr_buff[i]);
+    fprintf(f, "\nbg_attr_buff=");
+    for (i = 0; i < 768; i++) fprintf(f, "%02X", bg_attr_buff[i]);
     fprintf(f, "\n");
     fclose(f);
 }
@@ -6527,8 +6534,16 @@ static void redraw_full_with_ball(unsigned char level_idx) {
         }
         spr_w_px = sprites_blob[spr]     * 8;
         spr_h_px = sprites_blob[spr + 1];
-        blit_sprite_attrs_to_buff(enemy->x_coord, enemy->y_coord,
-                                   spr_w_px, spr_h_px, bg_attr);
+        /* The original draws the enemy with print_obj_to_buff ($B82C):
+         * sprite PIXELS only, never print_sprite_attrib. So the bird/UFO
+         * keeps each cell's underlying attr (bg over open texture, the
+         * BRICK's attr over bricks) and renders in ZX colour-clash — the
+         * bird over a red brick shows red, not the playfield background.
+         * Recolouring to bg_attr here (known-bugs #7) wrongly repainted the
+         * brick cells the bird flew over; verified vs the ZEsarUX oracle
+         * (build/orig_flyover: bird cells == static GT). Gate:
+         * test-enemy-attr-parity. (void) keeps the slot-order bg_attr arg. */
+        (void)bg_attr;
         blit_masked_to_scr_buff(spr, enemy->x_coord, enemy->y_coord);
         mark_dirty_cell_rect_px(enemy->x_coord, enemy->y_coord,
                                 spr_w_px, spr_h_px);
@@ -6652,8 +6667,11 @@ static void render_enemy_to_buff_and_mark(unsigned char bg_attr) {
     }
     spr_w_px = sprites_blob[spr] * 8;
     spr_h_px = sprites_blob[spr + 1];
-    blit_sprite_attrs_to_buff(enemy->x_coord, enemy->y_coord,
-                              spr_w_px, spr_h_px, bg_attr);
+    /* See the matching note in the full-compose path: the original blits
+     * enemy PIXELS only (print_obj_to_buff), never recolours its cells, so
+     * the sprite shows colour-clash in the underlying brick/bg attr
+     * (known-bugs #7, gate test-enemy-attr-parity). */
+    (void)bg_attr;
     blit_masked_to_scr_buff(spr, enemy->x_coord, enemy->y_coord);
     mark_dirty_cell_rect_px(enemy->x_coord, enemy->y_coord,
                             spr_w_px, spr_h_px);

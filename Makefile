@@ -591,6 +591,8 @@ parity-check:
 	$(MAKE) test-enemy-descend
 	$(MAKE) test-rng-walk
 	$(MAKE) test-enemy-steer
+	$(MAKE) test-ball-no-tunnel
+	$(MAKE) test-enemy-attr-parity
 
 # Comprehensive regression suite: the fast core PLUS every standalone
 # feature/render gate that previously was NOT wired into any aggregate
@@ -600,6 +602,7 @@ parity-check:
 # guards). Slower (many QEMU boots) — run before milestones / merges.
 parity-check-full:
 	$(MAKE) parity-check
+	$(MAKE) test-ball-no-tunnel FULL=1
 	$(MAKE) test-frame-step
 	$(MAKE) replay-l3-entry
 	$(MAKE) test-wall-bounce
@@ -762,6 +765,28 @@ test-laffc-ball-frame1:
 # the ball at x=8 / x=240, juggling -- notes/lessons.md, notes/wall-bounce.md).
 test-wall-bounce:
 	python3 scripts/test_wall_bounce.py
+
+# Ball-vs-brick collision invariant sweep (known-bugs.md #6 class): seeds a
+# ball one step from a solid brick across levels x approaches x speeds and
+# asserts it never passes THROUGH a still-solid brick unhit (must destroy /
+# half-hit / bounce). ZEsarUX-free. NO_TUNNEL_ARGS overrides the matrix;
+# FULL=1 runs all 15 levels + diagonals (parity-check-full).
+# Default subset includes L5/L7 (row-0 metal bricks against the top
+# boundary — the #6 repro) so the fast gate covers the boundary-face class.
+NO_TUNNEL_ARGS ?= --levels 1,5,7 --speeds 6 --approaches up,down,up-l,up-r,down-l,down-r --max-cols 1
+test-ball-no-tunnel:
+ifdef FULL
+	python3 scripts/test_ball_brick_collision.py --full
+else
+	python3 scripts/test_ball_brick_collision.py $(NO_TUNNEL_ARGS)
+endif
+
+# Enemy/sprite attribute-parity gate (known-bugs.md #7): a flying enemy must
+# NOT recolour its cells -- the original blits pixels only (print_obj_to_buff),
+# so the sprite shows ZX colour-clash in the underlying brick/bg attr. Asserts
+# attr_buff == bg_attr_buff under a bird seeded over L3 bricks. ZEsarUX-free.
+test-enemy-attr-parity:
+	python3 scripts/test_enemy_attr_parity.py
 
 # Magnet-ball gate: an ON magnet must curve the ball (+-1/64 dir per
 # frame while overlapping the 15x14 box, quantized release), an OFF

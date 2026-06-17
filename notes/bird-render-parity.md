@@ -187,3 +187,43 @@ anim driver (LAAD2), draw order ($9AD0 slots), sprite encoding
 (gfx_inverse + the bird_5 overrun bytes). No open items remain in this
 note. Gates: enemy anim/flyover/dirty A/B, make test 7/7, frame-step
 floor, laffc-ball byte-exact — all green with the patched asset.
+
+
+## RESOLVED (known-bugs #7, 2026-06-17): the enemy must NOT recolour its cells
+
+The last enemy-render divergence. The port painted the flying enemy's
+whole bounding box to `bg_attr` via `blit_sprite_attrs_to_buff(enemy...,
+bg_attr)` (one call in each of the two compose paths). The original does
+**not** do this: moving objects are drawn by `print_obj_to_buff` ($B82C),
+which blits sprite PIXELS only and **never** calls `print_sprite_attrib`
+($B656). `print_sprite_attrib` is invoked exactly 4 times in the whole
+game, all inside `game_screen_draw_to_buffer` (the static texture + border
+paint) — never for a moving object.
+
+So in the original the bird/UFO keeps each cell's *underlying* attr: the
+playfield `bg_attr` over open texture, and the **brick's** attr over
+bricks — i.e. ZX colour-clash (the bird over a red brick shows red, not
+the background). The port's `bg_attr` recolour repainted every brick cell
+the bird flew over to the playfield background (on L1, `bg_attr`=0x46 =
+bright-yellow ink / black paper, so the bird's bricks went yellow/black —
+the user's "black background" report).
+
+**Oracle proof.** `capture_frame_timeline_original.py
+--setup-from-replay replays/l3-enemy-flyover.json --probe-ball 0x9B96`
+(build/orig_flyover) shows the bird's cell attrs are **byte-identical to
+the static L3 GT** (`build/level_gt/level_03.scr`) at every captured frame
+— brick cells (0x05/0x57) and bg cells (0x45) all unchanged under the
+flying bird. The original never touches them.
+
+**Fix.** Dropped both `blit_sprite_attrs_to_buff(enemy..., bg_attr)` calls
+(full + simple compose paths) and removed the now-dead
+`blit_sprite_attrs_to_buff` helper; the enemy now blits pixels only, like
+every other moving object (ball/bullet/bonus/rocket already did — they
+ignore their `bg` arg, "no per-cell attr override"). This also dissolves
+the bug-#2 stale-clash-attr class entirely (there is no recolour left to
+leave stale). **Gate:** `make test-enemy-attr-parity` — a pure
+port-internal invariant (no ZEsarUX): under a flying enemy seeded over L3
+brick rows, `attr_buff` must equal `bg_attr_buff` (the static-background
+snapshot) across the sprite's footprint. Regression-checked green:
+test-enemy-brick-residue, test-enemy-flyover-redraw, test-enemy-descend,
+test-enemy-anim.

@@ -344,6 +344,41 @@ misdiagnosed as a SLEEP/screendump flake in performance.md. Rule: ANY test
 that boots the game more than once and compares outputs must pin
 BATTY_REPLAY_COUNTER if a steer/cadence-driven object is on screen.
 
+## Floppy-based tests share ONE image — never run two concurrently
+
+Every headless gate builds and boots `build/batty-test.img` and reads back
+`PROBE.TXT` from it. They ALL use that single path. Running two at once
+(e.g. a long sweep in the background while you spot-check another gate in
+the foreground) makes them clobber each other's floppy and PROBE.TXT
+mid-boot: the reader gets the OTHER run's state. Symptom that wasted ~20
+min on 2026-06-17: a freshly-seeded enemy probe (and even the shipped
+`test-enemy-descend`) read a constant garbage `object_enemy` (x=120 y=136
+set=0x00) that had nothing to do with the seed — it was another boot's
+default enemy. Stashing the source change "reproduced" it, falsely
+implicating the edit; the real cause was a background sweep booting the
+same image. Rule: floppy gates MUST run SERIALLY (this is why
+`parity-check` chains them with `$(MAKE)` one at a time). If you background
+a sweep, do NO other floppy work until it finishes — or give the sweep its
+own floppy path. A green/red result from a gate run during another gate is
+meaningless.
+
+## Moving objects blit PIXELS only — they never recolour cell attrs
+
+The original draws every moving object (ball, bullet, bonus, bomb,
+pts400, ENEMY, rocket, bat) with `print_obj_to_buff` ($B82C), a
+shifted masked PIXEL blit. It never calls `print_sprite_attrib` ($B656) —
+that routine runs exactly 4 times, all in `game_screen_draw_to_buffer`
+(static texture + border). So a moving sprite shows ZX colour-clash in
+whatever attr its cells already hold (bg over open texture, the BRICK's
+attr over bricks). known-bugs #7 was the port force-recolouring the
+enemy's cells to `bg_attr` (a `blit_sprite_attrs_to_buff` invention) —
+wrong over bricks, and the source of the bug-#2 stale-clash-attr saga
+(there is nothing to leave stale if you never recolour). Rule: when
+porting a sprite draw, reproduce its ATTR semantics too — if the original
+writes no attrs, don't; the cell's existing colour IS the intended clash
+colour. Verify with an attr read of the original `.scr` (the last 768
+bytes), not just a pixel diff. Gate: `test-enemy-attr-parity`.
+
 Third instance (2026-06-12): **the BATTY_REPLAY_COUNTER pin does NOT
 survive checkpoint halts.** A multi-checkpoint VISUAL_PROBE_FRAMES
 timeline halts at each checkpoint for wall-clock time while the PIT

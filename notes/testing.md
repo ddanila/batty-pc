@@ -193,6 +193,34 @@ that the ball has moved back into the field and no longer points left,
 catching descriptor-reflection regressions that can otherwise leave the
 ball jiggling between the wall and bat.
 
+`make test-ball-no-tunnel` is the collision-invariant sweep (known-bugs #6
+class). For each level it boots once to read the initial brick grid
+(`current_level_copy`), picks solid target bricks, then for each
+(target x approach x speed) seeds the primary ball one step away aimed into
+the brick (via `BATTY_REPLAY_BALL_OBJECT` + `BATTY_FRAME_PROBE`), runs N
+frames, and asserts the *invariant*: a ball aimed into a still-solid brick
+must change that brick's state (destroy / half-hit / count drop) OR reverse
+direction; if it crosses the brick's far edge while still overlapping its
+column AND nothing changed, it tunneled → FAIL. ZEsarUX-free. The default
+subset (`NO_TUNNEL_ARGS`) covers L1/L5/L7 — L5/L7 have row-0 metal bricks
+against the top boundary, the exact #6 repro (a downward ball passed
+through them before the LAFFC edge-face fix). `FULL=1` runs all 15 levels x
+speeds 2/4/6 x straight+diagonal approaches (wired into parity-check-full).
+This catches the whole class of "ball passes a solid brick unhit" across
+the primary ball path regardless of root cause.
+
+`make test-enemy-attr-parity` is the sprite-attribute-parity gate
+(known-bugs #7 class). The original draws moving objects with
+`print_obj_to_buff` ($B82C) — PIXELS only, never `print_sprite_attrib` —
+so a flying enemy leaves every cell's attr untouched and renders in ZX
+colour-clash (bg over texture, the BRICK's attr over bricks). The gate
+seeds the deterministic L3 fresh bird (test_enemy_descend's descend) so its
+footprint overlaps L3's row-0/1 brick cells, dumps `attr_buff` and
+`bg_attr_buff` (the static-background snapshot) via the probe, and asserts
+they are EQUAL across the sprite's footprint — i.e. the enemy changed no
+cell attr. ZEsarUX-free; the original's behaviour was confirmed by an
+oracle attr read (build/orig_flyover, notes/bird-render-parity.md).
+
 ## Per-level testing via `BATTY_LEVEL` env
 
 ```sh

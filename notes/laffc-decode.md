@@ -784,3 +784,49 @@ SMASH validation needs a port "force plough, normal size" hook (or
 confirming the original's `$07` also enlarges). Logged as a reachable,
 niche next validation; the core gameplay parity (motion + collision +
 launch) stands verified.
+
+### Update 28 (2026-06-17): boundary-face mask was INVERTED (known-bugs #6)
+
+The phase-4 open-face mask had its four edge conditions negated vs the
+disasm — the root cause of "ball teleported through red bricks". The
+original (LAFFC, ~$B019) starts `D=$0F` (all four faces OPEN) and RESes a
+bit (closes that face) only when the neighbour is SOLID *and* the cell is
+not against that playfield boundary:
+
+```
+right (bit1): CP $E8; JR Z   -> skip RES if Lx==$E8 (right wall)
+left  (bit0): CP $08; JR Z   -> skip RES if Lx==$08 (left wall)
+up    (bit2): CP $21; JR C   -> skip RES if Hy <$21 (top row, Hy=$20)
+down  (bit3): CP $78; JR NC  -> skip RES if Hy>=$78 (bottom row)
+```
+
+So a brick AGAINST a boundary keeps that boundary face OPEN — a ball can
+bounce off it. The port had written the SET form as `Lx!=$08 && EMPTY`,
+`Hy>=$21 && EMPTY`, `Hy<$78 && EMPTY`, `Lx!=$E8 && EMPTY` — which makes the
+boundary face CLOSED. For INTERIOR cells the edge term is false, so both
+forms reduce to `EMPTY(neighbour)` and behaviour is identical (this is why
+L3's interior-ball gate stayed byte-exact and the bug hid for the whole
+campaign). At a boundary they diverge.
+
+Manifestation: a ball moving straight down (dir $10) into a **row-0**
+(`Hy=$20`) metal brick whose right neighbour is empty. The up-face bit
+(bit2) never set (`Hy>=$21` false), the dir-gate clears the down bit, and
+the empty right neighbour sets the right bit — which survives. Phase 6
+then does a *horizontal* bounce: `dir = ($10 ^ $1F)+1 & $3F = $10`,
+unchanged (flipping the dx component of a pure-vertical dir is a no-op),
+ball nudged sideways and snapped to keep falling → it passes through. Metal
+bricks expose it (can't be destroyed); destructible bricks broke regardless
+of the (wrong) bounce axis, masking it. `laffc_collision` returns 3
+(handled) so the `brick_collision` fallback never runs.
+
+Fix: the four mask conditions now match the disasm:
+```
+if (Lx == 0x08 || EMPTY(row, col-1)) mask |= 1;   /* left  */
+if (Lx == 0xE8 || EMPTY(row, col+1)) mask |= 2;   /* right */
+if (Hy <  0x21 || EMPTY(row-1, col)) mask |= 4;   /* up    */
+if (Hy >= 0x78 || EMPTY(row+1, col)) mask |= 8;   /* down  */
+```
+Now the row-0 brick's top face is open, the ball reflects up
+(`dir ($10^$3F)+1 = $30`). Gate: `make test-ball-no-tunnel` (found it on
+L5/L7 row-0 metal; the default subset pins those). L3 byte-exact ball
+parity unaffected (test-laffc-ball-frame1 green at f1/5/40/100/150).
