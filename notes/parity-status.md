@@ -1,5 +1,31 @@
 # Gameplay parity status
 
+> **UPDATE (2026-06-17) — "complete" was overconfident; coverage broadened.**
+> Manual play later surfaced two *real* parity bugs the gate suite missed
+> (known-bugs.md): #6 the ball tunnelling through bricks (an INVERTED LAFFC
+> boundary-face mask — the open-face test was negated vs the disasm, so a
+> ball into a field-edge metal brick did a no-op bounce and fell through),
+> and #7 the flying enemy recolouring its cells to bg_attr (the original
+> blits sprite pixels only, never `print_sprite_attrib`, so a sprite shows
+> ZX colour-clash in the underlying brick/bg attr). Both fixed. The lesson:
+> the deep frame-step oracle was **L3-only**, so non-L3 dynamics + sustained
+> play were blind spots. Coverage has since broadened well past the
+> 2026-06-05 state:
+>  - byte-exact ball/collision now also gated on **L5** (an edge-metal
+>    level), oracle-confirmed (`test-laffc-ball-l5-metal`); the poke-`$B7EA`
+>    +`$BA24` recipe generalizes the oracle to any level;
+>  - oracle-free invariant classes: ball-never-tunnels-a-brick (all levels x
+>    approaches x speeds, incl. extra-ball + magnet paths), ball-never-
+>    escapes-the-field, and all-moving-sprite attr non-corruption;
+>  - a long-run multi-level gameplay **soak** (`test-gameplay-soak`);
+>  - a deterministic frame-completion harness (COM1 `BATTY_SERIAL_PROBE`
+>    marker + `WAITSERIAL`) replacing the wall-clock frame waits, making the
+>    gates frame-exact at any emulation speed and unlocking a **parallel
+>    suite** (`make parity-check-parallel`, ~5x) + a CI build/source gate.
+> So read the milestone below as "core mechanics byte-exact on L3" — strong
+> and true, but not the whole story; see known-bugs.md (resolved) and the
+> refreshed remaining list in parity-gaps.md.
+
 > **MILESTONE — PARITY COMPLETE (2026-06-05).** Gameplay frame-parity with
 > the Spectrum original is achieved and regression-locked: ball, bat,
 > collision (LAFFC), deflection (LAB1F), launch, catch, multi-ball, falling

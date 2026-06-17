@@ -5,6 +5,25 @@ or still depends on captured original data. This is separate from
 `known-bugs.md`: these are not necessarily user-reported defects, but
 they are good next targets when tightening original fidelity.
 
+> **Remaining gaps as of 2026-06-17** (after the #6/#7 fixes + the broadened
+> coverage in parity-status.md). In rough priority:
+>  1. **Enemy RNG not byte-exact** — the port advances the RNG on demand
+>     rather than the original's per-frame tick, so enemy *target* picks
+>     (hence exact steered positions) drift from the original. The last
+>     remaining motion approximation. (See "Some motion is approximate".)
+>  2. **Multi-ball + MAGNET catch** — a MAGNET bat catches the primary ball
+>     but not the unified secondaries; mirroring the ~32-site stuck system
+>     per-ball is deferred feature work (see "bat-ball deflection").
+>  3. **Full game-flow transitions** — level-clear -> next-level,
+>     life-loss/respawn, game-over, hi-score entry, level wrap are not
+>     verified end-to-end (the long-run soak covers sustained single-level
+>     play, not transitions).
+>  4. **Cosmetic / timing**: metal-brick shimmer phase, big-bat resize
+>     timing — visually matched, not literal ports. Out of scope: sound.
+>  5. **Infra**: QEMU-on-CI needs a KVM/self-hosted runner (hosted TCG is
+>     too slow even with the deterministic serial harness — calibrated dead
+>     end). The full QEMU suite runs locally (`make parity-check-parallel`).
+
 ## Visible / behavioral
 
 ### Some motion is approximate, not descriptor-exact
@@ -194,14 +213,24 @@ still come from captured data.
 
 ## Test coverage gaps
 
-The current visual regression covers static title/menu/high-score and
-early level-entry frames. It does not yet assert mid-game parity for:
+**Largely closed (2026-06-17).** The suite is no longer static-only; it now
+asserts mid-game behaviour with both byte-exact oracle gates and oracle-free
+invariants (see notes/testing.md for the full list). Now covered:
 
-- hard-brick first-hit shimmer,
-- brick destruction / bonus drop timing,
-- all bonus effects,
-- enemy/bomb behavior,
-- level-clear/rocket flow.
+- brick destruction / scoring (`test-brick-scoring`, `test-midgame-brick-
+  replay`), bonus drop + all effects (`test-bonus-fall/drop/effects/effects2/
+  typepick`), bomb + pts400 fall, bullet fly + blast + laser cadence,
+  enemy anim/descend/steer + flyover residue, brick-flash, death sparks,
+  the rocket-clear flow (`test-rocket-bonus/flight-redraw/completion-no-ball`),
+  the round banner, and a host of dirty-redraw A/B gates;
+- byte-exact ball-vs-brick on L3 (`test-laffc-ball-frame1`, frame-step) AND
+  L5 edge-metal (`test-laffc-ball-l5-metal`), oracle-confirmed;
+- collision/render INVARIANTS across levels: no-tunnel (incl. extra-ball +
+  magnet), no-escape, all-sprite attr non-corruption, and a long-run
+  multi-level soak (`test-gameplay-soak`).
 
-Adding short deterministic ZEsarUX-vs-QEMU gameplay traces would catch
-most remaining visible mismatches.
+Remaining test gaps (see the priority list at the top of this file): full
+game-FLOW transitions (level-clear -> next, life-loss, game-over, hi-score,
+level wrap) are not yet end-to-end gated, and the byte-exact frame-step
+oracle is built for L3/L5 — the poke-`$B7EA`+`$BA24` recipe generalizes it
+to any level when more are wanted.
