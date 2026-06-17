@@ -255,6 +255,18 @@ port matches byte-exact, so this is a fast ZEsarUX-free regression that locks
 the #6 fix against the real game. The same poke-`$B7EA`+`$BA24` recipe
 generalizes to any level for future oracle gates.
 
+`make test-gameplay-soak` is the long-run invariant soak: it drives an
+in-flight ball through sustained play on L1/L3/L5/L9 and samples checkpoints
+(30..150 frames), asserting per-checkpoint that the ball's centre is never
+inside a solid brick and never escapes the walls, and across checkpoints
+that brick count only falls and score only rises. These hold whether the
+ball is bouncing or has dropped+respawned, so it needs no ball-pinning.
+Catches over-time / accumulation regressions a single-frame gate can't. It
+uses the BATTY_SERIAL_PROBE deterministic frame wait — required here because
+its 20 concurrent per-case boots oversubscribe cores, which the old
+wall-clock waits couldn't survive (they read the pre-gameplay seed state and
+produced false "bricks rose / score fell" violations).
+
 ## CI (`.github/workflows/parity-check.yml`)
 
 Hosted GitHub runners have no KVM, so QEMU runs under TCG emulation that is

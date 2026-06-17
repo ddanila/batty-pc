@@ -624,6 +624,7 @@ parity-check-full:
 	$(MAKE) test-ball-paths-no-tunnel
 	$(MAKE) test-sprite-attr-parity
 	$(MAKE) test-laffc-ball-l5-metal
+	$(MAKE) test-gameplay-soak
 	$(MAKE) test-frame-step
 	$(MAKE) replay-l3-entry
 	$(MAKE) test-wall-bounce
@@ -829,6 +830,14 @@ test-ball-paths-no-tunnel:
 # -- moving objects blit pixels only, never recolour (print_obj_to_buff).
 test-sprite-attr-parity:
 	python3 scripts/test_sprite_attr_parity.py
+
+# Long-run gameplay invariant soak (D4): sustained in-flight play across
+# several levels (L1/L3/L5/L9) must never break the rules at any sampled
+# checkpoint — ball never inside a solid brick, never escapes the walls,
+# brick count only falls, score only rises. Catches over-time regressions a
+# single-frame gate can't. Uses the deterministic serial frame wait.
+test-gameplay-soak:
+	python3 scripts/test_gameplay_soak.py
 
 # Magnet-ball gate: an ON magnet must curve the ball (+-1/64 dir per
 # frame while overlapping the 15x14 box, quantized release), an OFF
