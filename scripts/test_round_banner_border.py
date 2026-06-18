@@ -16,7 +16,12 @@ from test_visual import ppm_inner_to_indices, run_qemu
 TEST_FLOPPY = Path("build/batty-test.img")
 OUT = Path("build/test_round_banner_border")
 WINDOW_X, WINDOW_Y, WINDOW_W = 88, 133, 80
-TOP_BAND_H = 8
+# The window is 32px tall (y=133..164); the "PLAYER 1" ink starts at
+# y=138 in the original (the text is bottom-anchored and vertically
+# centred, leaving a 5px black margin at the top). Only those 5 rows
+# are guaranteed black -- an earlier value of 8 here encoded a bug where
+# the port jammed the text 5px low against the box bottom.
+TOP_BAND_H = 5
 
 
 def source_guard() -> None:

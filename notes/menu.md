@@ -172,3 +172,39 @@ Conclusion: nothing in snap2's attribute area contradicts the
 "selected row blinks via `sub_961c`, everything else uses markup
 attr" model. There's no separate "highlight neighbour" path.
 
+## Round-intro window (`show_window_round_number`, $8F60) — coords are BOTTOM-anchored
+
+The "PLAYER 1 / ROUND XX" window shown ~1.2s at each level entry
+(drawn by `game_restart` after `game_screen_draw_to_buffer`, held by
+`pause_long` -> `pause_short` busy-wait at $97D3, then erased by
+`win_bg_recovery`). Two gotchas, both about the coordinate system:
+
+- **`screen_addr_calc` ($B5xx) takes a pixel (x=L, y=H) coordinate**,
+  not a packed ZX address — H is the literal pixel row. BUT the
+  window and its text are drawn **UPWARD** from that row (the box loop
+  uses `dec_scr_line`; `print_line` draws the glyph rows upward too).
+  So **the coordinate byte is the BOTTOM row of what's drawn**, not
+  the top.
+  - Window: $A458 -> anchor (x=88, y=164), 32px tall drawn up = box
+    occupies **y=133..164**.
+  - PLAYER text `txt_player_x` = $8F60 -> (x=96, y=143 bottom); 6px ink
+    lands at **y=138..143**.
+  - ROUND text `txt_round_xx` = $9E60 -> (x=96, y=158 bottom); ink at
+    **y=153..158**. Net: text vertically centred, 5px margin top, 6px
+    bottom.
+
+- **Port bug (fixed 2026-06-18, user-reported):** `show_round_banner`
+  in `src/main.c` used the raw bytes 143 / 158 as the *top* Y of
+  `draw_text` (which is top-anchored), so both lines sat 5px low —
+  jammed against the box bottom (1px gap) instead of centred. Fix:
+  pass `BORDER_Y+138` / `BORDER_Y+153`. Verified byte-exact against the
+  original (text rows 138..143 / 153..158 in both).
+  - `scripts/test_round_banner_border.py` had encoded the bug: its
+    `TOP_BAND_H=8` assumed an 8px black top margin, but the real
+    original only has **5** (text starts at 138). Corrected to 5.
+  - Original capture for the diff:
+    `scripts/capture_round_banner_original.py` (ZEsarUX: tape-load,
+    tap "0" to start, read ULA $4000 while PC sits in the pause_short
+    busy-wait — a breakpoint can't be used here, arming one parks the
+    emulator in a cpu-step state where injected keys never register).
+

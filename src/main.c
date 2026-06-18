@@ -7215,14 +7215,23 @@ static int show_round_banner(unsigned int round_num_display) {
     round_codes[7] = (unsigned char)(round_num % 10);
 
     fill(banner_x, banner_y, 80, 32, 0);
-    /* PLAYER 1 — single-player mode hardcodes the digit. Once 2-player
-     * wiring lands, swap the trailing $01 for the active player number. */
-    draw_text(text_x, BORDER_Y + 143, 15, player_codes, 7);
+    /* PLAYER 1 / ROUND XX — vertically centred in the 32px window. The
+     * original's text coords ($8F=143 PLAYER, $9E=158 ROUND in
+     * txt_player_x / txt_round_xx) are BOTTOM-anchored: screen_addr_calc
+     * takes them as the glyph's lowest row and print_line draws upward,
+     * exactly like the window itself (anchored at $A4=164, drawn up to
+     * y=133). The 6px-tall ink therefore lands at byte-5..byte, i.e. the
+     * PLAYER ink top is 138 and ROUND ink top is 153 — 5px above the raw
+     * byte. An earlier port used the raw bytes (143/158) as top-Y, which
+     * jammed both lines against the box bottom (1px gap below vs 6 in the
+     * original). Single-player hardcodes the digit; once 2-player wiring
+     * lands, swap the trailing $01 for the active player number. */
+    draw_text(text_x, BORDER_Y + 138, 15, player_codes, 7);
     {
         unsigned char one = 0x01;
-        draw_text(text_x + 7 * 8, BORDER_Y + 143, 15, &one, 1);
+        draw_text(text_x + 7 * 8, BORDER_Y + 138, 15, &one, 1);
     }
-    draw_text(text_x, BORDER_Y + 158, 15, round_codes, 8);
+    draw_text(text_x, BORDER_Y + 153, 15, round_codes, 8);
 
     if (getenv("BATTY_HOLD_ROUND_BANNER") != NULL) {
         while (!kbhit()) sound_tick();
