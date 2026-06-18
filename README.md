@@ -5,6 +5,11 @@ ZX Spectrum 48K). VGA mode 13h (320×200×256), 1:1 pixel-faithful inside
 the 256×192 playfield, border around it. Built with Open Watcom v2,
 boots in QEMU.
 
+The default `batty.exe` is 8086 (runs on a PC/XT up). An optional
+**386 build** (`make exe386` / `make run386`) uses 32-bit `stosd`/`movsd`
+in the VGA blit and `fast_memcpy` — faster on a 386DX, pixel-identical
+output (`make test-cpu386`). See `notes/performance.md`.
+
 ## Status
 
 The game is playable end-to-end: title → menu → hi-score teaser →

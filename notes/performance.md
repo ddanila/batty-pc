@@ -34,6 +34,44 @@ level `fread`s in src/main.c around the file-load helpers — batching small
 reads helps the real DOS/floppy target even though QEMU's fast disk hides
 it); that was identified but not pursued. The render-cost work is complete.
 
+## Optional 386 build (additive — 2026-06-18)
+
+The shipping `batty.exe` stays 8086 (`-0`), XT-compatible. Alongside it
+there's now an **optional 386 build** (`make exe386` → `batty386.exe`,
+`make run386`) that requires a 386 but cuts the dominant blit cost:
+
+- **VGA blit** (`buff_to_vga` + `buff_to_vga_rect_bytes`): the 8086 path
+  expands each source byte to 8 px with **4× `stosw`**; the 386 path
+  (`#ifdef BATTY_CPU386`) uses a dword LUT (`vga_attr_nibble_dwords`,
+  which *replaces* the word LUT so DGROUP stays under 64 KB) and emits
+  **2× `stosd`**. On a 386**DX** (32-bit bus) that's ~2× the store
+  bandwidth on the hottest path; on a 386**SX** (16-bit bus) it's only
+  the loop/instruction-count saving (same bus traffic).
+- **`fast_memcpy`**: 386 path uses `rep movsd` + a 0..3-byte `rep movsb`
+  tail instead of `rep movsb`, halving the element count on the
+  band-rebuild / bg-cache copies that dominate full-recompose frames.
+
+Why a compile flag and not just "run the 8086 build on a 386": the 286/
+386 *cycle + bus* speedups apply to the `-0` binary automatically at
+runtime — recompiling buys nothing there. The flag only matters for the
+*instruction-level* win (`stosd`/`movsd`), which is a 386 opcode the
+8086 build can't emit. See the chip-vs-flag discussion in
+`notes/menu.md`'s coordinate note era / the git log around this commit.
+
+Built from the SAME `src/main.c`; the 386 paths are tiny `#ifdef
+BATTY_CPU386` islands in the two blit loops and `fast_memcpy`. Parity is
+gated: `make test-cpu386` packs `batty-test-386.exe` and runs the same
+visual checkpoints as `make test` (QEMU's CPU is 386+). Verified
+pixel-identical on L1/L3/L5 — the 32-bit paths emit byte-for-byte the
+same VGA output as the 8086 build, by construction (the dword LUT packs
+the same pixels the word LUT does, low byte = leftmost px).
+
+Not yet done (future levers, if the 386 build matters more): 386
+versions of the `_fmemset`/`_fmemcpy`-based full-screen clear and
+asset-load copies (library calls today, so they stay `rep stosw`/
+`movsw`); and a single auto-dispatching binary (runtime 386 detect)
+instead of two EXEs.
+
 ## Current Profiling Workflow
 
 Use the deterministic headless profile run when comparing renderer cost:

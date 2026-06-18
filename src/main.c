@@ -1352,7 +1352,16 @@ static unsigned char paper_pal(unsigned char attr) {
 
 static unsigned char ink_table[256];
 static unsigned char paper_table[256];
+#ifdef BATTY_CPU386
+/* 386 build: one packed dword (4 px) per (attr, nibble), so the blit
+ * emits two `stosd` (8 px) instead of four `stosw`. Byte order matches
+ * the 8086 word table — leftmost pixel in the low byte — so the VGA
+ * bytes written are bit-for-bit identical. This REPLACES the word table
+ * (same 8 KB) rather than adding to it, keeping DGROUP within 64 KB. */
+static unsigned long vga_attr_nibble_dwords[128][16];
+#else
 static unsigned short vga_attr_nibble_words[128][16][2];
+#endif
 
 static void init_pal_tables(void) {
     int i;
@@ -1369,8 +1378,14 @@ static void init_pal_tables(void) {
             unsigned char p1 = (n & 4) ? ink : paper;
             unsigned char p2 = (n & 2) ? ink : paper;
             unsigned char p3 = (n & 1) ? ink : paper;
+#ifdef BATTY_CPU386
+            vga_attr_nibble_dwords[i][n] =
+                (unsigned long)p0 | ((unsigned long)p1 << 8) |
+                ((unsigned long)p2 << 16) | ((unsigned long)p3 << 24);
+#else
             vga_attr_nibble_words[i][n][0] = (unsigned short)(p0 | ((unsigned short)p1 << 8));
             vga_attr_nibble_words[i][n][1] = (unsigned short)(p2 | ((unsigned short)p3 << 8));
+#endif
         }
     }
 }
@@ -2941,6 +2956,33 @@ static void mark_all_dirty(void) {
     cur_dirty_y_hi = PLAYFIELD_H - 1;
 }
 
+#ifdef BATTY_CPU386
+/* 386 build: copy 4 bytes per element with `rep movsd`, then the 0..3
+ * byte remainder with `rep movsb`. Halves the element count on the
+ * band-rebuild / bg-cache copies that dominate full-recompose frames. */
+static void fast_memcpy(void *dest, const void *src, unsigned int n_bytes) {
+    _asm {
+        push es
+        push di
+        push si
+        mov ax, ds
+        mov es, ax
+        mov di, dest
+        mov si, src
+        mov cx, n_bytes
+        cld
+        mov dx, cx
+        shr cx, 2
+        rep movsd
+        mov cx, dx
+        and cx, 3
+        rep movsb
+        pop si
+        pop di
+        pop es
+    }
+}
+#else
 static void fast_memcpy(void *dest, const void *src, unsigned int n_bytes) {
     _asm {
         push es
@@ -2958,6 +3000,7 @@ static void fast_memcpy(void *dest, const void *src, unsigned int n_bytes) {
         pop es
     }
 }
+#endif
 
 
 static void flush_dirty_slot_to_vga(int slot) {
@@ -3003,6 +3046,22 @@ static void buff_to_vga(void) {
         for (byte_col = 0; byte_col < 32; byte_col++) {
             unsigned char b = scr_row[byte_col];
             unsigned char attr = attr_row[byte_col];
+#ifdef BATTY_CPU386
+            const unsigned long *hi = &vga_attr_nibble_dwords[attr & 0x7F][b >> 4];
+            const unsigned long *lo = &vga_attr_nibble_dwords[attr & 0x7F][b & 0x0F];
+
+            _asm {
+                les di, dest
+                mov si, hi
+                mov eax, [si]
+                stosd
+                mov si, lo
+                mov eax, [si]
+                stosd
+
+                mov word ptr dest, di
+            }
+#else
             const unsigned short *hi = vga_attr_nibble_words[attr & 0x7F][b >> 4];
             const unsigned short *lo = vga_attr_nibble_words[attr & 0x7F][b & 0x0F];
 
@@ -3021,6 +3080,7 @@ static void buff_to_vga(void) {
 
                 mov word ptr dest, di
             }
+#endif
         }
     }
 }
@@ -4026,6 +4086,20 @@ static void buff_to_vga_rect_bytes(int y0, int h, int byte_lo, int byte_hi) {
         for (byte_col = byte_lo; byte_col <= byte_hi; byte_col++) {
             unsigned char b = scr_row[byte_col];
             unsigned char attr = attr_row[byte_col];
+#ifdef BATTY_CPU386
+            const unsigned long *hi = &vga_attr_nibble_dwords[attr & 0x7F][b >> 4];
+            const unsigned long *lo = &vga_attr_nibble_dwords[attr & 0x7F][b & 0x0F];
+            _asm {
+                les di, dest
+                mov si, hi
+                mov eax, [si]
+                stosd
+                mov si, lo
+                mov eax, [si]
+                stosd
+                mov word ptr dest, di
+            }
+#else
             const unsigned short *hi = vga_attr_nibble_words[attr & 0x7F][b >> 4];
             const unsigned short *lo = vga_attr_nibble_words[attr & 0x7F][b & 0x0F];
             _asm {
@@ -4042,6 +4116,7 @@ static void buff_to_vga_rect_bytes(int y0, int h, int byte_lo, int byte_hi) {
                 stosw
                 mov word ptr dest, di
             }
+#endif
         }
     }
 }
