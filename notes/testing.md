@@ -1,5 +1,11 @@
 # Visual regression test
 
+> **`make test-video` is the one gate here that needs no emulator.** It
+> compiles the video engine (`src/zxvga.c`) with the host compiler and
+> checks the ZX attribute/colour-clash model exhaustively — every attr x
+> every byte — in milliseconds. See [`video-engine.md`](video-engine.md).
+> Everything below drives QEMU or ZEsarUX and costs ~10 s per boot.
+
 Once the original screen content is reproducible by *our* renderer, we
 lock it in as a pixel-identical regression test.
 

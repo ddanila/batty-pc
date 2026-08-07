@@ -31,7 +31,10 @@ WCCFLAGS = -0 -ms -os -s -za99 -w4 -we -oi -i=$(WATCOM_H)
 SRC     = src/main.c
 OBJ      = $(SRC:src/%.c=build/%.obj)
 TEST_OBJ = build/main-test.obj
-HEADERS = $(wildcard src/*.h)
+# src/zxvga.c (the video engine) is #included by main.c rather than linked
+# separately — the 8086 small model wants one code segment — so it is a
+# build dependency alongside the headers, not a compilation unit.
+HEADERS = $(wildcard src/*.h) src/zxvga.c
 EXE     = build/batty.exe
 TEST_EXE = build/batty-test.exe
 
@@ -109,7 +112,7 @@ PROFILE_BAT_LASER   ?= 01017400AD000000040DEFAE1C0A74AD040DF0000180
 # whole-band rebuild baseline. `make profile-bricks` vs `... FULL_BAND=1`.
 FULL_BAND           ?=
 
-.PHONY: all clean run run-86box profile-auto profile-bricks profile-ballbricks profile-multiball profile-86box read-profile floppy assets help run-original run-original-cheat snapshot candidates regions test test-hud test-bat-redraw-window test-ball-dirty-redraw test-ball-object-dirty-redraw test-bullet-dirty-redraw test-bomb-dirty-redraw test-bat-fire-dirty-redraw test-multiball-dirty-redraw test-bigball-dirty-redraw test-stuck-ball-dirty-redraw test-enemy-brick-residue test-rocket-flight-redraw test-rocket-completion-no-ball test-round-banner-border test-brick-flash test-rocket-bonus test-death-sparks test-normal-ball-launch test-ball-left-wall-escape test-l3-replay-seed test-midgame-brick-replay replay-l3-brick-flash replay-l3-brick-flash-both test-laffc-ball-frame1 test-bat-deflection test-enemy-descend test-rng-walk test-enemy-steer test-bonus-fall test-bomb-fall test-pts400-fall test-bullet-fly test-laser-cadence test-enemy-anim test-bonus-drop test-bonus-effects test-bonus-effects2 test-bonus-typepick test-bullet-blast test-brick-scoring test-ball-speed-ramp test-levels-sweep test-enemy-flyover-redraw parity-check parity-check-full
+.PHONY: test-video all clean run run-86box profile-auto profile-bricks profile-ballbricks profile-multiball profile-86box read-profile floppy assets help run-original run-original-cheat snapshot candidates regions test test-hud test-bat-redraw-window test-ball-dirty-redraw test-ball-object-dirty-redraw test-bullet-dirty-redraw test-bomb-dirty-redraw test-bat-fire-dirty-redraw test-multiball-dirty-redraw test-bigball-dirty-redraw test-stuck-ball-dirty-redraw test-enemy-brick-residue test-rocket-flight-redraw test-rocket-completion-no-ball test-round-banner-border test-brick-flash test-rocket-bonus test-death-sparks test-normal-ball-launch test-ball-left-wall-escape test-l3-replay-seed test-midgame-brick-replay replay-l3-brick-flash replay-l3-brick-flash-both test-laffc-ball-frame1 test-bat-deflection test-enemy-descend test-rng-walk test-enemy-steer test-bonus-fall test-bomb-fall test-pts400-fall test-bullet-fly test-laser-cadence test-enemy-anim test-bonus-drop test-bonus-effects test-bonus-effects2 test-bonus-typepick test-bullet-blast test-brick-scoring test-ball-speed-ramp test-levels-sweep test-enemy-flyover-redraw parity-check parity-check-full
 
 all: $(EXE) $(ASSETS)
 
@@ -130,6 +133,7 @@ help:
 	@echo "  snapshot      dump RAM + screen from running ZEsarUX -> build/snapshots/"
 	@echo "  regions       static scan of main blob -> build/regions.{txt,blockdef}"
 	@echo "  candidates    render bytedata regions as PNGs -> assets/candidates/"
+	@echo "  test-video    host-native video-engine tests (clash model, no emulator)"
 	@echo "  test-brick-flash  verify brick flash clears vs original L3 reference"
 	@echo "  test-ball-dirty-redraw  verify ball-only dirty redraw vs full baseline"
 	@echo "  test-ball-object-dirty-redraw  verify ball+enemy dirty redraw vs full baseline"
@@ -645,6 +649,7 @@ run386:
 # incl. the rocket-clear / sparks / brick-flash / redraw guards), use
 # `parity-check-full` below.
 parity-check:
+	$(MAKE) test-video
 	$(MAKE) test
 	$(MAKE) test-laffc-ball-frame1
 	$(MAKE) test-bat-deflection
@@ -951,6 +956,34 @@ SANE_LEVELS ?= 1,5,10,15
 SANE_FRAMES ?= 500
 test-laffc-levels-sane:
 	python3 scripts/test_laffc_levels_sane.py --levels $(SANE_LEVELS) --frames $(SANE_FRAMES)
+
+# --- Video-engine tests (host-native; no DOS, no emulator) --------------
+# Compiles src/zxvga.c with the host compiler — the __WATCOMC__ guards swap
+# the inline-asm inner loops for equivalent C and point `vga` at an array —
+# so these exercise the SHIPPING expansion table and blit logic directly.
+# Milliseconds, so the clash model can be checked exhaustively (every attr
+# x every byte) rather than sampled through a 10 s QEMU boot.
+HOSTCC     ?= cc
+HOSTCFLAGS ?= -std=c99 -O1 -Wall -Wextra -Werror -Wno-unused-function
+VIDEO_TEST     = build/test_zxvga
+VIDEO_TEST_386 = build/test_zxvga386
+VIDEO_TEST_SRC = tests/test_zxvga.c src/zxvga.c src/zxvga.h
+
+$(VIDEO_TEST): $(VIDEO_TEST_SRC) | build
+	$(HOSTCC) $(HOSTCFLAGS) -o $@ tests/test_zxvga.c
+
+$(VIDEO_TEST_386): $(VIDEO_TEST_SRC) | build
+	$(HOSTCC) $(HOSTCFLAGS) -DBATTY_CPU386 -o $@ tests/test_zxvga.c
+
+test-video: $(VIDEO_TEST) $(VIDEO_TEST_386)
+	./$(VIDEO_TEST)
+	@echo
+	./$(VIDEO_TEST_386)
+	@echo
+	@./$(VIDEO_TEST) --dump build/zxvga-8086.fb
+	@./$(VIDEO_TEST_386) --dump build/zxvga-386.fb
+	@cmp build/zxvga-8086.fb build/zxvga-386.fb \
+	  && echo "  cpu386_table_equiv             64000 B               ok"
 
 test-hud: $(FLOPPY_OUT)
 	python3 scripts/test_hud.py --floppy $(FLOPPY_OUT)

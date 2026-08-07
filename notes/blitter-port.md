@@ -39,7 +39,7 @@ so its `OR`/`XOR` operands are transformed — the **output** matches
 our direct-bitops formula, the intermediate operands don't. Verified
 empirically against per-level GTs.
 
-`blit_masked_to_scr_buff_ptr` in `src/main.c` handles non-byte-aligned
+`blit_masked_to_scr_buff_ptr` in `src/zxvga.c` handles non-byte-aligned
 x with a per-row shift across two destination bytes — same shape as
 the original's table-driven path, computed at runtime in C.
 
