@@ -144,3 +144,36 @@ handler at harness teardown. The "original=8E49" RNG reading was an echo
 of the setup pin at the WRONG address `$8E17` (real `random_number` is
 `$8D48` = 3793). Gate semantics fixed + green; full story in
 `notes/replay-harness.md`, "Gate semantics corrected".)
+
+## 8. Extra balls use a mirrored direction convention
+
+**Status:** open, unverified against the original.
+
+`dir_to_dxdy` (orig `hl_bc_calc_direction`, the byte-exact port that
+drives the primary ball) and `dir_to_delta` (whole-pixel deltas, used
+ONLY by the multiball extra balls in `step_extra_ball`) disagree on two
+of the four quadrants:
+
+| dir & 0x30 | `dir_to_dxdy` | `dir_to_delta` |
+|-----------:|:--------------|:---------------|
+| 0x00       | (+dx, +dy)    | (+dx, +dy)     |
+| 0x10       | (-dx, +dy)    | (+dx, -dy)     |
+| 0x20       | (-dx, -dy)    | (-dx, -dy)     |
+| 0x30       | (+dx, -dy)    | (-dx, +dy)     |
+
+So for half of all directions a secondary ball travels mirrored relative
+to what the same `dir` byte means for the primary. Found while extracting
+`src/physics.cpp`; `tests/test_physics.cpp`
+`delta_vs_dxdy_conventions` pins the current behaviour so it stays
+visible.
+
+Not fixed, because it is not yet known which side is right. The primary
+ball's convention is hardware-verified (dir `$1F` moves left, probed via
+`capture_frame_timeline_original.py --probe-ball`); `dir_to_delta` has no
+such anchor. Changing it would alter multiball trajectories, so it needs
+an oracle capture of the original's extra-ball motion first — the
+`$B7EA` + `$BA24` poke recipe in notes/testing.md generalises to it.
+
+Existing gates do not catch this: `test-ball-paths-no-tunnel` asserts
+extra balls never tunnel through bricks or escape the walls, both of
+which hold regardless of which quadrant convention is used.

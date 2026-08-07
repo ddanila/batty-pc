@@ -23,6 +23,7 @@
 /* The video engine — ZX Spectrum attribute/colour-clash emulation on
  * VGA mode 13h. Everything below draws through its scr_buff / attr_buff
  * and the dirty marks declared there. */
+#include "physics.h"
 #include "rng.h"
 #include "zxvga.cpp"
 
@@ -696,32 +697,7 @@ static int           ball3_dy     = -BALL_SPEED;
  * byte-stream shape as the Spectrum game. */
 static unsigned char *random_rom = NULL;
 
-static unsigned char ball_dir_from_delta(int dx, int dy) {
-    unsigned char q;
-    unsigned char d;
-    if (dx >= 0 && dy >= 0) q = 0x00;
-    else if (dx >= 0)       q = 0x10;
-    else if (dy < 0)        q = 0x20;
-    else                    q = 0x30;
-    d = (abs(dx) >= BALL_SPEED) ? 0x08 : 0x04;
-    return (unsigned char)(q | d);
-}
 
-static void ball_delta_from_dir(unsigned char dir, int *dx, int *dy) {
-    int mag_x;
-    int mag_y;
-    switch (dir & 0x0F) {
-        case 0x04: mag_x = 2; mag_y = 1; break;
-        case 0x08: mag_x = 1; mag_y = 1; break;
-        default:   mag_x = 1; mag_y = 2; break;
-    }
-    switch (dir & 0x30) {
-        case 0x00: *dx =  mag_x; *dy =  mag_y; break;
-        case 0x10: *dx =  mag_x; *dy = -mag_y; break;
-        case 0x20: *dx = -mag_x; *dy = -mag_y; break;
-        default:   *dx = -mag_x; *dy =  mag_y; break;
-    }
-}
 
 /* Brick destruction dirty marker. The original remove path restores
  * background/window data; it does not paint a bright-white replacement
@@ -1623,10 +1599,6 @@ static object_t objects[N_OBJECTS] = {
 #define BALL_SHOW()      (objects[OBJ_BALL_1].sprite_set = 0x02)
 #define BALL_HIDE()      (objects[OBJ_BALL_1].sprite_set = 0x82)
 
-static void ball_dir_delta_q8(unsigned char dir, unsigned char speed,
-                              int *dx_q8, int *dy_q8);
-static void dir_to_dxdy(unsigned char dir, unsigned char speed,
-                        int *out_dx, int *out_dy);
 
 static void primary_ball_set_velocity(int dx, int dy) {
     ball_dx = dx;
@@ -1656,7 +1628,7 @@ static void primary_ball_launch_from_bat(void) {
      * the Spectrum behavior. */
     dir = (unsigned char)((launch_offset + 0x24) & 0x3F);
     if (dir == 0x30) dir = 0x34;
-    ball_dir_delta_q8(dir, BALL_SPEED, &ball_dx, &ball_dy);
+    dir_to_dxdy(dir, BALL_SPEED, &ball_dx, &ball_dy);
     ball_dx = (ball_dx < 0) ? -1 : (ball_dx > 0 ? 1 : 0);
     ball_dy = (ball_dy < 0) ? -1 : (ball_dy > 0 ? 1 : 0);
     objects[OBJ_BALL_1].dir = dir;
@@ -1776,11 +1748,6 @@ static void handling_400pts_obj(object_t *o){ (void)o; }
  * original's LAD69. The old routine had the X/Y components swapped per
  * quadrant, flying the bird on the wrong axis.) */
 
-static void ball_dir_delta_q8(unsigned char dir, unsigned char speed,
-                              int *dx_q8, int *dy_q8) {
-    /* Use the exact hl_bc_calc_direction port (dir_to_dxdy). */
-    dir_to_dxdy(dir, speed, dx_q8, dy_q8);
-}
 
 /* Wall reflect for ANY ball object: flip the 6-bit dir about the X and/or
  * Y axis (the original's wall-bounce dir mapping). Shared by the primary
@@ -1805,7 +1772,7 @@ static void reflect_obj_dir(object_t *o, int flip_x, int flip_y) {
 static void ball_reflect_descriptor(int flip_x, int flip_y) {
     int dx_q8, dy_q8;
     reflect_obj_dir(&objects[OBJ_BALL_1], flip_x, flip_y);
-    ball_dir_delta_q8(objects[OBJ_BALL_1].dir, objects[OBJ_BALL_1].speed,
+    dir_to_dxdy(objects[OBJ_BALL_1].dir, objects[OBJ_BALL_1].speed,
                       &dx_q8, &dy_q8);
     ball_dx = (dx_q8 < 0) ? -1 : (dx_q8 > 0 ? 1 : 0);
     ball_dy = (dy_q8 < 0) ? -1 : (dy_q8 > 0 ? 1 : 0);
@@ -3809,7 +3776,7 @@ static void bonus_apply(unsigned char type) {
             objects[OBJ_BAT_1].bonus_applied = 0xFF;
             objects[OBJ_BAT_2].bonus_applied = 0xFF;
             if (!ball2_active && !ball3_active) {
-                unsigned char base_dir = ball_dir_from_delta(ball_dx, ball_dy);
+                unsigned char base_dir = delta_to_dir(ball_dx, ball_dy);
                 unsigned char q = (unsigned char)(base_dir & 0x30);
                 unsigned char d = (unsigned char)(base_dir & 0x0F);
                 unsigned char ball2_dir, ball3_dir;
@@ -3833,7 +3800,7 @@ static void bonus_apply(unsigned char type) {
                 objects[OBJ_BALL_2].speed = objects[OBJ_BALL_1].speed;
                 objects[OBJ_BALL_2].x_coord_hi = 0;
                 objects[OBJ_BALL_2].y_coord_hi = 0;
-                ball_delta_from_dir(ball2_dir, &ball2_dx, &ball2_dy);
+                dir_to_delta(ball2_dir, &ball2_dx, &ball2_dy);
                 ball3_active = 1;
                 objects[OBJ_BALL_3].sprite_set = 0x02;
                 objects[OBJ_BALL_3].x_coord = BALL_X;
@@ -3842,7 +3809,7 @@ static void bonus_apply(unsigned char type) {
                 objects[OBJ_BALL_3].speed = objects[OBJ_BALL_1].speed;
                 objects[OBJ_BALL_3].x_coord_hi = 0;
                 objects[OBJ_BALL_3].y_coord_hi = 0;
-                ball_delta_from_dir(ball3_dir, &ball3_dx, &ball3_dy);
+                dir_to_delta(ball3_dir, &ball3_dx, &ball3_dy);
                 snd_q_push(SND_TRIPLE_BALL);
             }
             break;
@@ -4342,7 +4309,7 @@ static int laffc_collision(object_t *o, int prev_x, int prev_y, int new_x, int n
             o->y_coord = (unsigned char)(Hy + 8);  o->x_coord = (unsigned char)new_x;
             o->dir = laffc_change_dir(dir, 0x3F);
         }
-        ball_dir_delta_q8(o->dir, o->speed, &dx_q8, &dy_q8);
+        dir_to_dxdy(o->dir, o->speed, &dx_q8, &dy_q8);
         ball_dx = (dx_q8 < 0) ? -1 : (dx_q8 > 0 ? 1 : 0);
         ball_dy = (dy_q8 < 0) ? -1 : (dy_q8 > 0 ? 1 : 0);
     }
@@ -4592,7 +4559,7 @@ static void apply_replay_multiball(void) {
     objects[OBJ_BALL_2].speed = objects[OBJ_BALL_1].speed;
     objects[OBJ_BALL_2].x_coord_hi = 0;
     objects[OBJ_BALL_2].y_coord_hi = 0;
-    ball_delta_from_dir(objects[OBJ_BALL_2].dir, &ball2_dx, &ball2_dy);
+    dir_to_delta(objects[OBJ_BALL_2].dir, &ball2_dx, &ball2_dy);
     ball3_active = 1;
     objects[OBJ_BALL_3].sprite_set = 0x02;
     objects[OBJ_BALL_3].x_coord = 160;
@@ -4601,7 +4568,7 @@ static void apply_replay_multiball(void) {
     objects[OBJ_BALL_3].speed = objects[OBJ_BALL_1].speed;
     objects[OBJ_BALL_3].x_coord_hi = 0;
     objects[OBJ_BALL_3].y_coord_hi = 0;
-    ball_delta_from_dir(objects[OBJ_BALL_3].dir, &ball3_dx, &ball3_dy);
+    dir_to_delta(objects[OBJ_BALL_3].dir, &ball3_dx, &ball3_dy);
 }
 
 /* Force one bonus-drop roll at level entry for the drop-economy gate.
@@ -5304,69 +5271,16 @@ static void step_rocket(void) {
  * datapoint (incoming 0x0C: offset -3->0x28, 5->0x2C, 13->0x34,
  * 21->0x38, 29->0x38). */
 
-/* LABEE: (threshold, zone) pairs, normal (28-wide) bat. */
-static const unsigned char bat_zone_tbl_normal[14] = {
-    0x04,0x07, 0x08,0x06, 0x0C,0x05, 0x10,0x00,
-    0x14,0x01, 0x18,0x02, 0xFF,0x03
-};
-/* LABFC: (threshold, zone) pairs, enlarged bat. */
-static const unsigned char bat_zone_tbl_big[14] = {
-    0x06,0x07, 0x0C,0x06, 0x12,0x05, 0x1A,0x00,
-    0x20,0x01, 0x26,0x02, 0xFF,0x03
-};
-/* LAC0A: [zone&3][incoming-dir index in {04,08,0C,14,18,1C}]. */
-static const unsigned char bat_deflect_tbl[4][6] = {
-    {0x3C,0x38,0x34,0x2C,0x28,0x24},
-    {0x3C,0x38,0x34,0x34,0x34,0x34},
-    {0x3C,0x38,0x38,0x34,0x38,0x38},
-    {0x3C,0x3C,0x38,0x38,0x3C,0x3C}
-};
 
-/* LAB1F_9: dir = ((dir ^ 0x1F) + 1) & 0x3F (vertical reflect). */
-static unsigned char bat_reflect_dir(unsigned char dir) {
-    return (unsigned char)(((dir ^ 0x1F) + 1) & 0x3F);
-}
 
 /* LAB1F_11: index of a downward dir within {04,08,0C,14,18,1C} (A starts
  * at 4, +4 each step, skipping 0x10). Returns 0..5, or -1 for a dir not
  * in the set — only pure-vertical 0x10 / non-multiple-of-4 dirs, which
  * the original assumes never reach the bat (it would loop forever). The
  * caller treats -1 as a plain vertical reflect so the port never hangs. */
-static int bat_dir_index(unsigned char dir) {
-    int a = 0x04, idx = 0;
-    while (idx < 6) {
-        if ((unsigned char)a == dir) return idx;
-        a += 4;
-        if (a == 0x10) a += 4;
-        idx++;
-    }
-    return -1;
-}
 
 /* Port of LAB1F_4..LAB1F_12: outgoing dir for a normal (non-catch) bat
  * bounce. big_bat picks the LABFC threshold table. */
-static unsigned char bat_deflect_dir(unsigned char dir, int offset,
-                                     int big_bat) {
-    const unsigned char *t = big_bat ? bat_zone_tbl_big : bat_zone_tbl_normal;
-    unsigned char zone;
-    int didx;
-    if (offset < 0) {
-        zone = t[1];                 /* LAB1F_5 carry: first pair's zone */
-    } else {
-        int i = 0;
-        while (i < 12 && (unsigned char)offset >= t[i]) i += 2;
-        zone = t[i + 1];
-    }
-    if (zone & 0x04) {               /* LAB1F_8: reflect, lookup, reflect */
-        dir  = bat_reflect_dir(dir);
-        didx = bat_dir_index(dir);
-        if (didx < 0) return bat_reflect_dir(dir);
-        return bat_reflect_dir(bat_deflect_tbl[zone & 3][didx]);
-    }
-    didx = bat_dir_index(dir);       /* LAB1F_10: lookup only */
-    if (didx < 0) return bat_reflect_dir(dir);
-    return bat_deflect_tbl[zone & 3][didx];
-}
 
 /* Step the ball one frame: handle wall + bat collisions. If the ball
  * exits the bottom of the playfield it respawns stuck on the bat. */
@@ -5425,7 +5339,7 @@ static void magnet_captured_move(object_t *o, unsigned char exit_dir) {
     long nx_q8, ny_q8;
     unsigned char curved = o->dir;
     int x_max = 0xF8 - (int)o->w_body_px;   /* check_right_margin */
-    ball_dir_delta_q8(o->dir, o->speed, &dx_q8, &dy_q8);
+    dir_to_dxdy(o->dir, o->speed, &dx_q8, &dy_q8);
     nx_q8 = ((long)o->x_coord << 8) + o->x_coord_hi + dx_q8;
     ny_q8 = ((long)o->y_coord << 8) + o->y_coord_hi + dy_q8;
     next_x = (int)(nx_q8 >> 8);
@@ -5549,7 +5463,7 @@ static void step_ball(void) {
      * far above the bat), so running this after the stuck early-out
      * matches the original's effective behaviour. */
     if (magnet_ball_frame(&objects[OBJ_BALL_1], 0)) return;
-    ball_dir_delta_q8(objects[OBJ_BALL_1].dir, objects[OBJ_BALL_1].speed,
+    dir_to_dxdy(objects[OBJ_BALL_1].dir, objects[OBJ_BALL_1].speed,
                       &dx_q8, &dy_q8);
     next_x_q8 = ((long)BALL_X << 8) + objects[OBJ_BALL_1].x_coord_hi + dx_q8;
     next_y_q8 = ((long)BALL_Y << 8) + objects[OBJ_BALL_1].y_coord_hi + dy_q8;
@@ -5635,7 +5549,7 @@ static void step_ball(void) {
         objects[OBJ_BALL_1].dir =
             bat_deflect_dir(objects[OBJ_BALL_1].dir,
                             next_x + 3 - BAT_X, bat_extra_px != 0);
-        ball_dir_delta_q8(objects[OBJ_BALL_1].dir, objects[OBJ_BALL_1].speed,
+        dir_to_dxdy(objects[OBJ_BALL_1].dir, objects[OBJ_BALL_1].speed,
                           &dx_q8, &dy_q8);
         ball_dx = (dx_q8 < 0) ? -1 : (dx_q8 > 0 ? 1 : 0);
         ball_dy = (dy_q8 < 0) ? -1 : (dy_q8 > 0 ? 1 : 0);
@@ -5737,7 +5651,7 @@ static void step_extra_ball(unsigned char *in_active,
      * own LA274/LA278 state). */
     if (magnet_ball_frame(o, (unsigned char)(obj_idx == OBJ_BALL_2 ? 1 : 2)))
         return;
-    ball_dir_delta_q8(o->dir, o->speed, &dx_q8, &dy_q8);
+    dir_to_dxdy(o->dir, o->speed, &dx_q8, &dy_q8);
     next_x_q8 = ((long)o->x_coord << 8) + o->x_coord_hi + dx_q8;
     next_y_q8 = ((long)o->y_coord << 8) + o->y_coord_hi + dy_q8;
     next_x = (int)(next_x_q8 >> 8);
@@ -6745,42 +6659,12 @@ static int show_round_banner(unsigned int round_num_display) {
  * driven by PIT ticks — the outer run_level enters it from the two
  * ball-lost sites (bomb-on-bat, ball-past-bat). */
 
-/* Direction LUT at $AD58 — 17 sin values in [0, $FF]. Mirror of
- * direction_table; used by dir_to_dxdy to decode a 6-bit angle into
- * (dx, dy) in 8.8 fixed point. */
-static const unsigned char dir_sin_tbl[17] = {
-    0xFF,0xFD,0xFA,0xF4,0xE6,0xE0,0xD4,0xC5,
-    0xB4,0xA1,0x8D,0x78,0x61,0x4A,0x31,0x18,
-    0x00
-};
 
 /* Port of hl_bc_calc_direction at $AD22 + the LAD13 speed multiply.
  * LAD13 treats the direction-table byte as a magnitude, multiplies by
  * speed, then two's-complement negates the product when the component's
  * sign byte is $FF. Negative components are therefore `-magnitude`, not
  * `magnitude - 256`. Returns signed 8.8 fixed-point displacement. */
-static void dir_to_dxdy(unsigned char dir, unsigned char speed,
-                         int *out_dx, int *out_dy) {
-    unsigned char q = dir & 0x30;
-    unsigned char d = dir & 0x0F;
-    int C = dir_sin_tbl[d];
-    int L = dir_sin_tbl[16 - d];
-    int hl, bc;
-    switch (q) {
-        case 0x00: hl = L;          bc = C;          break;
-        case 0x10: hl = C;          bc = -L;         break;
-        case 0x20: hl = -L;         bc = -C;         break;
-        default:   hl = -C;         bc = L;          break;
-    }
-    /* LAD69 adds the hl_bc_calc_direction BC term to X and the HL term to
-     * Y (it PUSHes HL, multiplies BC into X, then POPs HL for Y), so the
-     * two components are CROSSED relative to the table read. Assigning
-     * them straight (out_dx=hl) put the wrong magnitude on X — e.g. dir
-     * $1F gave dx=+0.28 px where the Spectrum moves dx=-3 px (probed via
-     * scripts/capture_frame_timeline_original.py --probe-ball). */
-    *out_dx = bc * (int)speed;
-    *out_dy = hl * (int)speed;
-}
 
 #define DEATH_SPARK_COUNT 10
 #define DEATH_SPARK_BODY_W 0x08
