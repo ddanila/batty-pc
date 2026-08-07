@@ -10,10 +10,10 @@
  * motion, and it is a literal port of the original's table lookup rather
  * than trigonometry, because the port must reproduce its rounding.
  *
- * The collision half of ball physics is not here yet: brick_collision and
- * laffc_collision still mix geometry with effects (scoring, sound, grid
- * mutation, bonus spawning), so they cannot move until that split is
- * made. */
+ * COLLISION is split in two. The sweeps below decide WHICH brick the ball
+ * reached and HOW it should bounce — pure, given the grid. What that hit
+ * then costs (score, sound, grid mutation, bonus spawn, animation) stays
+ * in the game code, because none of it is geometry. */
 
 #ifndef BATTY_PHYSICS_H
 #define BATTY_PHYSICS_H
@@ -53,5 +53,78 @@ u8 bat_reflect_dir(u8 dir);
  * The original's match loop SKIPS dir 0x10 (pure vertical), which never
  * arises in play — a synthetic 0x10 ball does not return cleanly. */
 int bat_dir_index(u8 dir);
+
+/* --- The brick field -------------------------------------------------- */
+
+/* 15x12 cells of 16x8 px, the top-left at (8, 32). Bit 7 of a cell means
+ * destroyed; every other bit is the brick's type and hit state, which
+ * only the effects half cares about. */
+const int BRICK_W_PX  = 16;
+const int BRICK_H_PX  = 8;
+const int FIELD_COLS  = 15;
+const int FIELD_ROWS  = 12;
+const int FIELD_X0    = 0x08;
+const int FIELD_Y0    = 0x20;
+/* Left/top edge of the last cell, and the first pixel past the band. The
+ * original tests against these as literals ($E8, $78, $80). */
+const int FIELD_X_LAST = FIELD_X0 + (FIELD_COLS - 1) * BRICK_W_PX;   /* $E8 */
+const int FIELD_Y_LAST = FIELD_Y0 + (FIELD_ROWS - 1) * BRICK_H_PX;   /* $78 */
+const int FIELD_Y_END  = FIELD_Y0 + FIELD_ROWS * BRICK_H_PX;         /* $80 */
+
+ZX_STATIC_ASSERT(FIELD_X_LAST == 0xE8, "column edge must match the original");
+ZX_STATIC_ASSERT(FIELD_Y_LAST == 0x78, "row edge must match the original");
+ZX_STATIC_ASSERT(FIELD_Y_END  == 0x80, "band end must match the original");
+
+class BrickField {
+public:
+    BrickField(const u8 *cells) : c(cells) {}
+    bool in_range(int row, int col) const {
+        return row >= 0 && row < FIELD_ROWS && col >= 0 && col < FIELD_COLS;
+    }
+    /* A cell the ball can hit. Out of range counts as gone. */
+    bool standing(int row, int col) const {
+        return in_range(row, col) && !(c[row * FIELD_COLS + col] & 0x80);
+    }
+private:
+    const u8 *c;
+};
+
+/* --- Sweep: the rectangle-overlap path (secondary balls, fallback) ---- */
+
+struct BrickHit {
+    bool hit;
+    int  row, col;
+    int  axis;        /* 1 = flip dy, 2 = flip dx */
+};
+
+BrickHit brick_sweep(const BrickField &field, int ball_w, int ball_h,
+                     int prev_x, int prev_y, int new_x, int new_y);
+
+/* --- Sweep: LAFFC, the byte-exact path (primary ball) ----------------- */
+
+/* Which of the cell's faces are OPEN to the ball — bit0 left, 1 right,
+ * 2 up, 3 down. A brick against a playfield boundary keeps that boundary
+ * face open, so the ball bounces off it; inverting that is what let a ball
+ * fall through row-0 metal bricks (known-bugs #6). */
+struct LaffcHit {
+    bool hit;
+    int  row, col;
+    int  cell_x, cell_y;    /* orig: Lx, Hy */
+    u8   face_mask;
+};
+
+/* orig: LAFFC $AFFC, phases 1-5b. */
+LaffcHit laffc_sweep(const BrickField &field, u8 dir,
+                     int ball_w, int ball_h, int new_x, int new_y);
+
+/* Where the ball ends up once the sweep has chosen a face: snapped to
+ * that cell edge, with the direction reflected. orig: LAFFC_26-29. */
+struct BallBounce { u8 x, y, dir; };
+
+BallBounce laffc_bounce(const LaffcHit &hit, u8 dir,
+                        int ball_w, int ball_h, int new_x, int new_y);
+
+/* orig: change_direction $ACEE. $1F flips horizontal, $3F vertical. */
+u8 laffc_change_dir(u8 dir, u8 mask);
 
 #endif /* BATTY_PHYSICS_H */

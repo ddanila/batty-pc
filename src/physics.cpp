@@ -119,3 +119,169 @@ u8 bat_deflect_dir(u8 dir, int offset, bool big_bat) {
     if (index < 0) return bat_reflect_dir(dir);
     return deflect_tbl[zone & 3][index];
 }
+
+/* --- Collision sweeps -------------------------------------------------- */
+
+BrickHit brick_sweep(const BrickField &field, int ball_w, int ball_h,
+                     int prev_x, int prev_y, int new_x, int new_y) {
+    BrickHit miss = { false, -1, -1, 0 };
+
+    const int left   = new_x;
+    const int right  = new_x + ball_w - 1;
+    const int top    = new_y;
+    const int bottom = new_y + ball_h - 1;
+
+    if (bottom < FIELD_Y0 || top >= FIELD_Y_END) return miss;
+    if (right < FIELD_X0 ||
+        left >= FIELD_X0 + FIELD_COLS * BRICK_W_PX) return miss;
+
+    const int col0 = (left < FIELD_X0) ? 0 : (left - FIELD_X0) / BRICK_W_PX;
+    const int col1 = (right >= FIELD_X0 + FIELD_COLS * BRICK_W_PX)
+                   ? FIELD_COLS - 1 : (right - FIELD_X0) / BRICK_W_PX;
+    const int row0 = (top < FIELD_Y0) ? 0 : (top - FIELD_Y0) / BRICK_H_PX;
+    const int row1 = (bottom >= FIELD_Y_END)
+                   ? FIELD_ROWS - 1 : (bottom - FIELD_Y0) / BRICK_H_PX;
+
+    int row = -1, col = -1;
+    for (int r = row0; r <= row1 && row < 0; r++) {
+        for (int c = col0; c <= col1; c++) {
+            if (field.standing(r, c)) { row = r; col = c; break; }
+        }
+    }
+    if (row < 0) return miss;
+
+    /* Which axis reflects: whichever face the ball was outside of last
+     * frame. If it was already overlapping both, the shallower overlap
+     * wins. */
+    const int brick_top   = FIELD_Y0 + row * BRICK_H_PX;
+    const int brick_bot   = brick_top + BRICK_H_PX;
+    const int brick_left  = FIELD_X0 + col * BRICK_W_PX;
+    const int brick_right = brick_left + BRICK_W_PX;
+
+    int axis;
+    if (prev_y + ball_h <= brick_top || prev_y >= brick_bot) {
+        axis = 1;
+    } else if (prev_x + ball_w <= brick_left || prev_x >= brick_right) {
+        axis = 2;
+    } else {
+        const int overlap_x = (right < brick_right ? right : brick_right - 1)
+                            - (left > brick_left ? left : brick_left) + 1;
+        const int overlap_y = (bottom < brick_bot ? bottom : brick_bot - 1)
+                            - (top > brick_top ? top : brick_top) + 1;
+        axis = (overlap_y <= overlap_x) ? 1 : 2;
+    }
+
+    BrickHit hit = { true, row, col, axis };
+    return hit;
+}
+
+u8 laffc_change_dir(u8 dir, u8 mask) {
+    return u8(((dir ^ mask) + 1) & 0x3F);
+}
+
+LaffcHit laffc_sweep(const BrickField &field, u8 dir,
+                     int ball_w, int ball_h, int new_x, int new_y) {
+    LaffcHit miss = { false, -1, -1, 0, 0, 0 };
+
+    if (new_y >= FIELD_Y_END)        return miss;
+    if (new_y + ball_h < FIELD_Y0)   return miss;
+
+    /* Row band. The original walks rows comparing in 8-bit arithmetic, so
+     * the borrow case is a separate branch rather than a signed compare. */
+    int row = -1, cell_y = 0;
+    {
+        int band_y = FIELD_Y0;
+        for (int r = 0; r < FIELD_ROWS; r++) {
+            const int a = (band_y - new_y) & 0xFF;
+            if (new_y > band_y) {
+                if (a + BRICK_H_PX > 0xFF) { row = r; cell_y = band_y; break; }
+            } else {
+                if (a < ball_h)            { row = r; cell_y = band_y; break; }
+            }
+            band_y += BRICK_H_PX;
+        }
+    }
+    if (row < 0) return miss;
+
+    /* Column, plus how far into the cell the ball has penetrated in x. */
+    int col = 0, cell_x = FIELD_X0, x_pen_in_cell = 0;
+    {
+        int a = new_x - FIELD_X0;
+        if (a < 0) a = 0;
+        while (a >= BRICK_W_PX && col < FIELD_COLS - 1) {
+            a -= BRICK_W_PX; col++; cell_x += BRICK_W_PX;
+        }
+        x_pen_in_cell = a;
+    }
+
+    /* The ball's body can straddle into the next column or row, so if its
+     * own cell is gone the original tries right, down, then down-right. */
+    if (!field.standing(row, col)) {
+        const bool straddles_x = (x_pen_in_cell + ball_w) >= BRICK_W_PX
+                              && cell_x != FIELD_X_LAST;
+        const bool straddles_y = (new_y + ball_h - cell_y) >= BRICK_H_PX
+                              && cell_y < FIELD_Y_LAST;
+        bool landed = false;
+        if (straddles_x && field.standing(row, col + 1)) {
+            col++; cell_x += BRICK_W_PX; landed = true;
+        } else if (straddles_y) {
+            row++; cell_y += BRICK_H_PX;
+            if (field.standing(row, col)) {
+                landed = true;
+            } else if (straddles_x && field.standing(row, col + 1)) {
+                col++; cell_x += BRICK_W_PX; landed = true;
+            }
+        }
+        if (!landed) return miss;
+    }
+
+    /* Open faces: a face is open when its neighbour is gone, OR when the
+     * cell sits against that playfield boundary. The boundary term is the
+     * half that known-bugs #6 had inverted. */
+    u8 mask = 0;
+    if (cell_x == FIELD_X0     || !field.standing(row, col - 1)) mask |= 1;
+    if (cell_x == FIELD_X_LAST || !field.standing(row, col + 1)) mask |= 2;
+    if (cell_y <  FIELD_Y0 + 1 || !field.standing(row - 1, col)) mask |= 4;
+    if (cell_y >= FIELD_Y_LAST || !field.standing(row + 1, col)) mask |= 8;
+
+    /* Only faces the ball is actually travelling towards can be hit. */
+    if (dir < 0x20) mask &= u8(~8); else mask &= u8(~4);
+    if (((dir + 0x10) & 0x3F) >= 0x20) mask &= u8(~1); else mask &= u8(~2);
+
+    /* If both a horizontal and a vertical face survive, the ball came in
+     * through the one it has penetrated least. */
+    if ((mask & 0x03) && (mask & 0x0C)) {
+        int x_pen = (mask & 1) ? ((ball_w + new_x) - cell_x)
+                               : ((cell_x + BRICK_W_PX) - new_x);
+        int y_pen = (mask & 4) ? ((ball_h + new_y) - cell_y)
+                               : ((cell_y + BRICK_H_PX) - new_y);
+        x_pen &= 0xFF; y_pen &= 0xFF;
+        if (y_pen >= x_pen) mask &= u8(~0x0C); else mask &= u8(~0x03);
+    }
+
+    LaffcHit hit = { true, row, col, cell_x, cell_y, mask };
+    return hit;
+}
+
+BallBounce laffc_bounce(const LaffcHit &hit, u8 dir,
+                        int ball_w, int ball_h, int new_x, int new_y) {
+    BallBounce out;
+    if (hit.face_mask & 1) {                    /* open left */
+        out.x = u8(hit.cell_x - ball_w);
+        out.y = u8(new_y);
+        out.dir = laffc_change_dir(dir, 0x1F);
+    } else if (hit.face_mask & 2) {             /* open right */
+        out.x = u8(hit.cell_x + BRICK_W_PX);
+        out.y = u8(new_y);
+        out.dir = laffc_change_dir(dir, 0x1F);
+    } else if (hit.face_mask & 4) {             /* open up */
+        out.x = u8(new_x);
+        out.y = u8(hit.cell_y - ball_h);
+        out.dir = laffc_change_dir(dir, 0x3F);
+    } else {                                    /* open down, or enclosed */
+        out.x = u8(new_x);
+        out.y = u8(hit.cell_y + BRICK_H_PX);
+        out.dir = laffc_change_dir(dir, 0x3F);
+    }
+    return out;
+}

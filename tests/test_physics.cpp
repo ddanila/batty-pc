@@ -30,6 +30,13 @@ static void check(bool ok, const char *fmt, ...) {
     va_end(ap);
 }
 
+/* Deterministic pseudo-random cell picker for the random-field trials. */
+static unsigned long rng_like_seed = 1;
+static int pseudo(int n) {
+    rng_like_seed = rng_like_seed * 1103515245UL + 12345UL;
+    return int((rng_like_seed >> 16) % (unsigned long)n);
+}
+
 static void report(const char *name, int before, const char *detail) {
     printf("  %-28s %s\n", name, failures > before ? "FAIL" : detail);
 }
@@ -214,6 +221,192 @@ static void test_delta_roundtrip_quadrants() {
     report("delta_roundtrip_quadrants", before, "4 quadrants           ok");
 }
 
+/* --- Collision sweeps -------------------------------------------------- */
+
+/* A field with every cell standing, then knock individual ones out. */
+static u8 field_cells[FIELD_ROWS * FIELD_COLS];
+static void field_fill(bool standing) {
+    memset(field_cells, standing ? 0x01 : 0x80, sizeof(field_cells));
+}
+static void field_destroy(int row, int col) {
+    field_cells[row * FIELD_COLS + col] = 0x80;
+}
+
+/* A ball entirely outside the band must never report a hit, whatever the
+ * grid looks like — the cheapest possible guard against a stray index. */
+static void test_sweeps_miss_outside_the_band() {
+    const int before = failures;
+    field_fill(true);
+    const BrickField field(field_cells);
+    int hits = 0;
+    for (int x = -32; x < 300; x += 3) {
+        for (int y = -32; y < FIELD_Y0 - 8; y += 3) {
+            if (brick_sweep(field, 8, 7, x, y, x, y).hit) hits++;
+            if (laffc_sweep(field, 0x08, 8, 7, x, y).hit) hits++;
+        }
+        for (int y = FIELD_Y_END; y < 200; y += 3) {
+            if (brick_sweep(field, 8, 7, x, y, x, y).hit) hits++;
+            if (laffc_sweep(field, 0x08, 8, 7, x, y).hit) hits++;
+        }
+    }
+    check(hits == 0, "%d hits reported outside the brick band\n", hits);
+    report("sweeps_miss_outside_band", before, "~12k positions       ok");
+}
+
+/* An empty field can never be hit. */
+static void test_sweeps_miss_empty_field() {
+    const int before = failures;
+    field_fill(false);
+    const BrickField field(field_cells);
+    int hits = 0;
+    for (int x = -8; x < 260; x += 2)
+        for (int y = FIELD_Y0 - 8; y < FIELD_Y_END + 8; y += 2)
+            for (int d = 0; d < 0x40; d += 8) {
+                if (brick_sweep(field, 8, 7, x, y, x, y).hit) hits++;
+                if (laffc_sweep(field, u8(d), 8, 7, x, y).hit) hits++;
+            }
+    check(hits == 0, "%d hits reported on a cleared field\n", hits);
+    report("sweeps_miss_empty_field", before, "all cells destroyed  ok");
+}
+
+/* Any reported hit must name a cell that is in range AND standing. This is
+ * the invariant that keeps the effects half from scoring a phantom brick. */
+static void test_hits_name_a_standing_cell() {
+    const int before = failures;
+    int bad = 0;
+    rng_like_seed = 12345;
+    for (int trial = 0; trial < 400; trial++) {
+        field_fill(true);
+        for (int k = 0; k < 60; k++)
+            field_destroy(pseudo(FIELD_ROWS), pseudo(FIELD_COLS));
+        const BrickField field(field_cells);
+        for (int x = 0; x < 250; x += 7) {
+            for (int y = FIELD_Y0 - 4; y < FIELD_Y_END + 4; y += 5) {
+                const BrickHit b = brick_sweep(field, 8, 7, x, y, x, y);
+                if (b.hit && !field.standing(b.row, b.col)) bad++;
+                if (b.hit && (b.axis != 1 && b.axis != 2)) bad++;
+                for (int d = 0; d < 0x40; d += 16) {
+                    const LaffcHit l = laffc_sweep(field, u8(d), 8, 7, x, y);
+                    if (l.hit && !field.standing(l.row, l.col)) bad++;
+                }
+            }
+        }
+    }
+    check(bad == 0, "%d hits named a destroyed or out-of-range cell\n", bad);
+    report("hits_name_standing_cell", before, "400 random fields    ok");
+}
+
+/* The cell origin a hit reports must match its row/col — the bounce snaps
+ * the ball to those pixel edges, so a mismatch teleports it. */
+static void test_hit_origin_matches_cell() {
+    const int before = failures;
+    int bad = 0;
+    field_fill(true);
+    const BrickField field(field_cells);
+    for (int x = 0; x < 250; x += 3)
+        for (int y = FIELD_Y0; y < FIELD_Y_END; y += 3)
+            for (int d = 0; d < 0x40; d += 8) {
+                const LaffcHit l = laffc_sweep(field, u8(d), 8, 7, x, y);
+                if (!l.hit) continue;
+                if (l.cell_x != FIELD_X0 + l.col * BRICK_W_PX) bad++;
+                if (l.cell_y != FIELD_Y0 + l.row * BRICK_H_PX) bad++;
+            }
+    check(bad == 0, "%d hits reported an origin inconsistent with row/col\n", bad);
+    report("hit_origin_matches_cell", before, "full band sweep      ok");
+}
+
+/* known-bugs #6: a brick against a playfield boundary keeps that boundary
+ * face OPEN, so a ball arriving along it bounces instead of passing
+ * through. Inverting this let balls fall through row-0 metal bricks. */
+static void test_boundary_faces_stay_open() {
+    const int before = failures;
+    field_fill(true);
+    const BrickField field(field_cells);
+    /* Top row, ball heading down: the UP face is against the boundary. */
+    const LaffcHit top = laffc_sweep(field, 0x08, 8, 7, FIELD_X0, FIELD_Y0);
+    check(top.hit, "no hit on the top row\n");
+    check(top.row == 0, "expected row 0, got %d\n", top.row);
+    /* Left column: the LEFT face is against the boundary. */
+    const LaffcHit left = laffc_sweep(field, 0x28, 8, 7, FIELD_X0, FIELD_Y0 + 40);
+    check(left.hit && left.col == 0, "no hit in the left column\n");
+    check(left.cell_x == FIELD_X0, "left column origin is %d\n", left.cell_x);
+    report("boundary_faces_stay_open", before, "top + left edges     ok");
+}
+
+/* The bounce always lands the ball flush against the cell it hit, never
+ * inside it — a ball left overlapping would re-collide forever. */
+static void test_bounce_clears_the_cell() {
+    const int before = failures;
+    int inside = 0;
+    field_fill(true);
+    const BrickField field(field_cells);
+    for (int x = 0; x < 250; x += 5)
+        for (int y = FIELD_Y0; y < FIELD_Y_END; y += 3)
+            for (int d = 0; d < 0x40; d += 8) {
+                const LaffcHit l = laffc_sweep(field, u8(d), 8, 7, x, y);
+                if (!l.hit) continue;
+                const BallBounce b = laffc_bounce(l, u8(d), 8, 7, x, y);
+                const int bx = b.x, by = b.y;
+                const bool overlaps_x = bx + 8 > l.cell_x && bx < l.cell_x + BRICK_W_PX;
+                const bool overlaps_y = by + 7 > l.cell_y && by < l.cell_y + BRICK_H_PX;
+                if (overlaps_x && overlaps_y) inside++;
+            }
+    check(inside == 0, "%d bounces left the ball inside the brick\n", inside);
+    report("bounce_clears_the_cell", before, "full band sweep      ok");
+}
+
+/* `((dir ^ mask) + 1) & 0x3F` is a fixed point exactly at the four pure
+ * axis-aligned directions: 0x10 and 0x30 for a horizontal flip, 0x00 and
+ * 0x20 for a vertical one. Those are the no-op bounces behind
+ * known-bugs #6 — and the game never generates them (bat_dir_index skips
+ * 0x10, and the deflection tables emit none of the four). So the
+ * invariant is: every direction the game can actually produce turns
+ * around. If a future change started emitting a pure axis direction, this
+ * catches it. */
+static void test_reflection_fixed_points_are_unreachable() {
+    const int before = failures;
+    int wrong_fixed = 0;
+    for (int d = 0; d < 0x40; d++) {
+        const bool pure_axis = (d == 0x00 || d == 0x10 || d == 0x20 || d == 0x30);
+        const bool h_fixed = laffc_change_dir(u8(d), 0x1F) == u8(d);
+        const bool v_fixed = laffc_change_dir(u8(d), 0x3F) == u8(d);
+        if ((h_fixed || v_fixed) != pure_axis) wrong_fixed++;
+    }
+    check(wrong_fixed == 0,
+          "%d directions disagreed with the pure-axis fixed-point set\n",
+          wrong_fixed);
+
+    /* None of the four is reachable from the bat. */
+    int emitted = 0;
+    const u8 incoming[6] = {0x04, 0x08, 0x0C, 0x14, 0x18, 0x1C};
+    for (int big = 0; big <= 1; big++)
+        for (int offset = -8; offset < 48; offset++)
+            for (int i = 0; i < 6; i++) {
+                const u8 out = bat_deflect_dir(incoming[i], offset, big != 0);
+                if (out == 0x00 || out == 0x10 || out == 0x20 || out == 0x30) emitted++;
+            }
+    check(emitted == 0, "the bat emitted a pure-axis direction %d times\n", emitted);
+    report("reflection_fixed_points", before, "4, all unreachable   ok");
+}
+
+/* Every direction the game can produce turns around when it bounces. */
+static void test_bounce_changes_direction() {
+    const int before = failures;
+    int unchanged = 0;
+    field_fill(true);
+    const BrickField field(field_cells);
+    for (int x = 0; x < 250; x += 5)
+        for (int y = FIELD_Y0; y < FIELD_Y_END; y += 3)
+            for (int d = 0; d < 0x40; d += 4) {
+                if (d == 0x00 || d == 0x10 || d == 0x20 || d == 0x30) continue;
+                const LaffcHit l = laffc_sweep(field, u8(d), 8, 7, x, y);
+                if (!l.hit) continue;
+                if (laffc_bounce(l, u8(d), 8, 7, x, y).dir == u8(d)) unchanged++;
+            }
+    check(unchanged == 0, "%d bounces returned the incoming direction\n", unchanged);
+    report("bounce_changes_direction", before, "full band sweep      ok");
+}
+
 int main() {
     printf("physics tests\n");
     test_deflection_matches_hardware();
@@ -226,6 +419,14 @@ int main() {
     test_delta_and_dxdy_conventions_differ();
     test_speed_scales_linearly();
     test_delta_roundtrip_quadrants();
-    printf("\n%s\n", failures ? "FAILED" : "10 tests, 0 failed");
+    test_sweeps_miss_outside_the_band();
+    test_sweeps_miss_empty_field();
+    test_hits_name_a_standing_cell();
+    test_hit_origin_matches_cell();
+    test_boundary_faces_stay_open();
+    test_bounce_clears_the_cell();
+    test_reflection_fixed_points_are_unreachable();
+    test_bounce_changes_direction();
+    printf("\n%s\n", failures ? "FAILED" : "18 tests, 0 failed");
     return failures ? 1 : 0;
 }

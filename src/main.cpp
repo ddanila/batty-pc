@@ -321,6 +321,8 @@ static void draw_bottom_sprites(void) {
 #define LVL_ROWS   12
 #define LVL_COLS   15
 #define LVL_CELLS  (LVL_ROWS * LVL_COLS)
+ZX_STATIC_ASSERT(LVL_ROWS == FIELD_ROWS && LVL_COLS == FIELD_COLS,
+                 "level tables and the physics brick field must agree");
 #define LVL_SIZE   (N_LEVELS * LVL_CELLS)
 /* Per-level attribute band: FULL 24 char-rows x 32 cols of ZX
  * attribute bytes captured from each level's GT .scr.
@@ -4070,59 +4072,6 @@ static void render_brick_flash_to_buff(void) {
 static int brick_hit_resolve(int col, int row, int axis);
 static int laffc_collision(object_t *o, int prev_x, int prev_y, int new_x, int new_y);
 
-static int brick_collision(int prev_x, int prev_y, int new_x, int new_y) {
-    int sz = eff_ball_size();
-    int body_h = BALL_H_PX;
-    int left = new_x;
-    int right = new_x + sz - 1;
-    int top = new_y;
-    int bottom = new_y + body_h - 1;
-    int col0, col1, row0, row1;
-    int col, row, r, c, brick_top, brick_bot, brick_left, brick_right, axis;
-    if (bottom < 32 || top >= 32 + LVL_ROWS * 8) return 0;
-    if (right < 8  || left >= 8  + LVL_COLS * 16) return 0;
-    col0 = (left < 8) ? 0 : (left - 8) / 16;
-    col1 = (right >= 8 + LVL_COLS * 16) ? LVL_COLS - 1 : (right - 8) / 16;
-    row0 = (top < 32) ? 0 : (top - 32) / 8;
-    row1 = (bottom >= 32 + LVL_ROWS * 8) ? LVL_ROWS - 1 : (bottom - 32) / 8;
-
-    row = -1;
-    col = -1;
-    for (r = row0; r <= row1 && row < 0; r++) {
-        for (c = col0; c <= col1; c++) {
-            unsigned char v = live_level[r * LVL_COLS + c];
-            if ((v & 0x80) == 0) {
-                row = r;
-                col = c;
-                break;
-            }
-        }
-    }
-    if (row < 0) return 0;
-
-    /* Determine the bounce axis (1 = flip dy, 2 = flip dx) for both
-     * the destructible and undestructible paths. */
-    brick_top = 32 + row * 8;
-    brick_bot = brick_top + 8;
-    brick_left = 8 + col * 16;
-    brick_right = brick_left + 16;
-    if (prev_y + body_h <= brick_top || prev_y >= brick_bot) {
-        axis = 1;
-    } else if (prev_x + sz <= brick_left || prev_x >= brick_right) {
-        axis = 2;
-    } else {
-        int overlap_x = (right < brick_right ? right : brick_right - 1)
-                      - (left > brick_left ? left : brick_left) + 1;
-        int overlap_y = (bottom < brick_bot ? bottom : brick_bot - 1)
-                      - (top > brick_top ? top : brick_top) + 1;
-        axis = (overlap_y <= overlap_x) ? 1 : 2;
-    }
-    return brick_hit_resolve(col, row, axis);
-}
-
-/* Shared brick-hit tail (undestructible / multi-hit half-state /
- * destroy + shimmer + bonus), split out of brick_collision so the
- * LAFFC port can reuse it. Returns the (possibly smash-zeroed) axis. */
 static int brick_hit_resolve(int col, int row, int axis) {
     unsigned char *cell = &live_level[row * LVL_COLS + col];
     /* BIT 5 = undestructible: bounce, never destroy.
@@ -4172,148 +4121,36 @@ static int brick_hit_resolve(int col, int row, int axis) {
     return axis;
 }
 
-/* change_direction at $ACEE: dir = ((dir XOR mask) + 1) & 0x3F. mask
- * $1F flips the horizontal component (left/right bounce), $3F the
- * vertical (up/down). */
-static unsigned char laffc_change_dir(unsigned char dir, unsigned char mask) {
-    return (unsigned char)(((dir ^ mask) + 1) & 0x3F);
+static int brick_collision(int prev_x, int prev_y, int new_x, int new_y) {
+    const BrickHit hit = brick_sweep(BrickField(live_level),
+                                     eff_ball_size(), BALL_H_PX,
+                                     prev_x, prev_y, new_x, new_y);
+    if (!hit.hit) return 0;
+    return brick_hit_resolve(hit.col, hit.row, hit.axis);
 }
 
-/* Port of LAFFC ($AFFC) brick collision, gated behind BATTY_LAFFC while
- * it is brought to parity (the default game keeps brick_collision). See
- * notes/laffc-decode.md. Phases: (1) early exits, (2/3) find the grid
- * cell at the ball's position via the disasm's byte loops, (4) build a
- * 4-bit neighbour-solidity mask, (5) gate it by ball direction, (6)
- * bounce off the chosen solid neighbour and destroy IT (not the ball's
- * own cell) — that is the "same count, different cells" fix. The
- * penetration-depth corner case (LAFFC_21-25) and exact change_direction
- * masks are still approximated by brick_hit_resolve's axis reflect;
- * refined in later iterations against the frame-step gate. */
 static int laffc_collision(object_t *o, int prev_x, int prev_y, int new_x, int new_y) {
-    int h = o->h_body_px;
-    unsigned char dir = o->dir;
-    int row = -1, Hy = 0, col = 0, Lx = 0x08, mask, rem = 0;
     (void)prev_x; (void)prev_y;
-    /* phase 1: early exits (ball below / above the brick band) */
-    if (new_y >= 0x80) return 0;
-    if (new_y + h < 0x20) return 0;
-    /* phase 2: find the row band (byte-faithful LAFFC_0..2) */
-    {
-        int Cv = 0x20, rr;
-        for (rr = 0; rr < LVL_ROWS; rr++) {
-            int a = (Cv - new_y) & 0xFF;
-            if (new_y > Cv) {                 /* borrow -> LAFFC_1 */
-                if (a + 8 > 0xFF) { row = rr; Hy = Cv; break; }
-            } else {                          /* LAFFC_0 main */
-                if (a < h) { row = rr; Hy = Cv; break; }
-            }
-            Cv += 8;
-        }
-    }
-    if (row < 0) return 0;
-    /* phase 3: find the column (LAFFC_4) */
-    {
-        int a = (new_x - 0x08);
-        if (a < 0) a = 0;
-        while (a >= 0x10 && col < LVL_COLS - 1) { a -= 0x10; col++; Lx += 0x10; }
-        rem = a;   /* X penetration within the cell, 0..15 */
-    }
-    /* phase 4 head (LAFFC_5-6): land (row,col)/(Lx,Hy) on the SOLID cell
-     * the ball body overlaps. The body straddles into the next COLUMN
-     * when it crosses the cell's right edge (rem + width >= 16, not at the
-     * $E8 edge) and into the next ROW when it penetrates >= 8 px
-     * (new_y + h - Hy >= 8, not at the $78 bottom). LAFFC tries, in order:
-     * own cell, right, down, then down-right (only when the horizontal
-     * straddle applied). My earlier port did right only, which missed the
-     * down/down-right brick at a row boundary (see laffc-decode Update 14). */
-#define LAFFC_SOLID(rr,cc) ((rr) >= 0 && (rr) < LVL_ROWS && (cc) >= 0 && \
-        (cc) < LVL_COLS && !(live_level[(rr) * LVL_COLS + (cc)] & 0x80))
-    if (!LAFFC_SOLID(row, col)) {
-        int hstrad = (rem + o->w_body_px) >= 0x10 && Lx != 0xE8;
-        int vstrad = (new_y + h - Hy) >= 8 && Hy < 0x78;
-        int landed = 0;
-        if (hstrad && LAFFC_SOLID(row, col + 1)) {          /* right */
-            col++; Lx += 0x10; landed = 1;
-        } else if (vstrad) {
-            row++; Hy += 8;
-            if (LAFFC_SOLID(row, col)) {                    /* down */
-                landed = 1;
-            } else if (hstrad && LAFFC_SOLID(row, col + 1)) { /* down-right */
-                col++; Lx += 0x10; landed = 1;
-            }
-        }
-        if (!landed) return 0;
-    }
-#undef LAFFC_SOLID
-    /* phase 4: open-face mask (bit0 L, 1 R, 2 U, 3 D). The original (LAFFC,
-     * disasm ~$B019) starts D=$0F (ALL faces open) and CLEARS a face only
-     * when its neighbour is SOLID *and* the cell is not against that
-     * playfield boundary:
-     *   right (bit1): RES unless Lx==$E8 [right wall] or right empty
-     *   left  (bit0): RES unless Lx==$08 [left wall]  or left empty
-     *   up    (bit2): RES unless Hy <$21 [top row]    or above empty
-     *   down  (bit3): RES unless Hy>=$78 [bottom row]  or below empty
-     * So a brick AGAINST a boundary keeps that boundary face OPEN (the ball
-     * bounces off it). An earlier port INVERTED this (`Lx!=$08 && EMPTY`,
-     * `Hy>=$21 && EMPTY`, ...), which left a boundary brick's edge face
-     * CLOSED -- known-bugs #6: a ball straight down (dir $10) into a row-0
-     * (Hy=$20) metal brick whose right neighbour is empty got a no-op
-     * horizontal "bounce" (dir ($10^$1F)+1 = $10, unchanged) and fell
-     * straight through. For INTERIOR cells the two forms are identical (the
-     * edge term is false), so L3 ball parity is unchanged; only boundary
-     * bricks differ. Gate: test-ball-no-tunnel. */
-#define LAFFC_EMPTY(rr,cc) ((rr) < 0 || (rr) >= LVL_ROWS || (cc) < 0 || \
-        (cc) >= LVL_COLS || (live_level[(rr) * LVL_COLS + (cc)] & 0x80))
-    mask = 0;
-    if (Lx == 0x08 || LAFFC_EMPTY(row, col - 1)) mask |= 1;
-    if (Lx == 0xE8 || LAFFC_EMPTY(row, col + 1)) mask |= 2;
-    if (Hy <  0x21 || LAFFC_EMPTY(row - 1, col)) mask |= 4;
-    if (Hy >= 0x78 || LAFFC_EMPTY(row + 1, col)) mask |= 8;
-#undef LAFFC_EMPTY
-    /* phase 5: gate by direction (LAFFC_13..17). Leaves at most one of
-     * {left,right} and one of {up,down}. */
-    if (dir < 0x20) mask &= ~8; else mask &= ~4;
-    if (((dir + 0x10) & 0x3F) >= 0x20) mask &= ~1; else mask &= ~2;
-    /* phase 5b: corner case (LAFFC_21-25). When both a horizontal and a
-     * vertical open face survive, the ball entered through the shallower-
-     * penetrated one — bounce off that axis. X-pen/Y-pen are measured
-     * from the open side (left: x+w-Lx, right: Lx+$10-x; up: y+h-Hy,
-     * down: Hy+8-y); if Y-pen >= X-pen keep horizontal, else vertical. */
-    if ((mask & 0x03) && (mask & 0x0C)) {
-        int w = o->w_body_px;
-        int xpen = (mask & 1) ? ((w + new_x) - Lx) : ((Lx + 0x10) - new_x);
-        int ypen = (mask & 4) ? ((h + new_y) - Hy) : ((Hy + 8) - new_y);
-        xpen &= 0xFF; ypen &= 0xFF;
-        if (ypen >= xpen) mask &= ~0x0C;   /* horizontal bounce */
-        else              mask &= ~0x03;   /* vertical bounce */
-    }
-    /* phase 6: resolve the hit cell (destroy / half-hit / shimmer). SMASH
-     * (big-ball) returns 0 = plough through: cell destroyed, no bounce. */
-    if (brick_hit_resolve(col, row, 1) == 0) return 0;
-    /* Reflect via change_direction and snap the ball to the cell edge of
-     * the chosen open face (LAFFC_26-29). $1F flips horizontal, $3F
-     * vertical. The non-snapped axis advances to the new position. */
-    {
-        int w = o->w_body_px;
-        int dx_q8, dy_q8;
-        if (mask & 1) {            /* open left -> horizontal bounce */
-            o->x_coord = (unsigned char)(Lx - w);  o->y_coord = (unsigned char)new_y;
-            o->dir = laffc_change_dir(dir, 0x1F);
-        } else if (mask & 2) {     /* open right */
-            o->x_coord = (unsigned char)(Lx + 0x10); o->y_coord = (unsigned char)new_y;
-            o->dir = laffc_change_dir(dir, 0x1F);
-        } else if (mask & 4) {     /* open up -> vertical bounce */
-            o->y_coord = (unsigned char)(Hy - h);  o->x_coord = (unsigned char)new_x;
-            o->dir = laffc_change_dir(dir, 0x3F);
-        } else {                   /* open down or fully enclosed (default) */
-            o->y_coord = (unsigned char)(Hy + 8);  o->x_coord = (unsigned char)new_x;
-            o->dir = laffc_change_dir(dir, 0x3F);
-        }
-        dir_to_dxdy(o->dir, o->speed, &dx_q8, &dy_q8);
-        ball_dx = (dx_q8 < 0) ? -1 : (dx_q8 > 0 ? 1 : 0);
-        ball_dy = (dy_q8 < 0) ? -1 : (dy_q8 > 0 ? 1 : 0);
-    }
-    return 3;   /* handled: reflected + snapped; step_ball must not re-reflect */
+    const LaffcHit hit = laffc_sweep(BrickField(live_level), o->dir,
+                                     o->w_body_px, o->h_body_px, new_x, new_y);
+    if (!hit.hit) return 0;
+
+    /* SMASH (big ball) ploughs through: the cell is destroyed and there is
+     * no bounce to apply. */
+    if (brick_hit_resolve(hit.col, hit.row, 1) == 0) return 0;
+
+    const BallBounce bounce = laffc_bounce(hit, o->dir,
+                                           o->w_body_px, o->h_body_px,
+                                           new_x, new_y);
+    o->x_coord = bounce.x;
+    o->y_coord = bounce.y;
+    o->dir     = bounce.dir;
+
+    int dx_q8, dy_q8;
+    dir_to_dxdy(o->dir, o->speed, &dx_q8, &dy_q8);
+    ball_dx = (dx_q8 < 0) ? -1 : (dx_q8 > 0 ? 1 : 0);
+    ball_dy = (dy_q8 < 0) ? -1 : (dy_q8 > 0 ? 1 : 0);
+    return 3;   /* reflected and snapped; step_ball must not re-reflect */
 }
 
 /* Count remaining destructible bricks: bit 7 clear (still present)
