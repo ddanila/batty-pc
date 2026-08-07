@@ -26,6 +26,7 @@
 #include "assets.h"
 #include "bricks.h"
 #include "hud.h"
+#include "objects.h"
 #include "sound.h"
 #include "physics.h"
 #include "rng.h"
@@ -1234,66 +1235,10 @@ static void mark_dirty_sprite_rect(unsigned int spr, int x, int y) {
  * palette as the surrounding hex pattern, as in the original. The bat
  * texture-detail (mask=1, pixel=1 pixels) renders as paper colour;
  * body pixels (mask=1, pixel=0) render as ink. */
-/* --- Object model (port of the 22-byte descriptor at $9AD0+) ----------
- *
- * Mirror of the original's per-object property block. Field names
- * match the disasm comment at line 1280+. The 11-slot table lives at
- * $9AD0..$9BC1 in the original game's RAM; here we keep it as a
- * fixed-order array indexed by symbolic OBJ_* constants. The 3
- * special slots (lives indicator, score indicator, player separator)
- * sit after the main 11 and are NOT walked by call_hl_for_all_obj.
- *
- * sprite_set value selects the per-object handler via
- * handling_table_routines ($9F35); BIT7=1 marks the slot inactive
- * (off-screen / not processed this frame). */
-typedef struct {
-    unsigned char sprite_set;        /* +00  set id; BIT7=1 inactive */
-    unsigned char sprite_num;        /* +01  sprite within set */
-    unsigned char x_coord;           /* +02  X (px) */
-    unsigned char x_coord_hi;        /* +03  X high byte */
-    unsigned char y_coord;           /* +04  Y (px) */
-    unsigned char y_coord_hi;        /* +05  Y high byte */
-    unsigned char dir;               /* +06  ball direction */
-    unsigned char speed;             /* +07  movement speed */
-    unsigned char w_shadow;          /* +08  sprite width in bytes (incl shadow) */
-    unsigned char h_shadow;          /* +09  sprite height in px (incl shadow) */
-    unsigned char buf_addr_hi;       /* +0A  high byte of scr_buff address */
-    unsigned char buf_addr_lo;       /* +0B  low byte */
-    unsigned char w_body_px;         /* +0C  body width in px */
-    unsigned char h_body_px;         /* +0D  body height in px */
-    unsigned char prev_x;            /* +0E */
-    unsigned char prev_y;            /* +0F */
-    unsigned char prev_w_shadow;     /* +10 */
-    unsigned char prev_h_shadow;     /* +11 */
-    unsigned char misc_12;           /* +12  enemy-specific */
-    unsigned char misc_13;           /* +13  enemy / 3-ball slow */
-    unsigned char bonus_applied;     /* +14  $FF = none */
-    unsigned char bat_props;         /* +15  bat-state flags
-                                      *      BIT0 expanded
-                                      *      BIT1 expanding
-                                      *      BIT5 expansion in progress
-                                      *      BIT6 reduction in progress
-                                      *      BIT7 not in transformation */
-} object_t;
 
-/* Slot indices match the original iteration order:
- *   call_hl_for_all_obj starts at object_ball_1, advances by $16 (22)
- *   bytes 11 times. */
-#define OBJ_BALL_1     0
-#define OBJ_BALL_2     1
-#define OBJ_BALL_3     2
-#define OBJ_BULLET_1   3
-#define OBJ_BULLET_2   4
-#define OBJ_BAT_2      5
-#define OBJ_BAT_1      6
-#define OBJ_BAT_TEMP   7
-#define OBJ_BONUS      8
-#define OBJ_ENEMY      9
-#define OBJ_ROCKET    10
-#define N_OBJECTS     11
 
 /* Initial values are byte-exact copies of the DEFB blocks at $9AD0+. */
-static object_t objects[N_OBJECTS] = {
+Object objects[N_OBJECTS] = {
     /* OBJ_BALL_1   @ $9AD0 */
     { 0x02,0x00, 0x84,0x00, 0xA0,0x00, 0x38, 0x02,
       0x02, 0x0C, 0x00,0x00, 0x08, 0x07, 0x00,0x00,
@@ -1411,13 +1356,13 @@ static void record_primary_launch(void) {
 
 /* --- Per-object handler dispatch (handling_object @ $9F54) ------------ */
 
-typedef void (*obj_handler_t)(object_t *obj);
+typedef void (*obj_handler_t)(Object *obj);
 
-static void handling_bat_stub(object_t *o)  { (void)o; }
-static void handling_ball_obj(object_t *o)  { (void)o; }
-static void handling_bonus_obj(object_t *o) { (void)o; }
-static void handling_bullet_obj(object_t *o){ (void)o; }
-static void handling_rocket_obj(object_t *o){ (void)o; }
+static void handling_bat_stub(Object *o)  { (void)o; }
+static void handling_ball_obj(Object *o)  { (void)o; }
+static void handling_bonus_obj(Object *o) { (void)o; }
+static void handling_bullet_obj(Object *o){ (void)o; }
+static void handling_rocket_obj(Object *o){ (void)o; }
 /* L4's spark enemy: short-lived bouncing dot that decays through
  * 5 sprite frames before vanishing. dir bit 0 = X heading (0=right,
  * 1=left); bit 1 = Y heading (0=down, 1=up). Frame index ramps up
@@ -1426,7 +1371,7 @@ static void handling_rocket_obj(object_t *o){ (void)o; }
 static const unsigned char spark_frame_threshold[SPARK_FRAMES] = {
     16, 24, 28, 30, 31
 };
-static void handling_spark_obj(object_t *o) {
+static void handling_spark_obj(Object *o) {
     int dx = (o->dir & 1) ? -(int)o->speed : (int)o->speed;
     int dy = (o->dir & 2) ? -(int)o->speed : (int)o->speed;
     int nx = (int)o->x_coord + dx;
@@ -1469,29 +1414,14 @@ static void handling_spark_obj(object_t *o) {
  * w/h via calc_write_spr_addr here; the port reads dims at render
  * time, so that part is unnecessary.) See notes/bird-render-parity.md
  * for the decode + the dead facing-mirror block this replaces. */
-static void step_obj_anim(object_t *o) {
-    unsigned char a = o->misc_12;
-    if (a >= 0x40) {
-        o->misc_12 = (unsigned char)(a - 0x40);
-        return;
-    }
-    {
-        unsigned char e = (unsigned char)((o->sprite_num & 0x3F) + 1);
-        unsigned char d = o->misc_13;
-        if ((unsigned char)((d >> 4) & 0x0F) < e)
-            e = (unsigned char)(d & 0x0F);
-        o->sprite_num = e;
-    }
-    o->misc_12 = (unsigned char)(((a << 2) & 0xC0) | a);
-}
 
 /* Port of handling_blast at $AA30: force +$13=$90 (frames 0..9), step
  * LAAD2, free the slot the moment sprite_num reaches 9 (`CP $09 /
  * RET NZ / SET 7`). Kill sites seed +$12=$50 / sprite_num=0 like the
  * original kill_enemy ($A4C4), giving the 2-frames-per-step cadence. */
-static void handling_blast_obj(object_t *o) {
+static void handling_blast_obj(Object *o) {
     o->misc_13 = 0x90;
-    step_obj_anim(o);
+    object_step_animation(*(o));
     if ((o->sprite_num & 0x3F) == 9) {
         /* Clear sprite_set to 0 (= empty slot) so enemy_prepare can
          * spawn a fresh alien next time the spawn conditions hit. The
@@ -1501,7 +1431,7 @@ static void handling_blast_obj(object_t *o) {
         o->sprite_set = 0;
     }
 }
-static void handling_400pts_obj(object_t *o){ (void)o; }
+static void handling_400pts_obj(Object *o){ (void)o; }
 
 /* (Removed enemy_dir_delta_q8 + direction_table_q8: the enemy now moves
  * with the exact dir_to_dxdy / hl_bc_calc_direction, like the ball and the
@@ -1512,26 +1442,9 @@ static void handling_400pts_obj(object_t *o){ (void)o; }
 /* Wall reflect for ANY ball object: flip the 6-bit dir about the X and/or
  * Y axis (the original's wall-bounce dir mapping). Shared by the primary
  * and (once unified) the multi-ball secondaries. */
-static void reflect_obj_dir(object_t *o, int flip_x, int flip_y) {
-    unsigned char dir = o->dir;
-    /* Port of the original's bounce_wall ($AC75) -> change_direction
-     * ($ACEE): dir = ((dir ^ mask) + 1) & 0x3F. The original passes
-     * mask=$1F for the LEFT/RIGHT walls (horizontal bounce, negate dx) and
-     * mask=$3F for the TOP wall (vertical bounce, negate dy) — the SAME
-     * change_direction LAFFC uses for brick faces (laffc_change_dir).
-     *
-     * The previous formulas (flip_x: 0x3F-dir, flip_y: 0x1F-dir) had the
-     * axes SWAPPED and were off by one: a ball hitting a side wall kept its
-     * dx pointing into the wall (e.g. dir 0x20 = (-255,0) -> 0x3F-0x20 =
-     * 0x1F = (-253,+24), still moving left), so it pinned at x=8 / x=240 and
-     * juggled its dy forever. Now matched to change_direction. */
-    if (flip_x) dir = (unsigned char)(((dir ^ 0x1F) + 1) & 0x3F);
-    if (flip_y) dir = (unsigned char)(((dir ^ 0x3F) + 1) & 0x3F);
-    o->dir = dir;
-}
 static void ball_reflect_descriptor(int flip_x, int flip_y) {
     int dx_q8, dy_q8;
-    reflect_obj_dir(&objects[OBJ_BALL_1], flip_x, flip_y);
+    object_reflect(*(&objects[OBJ_BALL_1]), flip_x, flip_y);
     dir_to_dxdy(objects[OBJ_BALL_1].dir, objects[OBJ_BALL_1].speed,
                       &dx_q8, &dy_q8);
     ball_dx = (dx_q8 < 0) ? -1 : (dx_q8 > 0 ? 1 : 0);
@@ -1550,7 +1463,7 @@ static void ball_reflect_descriptor(int flip_x, int flip_y) {
 static unsigned int dbg_enemy_arrival_repicks = 0;  /* diag: LAA7D_1 fires */
 static unsigned int dbg_enemy_margin_repicks  = 0;  /* diag: margin path fires */
 static unsigned int dbg_enemy_turn_calls      = 0;  /* diag: turn fn called */
-static void enemy_turn_towards_target(object_t *o) {
+static void enemy_turn_towards_target(Object *o) {
     unsigned char target = (unsigned char)(o->bonus_applied & 0x3F);
     unsigned char delta = (unsigned char)((o->dir - target) & 0x3F);
     dbg_enemy_turn_calls++;
@@ -1563,13 +1476,13 @@ static void enemy_turn_towards_target(object_t *o) {
     else             o->dir = (unsigned char)((o->dir - 1) & 0x3F);
 }
 
-static void enemy_pick_new_target(object_t *o) {
+static void enemy_pick_new_target(Object *o) {
     /* Read-current consumer (rng_sample): the original samples
      * random_number for the enemy target without its own advance. */
     o->bonus_applied = (unsigned char)(random_lo(rng_sample()) & 0x3F);
 }
 
-static void enemy_target_away_from_margins(object_t *o) {
+static void enemy_target_away_from_margins(Object *o) {
     dbg_enemy_margin_repicks++;
     if (o->x_coord <= 8) {
         o->bonus_applied = (o->y_coord <= 12) ? 0x08 : 0x00;
@@ -1587,8 +1500,8 @@ static void enemy_target_away_from_margins(object_t *o) {
  * reactions; here we keep the same q8.8 motion shape and periodically
  * steer to a new target so enemies roam through the playfield instead
  * of patrolling only along the top edge. */
-static void bomb_appear(object_t *o);     /* forward decl */
-static void handling_bird_obj(object_t *o) {
+static void bomb_appear(Object *o);     /* forward decl */
+static void handling_bird_obj(Object *o) {
     int dx_q8, dy_q8;
     long nx_q8, ny_q8;
     int nx, ny;
@@ -1611,7 +1524,7 @@ static void handling_bird_obj(object_t *o) {
      * calls LAAD2 at the handler tail (LA902_3/LA9BC_3); within-frame
      * position doesn't matter since rendering happens after all
      * handlers. */
-    step_obj_anim(o);
+    object_step_animation(*(o));
     bomb_appear(o);
     /* Steer every 4 frames. The original gates on the GLOBAL counter_misc
      * (`LD A,(counter_misc); AND $03; CALL Z,LAA7D`), not a per-object
@@ -1661,7 +1574,7 @@ static void handling_bird_obj(object_t *o) {
     o->y_coord = (unsigned char)ny;
     o->y_coord_hi = (unsigned char)(ny_q8 & 0xFF);
 }
-static void handling_ufo_obj(object_t *o) { handling_bird_obj(o); }
+static void handling_ufo_obj(Object *o) { handling_bird_obj(o); }
 
 /* Indexed by sprite_set (the original's table starts at index 1; we
  * leave slot 0 NULL since sprite_set=0 means "inactive"). */
@@ -1682,7 +1595,7 @@ static const obj_handler_t handling_table_routines[] = {
 
 /* Port of handling_object at $9F54. Dispatches via sprite_set; skips
  * inactive slots (sprite_set == 0 or BIT7 set). */
-static void handling_object(object_t *obj) {
+static void handling_object(Object *obj) {
     unsigned char id = obj->sprite_set;
     if (id == 0 || (id & 0x80)) return;
     id &= 0x7F;
@@ -1694,6 +1607,10 @@ static void handling_object(object_t *obj) {
 /* Port of call_hl_for_all_obj at $B66A. Iterates the 11-slot table,
  * calls fn(slot) for each, skipping slots with sprite_set == 0
  * (matches the original's ADD A,A / CALL NZ guard). */
+/* call_for_all_obj hands each slot by pointer, so the module's
+ * reference-taking helper needs a shim. */
+static void refresh_buffer_offset(Object *o) { object_update_buffer_offset(*o); }
+
 static void call_for_all_obj(obj_handler_t fn) {
     int i;
     for (i = 0; i < N_OBJECTS; i++) {
@@ -1701,17 +1618,6 @@ static void call_for_all_obj(obj_handler_t fn) {
     }
 }
 
-/* Port of ix_buf_addr_calc at $B684. Computes the scr_buff offset
- * from (x_coord, y_coord) and stores it in the descriptor's +0A/+0B
- * fields. Our scr_buff is row-major (32 B per row, 192 rows), so the
- * offset is y*32 + x/8. We pack big-endian into +0A:+0B to match the
- * original's H:L convention. */
-static void ix_buf_addr_calc(object_t *obj) {
-    unsigned int off = (unsigned int)obj->y_coord * 32u
-                     + (unsigned int)(obj->x_coord >> 3);
-    obj->buf_addr_hi = (unsigned char)((off >> 8) & 0xFF);
-    obj->buf_addr_lo = (unsigned char)(off & 0xFF);
-}
 /* Bat sprite layout (both spr_bat_normal and spr_bat_big):
  *   rows 0..9  - body (mask=1 = bat colour, pixel=1 = paper for
  *                internal texture).
@@ -3032,7 +2938,7 @@ static void bonus_apply(unsigned char type) {
              * Also clear any currently active alien for immediate
              * visible effect. */
             {
-                object_t *e = &objects[OBJ_ENEMY];
+                Object *e = &objects[OBJ_ENEMY];
                 if ((e->sprite_set & 0x7F) != 0
                     && !(e->sprite_set & 0x80)
                     && (e->sprite_set & 0x7F) != 0x0A) {
@@ -3419,7 +3325,7 @@ static void render_brick_flash_to_buff(void) {
 }
 
 static int brick_hit_resolve(int col, int row, int axis);
-static int laffc_collision(object_t *o, int prev_x, int prev_y, int new_x, int new_y);
+static int laffc_collision(Object *o, int prev_x, int prev_y, int new_x, int new_y);
 
 static int brick_hit_resolve(int col, int row, int axis) {
     unsigned char *cell = &live_level[row * LVL_COLS + col];
@@ -3478,7 +3384,7 @@ static int brick_collision(int prev_x, int prev_y, int new_x, int new_y) {
     return brick_hit_resolve(hit.col, hit.row, hit.axis);
 }
 
-static int laffc_collision(object_t *o, int prev_x, int prev_y, int new_x, int new_y) {
+static int laffc_collision(Object *o, int prev_x, int prev_y, int new_x, int new_y) {
     (void)prev_x; (void)prev_y;
     const LaffcHit hit = laffc_sweep(BrickField(live_level), o->dir,
                                      o->w_body_px, o->h_body_px, new_x, new_y);
@@ -3598,14 +3504,14 @@ static int replay_parse_hex_bytes(const char *p, unsigned char *out, int n) {
 }
 
 static void apply_replay_bat_object_override(void) {
-    unsigned char bytes[sizeof(object_t)];
+    unsigned char bytes[sizeof(Object)];
     if (replay_parse_hex_bytes(getenv("BATTY_REPLAY_BAT_OBJECT"),
                                bytes, (int)sizeof(bytes)) != 0) return;
     memcpy(&objects[OBJ_BAT_1], bytes, sizeof(bytes));
 }
 
 static void apply_replay_ball_object_override(void) {
-    unsigned char bytes[sizeof(object_t)];
+    unsigned char bytes[sizeof(Object)];
     if (replay_parse_hex_bytes(getenv("BATTY_REPLAY_BALL_OBJECT"),
                                bytes, (int)sizeof(bytes)) != 0) return;
     memcpy(&objects[OBJ_BALL_1], bytes, sizeof(bytes));
@@ -3635,7 +3541,7 @@ static void apply_replay_ball_motion_override(void) {
 }
 
 static void apply_replay_enemy_object_override(void) {
-    unsigned char bytes[sizeof(object_t)];
+    unsigned char bytes[sizeof(Object)];
     if (replay_parse_hex_bytes(getenv("BATTY_REPLAY_ENEMY_OBJECT"),
                                bytes, (int)sizeof(bytes)) != 0) return;
     memcpy(&objects[OBJ_ENEMY], bytes, sizeof(bytes));
@@ -3943,25 +3849,25 @@ static void write_replay_probe(void) {
             (unsigned)ball_mag_cool[0], (unsigned)ball_mag_delta[0],
             (unsigned)ball_mag_exit[0], (unsigned)ball_mag_idx[0]);
     fprintf(f, "object_ball_1=");
-    for (i = 0; i < (int)sizeof(object_t); i++) {
+    for (i = 0; i < (int)sizeof(Object); i++) {
         fprintf(f, "%02X", ((unsigned char *)&objects[OBJ_BALL_1])[i]);
     }
     fprintf(f, "\nobject_bat_1=");
-    for (i = 0; i < (int)sizeof(object_t); i++) {
+    for (i = 0; i < (int)sizeof(Object); i++) {
         fprintf(f, "%02X", ((unsigned char *)&objects[OBJ_BAT_1])[i]);
     }
     fprintf(f, "\nobject_enemy=");
-    for (i = 0; i < (int)sizeof(object_t); i++) {
+    for (i = 0; i < (int)sizeof(Object); i++) {
         fprintf(f, "%02X", ((unsigned char *)&objects[OBJ_ENEMY])[i]);
     }
     /* Extra balls (multiball) — so the collision-invariant sweep can probe
      * step_extra_ball's path (no-tunnel) the same way it probes the primary. */
     fprintf(f, "\nobject_ball_2=");
-    for (i = 0; i < (int)sizeof(object_t); i++) {
+    for (i = 0; i < (int)sizeof(Object); i++) {
         fprintf(f, "%02X", ((unsigned char *)&objects[OBJ_BALL_2])[i]);
     }
     fprintf(f, "\nobject_ball_3=");
-    for (i = 0; i < (int)sizeof(object_t); i++) {
+    for (i = 0; i < (int)sizeof(Object); i++) {
         fprintf(f, "%02X", ((unsigned char *)&objects[OBJ_BALL_3])[i]);
     }
     /* Bonus/bomb state (the original shares object_bonus $9B80 for both).
@@ -4034,7 +3940,7 @@ static void write_replay_probe(void) {
 }
 
 static void enemy_prepare(void) {
-    object_t *e = &objects[OBJ_ENEMY];
+    Object *e = &objects[OBJ_ENEMY];
     const unsigned char *prop;
     unsigned char r;
     /* Test-mode pin (BATTYALL): no NATURAL alien spawns — the same
@@ -4094,7 +4000,7 @@ static void enemy_prepare(void) {
  * alien-blast sound. Full blast animation via sprite_set = $0A and
  * handling_blast is deferred - we just mark inactive for now. */
 static void kill_enemy_by_bat(void) {
-    object_t *e = &objects[OBJ_ENEMY];
+    Object *e = &objects[OBJ_ENEMY];
     int ex_l, ex_r, ey_t, ey_b;
     int bx_l, bx_r, by_t, by_b;
     if ((e->sprite_set & 0x7F) == 0) return;        /* slot empty */
@@ -4139,7 +4045,7 @@ static void kill_enemy_by_bat(void) {
  * crashing into one does. AABB between the ball body (8x7) and the
  * alien body. */
 static void kill_enemy_by_ball_rect(int bx_l, int by_t, int bw, int bh) {
-    object_t *e = &objects[OBJ_ENEMY];
+    Object *e = &objects[OBJ_ENEMY];
     int ex_l, ex_r, ey_t, ey_b;
     int bx_r = bx_l + bw;
     int by_b = by_t + bh;
@@ -4167,7 +4073,7 @@ static void kill_enemy_by_ball_rect(int bx_l, int by_t, int bw, int bh) {
 /* Port of bomb_appear at $A977 - called per alien tick. Probability
  * (random + random+1) & $3F == 0 = ~1/64 chance per call. Bomb
  * shares the bonus slot in the original; we keep separate state. */
-static void bomb_appear(object_t *o) {
+static void bomb_appear(Object *o) {
     unsigned int r;
     if (bomb_active) return;
     if (bonus_active) return;
@@ -4234,7 +4140,7 @@ static void step_bomb(void) {
 static void step_bullet_one(int b) {
     int col, row;
     unsigned char *cell;
-    object_t *enemy;
+    Object *enemy;
     if (!bullet_active[b]) return;
     bullet_y[b] -= BULLET_SPEED;
     if (bullet_y[b] < 0) {
@@ -4498,7 +4404,7 @@ static void ball_speed_ramp_tick(void) {
  * body 15x14 px (slot +$0C/+$0D). Carry = overlap. Note the original's
  * asymmetry: strict `<` against the ball's body when the magnet is to
  * the right/below, `<=` against the magnet's body otherwise. */
-static int magnet_ball_overlap(const object_t *o, unsigned char i) {
+static int magnet_ball_overlap(const Object *o, unsigned char i) {
     unsigned char mx = (unsigned char)(magnet_px[i] + 5);
     unsigned char my = (unsigned char)(magnet_py[i] + 5);
     if (mx >= o->x_coord) {
@@ -4524,7 +4430,7 @@ static int magnet_ball_overlap(const object_t *o, unsigned char i) {
  * captured (the deepest magnet box ends at y~165 < the y>=167 bat
  * contact and far above y>=192) and are omitted; ball-vs-enemy contact
  * runs in the main loop regardless of this path. */
-static void magnet_captured_move(object_t *o, unsigned char exit_dir) {
+static void magnet_captured_move(Object *o, unsigned char exit_dir) {
     int dx_q8, dy_q8, next_x, next_y, hit;
     long nx_q8, ny_q8;
     unsigned char curved = o->dir;
@@ -4545,11 +4451,11 @@ static void magnet_captured_move(object_t *o, unsigned char exit_dir) {
         ny_q8 = ((long)o->y_coord << 8) | (ny_q8 & 0xFF);
         next_x = o->x_coord; next_y = o->y_coord;
     } else if (hit == 1) {
-        reflect_obj_dir(o, 0, 1);
+        object_reflect(*(o), 0, 1);
         next_y = o->y_coord;
         ny_q8 = ((long)o->y_coord << 8) + o->y_coord_hi;
     } else if (hit == 2) {
-        reflect_obj_dir(o, 1, 0);
+        object_reflect(*(o), 1, 0);
         next_x = o->x_coord;
         nx_q8 = ((long)o->x_coord << 8) + o->x_coord_hi;
     }
@@ -4567,7 +4473,7 @@ static void magnet_captured_move(object_t *o, unsigned char exit_dir) {
  * step), 0 to proceed with the normal step (a release rewrites dir to
  * the quantized exit first; a fresh capture only registers state — the
  * curving starts NEXT frame, like the original). */
-static int magnet_ball_frame(object_t *o, unsigned char si) {
+static int magnet_ball_frame(Object *o, unsigned char si) {
     if (ball_mag_cool[si]) {           /* post-release re-capture cooldown */
         ball_mag_cool[si]--;
         return 0;
@@ -4826,7 +4732,7 @@ static void step_ball(void) {
 static void step_extra_ball(unsigned char *in_active,
                              int *in_dx, int *in_dy,
                              unsigned char obj_idx) {
-    object_t *o = &objects[obj_idx];
+    Object *o = &objects[obj_idx];
     int next_x, next_y, dx_q8, dy_q8, hit;
     long next_x_q8, next_y_q8;
     int bat_left  = eff_bat_left();
@@ -4846,9 +4752,9 @@ static void step_extra_ball(unsigned char *in_active,
     next_y_q8 = ((long)o->y_coord << 8) + o->y_coord_hi + dy_q8;
     next_x = (int)(next_x_q8 >> 8);
     next_y = (int)(next_y_q8 >> 8);
-    if (next_x < BALL_X_MIN)  { next_x = BALL_X_MIN; next_x_q8 = (long)next_x << 8; reflect_obj_dir(o, 1, 0); }
-    else if (next_x > x_max)  { next_x = x_max;      next_x_q8 = (long)next_x << 8; reflect_obj_dir(o, 1, 0); }
-    if (next_y < BALL_Y_TOP)  { next_y = BALL_Y_TOP; next_y_q8 = (long)next_y << 8; reflect_obj_dir(o, 0, 1); }
+    if (next_x < BALL_X_MIN)  { next_x = BALL_X_MIN; next_x_q8 = (long)next_x << 8; object_reflect(*(o), 1, 0); }
+    else if (next_x > x_max)  { next_x = x_max;      next_x_q8 = (long)next_x << 8; object_reflect(*(o), 1, 0); }
+    if (next_y < BALL_Y_TOP)  { next_y = BALL_Y_TOP; next_y_q8 = (long)next_y << 8; object_reflect(*(o), 0, 1); }
     /* Bat: LAB1F contact (ball_y >= 167) + exact deflection. No catch. */
     if (dy_q8 > 0
         && next_y + BALL_H_PX > bat_top
@@ -4872,11 +4778,11 @@ static void step_extra_ball(unsigned char *in_active,
         next_y_q8 = ((long)o->y_coord << 8) | (next_y_q8 & 0xFF);
         next_x = o->x_coord; next_y = o->y_coord;
     } else if (hit == 1) {
-        reflect_obj_dir(o, 0, 1);
+        object_reflect(*(o), 0, 1);
         next_y = o->y_coord;
         next_y_q8 = ((long)o->y_coord << 8) + o->y_coord_hi;
     } else if (hit == 2) {
-        reflect_obj_dir(o, 1, 0);
+        object_reflect(*(o), 1, 0);
         next_x = o->x_coord;
         next_x_q8 = ((long)o->x_coord << 8) + o->x_coord_hi;
     }
@@ -4990,7 +4896,7 @@ static void carry_dirty_with_previous(void) {
 static void redraw_full_with_ball(unsigned char level_idx) {
     unsigned char bg_attr = bg_attr_per_cycle[level_idx & 3];
     unsigned char cycle   = (unsigned char)(level_idx & 3);
-    object_t *enemy = &objects[OBJ_ENEMY];
+    Object *enemy = &objects[OBJ_ENEMY];
     int y, i;
     int score_dirty;
     int lives_dirty;
@@ -5280,7 +5186,7 @@ static int can_redraw_ball_with_simple_objects(unsigned int blockers) {
 }
 
 static void render_enemy_to_buff_and_mark(unsigned char bg_attr) {
-    object_t *enemy = &objects[OBJ_ENEMY];
+    Object *enemy = &objects[OBJ_ENEMY];
     unsigned int spr;
     int spr_w_px, spr_h_px;
     if ((enemy->sprite_set & 0x7F) == 0 || (enemy->sprite_set & 0x80)) return;
@@ -6560,7 +6466,7 @@ static state_t run_level(void) {
                     kill_enemy_by_ball_rect((int)objects[OBJ_BALL_3].x_coord,
                                              (int)objects[OBJ_BALL_3].y_coord,
                                              BALL_W_PX, BALL_H_PX);
-                call_for_all_obj(ix_buf_addr_calc);
+                call_for_all_obj(refresh_buffer_offset);
                 sound_frame();
                 sound_tick();
                 /* Score-milestone extra life — port of score_update_3
