@@ -5999,6 +5999,91 @@ static void pin_replay_frame_counter(void) {
     }
 }
 
+
+/* What the keyboard asked for this frame. Arrow keys are not here: they
+ * are polled from key_state[] in the frame body, so holding one steers
+ * continuously instead of repeating at the BIOS rate. */
+enum InputAction {
+    INPUT_NONE,             /* nothing that changes the frame's course */
+    INPUT_QUIT,
+    INPUT_SKIP_FRAME,       /* pause toggled, or input swallowed while paused */
+    INPUT_ADVANCE_LEVEL     /* ENTER on the pause overlay */
+};
+
+static InputAction handle_input(int &ball_moved, int &bat_moved,
+                            unsigned long &start) {
+    if (!kbhit()) return INPUT_NONE;
+    {
+        const int k = getch();
+        if (k == KEY_ESC) {
+            return INPUT_QUIT;
+        }
+        if (k == KEY_P_LOWER || k == KEY_P_UPPER
+            || k == '1' || k == '2' || k == '3' || k == '4') {
+            paused = !paused;
+            sound_silence();
+            if (paused) {
+                /* Paint a "PAUSED" banner over the current frame. */
+                static const unsigned char paused_codes[] = {
+                    0x19, 0x0A, 0x1D, 0x1C, 0x0E, 0x0D  /* P A U S E D */
+                };
+                draw_text(BORDER_X + 13 * 8, BORDER_Y + 90, 15,
+                          paused_codes, 6);
+            } else {
+                /* Resuming: schedule a full redraw to erase banner. */
+                bat_moved = 1;
+                ball_moved = 1;
+                force_full_flush = 1;
+            }
+            return INPUT_SKIP_FRAME;
+        }
+        if (paused) {
+            if (k == KEY_ENTER) return INPUT_ADVANCE_LEVEL;
+            return INPUT_SKIP_FRAME;                          /* swallow other input */
+        }
+        if (k == KEY_EXT_PREFIX) {
+            /* Discard the scancode following 0 - arrows are
+             * handled by the per-frame key_state[] polling
+             * below; this just keeps the buffer drained. */
+            getch();
+            start = bios_ticks();
+        } else if (k == KEY_SPACE) {
+            /* Launch the stuck ball — only fire the launch
+             * trajectory if the ball is actually waiting on the
+             * bat. Without this guard, hammering SPACE while
+             * the ball is in flight (e.g. trying to fire the
+             * laser repeatedly) would teleport the ball back to
+             * its launch dx/dy, breaking the bounce. */
+            if (ball_stuck) {
+                BALL_SHOW();
+                ball_stuck   = 0;
+                stuck_ticks  = 0;
+                sound_queue(SND_BALL_START); /* descending launch blip */
+                primary_ball_launch_from_bat();
+                record_primary_launch();
+            }
+            /* If the bat carries the LASER bonus and a free
+             * bullet slot exists, also fire one from the bat
+             * top centre. Two slots = up to two in flight at
+             * once (port of object_bullet_1 / _2 at $A0FA).
+             * Independent of ball state — SPACE can refire
+             * the laser while the ball is in play. */
+            /* free_bullet_2 ($A14C): bullet emerges from the bat
+             * surface (bat_x+12, y=172), 0x18 reset = 12-frame
+             * cadence. Extracted to try_fire_laser so the auto-fire
+             * test hook can drive the same path. Independent of ball
+             * state — SPACE refires the laser while the ball flies. */
+            try_fire_laser();
+            start = bios_ticks();
+        }
+        /* Mirror the original: no level-skip key. ENTER while
+         * playing does nothing (only the pause overlay above
+         * consumes ENTER to dismiss). The level holds until
+         * the player clears it or loses all lives. */
+    }
+    return INPUT_NONE;
+}
+
 static state_t run_level(void) {
     unsigned char i;
     unsigned long start;
@@ -6106,74 +6191,11 @@ static state_t run_level(void) {
             int bat_moved  = 0;
             int frame_ticked = 0;
 
-            if (kbhit()) {
-                int k = getch();
-                if (k == KEY_ESC) {
-                    write_replay_probe();
-                    return ST_QUIT;
-                }
-                if (k == KEY_P_LOWER || k == KEY_P_UPPER
-                    || k == '1' || k == '2' || k == '3' || k == '4') {
-                    paused = !paused;
-                    sound_silence();
-                    if (paused) {
-                        /* Paint a "PAUSED" banner over the current frame. */
-                        static const unsigned char paused_codes[] = {
-                            0x19, 0x0A, 0x1D, 0x1C, 0x0E, 0x0D  /* P A U S E D */
-                        };
-                        draw_text(BORDER_X + 13 * 8, BORDER_Y + 90, 15,
-                                  paused_codes, 6);
-                    } else {
-                        /* Resuming: schedule a full redraw to erase banner. */
-                        bat_moved = 1;
-                        ball_moved = 1;
-                        force_full_flush = 1;
-                    }
-                    continue;
-                }
-                if (paused) {
-                    if (k == KEY_ENTER) break;        /* allow level advance */
-                    continue;                          /* swallow other input */
-                }
-                if (k == KEY_EXT_PREFIX) {
-                    /* Discard the scancode following 0 - arrows are
-                     * handled by the per-frame key_state[] polling
-                     * below; this just keeps the buffer drained. */
-                    getch();
-                    start = bios_ticks();
-                } else if (k == KEY_SPACE) {
-                    /* Launch the stuck ball — only fire the launch
-                     * trajectory if the ball is actually waiting on the
-                     * bat. Without this guard, hammering SPACE while
-                     * the ball is in flight (e.g. trying to fire the
-                     * laser repeatedly) would teleport the ball back to
-                     * its launch dx/dy, breaking the bounce. */
-                    if (ball_stuck) {
-                        BALL_SHOW();
-                        ball_stuck   = 0;
-                        stuck_ticks  = 0;
-                        sound_queue(SND_BALL_START); /* descending launch blip */
-                        primary_ball_launch_from_bat();
-                        record_primary_launch();
-                    }
-                    /* If the bat carries the LASER bonus and a free
-                     * bullet slot exists, also fire one from the bat
-                     * top centre. Two slots = up to two in flight at
-                     * once (port of object_bullet_1 / _2 at $A0FA).
-                     * Independent of ball state — SPACE can refire
-                     * the laser while the ball is in play. */
-                    /* free_bullet_2 ($A14C): bullet emerges from the bat
-                     * surface (bat_x+12, y=172), 0x18 reset = 12-frame
-                     * cadence. Extracted to try_fire_laser so the auto-fire
-                     * test hook can drive the same path. Independent of ball
-                     * state — SPACE refires the laser while the ball flies. */
-                    try_fire_laser();
-                    start = bios_ticks();
-                }
-                /* Mirror the original: no level-skip key. ENTER while
-                 * playing does nothing (only the pause overlay above
-                 * consumes ENTER to dismiss). The level holds until
-                 * the player clears it or loses all lives. */
+            {
+                const InputAction action = handle_input(ball_moved, bat_moved, start);
+                if (action == INPUT_QUIT) { write_replay_probe(); return ST_QUIT; }
+                if (action == INPUT_ADVANCE_LEVEL) break;
+                if (action == INPUT_SKIP_FRAME)    continue;
             }
 
             /* Frame tick at 50 Hz from our PIT IRQ. */
