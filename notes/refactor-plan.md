@@ -52,13 +52,14 @@ happened, and `make test-video` caught it.
 | 6a | `objects` — the 22-byte descriptor + slots | 60 | **done** — 5 tests |
 | 6b-i | `weapons` — bullets + blasts | 95 | **done** — 6 tests |
 | 6b-ii | `enemies` — steering | 145 | **done** — 5 tests |
-| 6b-iii | bonuses, rocket, sparks | ~540 | remains in main.cpp |
+| 6b-iii | `bonus_codes` — original <-> port numbering | 40 | **done** — 4 tests |
+| 6b-iv | bonus effects, rocket, sparks | ~500 | needs the game-state step below |
 | 7 | `hud` — glyphs, markup, score | 175 | **done** — 6 tests |
 | 8 | `sound` — queue + envelopes | 366 | **done** — 7 tests; had NO coverage before |
-| 9 | `run_level` decomposition | 684 | |
+| 9 | `run_level` decomposition | 612 | next — see below |
 | 1 | replay / probe scaffolding | 480 | **last** — see below |
 
-`main.cpp`: 7,746 → 6,699 so far. 88 host tests, all under a second.
+`main.cpp`: 7,746 → 6,658 so far. 92 host tests, all under a second.
 
 ### Stage 5, done
 
@@ -91,6 +92,40 @@ Measured by how many file-scope names a group's functions touch:
 That ordering is also what unblocks replay fastest — every variable that
 becomes a module's business is one fewer for `write_replay_probe` to
 reach for.
+
+### Stage 9: what run_level actually is
+
+612 lines in three parts:
+
+| part | lines | character |
+|------|------:|-----------|
+| setup — new game, score/lives, level override | 78 | linear |
+| level entry — var reset, magnets, round banner, brick anim, replay hooks | ~127 | linear, two early exits |
+| **the per-frame loop** | **398** | nesting 6 |
+
+The level-entry prologue is a safe slice: linear code whose two
+`return ST_QUIT` points become a `bool`. The frame loop is not — it wants
+its own pass, and unlike every extraction so far it has no fast test
+guarding it, only 10-second boots.
+
+### The step that unblocks the rest
+
+What remains after stage 9 is not extractable by lifting. `bonus_apply`
+is 180 lines touching 25 state names because it is where every subsystem
+meets: balls, bat, lives, magnets, the rocket. The frame loop is the
+same. Neither becomes a module by moving it.
+
+They need the game state itself to become addressable — a `GameState` the
+modules take by reference, instead of ~100 file-scope variables. That is
+also what finally unblocks replay: `write_replay_probe`'s 50 loose reads
+become a handful of queries on a struct.
+
+Order from here:
+
+1. `run_level`'s level-entry slice — safe today
+2. the frame loop, into named phases
+3. game-state consolidation — the real prize
+4. replay, which falls out of 3
 
 ### Why replay is last, not first
 

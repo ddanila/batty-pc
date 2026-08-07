@@ -27,6 +27,7 @@
 #include "bricks.h"
 #include "hud.h"
 #include "objects.h"
+#include "bonus_codes.h"
 #include "enemies.h"
 #include "weapons.h"
 #include "sound.h"
@@ -699,18 +700,6 @@ static unsigned char high_score_name[3] = { 0x0A, 0x0A, 0x0A };
  *   $09 kill_aliens (deferred)
  * map_orig_to_our_bonus translates a table draw to one of our 4
  * supported effects; unsupported codes get rolled away in pick. */
-#define BONUS_TYPE_LIFE         0
-#define BONUS_TYPE_SLOW         1
-#define BONUS_TYPE_BIG_BAT      2
-#define BONUS_TYPE_BIG_BALL     3
-#define BONUS_TYPE_KILL_ALIENS  4
-#define BONUS_TYPE_CATCH        5
-#define BONUS_TYPE_ROCKET       6
-#define BONUS_TYPE_SCORE_5K     7
-#define BONUS_TYPE_LASER        8
-#define BONUS_TYPE_MULTI_BALL   9
-#define BONUS_TYPE_COUNT        10
-#define BONUS_TYPE_UNSUPPORTED  0xFF
 
 /* bonus_table_first / bonus_table_second - byte-exact copies of the
  * 32-byte tables at $9E5A / $9E6A. The lower 4 bits of random_number
@@ -731,21 +720,6 @@ static const unsigned char bonus_table_second[32] = {
     0x01, 0x03, 0x00, 0x03, 0x00, 0x02, 0x01, 0x03
 };
 
-static unsigned char map_orig_to_our_bonus(unsigned char code) {
-    switch (code) {
-        case 0x00: return BONUS_TYPE_BIG_BAT;       /* spr_bonus_size */
-        case 0x01: return BONUS_TYPE_LASER;         /* spr_bonus_gun */
-        case 0x02: return BONUS_TYPE_MULTI_BALL;    /* spr_bonus_triple_ball */
-        case 0x03: return BONUS_TYPE_CATCH;         /* spr_bonus_hand */
-        case 0x04: return BONUS_TYPE_SLOW;
-        case 0x05: return BONUS_TYPE_LIFE;
-        case 0x06: return BONUS_TYPE_ROCKET;        /* spr_bonus_rocket_1 */
-        case 0x07: return BONUS_TYPE_BIG_BALL;
-        case 0x08: return BONUS_TYPE_SCORE_5K;      /* spr_bonus_5000_points */
-        case 0x09: return BONUS_TYPE_KILL_ALIENS;
-        default:   return BONUS_TYPE_UNSUPPORTED;
-    }
-}
 
 /* Forward decls - defined below in the enemy section. */
 static unsigned int next_random(void);
@@ -2815,21 +2789,6 @@ static void set_rocket_bonus_sprite_height(unsigned char height) {
 
 /* Map our BONUS_TYPE_* back to the original $00..$09 code used by
  * bat.bonus_applied. Inverse of map_orig_to_our_bonus. */
-static unsigned char our_to_orig_bonus(unsigned char type) {
-    switch (type) {
-        case BONUS_TYPE_BIG_BAT:     return 0x00;
-        case BONUS_TYPE_LASER:       return 0x01;
-        case BONUS_TYPE_MULTI_BALL:  return 0x02;
-        case BONUS_TYPE_CATCH:       return 0x03;
-        case BONUS_TYPE_SLOW:        return 0x04;
-        case BONUS_TYPE_LIFE:        return 0x05;
-        case BONUS_TYPE_ROCKET:      return 0x06;
-        case BONUS_TYPE_BIG_BALL:    return 0x07;
-        case BONUS_TYPE_SCORE_5K:    return 0x08;
-        case BONUS_TYPE_KILL_ALIENS: return 0x09;
-        default:                     return 0xFF;
-    }
-}
 
 /* Apply the effect that comes with `type`. Catching the same type
  * while already active extends the duration. */
@@ -2846,7 +2805,7 @@ static void bonus_apply(unsigned char type) {
      * any previous bat-side effect — e.g. catching BIG_BAT after
      * LASER clears the LASER state. */
     if (type != BONUS_TYPE_ROCKET) {
-        unsigned char orig_code = our_to_orig_bonus(type);
+        unsigned char orig_code = bonus_to_original(type);
         objects[OBJ_BAT_1].bonus_applied = orig_code;
         objects[OBJ_BAT_2].bonus_applied = orig_code;
     }
@@ -3231,7 +3190,7 @@ static void try_spawn_bonus(int col, int row) {
         if (code == 0x06 && rocket_active) continue;
         if (code == 0x06 && round_number >= 6
             && (random_lo(rnd) & 0xC0) != 0) continue;
-        mapped = map_orig_to_our_bonus(code);
+        mapped = bonus_from_original(code);
         if (mapped != BONUS_TYPE_UNSUPPORTED) {
             bonus_active = 1;
             bonus_x = 8 + col * 16 + (16 - BONUS_W_PX) / 2;
