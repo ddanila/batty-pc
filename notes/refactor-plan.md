@@ -56,10 +56,10 @@ happened, and `make test-video` caught it.
 | 6b-iv | bonus effects, rocket, sparks | ~500 | needs the game-state step below |
 | 7 | `hud` — glyphs, markup, score | 175 | **done** — 6 tests |
 | 8 | `sound` — queue + envelopes | 366 | **done** — 7 tests; had NO coverage before |
-| 9 | `run_level` decomposition | 612 | next — see below |
+| 9 | `run_level` decomposition | 684 -> 400 | **in progress** — prologue, input, bat steering, scoring extracted |
 | 1 | replay / probe scaffolding | 480 | **last** — see below |
 
-`main.cpp`: 7,746 → 6,658 so far. 92 host tests, all under a second.
+`main.cpp`: 7,746 → 6,678 so far. 100 host tests + 3 source gates, all via `make test-fast` in seconds.
 
 ### Stage 5, done
 
@@ -107,6 +107,16 @@ The level-entry prologue is a safe slice: linear code whose two
 `return ST_QUIT` points become a `bool`. The frame loop is not — it wants
 its own pass, and unlike every extraction so far it has no fast test
 guarding it, only 10-second boots.
+
+### Verify with `make test-fast`, not just the QEMU suite
+
+`test-death-sparks` greps SOURCE for code that stage 3a moved to another
+module. It failed for six commits and nobody noticed, because every local
+check ran `parity-check-parallel` — which does not include the three
+emulator-free source gates. Those were reachable only through CI.
+
+`make test-fast` now runs every host test AND those source gates, in
+seconds, matching exactly what CI checks. Run it before pushing.
 
 ### The step that unblocks the rest
 

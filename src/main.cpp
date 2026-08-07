@@ -33,6 +33,7 @@
 #include "sound.h"
 #include "physics.h"
 #include "rng.h"
+#include "scoring.h"
 #include "zxvga.h"
 
 #define SCREEN_CHUNK_ROWS 16
@@ -651,15 +652,7 @@ static unsigned long score      = 0;
 static int           lives      = LIVES_INIT;
 static unsigned long high_score = 0;
 
-/* Score milestones at which an extra life is awarded — port of
- * live_add_steps at $0395. Original stores BCD high-byte thresholds
- * ($03, $06, $10, ...), which interpreted as 6-digit scores are
- * 30000, 60000, 100000, etc. */
-static const unsigned long live_add_thresholds[] = {
-    30000UL, 60000UL, 100000UL, 150000UL,
-    200000UL, 250000UL, 500000UL, 750000UL
-};
-#define LIVE_ADD_COUNT (sizeof(live_add_thresholds)/sizeof(live_add_thresholds[0]))
+/* The milestone thresholds live in scoring.h. */
 static unsigned char live_adds_awarded = 0;
 
 /* Mirror of flag_extra_life — set when the player catches a LIFE bonus
@@ -6339,8 +6332,8 @@ static state_t run_level(void) {
                 /* Score-milestone extra life — port of score_update_3
                  * at $0395. Each crossed threshold in live_add_thresholds
                  * awards one extra life and pushes the live-add sound. */
-                while (live_adds_awarded < LIVE_ADD_COUNT
-                       && score >= live_add_thresholds[live_adds_awarded]) {
+                for (int earned = lives_earned(score, live_adds_awarded);
+                     earned > 0; earned--) {
                     lives++;
                     sound_queue(SND_LIVE_ADD);
                     live_adds_awarded++;
