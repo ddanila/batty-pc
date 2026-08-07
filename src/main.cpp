@@ -27,6 +27,7 @@
 #include "bricks.h"
 #include "hud.h"
 #include "objects.h"
+#include "weapons.h"
 #include "sound.h"
 #include "physics.h"
 #include "rng.h"
@@ -496,35 +497,6 @@ static int stuck_offset_x = BALL_X_OFFSET_ON_BAT;
  * after leaving the playfield top. */
 #define BULLET_W_PX     8    /* sprite width incl. transparent column */
 #define BULLET_H_PX     8
-/* Collision body — original object_bullet_1 has (IX+$0C) = $04 and
- * (IX+$0D) = $08 (= 4x8 hitbox). The sprite is 8 px wide but only
- * the right 4 are opaque; obj_compare reads the body fields, not the
- * sprite extents. Earlier port used BULLET_W_PX for AABB which
- * gave the bullet a wider hitbox than the original. */
-#define BULLET_BODY_W   4
-#define BULLET_BODY_H   8
-/* Original handling_bullet at \$A5A3 advances bullet Y by 6 px/tick
- * (`LD A,(IX+\$04); SUB \$06`). We had 4 which made bullets visibly
- * slower than the original's. */
-#define BULLET_SPEED    6
-/* Two-bullet pool — original at $A0FA tries object_bullet_1 then
- * object_bullet_2 so the player can have up to 2 in flight. We had
- * one slot, capping rapid-fire to one bullet per ~30 frames. */
-#define N_BULLETS 2
-static unsigned char bullet_active[N_BULLETS] = {0, 0};
-static int           bullet_x[N_BULLETS]      = {0, 0};
-static int           bullet_y[N_BULLETS]      = {0, 0};
-/* Bullet-impact blast: 4 frames (spr_bullet_blast_1..4, straight 1->4 — no
- * ping-pong) at 2 ticks/frame. The original (handling_bullet LA5A3_0)
- * animates the converted bullet via LAAD2 with misc_12=$50, which advances
- * +1 every 2 frames (same cadence as the alien blast). Was 3 ticks/frame.
- * Spawned wherever step_bullet's collision deactivates the bullet; per-slot
- * so two simultaneous bullets get their own blast. */
-#define BULLET_BLAST_TICKS_PER_FRAME 2
-#define BULLET_BLAST_FRAMES          4
-static unsigned char bullet_blast_ticks[N_BULLETS] = {0, 0};
-static int           bullet_blast_x[N_BULLETS]     = {0, 0};
-static int           bullet_blast_y[N_BULLETS]     = {0, 0};
 /* Bat laser-fire animation: ticks down from 8 to 0; while non-zero
  * render_bat picks spr_bat_gun_1..4 based on the count so the bat's
  * cannon visibly flashes when SPACE fires a bullet. */
@@ -4137,95 +4109,45 @@ static void step_bomb(void) {
  * collision uses the same brick grid lookup as the ball but without
  * bounce-axis logic — the bullet stops dead on contact regardless of
  * brick type. */
+
 static void step_bullet_one(int b) {
-    int col, row;
-    unsigned char *cell;
-    Object *enemy;
-    if (!bullet_active[b]) return;
-    bullet_y[b] -= BULLET_SPEED;
-    if (bullet_y[b] < 0) {
-        bullet_active[b] = 0;                    /* fly-off: no blast */
+    Object *enemy = &objects[OBJ_ENEMY];
+    const BulletHit hit = bullet_advance(b, *enemy, BrickField(live_level));
+
+    if (hit.what == BulletHit::ENEMY) {
+        /* The alien becomes its own 5-frame blast, centred on itself.
+         * orig: kill_enemy $A4C4 / $A4D2 */
+        enemy->x_coord   = u8(enemy->x_coord + int(enemy->w_body_px) / 2 - 8);
+        enemy->y_coord   = u8(enemy->y_coord + 4);
+        enemy->w_body_px = 16;
+        enemy->h_body_px = 13;
+        enemy->sprite_set = 0x0A;
+        enemy->sprite_num = 0;
+        enemy->misc_12    = 0x50;
+        score += 350;
+        sound_queue(SND_ALIEN_BLAST);
         return;
     }
-    /* Alien hit (AABB on alien body rect). */
-    enemy = &objects[OBJ_ENEMY];
-    if ((enemy->sprite_set & 0x7F) != 0
-        && !(enemy->sprite_set & 0x80)
-        && (enemy->sprite_set & 0x7F) != 0x0A) {
-        int ex_l = enemy->x_coord;
-        int ex_r = enemy->x_coord + enemy->w_body_px;
-        int ey_t = enemy->y_coord;
-        int ey_b = enemy->y_coord + enemy->h_body_px;
-        if (bullet_x[b] + BULLET_BODY_W > ex_l && bullet_x[b] < ex_r
-            && bullet_y[b] + BULLET_BODY_H > ey_t && bullet_y[b] < ey_b) {
-            /* Centre 16x13 blast over alien (mirror of \$A4D2). */
-            enemy->x_coord = (unsigned char)(enemy->x_coord + (int)enemy->w_body_px / 2 - 8);
-            enemy->y_coord = (unsigned char)(enemy->y_coord + 4);
-            enemy->w_body_px = 16;
-            enemy->h_body_px = 13;
-            enemy->sprite_set = 0x0A;       /* transition to 5-frame blast */
-            enemy->sprite_num = 0;
-            enemy->misc_12    = 0x50;   /* kill_enemy $A4C4 seed */
-            score += 350;
-            sound_queue(SND_ALIEN_BLAST);
-            bullet_active[b] = 0;
-            /* Align blast x to 8-px boundary — port of LA5A3_0's
-             * `LD A,(IX+\$02); AND \$F8; LD (IX+\$02),A`. The blast
-             * sprite is byte-aligned, so the impact point snaps to
-             * the nearest cell column. */
-            bullet_blast_x[b] = bullet_x[b] & ~7;
-            bullet_blast_y[b] = bullet_y[b];
-            bullet_blast_ticks[b] = BULLET_BLAST_FRAMES * BULLET_BLAST_TICKS_PER_FRAME;
-            return;
-        }
-    }
-    /* Brick hit (point-vs-grid lookup matching brick_collision's cell
-     * arithmetic). Undestructible bricks stop the bullet without
-     * destroying; multi-hit bricks set bit 4 (= half-damaged) on
-     * first hit; bit-4 bricks destroy on this hit. Every hit spawns
-     * the 4-frame impact blast. */
-    if (bullet_y[b] >= 32 && bullet_y[b] < 32 + LVL_ROWS * 8
-        && bullet_x[b] >= 8 && bullet_x[b] < 8 + LVL_COLS * 16) {
-        col = (bullet_x[b] - 8) / 16;
-        row = (bullet_y[b] - 32) / 8;
-        cell = &live_level[row * LVL_COLS + col];
-        if (!(*cell & 0x80)) {
-            int hit = 0;
-            if (*cell & 0x20) {
-                hit = 1;                       /* undestructible: stop, no destroy */
-                brick_hit_anim_spawn(col, row);
-            } else if (!(*cell & 0x10)) {
-                *cell |= 0x10;                 /* multi-hit, set bit 4 */
-                brick_hit_anim_spawn(col, row);
-                hit = 1;
-            } else {
-                unsigned int idx = (unsigned int)((row < 12) ? row : 11);
-                unsigned int pts = points_table[idx];
-                if ((*cell & 0x0F) >= 6) pts *= 2;
-                score += pts;
-                *cell |= 0x80;
-                mark_brick_row_dirty(row);
-                brick_flash_spawn(col, row);
-                try_spawn_bonus(col, row);
-                hit = 1;
-            }
-            if (hit) {
-                /* Original LAFFC checks colliding object's sprite_set
-                 * == \$05 (bullet) and skips sound_normall_brik on
-                 * bullet hits. Visual feedback comes from the 4-frame
-                 * bullet-blast at the impact point instead. */
-                bullet_active[b] = 0;
-                /* Original LAFFC_31 converts the bullet into the blast and
-                 * snaps its x to the 8px byte grid: `LD A,(IX+\$02); AND
-                 * \$F8; LD (IX+\$02),A`. The blast sprite is byte-aligned,
-                 * so the impact snaps to the cell column — same as the
-                 * alien-hit blast above (LA5A3_0). Was using the raw
-                 * bullet x (a <=7px position error vs the original). */
-                bullet_blast_x[b] = bullet_x[b] & ~7;
-                bullet_blast_y[b] = bullet_y[b];
-                bullet_blast_ticks[b] = BULLET_BLAST_FRAMES * BULLET_BLAST_TICKS_PER_FRAME;
-                return;
-            }
+
+    if (hit.what == BulletHit::BRICK) {
+        /* Same damage rules as a ball hit, minus the click: the original
+         * skips sound_normall_brik when the colliding object is a bullet
+         * (sprite_set $05), because the impact blast is the feedback. */
+        unsigned char *cell = &live_level[hit.row * LVL_COLS + hit.col];
+        if (*cell & 0x20) {                       /* undestructible */
+            brick_hit_anim_spawn(hit.col, hit.row);
+        } else if (!(*cell & 0x10)) {             /* multi-hit, first hit */
+            *cell |= 0x10;
+            brick_hit_anim_spawn(hit.col, hit.row);
+        } else {
+            unsigned int idx = (unsigned int)((hit.row < 12) ? hit.row : 11);
+            unsigned int pts = points_table[idx];
+            if ((*cell & 0x0F) >= 6) pts *= 2;    /* metal scores double */
+            score += pts;
+            *cell |= 0x80;
+            mark_brick_row_dirty(hit.row);
+            brick_flash_spawn(hit.col, hit.row);
+            try_spawn_bonus(hit.col, hit.row);
         }
     }
 }
@@ -4262,12 +4184,6 @@ static void try_fire_laser(void) {
 
 /* Step the bullet-impact blasts one tick each. Per-slot countdown
  * matches the per-slot bullet that spawned each blast. */
-static void step_bullet_blast(void) {
-    int i;
-    for (i = 0; i < N_BULLETS; i++) {
-        if (bullet_blast_ticks[i]) bullet_blast_ticks[i]--;
-    }
-}
 
 /* Paint each active bullet-blast frame at its recorded impact point.
  * Frame index = (BULLET_BLAST_FRAMES - 1) - (ticks / ticks_per_frame)
@@ -4291,19 +4207,9 @@ static void render_bullet_blast_to_buff(void) {
 }
 
 /* True if any bullet-blast slot is still rendering an animation. */
-static int any_bullet_blast(void) {
-    int i;
-    for (i = 0; i < N_BULLETS; i++) if (bullet_blast_ticks[i]) return 1;
-    return 0;
-}
 
 /* True if any bullet slot is in flight — used by the inner loop to
  * decide whether to redraw and to expose firing capacity to SPACE. */
-static int any_bullet_active(void) {
-    int i;
-    for (i = 0; i < N_BULLETS; i++) if (bullet_active[i]) return 1;
-    return 0;
-}
 
 /* Step the rocket one frame: move up (the original handling_rocket accel),
  * lifting the bat. The original (LBB97 flight loop) does NO brick
@@ -6412,7 +6318,7 @@ static state_t run_level(void) {
                 step_pts_400();
                 step_bomb();
                 step_bullet();
-                step_bullet_blast();
+                bullet_blasts_tick();
                 step_rocket();
                 step_brick_flash();
                 step_brick_hit_anim();

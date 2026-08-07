@@ -50,13 +50,14 @@ happened, and `make test-video` caught it.
 | 5 | `bricks` — the compositor | 278 | **done** — 5 tests, byte-exact vs 15 captured screens |
 | 5b | level paint / band orchestration | ~350 | remains in main.cpp |
 | 6a | `objects` — the 22-byte descriptor + slots | 60 | **done** — 5 tests |
-| 6b | enemies, bonuses, weapons | ~800 | remains in main.cpp |
+| 6b-i | `weapons` — bullets + blasts | 95 | **done** — 6 tests |
+| 6b-ii | bonuses, enemies, rocket, sparks | ~640 | remains in main.cpp |
 | 7 | `hud` — glyphs, markup, score | 175 | **done** — 6 tests |
 | 8 | `sound` — queue + envelopes | 366 | **done** — 7 tests; had NO coverage before |
 | 9 | `run_level` decomposition | 684 | |
 | 1 | replay / probe scaffolding | 480 | **last** — see below |
 
-`main.cpp`: 7,746 → 6,817 so far. 77 host tests, all under a second.
+`main.cpp`: 7,746 → 6,723 so far. 83 host tests, all under a second.
 
 ### Stage 5, done
 
@@ -98,6 +99,16 @@ extracting it to a real TU means exposing the game state it pokes
 (`objects[]`, bonus/bomb/rocket state) and the ~50 variables
 `write_replay_probe` dumps. That needs the game-state API stages 6-9
 build, so it is the *hardest* stage, not the easiest.
+
+### A duplication left deliberately alone
+
+The bullet's brick-damage rules duplicate `brick_hit_resolve` almost
+exactly — undestructible → anim, multi-hit → set bit 4, else destroy +
+score + flash + bonus. The one difference is deliberate: bullets skip the
+click, because the original tests `sprite_set == $05` and lets the impact
+blast be the feedback. Unifying them looks like an obvious simplification
+and would quietly delete that difference. Worth doing only with the
+divergence written into whatever replaces both.
 
 ## What this has already found
 
