@@ -5857,6 +5857,148 @@ static void play_bat_explosion(unsigned char level_idx) {
     sound_stop_all();
 }
 
+
+/* --- Level entry ------------------------------------------------------
+ * Everything between arriving at a level and the first frame of play. */
+
+/* Reset the per-level state and load the level's bricks. orig: the LDIR
+ * in all_var_init, which restores a template over the whole block. */
+static void reset_level_state(unsigned char lvl_idx) {
+    objects[OBJ_ENEMY].sprite_set = 0;     /* alien cleared on level entry */
+    /* Port of all_var_init's LDIR — BAT_X resets to the default
+     * $74 at every level entry. Earlier port kept the bat where
+     * the player left it; original re-centres on each level. */
+    BAT_X         = BAT_X_INIT;
+    BAT_Y         = BAT_Y_PX;
+    objects[OBJ_BAT_2].y_coord = BAT_Y_PX;
+    BAT_PREV_X    = BAT_X_INIT;
+    ball_stuck    = 1;
+    stuck_offset_x = BALL_X_OFFSET_ON_BAT;
+    BALL_SHOW();                      /* visible from level entry; sits on the bat */
+    BALL_X        = BAT_X + BALL_X_OFFSET_ON_BAT;
+    BALL_Y        = BAT_Y - BALL_H_PX;
+    stuck_ticks   = 0;                /* counts up while waiting for launch */
+    primary_ball_set_velocity(+1, -BALL_SPEED);
+    bonus_active   = 0;
+    bomb_active        = 0;
+    bullet_active[0]      = 0;
+    bullet_active[1]      = 0;
+    bullet_blast_ticks[0] = 0;
+    bullet_blast_ticks[1] = 0;
+    bullet_cooldown       = 0;
+    dbg_shots_fired       = 0;
+    rocket_active      = 0;
+    rocket_clear_completed = 0;
+    set_rocket_bonus_sprite_height(ROCKET_BONUS_H_PX);
+    brick_flash_ticks  = 0;
+    reset_brick_hit_anim();
+    ball2_active   = 0;
+    objects[OBJ_BALL_2].sprite_set = 0x82;
+    ball3_active   = 0;
+    objects[OBJ_BALL_3].sprite_set = 0x82;
+    pts_400_active = 0;
+    ball_speed_ramp = 0;
+    big_bat_ticks  = 0;
+    big_ball_ticks = 0;
+    /* flag_extra_life is NOT cleared at level entry in original —
+     * only LBC10 (death path) clears it. So a LIFE bonus catch
+     * blocks future LIFE drops for the rest of the player's life,
+     * across levels. Earlier port reset on level entry too,
+     * making LIFE bonuses re-available per round. */
+    run_dot_frame = 0x0E;               /* matches running_dot_frame_1up reset */
+    bat_extra_px   = 0;
+    bat_extra_tgt  = 0;
+    objects[OBJ_BAT_1].bonus_applied = 0xFF;
+    objects[OBJ_BAT_2].bonus_applied = 0xFF;
+    /* Mirror all_var_init's `clear_hl_buff` of sounds_queue at line
+     * 5984 — sounds in-flight at level entry shouldn't bleed into
+     * the new round. */
+    sound_stop_all();
+    memcpy(live_level, &levels[(int)lvl_idx * LVL_CELLS], LVL_CELLS);
+}
+
+/* Seeded overrides from the replay harness. Applied after the level's
+ * bricks are loaded and before anything reads them, so a seeded run and
+ * the original start from the same state. */
+static void apply_replay_overrides(void) {
+    apply_replay_random_override();
+    apply_replay_bat_object_override();
+    apply_replay_ball_object_override();
+    apply_replay_ball_motion_override();
+    apply_replay_enemy_object_override();
+    apply_replay_bonus_override();
+    apply_replay_bomb_override();
+    apply_replay_pts400_override();
+    apply_replay_force_brick();
+    apply_replay_ball_ramp();
+    apply_replay_bullet_override();
+    apply_replay_blast_override();
+    apply_replay_force_bonus();
+    apply_replay_multiball();
+    apply_replay_bigball();
+    apply_replay_rocket_override();
+}
+
+/* The round banner and the all-metal shimmer, plus the harness hooks that
+ * hang off them. Returns false if the player quit. */
+static int show_level_intro(unsigned int round) {
+    if (show_round_banner(round + 1)) return 0;
+    render_level_screen(current_level_idx_var);   /* clear the banner */
+    /* Test hook: stuff one ENTER into the BIOS keyboard buffer right
+     * before the intro shimmer. The original animation is NOT
+     * interruptible by input; the regression test asserts the key
+     * neither aborts nor is eaten by the animation (it must survive
+     * to release BATTY_REPLAY_WAIT_KEY below). With the old abort-on-
+     * any-key behaviour the key is consumed, WAIT_KEY blocks forever
+     * and the test times out with no probe. */
+    if (getenv("BATTY_TEST_KEY_BEFORE_ANIM") != NULL) {
+        union REGS r;
+        r.h.ah = 0x05;              /* INT 16h: store keystroke */
+        r.w.cx = 0x1C0D;            /* scancode $1C, ascii CR (ENTER) */
+        int386(0x16, &r, &r);
+    }
+    if (play_brik_anim()) return 0;
+    /* Replay parity hook: block here until the harness sends a key,
+     * giving the original side a matching breakpoint to halt at and
+     * letting both runners capture the static L3-entry screen with
+     * no wall-clock drift. The wake key is consumed below so it
+     * doesn't double as the next main-loop input. */
+    if (getenv("BATTY_REPLAY_WAIT_KEY") != NULL) {
+        serial_probe_signal();   /* boot+intro done, AT the $BA83 pause */
+        while (!kbhit()) {
+            sound_tick();
+        }
+        (void)getch();
+    }
+    return 1;
+}
+
+/* Replay determinism: pin the free-running frame counter at the aligned
+ * start, so every counter-phase decision is the same run to run. */
+static void pin_replay_frame_counter(void) {
+    /* Replay determinism hook: pin the global frame counter (= the
+     * original's counter_misc) at the aligned start. The counter has
+     * been ticking since boot, so its low-bit PHASE at this point is
+     * wall-clock roulette — and the enemy steer (&3), the ball speed
+     * ramp (&7), and other counter_misc-gated cadences all key off it.
+     * Un-pinned, a 4-frame steer turn can slide across a probe frame
+     * run-to-run (the test-enemy-steer flake). Hex value; pinned AFTER
+     * the WAIT_KEY release so frame 1 sees counter == pin+1, making
+     * every counter_misc-phase decision deterministic per seed. */
+    {
+        const char *pc = getenv("BATTY_REPLAY_COUNTER");
+        if (pc != NULL && *pc != '\0') {
+            char *endp;
+            unsigned long v = strtoul(pc, &endp, 16);
+            if (*endp == '\0') {
+                _disable();
+                pit_frame_counter = v;
+                _enable();
+            }
+        }
+    }
+}
+
 static state_t run_level(void) {
     unsigned char i;
     unsigned long start;
@@ -5938,134 +6080,24 @@ static state_t run_level(void) {
     for (;;) {
         unsigned char lvl_idx = (unsigned char)(round_number % N_LEVELS);
         current_level_idx_var = lvl_idx;
-        i = lvl_idx;                                 /* keep `i` alias for the cycle / bg_attr code below */
-        objects[OBJ_ENEMY].sprite_set = 0;     /* alien cleared on level entry */
-        /* Port of all_var_init's LDIR — BAT_X resets to the default
-         * $74 at every level entry. Earlier port kept the bat where
-         * the player left it; original re-centres on each level. */
-        BAT_X         = BAT_X_INIT;
-        BAT_Y         = BAT_Y_PX;
-        objects[OBJ_BAT_2].y_coord = BAT_Y_PX;
-        BAT_PREV_X    = BAT_X_INIT;
-        ball_stuck    = 1;
-        stuck_offset_x = BALL_X_OFFSET_ON_BAT;
-        BALL_SHOW();                      /* visible from level entry; sits on the bat */
-        BALL_X        = BAT_X + BALL_X_OFFSET_ON_BAT;
-        BALL_Y        = BAT_Y - BALL_H_PX;
-        stuck_ticks   = 0;                /* counts up while waiting for launch */
-        primary_ball_set_velocity(+1, -BALL_SPEED);
-        bonus_active   = 0;
-        bomb_active        = 0;
-        bullet_active[0]      = 0;
-        bullet_active[1]      = 0;
-        bullet_blast_ticks[0] = 0;
-        bullet_blast_ticks[1] = 0;
-        bullet_cooldown       = 0;
-        dbg_shots_fired       = 0;
-        rocket_active      = 0;
-        rocket_clear_completed = 0;
-        set_rocket_bonus_sprite_height(ROCKET_BONUS_H_PX);
-        brick_flash_ticks  = 0;
-        reset_brick_hit_anim();
-        ball2_active   = 0;
-        objects[OBJ_BALL_2].sprite_set = 0x82;
-        ball3_active   = 0;
-        objects[OBJ_BALL_3].sprite_set = 0x82;
-        pts_400_active = 0;
-        ball_speed_ramp = 0;
-        big_bat_ticks  = 0;
-        big_ball_ticks = 0;
-        /* flag_extra_life is NOT cleared at level entry in original —
-         * only LBC10 (death path) clears it. So a LIFE bonus catch
-         * blocks future LIFE drops for the rest of the player's life,
-         * across levels. Earlier port reset on level entry too,
-         * making LIFE bonuses re-available per round. */
-        run_dot_frame = 0x0E;               /* matches running_dot_frame_1up reset */
-        bat_extra_px   = 0;
-        bat_extra_tgt  = 0;
-        objects[OBJ_BAT_1].bonus_applied = 0xFF;
-        objects[OBJ_BAT_2].bonus_applied = 0xFF;
-        /* Mirror all_var_init's `clear_hl_buff` of sounds_queue at line
-         * 5984 — sounds in-flight at level entry shouldn't bleed into
-         * the new round. */
-        sound_stop_all();
-        memcpy(live_level, &levels[(int)i * LVL_CELLS], LVL_CELLS);
-        apply_replay_random_override();
-        apply_replay_bat_object_override();
-        apply_replay_ball_object_override();
-        apply_replay_ball_motion_override();
-        apply_replay_enemy_object_override();
-        apply_replay_bonus_override();
-        apply_replay_bomb_override();
-        apply_replay_pts400_override();
-        apply_replay_force_brick();
-        apply_replay_ball_ramp();
-        apply_replay_bullet_override();
-        apply_replay_blast_override();
-        apply_replay_force_bonus();
-        apply_replay_multiball();
-        apply_replay_bigball();
-        apply_replay_rocket_override();
-        /* Magnet runtime state (count/coords/initial ON-OFF coins +
-         * per-ball capture blocks) — after the RNG seed override so the
-         * coins consume the seeded walk like the original print_magnets,
-         * before render_level_screen which paints from this state. */
-        magnet_level_init(i);
-        probe_from_gameplay = 0;     /* this PROBE write = pre-gameplay seed */
+        i = lvl_idx;                     /* the cycle / bg_attr code below reads `i` */
+
+        reset_level_state(lvl_idx);
+        apply_replay_overrides();
+        /* After the RNG seed override, so the magnets' ON/OFF coins
+         * consume the seeded walk exactly as print_magnets does; before
+         * render_level_screen, which paints from this state. */
+        magnet_level_init(lvl_idx);
+
+        probe_from_gameplay = 0;         /* this PROBE write is the pre-gameplay seed */
         write_replay_probe();
-        render_level_screen(i);
-        if (show_round_banner((unsigned int)round_number + 1)) return ST_QUIT;
-        render_level_screen(i);                /* re-paint to clear the banner */
-        /* Test hook: stuff one ENTER into the BIOS keyboard buffer right
-         * before the intro shimmer. The original animation is NOT
-         * interruptible by input; the regression test asserts the key
-         * neither aborts nor is eaten by the animation (it must survive
-         * to release BATTY_REPLAY_WAIT_KEY below). With the old abort-on-
-         * any-key behaviour the key is consumed, WAIT_KEY blocks forever
-         * and the test times out with no probe. */
-        if (getenv("BATTY_TEST_KEY_BEFORE_ANIM") != NULL) {
-            union REGS r;
-            r.h.ah = 0x05;              /* INT 16h: store keystroke */
-            r.w.cx = 0x1C0D;            /* scancode $1C, ascii CR (ENTER) */
-            int386(0x16, &r, &r);
-        }
-        if (play_brik_anim()) return ST_QUIT;
-        /* Replay parity hook: block here until the harness sends a key,
-         * giving the original side a matching breakpoint to halt at and
-         * letting both runners capture the static L3-entry screen with
-         * no wall-clock drift. The wake key is consumed below so it
-         * doesn't double as the next main-loop input. */
-        if (getenv("BATTY_REPLAY_WAIT_KEY") != NULL) {
-            serial_probe_signal();   /* boot+intro done, AT the $BA83 pause */
-            while (!kbhit()) {
-                sound_tick();
-            }
-            (void)getch();
-        }
-        /* Replay determinism hook: pin the global frame counter (= the
-         * original's counter_misc) at the aligned start. The counter has
-         * been ticking since boot, so its low-bit PHASE at this point is
-         * wall-clock roulette — and the enemy steer (&3), the ball speed
-         * ramp (&7), and other counter_misc-gated cadences all key off it.
-         * Un-pinned, a 4-frame steer turn can slide across a probe frame
-         * run-to-run (the test-enemy-steer flake). Hex value; pinned AFTER
-         * the WAIT_KEY release so frame 1 sees counter == pin+1, making
-         * every counter_misc-phase decision deterministic per seed. */
-        {
-            const char *pc = getenv("BATTY_REPLAY_COUNTER");
-            if (pc != NULL && *pc != '\0') {
-                char *endp;
-                unsigned long v = strtoul(pc, &endp, 16);
-                if (*endp == '\0') {
-                    _disable();
-                    pit_frame_counter = v;
-                    _enable();
-                }
-            }
-        }
-        cycle = (unsigned char)(i & 3);
-        bg_attr = bg_attr_per_cycle[i & 3];
-        probe_from_gameplay = 1;     /* PROBE writes below are checkpoints */
+        render_level_screen(lvl_idx);
+        if (!show_level_intro((unsigned int)round_number)) return ST_QUIT;
+        pin_replay_frame_counter();
+
+        cycle     = (unsigned char)(i & 3);
+        bg_attr   = bg_attr_per_cycle[i & 3];
+        probe_from_gameplay = 1;         /* PROBE writes below are checkpoints */
         start     = bios_ticks();
         last_tick = pit_ticks();
         for (;;) {

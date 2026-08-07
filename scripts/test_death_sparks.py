@@ -10,6 +10,8 @@ from pathlib import Path
 
 
 SRC = Path("src/main.cpp")
+# The direction model moved to its own module; the spark state did not.
+PHYSICS = Path("src/physics.cpp")
 
 
 def simulate_original(xs, frames=36, direction_start=0x03):
@@ -63,6 +65,7 @@ def simulate_original(xs, frames=36, direction_start=0x03):
 def main() -> int:
     src = SRC.read_text()
     compact = "".join(src.split())
+    physics_compact = "".join(PHYSICS.read_text().split())
 
     if "#define DEATH_SPARK_COUNT 10" not in src:
         raise SystemExit("FAIL: LBC10 spark count must stay at ten object slots")
@@ -78,11 +81,14 @@ def main() -> int:
         raise SystemExit("FAIL: LBC10 spark speed $02 changed")
     if "death_sparks[i].x_q88         = (long)(x_start + i * 3) << 8" not in src:
         raise SystemExit("FAIL: LBC10 spark X spacing +3 changed")
-    if "bc = L - 256" in src or "hl = L - 256" in src or "bc = C - 256" in src or "hl = C - 256" in src:
-        raise SystemExit("FAIL: death spark direction math must negate table magnitudes, not subtract from 256")
+    direction_src = PHYSICS.read_text()
+    for bad in ("bc = l - 256", "hl = l - 256", "bc = c - 256", "hl = c - 256"):
+        if bad in direction_src:
+            raise SystemExit("FAIL: death spark direction math must negate table magnitudes, not subtract from 256")
 
-    compact_direction = compact[compact.find("staticvoiddir_to_dxdy"):compact.find("#defineDEATH_SPARK_COUNT")]
-    for needle in ("case0x10:hl=C;bc=-L;", "case0x20:hl=-L;bc=-C;", "default:hl=-C;bc=L;"):
+    start = physics_compact.find("voiddir_to_dxdy")
+    compact_direction = physics_compact[start:physics_compact.find("voiddir_to_delta", start)]
+    for needle in ("case0x10:hl=c;bc=-l;", "case0x20:hl=-l;bc=-c;", "default:hl=-c;bc=l;"):
         if needle not in compact_direction:
             raise SystemExit(f"FAIL: death spark direction quadrant does not mirror LAD13 magnitude negation: {needle}")
 
