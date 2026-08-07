@@ -51,11 +51,11 @@ happened, and `make test-video` caught it.
 | 5b | level paint / band orchestration | ~350 | remains in main.cpp |
 | 6 | entities — objects, enemies, bonuses, weapons | ~950 | |
 | 7 | hud + text | 601 | |
-| 8 | sound | 272 | |
+| 8 | `sound` — queue + envelopes | 366 | **done** — 7 tests; had NO coverage before |
 | 9 | `run_level` decomposition | 684 | |
 | 1 | replay / probe scaffolding | 480 | **last** — see below |
 
-`main.cpp`: 7,746 → 7,403 so far. 49 host tests, all under a second.
+`main.cpp`: 7,746 → 6,988 so far. 66 host tests, all under a second.
 
 ### Stage 5, done
 
@@ -74,6 +74,20 @@ known-bugs #1/#2 were violations of.
 What remains in `main.cpp` is the level orchestration around it:
 `render_brick_band` / `render_brick_band_rows` copy per-level attrs, reset
 destroyed cells to background, and drive the border shadow.
+
+### Take the least-coupled group next
+
+Measured by how many file-scope names a group's functions touch:
+
+| group | functions | distinct state names |
+|-------|----------:|---------------------:|
+| sound | 15 | 4 |
+| hud / text | 13 | 12 |
+| entities | 31 | 64 |
+
+That ordering is also what unblocks replay fastest — every variable that
+becomes a module's business is one fewer for `write_replay_probe` to
+reach for.
 
 ### Why replay is last, not first
 

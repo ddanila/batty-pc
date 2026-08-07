@@ -25,6 +25,7 @@
  * and the dirty marks declared there. */
 #include "assets.h"
 #include "bricks.h"
+#include "sound.h"
 #include "physics.h"
 #include "rng.h"
 #include "zxvga.h"
@@ -1096,6 +1097,9 @@ static unsigned long prof_ball_dirty_block_bricks = 0;
 static unsigned long prof_ball_dirty_block_balls = 0;
 static unsigned long prof_ball_dirty_block_bat_fx = 0;
 static unsigned long profile_auto_frames = 0;
+/* While set the frame body does no physics; only P (toggle), ESC
+ * (quit) and ENTER (advance) are acted on. */
+static unsigned char paused = 0;
 static unsigned char force_bat_full_redraw = 0;
 static unsigned char force_ball_full_redraw = 0;
 static unsigned char force_full_flush_each_frame = 0;
@@ -1128,7 +1132,6 @@ static unsigned char use_laffc = 1;
  * enemy-descend, visual states) stay green either way. */
 static unsigned char rng_perframe = 1;
 static unsigned char suppress_no_ball_death = 0;
-static int sound_disabled = 0;
 
 static unsigned short last_prof_tick = 0;
 
@@ -1189,7 +1192,7 @@ static void write_profile_report(void) {
         fprintf(f, "  ball block bat FX:    %lu\n", prof_ball_dirty_block_bat_fx);
         fprintf(f, "  VGA rect flushes:     %lu\n", prof_vga_rects);
         fprintf(f, "  VGA bytes written:    %lu\n", prof_vga_bytes);
-        fprintf(f, "  sound disabled:       %u\n", (unsigned)sound_disabled);
+        fprintf(f, "  sound disabled:       %u\n", (unsigned)(sound_is_enabled() ? 0 : 1));
         fprintf(f, "  Total PIT ticks sum:  %lu\n", total);
         fclose(f);
     }
@@ -2297,9 +2300,6 @@ static void render_magnets(unsigned char level_idx) {
  * flip its ON/OFF state, queue the sweep sound, and leave the circle
  * redraw for the next frame compose. Count==0 returns before any RNG
  * use (RET Z) — so non-magnet levels never perturb the RNG walk. */
-static void snd_q_push(unsigned char id);             /* defined below */
-#define SND_MAGNET        0x0D    /* lives here, above its first use;
-                                   * siblings are defined at the snd_q block */
 
 static void magnet_random_toggle(void) {
     unsigned char a, b;
@@ -2310,7 +2310,7 @@ static void magnet_random_toggle(void) {
     } while (a > b);
     magnet_on_state[a] ^= 1;
     magnet_toggle_pending = a;
-    snd_q_push(SND_MAGNET);
+    sound_queue(SND_MAGNET);
 }
 
 /* Apply a pending toggle's incremental redraw — the visual half of
@@ -2793,260 +2793,6 @@ static void kbd_restore(void) {
     prev_int9 = NULL;
 }
 
-/* --- PC speaker sound (PIT channel 2, original-style envelopes) -------
- *
- * The Spectrum routines are CPU-timed beeper loops. A literal PC port
- * that spins in the 50 Hz frame body makes audio steal frame time, so
- * this backend latches a PIT channel-2 tone and lets `sound_tick`
- * release it asynchronously on later PIT ticks. */
-/* Pause flag: while set, the per-frame body does no physics; only P
- * (toggle), ESC (quit), and ENTER (advance) are responded to. */
-static unsigned char paused = 0;
-static unsigned char sound_ticks_left = 0;
-static unsigned long sound_last_tick = 0;
-
-static void sound_silence(void) {
-    _disable();
-    outp(0x61, (unsigned char)(inp(0x61) & 0xFC));
-    _enable();
-    sound_ticks_left = 0;
-}
-
-static void sound_pit_set_period(unsigned int period) {
-    if (period < 20) period = 20;
-    _disable();
-    outp(0x43, 0xB6);                 /* counter 2, lo+hi, mode 3 */
-    outp(0x42, (unsigned char)(period & 0xFF));
-    outp(0x42, (unsigned char)((period >> 8) & 0xFF));
-    _enable();
-}
-
-static void sound_gate_on(void) {
-    _disable();
-    outp(0x61, (unsigned char)(inp(0x61) | 0x03));
-    _enable();
-}
-
-static void sound_gate_off(void) {
-    _disable();
-    outp(0x61, (unsigned char)(inp(0x61) & 0xFC));
-    _enable();
-}
-
-static void sound_start_period(unsigned int period, unsigned char ticks) {
-    if (sound_disabled || ticks == 0) return;
-    sound_pit_set_period(period);
-    sound_gate_on();
-    sound_ticks_left = ticks;
-    sound_last_tick = pit_ticks();
-}
-
-static void sound_beep_e(unsigned char e) {
-    /* Original period is proportional to E. PIT divisor ~= 1193180 /
-     * (3500000 / (26*E)) = 8.86*E; use 9*E as the close integer form. */
-    sound_start_period((unsigned int)e * 9u, 1);
-}
-
-static void sound_beep2_bd(unsigned char b, unsigned char d) {
-    unsigned char period = (unsigned char)(((unsigned int)b + (unsigned int)d) / 2u);
-    if (period == 0) period = 1;
-    sound_start_period((unsigned int)period * 9u, 1);
-}
-
-static void sound_beep_cont_d(unsigned char d, unsigned char e) {
-    (void)d;
-    sound_beep_e(e);
-}
-
-static void sound_beep_cont_de(unsigned char d, unsigned char e) {
-    (void)d;
-    sound_beep_e(e);
-}
-
-static void sound_play_lc122(unsigned char c, unsigned char e) {
-    unsigned char a = (unsigned char)(c ^ e);
-    unsigned char b = (unsigned char)((a << 1) & 0x0C);
-    unsigned char d = (unsigned char)((a << 1) & 0x0F);
-    sound_beep2_bd((unsigned char)(b + 0x08), d);
-}
-
-static void sound_tick(void) {
-    unsigned long now;
-    if (sound_disabled || sound_ticks_left == 0) return;
-    now = pit_ticks();
-    if (now == sound_last_tick) return;
-    sound_last_tick = now;
-    if (--sound_ticks_left == 0) sound_gate_off();
-}
-
-/* --- Sound queue (port of sounds_queue at $C0B8 + play_sounds_queue) ---
- *
- * 5 slots, each tracks a sound id + per-sound state byte. snd_q_push
- * adds an event; snd_q_tick is called from the 50 Hz frame body and
- * dispatches each active slot to its play_sound_<id> handler.
- * Single-shot sounds clear their slot on first tick; multi-frame
- * sounds (live-add ascending sweep, ball-launch / shot descending
- * sweep) advance state per frame and clear when exhausted.
- *
- * Each handler mirrors the D/E/B/C parameters of the original's
- * play_sound_<event> routine (sound.asm at $C0F3+). */
-#define SQ_SLOTS 5
-typedef struct { unsigned char id; unsigned char state; } sound_slot_t;
-
-/* Sound IDs match the original play_sounds_list at $C0BC. */
-#define SND_NORMAL_BRIK   1
-#define SND_BAT_BEAT      3
-#define SND_BALL_START    4
-#define SND_ALIEN_BLAST   6
-#define SND_LIVE_ADD      7
-#define SND_SPARK_FANOUT  8
-#define SND_BAT_RESIZE_1  9
-#define SND_TRIPLE_BALL   0x0A
-#define SND_SHOT          0x0B
-#define SND_BAT_RESIZE_2  0x0C
-/* SND_MAGNET 0x0D — defined above magnet_random_toggle (first use) */
-
-static sound_slot_t snd_q[SQ_SLOTS];
-
-static void snd_q_push(unsigned char id) {
-    int i;
-    if (sound_disabled) return;
-    if (id == SND_NORMAL_BRIK || id == SND_BAT_BEAT || id == SND_SHOT) {
-        for (i = 0; i < SQ_SLOTS; i++) {
-            if (snd_q[i].id == id) return;
-        }
-    }
-    for (i = 0; i < SQ_SLOTS; i++) {
-        if (snd_q[i].id == 0) {
-            snd_q[i].id = id;
-            switch (id) {
-                case SND_LIVE_ADD:    snd_q[i].state = 0x20; break;
-                case SND_BALL_START:  snd_q[i].state = 0x00; break;
-                case SND_SHOT:        snd_q[i].state = 0x00; break;
-                case SND_SPARK_FANOUT:snd_q[i].state = 0x3D; break;  /* LBC10 push */
-                case SND_BAT_RESIZE_1:snd_q[i].state = 0xC0; break;  /* matches \$3212 push */
-                case SND_TRIPLE_BALL: snd_q[i].state = 0x10; break;  /* matches \$3072 push */
-                case SND_ALIEN_BLAST: snd_q[i].state = 0x30; break;
-                case SND_MAGNET:      snd_q[i].state = 0x18; break;  /* C starts $18 */
-                default:              snd_q[i].state = 0; break;
-            }
-            return;
-        }
-    }
-}
-
-/* Returns 1 when the slot should be cleared (sound done). */
-static int snd_tick_one(sound_slot_t *s) {
-    switch (s->id) {
-        case SND_NORMAL_BRIK:
-            /* $C0F3: D=$08,E=$44. */
-            sound_beep_cont_d(0x08, 0x44);
-            return 1;
-
-        case SND_BAT_BEAT:
-            /* $C16F: D=$04,E=$66. */
-            sound_beep_cont_d(0x04, 0x66);
-            return 1;
-
-        case SND_LIVE_ADD: {
-            /* $C1CF: state starts $20, every 4th frame plays a beep
-             * at E = state + $14 (ascending pitch as state shrinks).
-             * state -= 2 per frame; cleared when 0. */
-            if ((s->state & 3) == 0) {
-                sound_beep_cont_d(0x03, (unsigned char)(s->state + 0x14));
-            }
-            if (s->state == 0) return 1;
-            s->state -= 2;
-            return 0;
-        }
-
-        case SND_BALL_START: {
-            /* $C116: C=$09,E=$14, then clear the slot. */
-            sound_play_lc122(0x09, 0x14);
-            return 1;
-        }
-
-        case SND_SHOT: {
-            /* $C235: C=$04,E=$0F, then clear the slot. */
-            sound_play_lc122(0x04, 0x0F);
-            return 1;
-        }
-
-        case SND_BAT_RESIZE_1: {
-            /* $C200: state starts $C0 (from the bonus_resize push at
-             * \$3212), decrements by $0B per frame until below $10. */
-            sound_beep_cont_d(0x01, s->state);
-            if (s->state < 0x10 + 0x0B) return 1;
-            s->state -= 0x0B;
-            return 0;
-        }
-
-        case SND_TRIPLE_BALL: {
-            /* $C21D: state starts $10 (from the LA67B_8 push at
-             * \$3072), increments by $0B per frame until past $C0. */
-            sound_beep_cont_d(0x01, s->state);
-            if (s->state >= 0xC1 - 0x0B) return 1;
-            s->state += 0x0B;
-            return 0;
-        }
-
-        case SND_ALIEN_BLAST: {
-            /* $C1A8: state starts $30, each frame plays a noisy tone at
-             * E = (random & $3F) + state with D=1; state += 8; wraps
-             * from $60 to $21 once; stops at $A1. ~22 frames of zip-
-             * style noise. */
-            unsigned int e = ((unsigned int)random_lo(next_random()) & 0x3Fu) + (unsigned int)s->state;
-            sound_beep_cont_d(0x01, (unsigned char)e);
-            s->state = (unsigned char)(s->state + 8);
-            if (s->state == 0x60) s->state = 0x21;
-            if (s->state == 0xA1) return 1;
-            return 0;
-        }
-
-        case SND_SPARK_FANOUT: {
-            /* $C1ED: E = ((state >> 2) & $3F) + $20, D=2. */
-            unsigned int e = (((unsigned int)s->state >> 2) & 0x3Fu) + 0x20u;
-            sound_beep_cont_de(0x02, (unsigned char)e);
-            s->state++;
-            return s->state == 0xA1;
-        }
-
-        case SND_BAT_RESIZE_2: {
-            /* $C241: D=$0A,E=$30. */
-            sound_beep_cont_de(0x0A, 0x30);
-            return 1;
-        }
-
-        case SND_MAGNET: {
-            /* play_sound_magnet ($C151): a blocking 24-step sweep —
-             * per-beep period C climbs from $18 (descending pitch) over
-             * E=$18 iterations via sound_beep2. Approximated as a queued
-             * per-frame descending sweep, consistent with the rest of
-             * the PC-speaker layer (see parity-gaps.md). */
-            sound_beep_cont_d(0x02, s->state);
-            s->state += 4;
-            return s->state >= 0x18 + 0x60;
-        }
-
-        default:
-            return 1;
-    }
-}
-
-static void snd_q_tick(void) {
-    int i;
-    for (i = 0; i < SQ_SLOTS; i++) {
-        if (snd_q[i].id == 0) continue;
-        if (snd_tick_one(&snd_q[i])) snd_q[i].id = 0;
-        break;      /* PC speaker is one voice; avoid N port-programs/frame. */
-    }
-}
-
-static void snd_q_silence_all(void) {
-    int i;
-    for (i = 0; i < SQ_SLOTS; i++) snd_q[i].id = 0;
-    sound_silence();
-}
 
 /* Attract-mode state machine — same shape as the original game:
  *   TITLE   one-shot loading screen on boot, timeout -> MENU
@@ -3316,7 +3062,7 @@ static void bonus_apply(unsigned char type) {
      * resize-2 beep ($0C) for everything else (push_resize_sound at
      * $A645, gated by `CP $05; CALL NZ,push_resize_sound`). Our port
      * had been routing every catch through SND_LIVE_ADD. */
-    snd_q_push(type == BONUS_TYPE_LIFE ? SND_LIVE_ADD : SND_BAT_RESIZE_2);
+    sound_queue(type == BONUS_TYPE_LIFE ? SND_LIVE_ADD : SND_BAT_RESIZE_2);
     /* Original LA67B_3 at \$A6FC writes the bonus type code into
      * bat.bonus_applied for every catch except ROCKET (which jumps
      * out earlier to get_rocket). Catching a new bonus thus REPLACES
@@ -3347,7 +3093,7 @@ static void bonus_apply(unsigned char type) {
             break;
         case BONUS_TYPE_BIG_BAT:  big_bat_ticks  = BIG_BAT_DURATION;
                                   bat_extra_tgt  = BAT_BIG_EXTRA_PX;
-                                  snd_q_push(SND_BAT_RESIZE_1);
+                                  sound_queue(SND_BAT_RESIZE_1);
                                   break;
         case BONUS_TYPE_BIG_BALL: big_ball_ticks = BIG_BALL_DURATION; break;
         case BONUS_TYPE_KILL_ALIENS:
@@ -3369,7 +3115,7 @@ static void bonus_apply(unsigned char type) {
                     e->sprite_num = 0;
                     e->misc_12 = 0x50;   /* kill_enemy $A4C4 seed */
                     score += 350;
-                    snd_q_push(SND_ALIEN_BLAST);
+                    sound_queue(SND_ALIEN_BLAST);
                 }
             }
             break;
@@ -3485,7 +3231,7 @@ static void bonus_apply(unsigned char type) {
                 objects[OBJ_BALL_3].x_coord_hi = 0;
                 objects[OBJ_BALL_3].y_coord_hi = 0;
                 dir_to_delta(ball3_dir, &ball3_dx, &ball3_dy);
-                snd_q_push(SND_TRIPLE_BALL);
+                sound_queue(SND_TRIPLE_BALL);
             }
             break;
         default: break;
@@ -3760,7 +3506,7 @@ static int brick_hit_resolve(int col, int row, int axis) {
          * schedules the same briks_data shimmer slot used by hard
          * bricks, because bit 5 jumps to LAFFC_34. */
         brick_hit_anim_spawn(col, row);
-        snd_q_push(SND_NORMAL_BRIK);
+        sound_queue(SND_NORMAL_BRIK);
         return axis;
     }
     /* SMASH (BIG_BALL) bypasses the multi-hit half-state — port of
@@ -3770,7 +3516,7 @@ static int brick_hit_resolve(int col, int row, int axis) {
     if (!big_ball_active() && !(*cell & 0x10)) {
         *cell |= 0x10;
         brick_hit_anim_spawn(col, row);
-        snd_q_push(SND_NORMAL_BRIK);
+        sound_queue(SND_NORMAL_BRIK);
         return axis;
     }
 
@@ -3784,7 +3530,7 @@ static int brick_hit_resolve(int col, int row, int axis) {
     }
     *cell |= 0x80;
     mark_brick_row_dirty(row);
-    snd_q_push(SND_NORMAL_BRIK);            /* brick-break click */
+    sound_queue(SND_NORMAL_BRIK);            /* brick-break click */
     /* BIG_BALL (smash) bonus: ball ploughs through bricks rather
      * than bouncing — keep the bonus-spawn check below intact but
      * stash the "no bounce" intent. */
@@ -3866,6 +3612,10 @@ static unsigned int next_random(void) { return rng_next(ctrl_btns_pressed_value(
  * per-frame tick (added in the play loop) is the only advance — matching
  * the original. Consumers the original advances-then-reads (bonus
  * generation) keep calling next_random() directly. */
+/* The noise envelope's random source. orig: the magnet zip reads
+ * random_number like any other consumer. */
+static u8 sound_random_byte(void) { return rng_low(u16(next_random())); }
+
 static unsigned int rng_sample(void) {
     return rng_perframe ? rng_current() : next_random();
 }
@@ -4449,7 +4199,7 @@ static void kill_enemy_by_bat(void) {
     e->sprite_num = 0;
     e->misc_12 = 0x50;          /* kill_enemy $A4C4: LD (IY+$12),$50 */
     score += 350;                                   /* $0350 BCD */
-    snd_q_push(SND_ALIEN_BLAST);                    /* port of $C1A8 */
+    sound_queue(SND_ALIEN_BLAST);                    /* port of $C1A8 */
 }
 
 /* Mirror of kill_enemy_by_bat for the ball — original
@@ -4481,7 +4231,7 @@ static void kill_enemy_by_ball_rect(int bx_l, int by_t, int bw, int bh) {
     e->sprite_num = 0;
     e->misc_12 = 0x50;          /* kill_enemy $A4C4 seed */
     score += 350;
-    snd_q_push(SND_ALIEN_BLAST);
+    sound_queue(SND_ALIEN_BLAST);
 }
 
 /* Port of bomb_appear at $A977 - called per alien tick. Probability
@@ -4581,7 +4331,7 @@ static void step_bullet_one(int b) {
             enemy->sprite_num = 0;
             enemy->misc_12    = 0x50;   /* kill_enemy $A4C4 seed */
             score += 350;
-            snd_q_push(SND_ALIEN_BLAST);
+            sound_queue(SND_ALIEN_BLAST);
             bullet_active[b] = 0;
             /* Align blast x to 8-px boundary — port of LA5A3_0's
              * `LD A,(IX+\$02); AND \$F8; LD (IX+\$02),A`. The blast
@@ -4671,7 +4421,7 @@ static void try_fire_laser(void) {
     bat_fire_anim_ticks = 8;
     bullet_cooldown = 0x18;          /* 12 frames @ -2 / frame */
     dbg_shots_fired++;
-    snd_q_push(SND_SHOT);
+    sound_queue(SND_SHOT);
 }
 
 /* Step the bullet-impact blasts one tick each. Per-slot countdown
@@ -5046,7 +4796,7 @@ static void step_ball(void) {
             BALL_Y          = bat_top - BALL_H_PX + 1;
             objects[OBJ_BALL_1].x_coord_hi = 0;
             objects[OBJ_BALL_1].y_coord_hi = 0;
-            snd_q_push(SND_BAT_BEAT);
+            sound_queue(SND_BAT_BEAT);
             return;
         }
         ball_dy = -BALL_SPEED;
@@ -5063,7 +4813,7 @@ static void step_ball(void) {
                           &dx_q8, &dy_q8);
         ball_dx = (dx_q8 < 0) ? -1 : (dx_q8 > 0 ? 1 : 0);
         ball_dy = (dy_q8 < 0) ? -1 : (dy_q8 > 0 ? 1 : 0);
-        snd_q_push(SND_BAT_BEAT);            /* ball-on-bat */
+        sound_queue(SND_BAT_BEAT);            /* ball-on-bat */
     }
     /* Past the bat (= primary ball lost). Original at LA27E_25 ($A4xx)
      * checks Y >= $C0 (= 192). It deactivates the ball and decrements
@@ -5177,7 +4927,7 @@ static void step_extra_ball(unsigned char *in_active,
         && next_x < bat_right) {
         next_y = bat_top - BALL_H_PX;
         o->dir = bat_deflect_dir(o->dir, next_x + 3 - BAT_X, bat_extra_px != 0);
-        snd_q_push(SND_BAT_BEAT);
+        sound_queue(SND_BAT_BEAT);
     }
     if (next_y >= PLAYFIELD_H) {        /* off the bottom: deactivate */
         magnet_ball_state_clear((unsigned char)(obj_idx == OBJ_BALL_2 ? 1 : 2));
@@ -6089,7 +5839,7 @@ static int play_brik_anim(void) {
         brik_anim_apply_frame(frame);
         buff_to_vga_rect_bytes(32, 96, 1, 30);
         if (frame == 4 && !ping_played) {
-            sound_beep_cont_d(0x18, 0x30);      /* play_sound_metal_brik */
+            sound_play_metal_brik();
             ping_played = 1;
         }
     }
@@ -6254,11 +6004,11 @@ static void play_rocket_award_tally(unsigned char level_idx) {
             pts = points_table[idx];
             if ((*cell & 0x0F) >= 6) pts *= 2;
             score += pts;
-            snd_q_push(SND_NORMAL_BRIK);          /* per-brick tick */
+            sound_queue(SND_NORMAL_BRIK);          /* per-brick tick */
             /* Pace one brick per PIT tick (sound playing meanwhile). */
             do { sound_tick(); } while (pit_ticks() == last);
             last = pit_ticks();
-            snd_q_tick();
+            sound_frame();
             redraw_level_scene(level_idx);        /* bricks intact + new score */
         }
     }
@@ -6297,7 +6047,7 @@ static void respawn_primary_ball(void) {
     /* Original all_var_init also clears the sounds_queue at $B842
      * (LD B,$23 / clear_hl_buff). Any stale beep from the just-died
      * frame would otherwise carry over into the new life. */
-    snd_q_silence_all();
+    sound_stop_all();
     magnet_ball_state_clear(0);
     ball_stuck     = 1;
     stuck_ticks    = 0;
@@ -6368,7 +6118,7 @@ static void play_bat_explosion(unsigned char level_idx) {
     }
     /* Push sound $08 — LBC10 seeds sounds_queue with id=$08,state=$3D
      * before the spark fanout loop. */
-    snd_q_push(SND_SPARK_FANOUT);
+    sound_queue(SND_SPARK_FANOUT);
     last = pit_ticks();
     do {
         unsigned long now;
@@ -6377,7 +6127,7 @@ static void play_bat_explosion(unsigned char level_idx) {
             now = pit_ticks();
         } while (now == last);
         last = now;
-        snd_q_tick();
+        sound_frame();
         alive = 0;
         for (i = 0; i < DEATH_SPARK_COUNT; i++) {
             int dx_q88, dy_q88;
@@ -6435,7 +6185,7 @@ static void play_bat_explosion(unsigned char level_idx) {
             if (k == KEY_ESC) break;
         }
     }
-    snd_q_silence_all();
+    sound_stop_all();
 }
 
 static state_t run_level(void) {
@@ -6569,7 +6319,7 @@ static state_t run_level(void) {
         /* Mirror all_var_init's `clear_hl_buff` of sounds_queue at line
          * 5984 — sounds in-flight at level entry shouldn't bleed into
          * the new round. */
-        snd_q_silence_all();
+        sound_stop_all();
         memcpy(live_level, &levels[(int)i * LVL_CELLS], LVL_CELLS);
         apply_replay_random_override();
         apply_replay_bat_object_override();
@@ -6701,7 +6451,7 @@ static state_t run_level(void) {
                         BALL_SHOW();
                         ball_stuck   = 0;
                         stuck_ticks  = 0;
-                        snd_q_push(SND_BALL_START); /* descending launch blip */
+                        sound_queue(SND_BALL_START); /* descending launch blip */
                         primary_ball_launch_from_bat();
                         record_primary_launch();
                     }
@@ -6799,7 +6549,7 @@ static state_t run_level(void) {
                     stuck_ticks++;
                     if (stuck_ticks >= STUCK_TIMEOUT) {
                         ball_stuck = 0;          /* auto-launch */
-                        snd_q_push(SND_BALL_START);
+                        sound_queue(SND_BALL_START);
                         primary_ball_launch_from_bat();
                         record_primary_launch();
                     }
@@ -6888,7 +6638,7 @@ static state_t run_level(void) {
                                              (int)objects[OBJ_BALL_3].y_coord,
                                              BALL_W_PX, BALL_H_PX);
                 call_for_all_obj(ix_buf_addr_calc);
-                snd_q_tick();
+                sound_frame();
                 sound_tick();
                 /* Score-milestone extra life — port of score_update_3
                  * at $0395. Each crossed threshold in live_add_thresholds
@@ -6896,7 +6646,7 @@ static state_t run_level(void) {
                 while (live_adds_awarded < LIVE_ADD_COUNT
                        && score >= live_add_thresholds[live_adds_awarded]) {
                     lives++;
-                    snd_q_push(SND_LIVE_ADD);
+                    sound_queue(SND_LIVE_ADD);
                     live_adds_awarded++;
                 }
                 /* Roll the displayed HI score forward the moment it's
@@ -6988,7 +6738,7 @@ static state_t run_level(void) {
                      * so the file holds the new high + the player's
                      * initials together. */
                 }
-                snd_q_silence_all();
+                sound_stop_all();
                 /* Original LBC10_6 plays no game-over sound — the
                  * preceding pause_clear_screen_attrib just drains the
                  * sound queue while the screen clears. Dropping our
@@ -7084,9 +6834,12 @@ int main(void) {
     if (getenv("BATTY_START_LEVEL") != NULL) state = ST_LEVEL;
     if (getenv("BATTY_NOSOUND") != NULL || getenv("BATTY_SOUND_OFF") != NULL
         || getenv("BATTY_RENDER_PROFILE") != NULL)
-        sound_disabled = 1;
+        sound_set_enabled(false);
     /* Mode 13h + the ZX palette until main() returns. */
     ZxDisplay display;
+
+    sound_set_clock(pit_ticks);
+    sound_set_random(sound_random_byte);
 
     /* INDICAT.BIN and BOTSPR.BIN each pack two player bitmaps back to
      * back; the indicator's are preceded by a 2-byte header apiece. */
