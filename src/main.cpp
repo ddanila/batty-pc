@@ -27,6 +27,7 @@
 #include "bricks.h"
 #include "hud.h"
 #include "objects.h"
+#include "enemies.h"
 #include "weapons.h"
 #include "sound.h"
 #include "physics.h"
@@ -1432,40 +1433,8 @@ static void ball_reflect_descriptor(int flip_x, int flip_y) {
  * advancing the RNG. (A byte-exact target match additionally needs the
  * original's per-frame RNG tick, which the port advances on demand — see
  * notes/enemy-movement.md.) */
-static unsigned int dbg_enemy_arrival_repicks = 0;  /* diag: LAA7D_1 fires */
-static unsigned int dbg_enemy_margin_repicks  = 0;  /* diag: margin path fires */
-static unsigned int dbg_enemy_turn_calls      = 0;  /* diag: turn fn called */
-static void enemy_turn_towards_target(Object *o) {
-    unsigned char target = (unsigned char)(o->bonus_applied & 0x3F);
-    unsigned char delta = (unsigned char)((o->dir - target) & 0x3F);
-    dbg_enemy_turn_calls++;
-    if (delta == 0) {
-        dbg_enemy_arrival_repicks++;
-        o->bonus_applied = u8(rng_low(rng_current()) & 0x3F);   // orig: LAA7D_1
-        return;
-    }
-    if (delta & 0x20) o->dir = (unsigned char)((o->dir + 1) & 0x3F);
-    else             o->dir = (unsigned char)((o->dir - 1) & 0x3F);
-}
 
-static void enemy_pick_new_target(Object *o) {
-    /* Read-current consumer (rng_sample): the original samples
-     * random_number for the enemy target without its own advance. */
-    o->bonus_applied = (unsigned char)(random_lo(rng_sample()) & 0x3F);
-}
 
-static void enemy_target_away_from_margins(Object *o) {
-    dbg_enemy_margin_repicks++;
-    if (o->x_coord <= 8) {
-        o->bonus_applied = (o->y_coord <= 12) ? 0x08 : 0x00;
-    } else if (o->x_coord >= PLAYFIELD_W - 8 - o->w_body_px) {
-        o->bonus_applied = (o->y_coord <= 12) ? 0x38 : 0x20;
-    } else if (o->y_coord <= 8) {
-        o->bonus_applied = (o->x_coord < PLAYFIELD_W / 2) ? 0x08 : 0x38;
-    } else {
-        enemy_pick_new_target(o);
-    }
-}
 
 /* Birds/UFOs use a reduced port of the original 6-bit direction-table
  * movement. The original also uses LAA7B target steering and collision
@@ -1507,7 +1476,7 @@ static void handling_bird_obj(Object *o) {
      * not a turn counter). LAA7D also refreshes the target on arrival, so
      * there is no separate timer-based random re-target. */
     if (((unsigned long)pit_frame_counter & 0x03UL) == 0)
-        enemy_turn_towards_target(o);
+        enemy_turn_towards_target(*o);
     /* Move with the EXACT hl_bc_calc_direction (dir_to_dxdy) — the
      * original handling_bird calls LAD69, the same motion routine as the
      * ball. The old enemy_dir_delta_q8 had the X/Y components swapped per
@@ -1523,20 +1492,20 @@ static void handling_bird_obj(Object *o) {
         o->dir = (unsigned char)((0x20 - o->dir) & 0x3F);
         o->x_coord = (unsigned char)nx;
         o->y_coord = (unsigned char)ny;
-        enemy_target_away_from_margins(o);
+        enemy_target_away_from_margins(*o);
     } else if (nx >= PLAYFIELD_W - 8 - (int)o->w_body_px) {
         nx = PLAYFIELD_W - 8 - (int)o->w_body_px; nx_q8 = (long)nx << 8;
         o->dir = (unsigned char)((0x20 - o->dir) & 0x3F);
         o->x_coord = (unsigned char)nx;
         o->y_coord = (unsigned char)ny;
-        enemy_target_away_from_margins(o);
+        enemy_target_away_from_margins(*o);
     }
     if (ny < 8) {
         ny = 8; ny_q8 = (long)ny << 8;
         o->dir = (unsigned char)((0x40 - o->dir) & 0x3F);
         o->x_coord = (unsigned char)nx;
         o->y_coord = (unsigned char)ny;
-        enemy_target_away_from_margins(o);
+        enemy_target_away_from_margins(*o);
     } else if (ny >= PLAYFIELD_H) {
         o->sprite_set |= 0x80;
         return;
@@ -3424,6 +3393,12 @@ static unsigned int next_random(void) { return rng_next(ctrl_btns_pressed_value(
  * random_number like any other consumer. */
 static u8 sound_random_byte(void) { return rng_low(u16(next_random())); }
 
+/* The enemy's two reads, kept distinct on purpose: arrival looks at the
+ * current number, target-picking goes through the model's sampler.
+ * See notes/rng-model.md. */
+static u8 enemy_random_current(void) { return rng_low(rng_current()); }
+static u8 enemy_random_sample(void)  { return rng_low(u16(rng_sample())); }
+
 static unsigned int rng_sample(void) {
     return rng_perframe ? rng_current() : next_random();
 }
@@ -3811,8 +3786,8 @@ static void write_replay_probe(void) {
     fprintf(f, "random_number=%04X\n", (unsigned)rng_current());
     fprintf(f, "random_seed=%04X\n", (unsigned)rng_seed_addr());
     fprintf(f, "enemy_repicks=arrival%u_margin%u_turns%u\n",
-            dbg_enemy_arrival_repicks, dbg_enemy_margin_repicks,
-            dbg_enemy_turn_calls);
+            enemy_arrival_repicks, enemy_margin_repicks,
+            enemy_turn_calls);
     fprintf(f, "brik_anim_ticks=%lu\n", brik_anim_probe_ticks);
     fprintf(f, "magnet_state=count%02X_on%02X%02X%02X%02X_ball0_c%02X_d%02X_e%02X_i%02X\n",
             (unsigned)magnet_count,
@@ -6575,6 +6550,7 @@ int main(void) {
 
     sound_set_clock(pit_ticks);
     sound_set_random(sound_random_byte);
+    enemy_set_random(enemy_random_current, enemy_random_sample);
 
     /* INDICAT.BIN and BOTSPR.BIN each pack two player bitmaps back to
      * back; the indicator's are preceded by a 2-byte header apiece. */

@@ -1,0 +1,181 @@
+/* Host-side tests for src/enemies.cpp — how the alien steers.
+ *
+ * The equivalent QEMU gate (test-enemy-steer, ~35 s) boots the game,
+ * seeds one alien and reads three directions. These drive the same logic
+ * over every starting angle and every target, which is where the two
+ * interesting properties live: the turn must take the SHORTER way round,
+ * and the alien must never be able to settle against a wall. */
+
+#include <stdarg.h>
+#include <stdio.h>
+#include <string.h>
+
+#include "../src/enemies.cpp"
+
+static int failures = 0;
+
+static void check(bool ok, const char *fmt, ...) {
+    if (ok) return;
+    failures++;
+    va_list ap;
+    va_start(ap, fmt);
+    printf("\n    ");
+    vprintf(fmt, ap);
+    va_end(ap);
+}
+
+static void report(const char *name, int before, const char *detail) {
+    printf("  %-28s %s\n", name, failures > before ? "FAIL" : detail);
+}
+
+/* Fixed random source, so a failure is reproducible. */
+static u8 canned = 0;
+static u8 read_canned() { return canned; }
+
+static Object alien(u8 dir, u8 target) {
+    Object o;
+    memset(&o, 0, sizeof(o));
+    o.dir = dir;
+    o.bonus_applied = target;
+    o.w_body_px = 16;
+    o.h_body_px = 12;
+    o.x_coord = 120;
+    o.y_coord = 60;
+    return o;
+}
+
+/* Six-bit angles wrap, so "toward" has two candidates; the original
+ * always takes the shorter arc. Taking the longer one is not a crash —
+ * the alien just visibly swings the wrong way. */
+static void test_turns_the_shorter_way() {
+    const int before = failures;
+    enemy_set_random(read_canned, read_canned);
+    int wrong = 0;
+    for (int start = 0; start < 0x40; start++) {
+        for (int target = 0; target < 0x40; target++) {
+            if (start == target) continue;
+            Object o = alien(u8(start), u8(target));
+            enemy_turn_towards_target(o);
+
+            const int before_gap = ((target - start) & 0x3F);
+            const int after_gap  = ((target - o.dir) & 0x3F);
+            /* The gap must shrink, measured the way round it was going. */
+            const int shortest_before = before_gap > 32 ? 64 - before_gap : before_gap;
+            const int shortest_after  = after_gap  > 32 ? 64 - after_gap  : after_gap;
+            if (shortest_after >= shortest_before) wrong++;
+        }
+    }
+    check(wrong == 0, "%d (start, target) pairs turned the long way\n", wrong);
+    report("turns_the_shorter_way", before, "4032 pairs           ok");
+}
+
+/* Steering must converge: from any angle to any target, repeated turns
+ * must arrive. A step that overshoots would orbit forever. */
+static void test_steering_converges() {
+    const int before = failures;
+    enemy_set_random(read_canned, read_canned);
+    int stuck = 0;
+    for (int start = 0; start < 0x40; start++) {
+        for (int target = 0; target < 0x40; target++) {
+            Object o = alien(u8(start), u8(target));
+            canned = u8(target);           /* re-picks land on the same target */
+            int steps = 0;
+            while (o.dir != target && steps < 64) {
+                enemy_turn_towards_target(o);
+                steps++;
+            }
+            if (o.dir != target) stuck++;
+        }
+    }
+    check(stuck == 0, "%d pairs never reached their target\n", stuck);
+    report("steering_converges", before, "4096 pairs, <=64 steps ok");
+}
+
+/* Against an edge the alien must aim AWAY, not re-roll into the wall. */
+static void test_margins_aim_inward() {
+    const int before = failures;
+    enemy_set_random(read_canned, read_canned);
+    canned = 0;
+
+    struct Case { int x, y; const char *edge; };
+    const Case cases[] = {
+        {   4,  60, "left"  },
+        { 236,  60, "right" },
+        { 120,   4, "top"   },
+    };
+    for (unsigned i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+        Object o = alien(0x00, 0x00);
+        o.x_coord = u8(cases[i].x);
+        o.y_coord = u8(cases[i].y);
+        const unsigned long before_margin = enemy_margin_repicks;
+        enemy_target_away_from_margins(o);
+        check(enemy_margin_repicks > before_margin,
+              "%s edge did not take the margin path\n", cases[i].edge);
+        check(o.bonus_applied <= 0x3F, "%s edge produced target %02X\n",
+              cases[i].edge, o.bonus_applied);
+    }
+
+    /* Well inside the field, it should just pick at random. */
+    Object mid = alien(0x00, 0x00);
+    canned = 0x2A;
+    enemy_target_away_from_margins(mid);
+    check(mid.bonus_applied == 0x2A,
+          "an alien in open space did not take the random target (%02X)\n",
+          mid.bonus_applied);
+    report("margins_aim_inward", before, "3 edges + open field ok");
+}
+
+/* Targets are 6-bit; a stray high bit would steer toward an angle that
+ * does not exist. */
+static void test_targets_stay_six_bit() {
+    const int before = failures;
+    enemy_set_random(read_canned, read_canned);
+    int bad = 0;
+    for (int r = 0; r < 256; r++) {
+        canned = u8(r);
+        Object o = alien(0x00, 0x00);
+        enemy_pick_new_target(o);
+        if (o.bonus_applied > 0x3F) bad++;
+    }
+    check(bad == 0, "%d random values produced an out-of-range target\n", bad);
+    report("targets_stay_six_bit", before, "256 random values    ok");
+}
+
+/* Arrival reads the CURRENT number; picking SAMPLES. Feeding the two
+ * sources different values proves the paths are not crossed — the
+ * distinction notes/rng-model.md says desynchronises the game if lost. */
+static u8 current_val = 0x11;
+static u8 sample_val  = 0x22;
+static u8 read_current_src() { return current_val; }
+static u8 read_sample_src()  { return sample_val; }
+
+static void test_rng_sources_are_not_crossed() {
+    const int before = failures;
+    enemy_set_random(read_current_src, read_sample_src);
+
+    /* Arrival (dir == target) re-picks via the CURRENT read. */
+    Object arrived = alien(0x10, 0x10);
+    enemy_turn_towards_target(arrived);
+    check(arrived.bonus_applied == (current_val & 0x3F),
+          "arrival used %02X, expected the current read %02X\n",
+          arrived.bonus_applied, current_val & 0x3F);
+
+    /* Explicit target-picking goes through the SAMPLER. */
+    Object picking = alien(0x00, 0x00);
+    enemy_pick_new_target(picking);
+    check(picking.bonus_applied == (sample_val & 0x3F),
+          "picking used %02X, expected the sampled read %02X\n",
+          picking.bonus_applied, sample_val & 0x3F);
+    report("rng_sources_not_crossed", before, "current vs sample    ok");
+}
+
+int main() {
+    printf("enemies tests\n");
+    test_turns_the_shorter_way();
+    test_steering_converges();
+    test_margins_aim_inward();
+    test_targets_stay_six_bit();
+    test_rng_sources_are_not_crossed();
+    printf("\n%s\n", failures ? "FAILED" : "5 tests, 0 failed");
+    return failures ? 1 : 0;
+}

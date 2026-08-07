@@ -51,13 +51,14 @@ happened, and `make test-video` caught it.
 | 5b | level paint / band orchestration | ~350 | remains in main.cpp |
 | 6a | `objects` — the 22-byte descriptor + slots | 60 | **done** — 5 tests |
 | 6b-i | `weapons` — bullets + blasts | 95 | **done** — 6 tests |
-| 6b-ii | bonuses, enemies, rocket, sparks | ~640 | remains in main.cpp |
+| 6b-ii | `enemies` — steering | 145 | **done** — 5 tests |
+| 6b-iii | bonuses, rocket, sparks | ~540 | remains in main.cpp |
 | 7 | `hud` — glyphs, markup, score | 175 | **done** — 6 tests |
 | 8 | `sound` — queue + envelopes | 366 | **done** — 7 tests; had NO coverage before |
 | 9 | `run_level` decomposition | 684 | |
 | 1 | replay / probe scaffolding | 480 | **last** — see below |
 
-`main.cpp`: 7,746 → 6,723 so far. 83 host tests, all under a second.
+`main.cpp`: 7,746 → 6,699 so far. 88 host tests, all under a second.
 
 ### Stage 5, done
 
