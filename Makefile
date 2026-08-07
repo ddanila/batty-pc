@@ -39,9 +39,13 @@ WPPFLAGS = -bt=dos -3 -os -s -w4 -we -oi -zastd=c++0x -i=$(WATCOM_H)
 # `format os2 le` is the linear executable the extender loads.
 WLINKFMT = format os2 le option stub=$(WSTUB)
 
-SRC     = src/main.cpp
-OBJ      = $(SRC:src/%.cpp=build/%.obj)
-TEST_OBJ = build/main-test.obj
+# Modules compile to their own object and expose a header; main.cpp is
+# the state machine and wiring. (zxvga.cpp is still #included -- it has no
+# separate object yet.)
+MODULES = src/rng.cpp
+SRC     = src/main.cpp $(MODULES)
+OBJ      = $(patsubst src/%.cpp,build/%.obj,$(SRC))
+TEST_OBJ = $(patsubst src/%.cpp,build/%-test.obj,$(SRC))
 # src/zxvga.cpp (the video engine) is #included by main.cpp rather than
 # compiled separately, so it is a build dependency alongside the headers.
 HEADERS = $(wildcard src/*.h) src/zxvga.cpp
@@ -111,7 +115,7 @@ PROFILE_BAT_LASER   ?= 01017400AD000000040DEFAE1C0A74AD040DF0000180
 # whole-band rebuild baseline. `make profile-bricks` vs `... FULL_BAND=1`.
 FULL_BAND           ?=
 
-.PHONY: test-video all clean run run-86box profile-auto profile-bricks profile-ballbricks profile-multiball profile-86box read-profile floppy assets help run-original run-original-cheat snapshot candidates regions test test-hud test-bat-redraw-window test-ball-dirty-redraw test-ball-object-dirty-redraw test-bullet-dirty-redraw test-bomb-dirty-redraw test-bat-fire-dirty-redraw test-multiball-dirty-redraw test-bigball-dirty-redraw test-stuck-ball-dirty-redraw test-enemy-brick-residue test-rocket-flight-redraw test-rocket-completion-no-ball test-round-banner-border test-brick-flash test-rocket-bonus test-death-sparks test-normal-ball-launch test-ball-left-wall-escape test-l3-replay-seed test-midgame-brick-replay replay-l3-brick-flash replay-l3-brick-flash-both test-laffc-ball-frame1 test-bat-deflection test-enemy-descend test-rng-walk test-enemy-steer test-bonus-fall test-bomb-fall test-pts400-fall test-bullet-fly test-laser-cadence test-enemy-anim test-bonus-drop test-bonus-effects test-bonus-effects2 test-bonus-typepick test-bullet-blast test-brick-scoring test-ball-speed-ramp test-levels-sweep test-enemy-flyover-redraw parity-check parity-check-full
+.PHONY: test-video test-rng all clean run run-86box profile-auto profile-bricks profile-ballbricks profile-multiball profile-86box read-profile floppy assets help run-original run-original-cheat snapshot candidates regions test test-hud test-bat-redraw-window test-ball-dirty-redraw test-ball-object-dirty-redraw test-bullet-dirty-redraw test-bomb-dirty-redraw test-bat-fire-dirty-redraw test-multiball-dirty-redraw test-bigball-dirty-redraw test-stuck-ball-dirty-redraw test-enemy-brick-residue test-rocket-flight-redraw test-rocket-completion-no-ball test-round-banner-border test-brick-flash test-rocket-bonus test-death-sparks test-normal-ball-launch test-ball-left-wall-escape test-l3-replay-seed test-midgame-brick-replay replay-l3-brick-flash replay-l3-brick-flash-both test-laffc-ball-frame1 test-bat-deflection test-enemy-descend test-rng-walk test-enemy-steer test-bonus-fall test-bomb-fall test-pts400-fall test-bullet-fly test-laser-cadence test-enemy-anim test-bonus-drop test-bonus-effects test-bonus-effects2 test-bonus-typepick test-bullet-blast test-brick-scoring test-ball-speed-ramp test-levels-sweep test-enemy-flyover-redraw parity-check parity-check-full
 
 all: $(EXE) $(ASSETS)
 
@@ -150,14 +154,14 @@ build:
 build/%.obj: src/%.cpp $(HEADERS) | build
 	$(WPP) $(WPPFLAGS) -fo=$@ $<
 
-$(TEST_OBJ): src/main.cpp $(HEADERS) | build
+build/%-test.obj: src/%.cpp $(HEADERS) | build
 	$(WPP) $(WPPFLAGS) -dBATTY_SCORELESS_HUD -fo=$@ $<
 
 $(EXE): $(OBJ)
 	$(WLINK) name $@ $(WLINKFMT) $(addprefix file ,$(OBJ)) libpath $(WATCOM_LIB) library clib3r.lib library plib3r.lib
 
 $(TEST_EXE): $(TEST_OBJ)
-	$(WLINK) name $@ $(WLINKFMT) file $(TEST_OBJ) libpath $(WATCOM_LIB) library clib3r.lib library plib3r.lib
+	$(WLINK) name $@ $(WLINKFMT) $(addprefix file ,$(TEST_OBJ)) libpath $(WATCOM_LIB) library clib3r.lib library plib3r.lib
 
 assets: $(ASSETS)
 
@@ -614,6 +618,7 @@ test:
 # `parity-check-full` below.
 parity-check:
 	$(MAKE) test-video
+	$(MAKE) test-rng
 	$(MAKE) test
 	$(MAKE) test-laffc-ball-frame1
 	$(MAKE) test-bat-deflection
@@ -930,13 +935,22 @@ test-laffc-levels-sane:
 HOSTCXX      ?= c++
 HOSTCXXFLAGS ?= -std=c++98 -O1 -Wall -Wextra -Werror -Wno-unused-function
 VIDEO_TEST     = build/test_zxvga
-VIDEO_TEST_SRC = tests/test_zxvga.cpp src/zxvga.cpp src/zxvga.h
+VIDEO_TEST_SRC = tests/test_zxvga.cpp src/zxvga.cpp src/zxvga.h src/types.h
 
 $(VIDEO_TEST): $(VIDEO_TEST_SRC) | build
 	$(HOSTCXX) $(HOSTCXXFLAGS) -o $@ tests/test_zxvga.cpp
 
 test-video: $(VIDEO_TEST)
 	./$(VIDEO_TEST)
+
+RNG_TEST = build/test_rng
+
+$(RNG_TEST): tests/test_rng.cpp src/rng.cpp src/rng.h src/types.h | build
+	$(HOSTCXX) $(HOSTCXXFLAGS) -o $@ tests/test_rng.cpp
+
+# Needs assets/random_seed.bin -- the walk is a function of those bytes.
+test-rng: $(RNG_TEST) assets/random_seed.bin
+	./$(RNG_TEST)
 
 test-hud: $(FLOPPY_OUT)
 	python3 scripts/test_hud.py --floppy $(FLOPPY_OUT)

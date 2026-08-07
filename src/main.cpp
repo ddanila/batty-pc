@@ -23,6 +23,7 @@
 /* The video engine — ZX Spectrum attribute/colour-clash emulation on
  * VGA mode 13h. Everything below draws through its scr_buff / attr_buff
  * and the dirty marks declared there. */
+#include "rng.h"
 #include "zxvga.cpp"
 
 #define SCREEN_CHUNK_ROWS 16
@@ -693,11 +694,7 @@ static int           ball3_dy     = -BALL_SPEED;
  * into the two random_number bytes. Ship that 8 KB source window from
  * the original program so bonuses / bombs / enemies consume the same
  * byte-stream shape as the Spectrum game. */
-#define RANDOM_ROM_SIZE 0x2000
 static unsigned char *random_rom = NULL;
-static unsigned char random_e = 0x17;
-static unsigned char random_d = 0x8E;
-static unsigned int  random_seed_addr = 0x8000;
 
 static unsigned char ball_dir_from_delta(int dx, int dy) {
     unsigned char q;
@@ -1254,6 +1251,7 @@ static int load_random_rom(const char *path) {
         off += n;
     }
     fclose(f);
+    rng_set_rom(random_rom);
     return 0;
 }
 
@@ -1831,7 +1829,7 @@ static void enemy_turn_towards_target(object_t *o) {
     dbg_enemy_turn_calls++;
     if (delta == 0) {
         dbg_enemy_arrival_repicks++;
-        o->bonus_applied = (unsigned char)(random_e & 0x3F);   /* LAA7D_1 */
+        o->bonus_applied = u8(rng_low(rng_current()) & 0x3F);   // orig: LAA7D_1
         return;
     }
     if (delta & 0x20) o->dir = (unsigned char)((o->dir + 1) & 0x3F);
@@ -4381,17 +4379,7 @@ static unsigned char ctrl_btns_pressed_value(void) {
     return v;
 }
 
-static unsigned int next_random(void) {
-    unsigned char src = (random_rom != NULL)
-        ? random_rom[random_seed_addr & (RANDOM_ROM_SIZE - 1)]
-        : 0;
-    random_e = (unsigned char)(random_e + src + 0x05 + ctrl_btns_pressed_value());
-    random_d = (unsigned char)(random_d + (unsigned char)(~src) + 0x16
-                               + (unsigned char)random_seed_addr);
-    random_seed_addr = (unsigned int)((random_seed_addr + 1) & 0x9FFF);
-    if (random_seed_addr < 0x8000) random_seed_addr |= 0x8000;
-    return (unsigned int)(((unsigned int)random_d << 8) | random_e);
-}
+static unsigned int next_random(void) { return rng_next(ctrl_btns_pressed_value()); }
 
 /* Sample the RNG for a "read-current" consumer (the original's
  * `LD A,(random_number)` without a preceding `CALL random_generate`).
@@ -4402,9 +4390,7 @@ static unsigned int next_random(void) {
  * the original. Consumers the original advances-then-reads (bonus
  * generation) keep calling next_random() directly. */
 static unsigned int rng_sample(void) {
-    if (rng_perframe)
-        return (unsigned int)(((unsigned int)random_d << 8) | random_e);
-    return next_random();
+    return rng_perframe ? rng_current() : next_random();
 }
 
 static void apply_replay_random_override(void) {
@@ -4415,8 +4401,7 @@ static void apply_replay_random_override(void) {
     if (p != NULL && *p != '\0') {
         v = strtoul(p, &endp, 16);
         if (*endp == '\0' && v <= 0xFFFFUL) {
-            random_d = (unsigned char)(v >> 8);   /* random_number high */
-            random_e = (unsigned char)v;          /* random_number low  */
+            rng_seed(u16(v), rng_seed_addr());
         }
     }
     /* Also seed the ROM-walk position (the original's random_seed at
@@ -4430,8 +4415,7 @@ static void apply_replay_random_override(void) {
     if (s != NULL && *s != '\0') {
         v = strtoul(s, &endp, 16);
         if (*endp == '\0' && v <= 0xFFFFUL) {
-            random_seed_addr = (unsigned int)(v & 0x9FFF);
-            if (random_seed_addr < 0x8000) random_seed_addr |= 0x8000;
+            rng_seed(rng_current(), u16(v));
         }
     }
 }
@@ -4623,7 +4607,7 @@ static void apply_replay_multiball(void) {
 /* Force one bonus-drop roll at level entry for the drop-economy gate.
  * BATTY_FORCE_SPAWN_BONUS = "1" (or "col,row") calls try_spawn_bonus once
  * with the freshly-baked RNG (no frames elapsed yet), isolating the drop
- * decision: with rng_perframe ON, the gate is (random_d & 0x0F) < 5, so a
+ * decision: with rng_perframe ON, the gate is (rng high & 0x0F) < 5, so a
  * baked BATTY_REPLAY_RANDOM directly controls whether a bonus drops. */
 static void apply_replay_force_bonus(void) {
     const char *spec = getenv("BATTY_FORCE_SPAWN_BONUS");
@@ -4789,8 +4773,8 @@ static void write_replay_probe(void) {
     fprintf(f, "current_level=%02X\n", (unsigned)current_level_idx_var);
     fprintf(f, "bricks_quantity=%02X\n", (unsigned)live_bricks_remaining());
     fprintf(f, "score=%06lu\n", score);
-    fprintf(f, "random_number=%02X%02X\n", (unsigned)random_d, (unsigned)random_e);
-    fprintf(f, "random_seed=%04X\n", random_seed_addr);
+    fprintf(f, "random_number=%04X\n", (unsigned)rng_current());
+    fprintf(f, "random_seed=%04X\n", (unsigned)rng_seed_addr());
     fprintf(f, "enemy_repicks=arrival%u_margin%u_turns%u\n",
             dbg_enemy_arrival_repicks, dbg_enemy_margin_repicks,
             dbg_enemy_turn_calls);
@@ -7363,7 +7347,7 @@ static state_t run_level(void) {
                  * Pinned off in test mode (BATTYALL) so the level-entry
                  * visual captures stay deterministic — same trick as
                  * the menu blink / running-dot pins. */
-                if (!test_mode_pin_blink && random_d == 0x99)
+                if (!test_mode_pin_blink && rng_high(rng_current()) == 0x99)
                     magnet_random_toggle();
                 /* Per-frame RNG tick (original LB9E8_2: one `CALL
                  * random_generate` per main-loop pass). Gated so the
