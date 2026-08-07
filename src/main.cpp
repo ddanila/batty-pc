@@ -23,6 +23,7 @@
 /* The video engine — ZX Spectrum attribute/colour-clash emulation on
  * VGA mode 13h. Everything below draws through its scr_buff / attr_buff
  * and the dirty marks declared there. */
+#include "assets.h"
 #include "physics.h"
 #include "rng.h"
 #include "zxvga.cpp"
@@ -69,16 +70,6 @@ static void show(const char *path) {
 #define FONT_ROWS   6
 static unsigned char font[FONT_N * FONT_ROWS];
 
-static int load_font(const char *path) {
-    FILE *f = fopen(path, "rb");
-    if (!f) return -1;
-    if (fread(font, 1, sizeof(font), f) != sizeof(font)) {
-        fclose(f);
-        return -2;
-    }
-    fclose(f);
-    return 0;
-}
 
 /* Draw glyph `code` (0..35) at VGA pixel (x, y) using palette index
  * `color`. Bits are OR'd onto whatever's there; pixels with bit 0
@@ -108,17 +99,8 @@ static void draw_glyph(int x, int y, unsigned char color, unsigned char code) {
  * or at 0x24 (end-of-field). */
 #define MARKUP_MAX 512
 static unsigned char markup[MARKUP_MAX];
-static int markup_len;
+static unsigned markup_len;
 
-static int load_markup(const char *path) {
-    FILE *f = fopen(path, "rb");
-    int n;
-    if (!f) return -1;
-    n = fread(markup, 1, MARKUP_MAX, f);
-    fclose(f);
-    markup_len = n;
-    return (n > 0) ? 0 : -2;
-}
 
 /* All row markers observed are multiples of 8 in [0x30, 0x70):
  *   0x30 0x38 0x40 0x50 0x58 0x60 0x68 …
@@ -195,19 +177,6 @@ static unsigned char p2_dev = 0;
 static unsigned char ind_p1[INDICATOR_W_BYTES * INDICATOR_H];
 static unsigned char ind_p2[INDICATOR_W_BYTES * INDICATOR_H];
 
-static int load_indicator(const char *path) {
-    FILE *f = fopen(path, "rb");
-    unsigned char hdr[2];
-    if (!f) return -1;
-    if (fread(hdr, 1, 2, f) != 2 ||
-        fread(ind_p1, 1, sizeof(ind_p1), f) != sizeof(ind_p1) ||
-        fread(hdr, 1, 2, f) != 2 ||
-        fread(ind_p2, 1, sizeof(ind_p2), f) != sizeof(ind_p2)) {
-        fclose(f); return -2;
-    }
-    fclose(f);
-    return 0;
-}
 
 /* The original's row-advancer sub_b56eh moves the destination UP in
  * pixel rows (decrements H, which in ZX VRAM addressing reduces
@@ -255,16 +224,6 @@ static void draw_player_indicators(void) {
 static unsigned char bot_p1[BOTSPR_W_BYTES * BOTSPR_H];
 static unsigned char bot_p2[BOTSPR_W_BYTES * BOTSPR_H];
 
-static int load_bottom_sprites(const char *path) {
-    FILE *f = fopen(path, "rb");
-    if (!f) return -1;
-    if (fread(bot_p1, 1, sizeof(bot_p1), f) != sizeof(bot_p1) ||
-        fread(bot_p2, 1, sizeof(bot_p2), f) != sizeof(bot_p2)) {
-        fclose(f); return -2;
-    }
-    fclose(f);
-    return 0;
-}
 
 #define HUD_SPRITES_SIZE 0x0128
 #define HUD_SPR_1UP      0x0000
@@ -273,15 +232,6 @@ static int load_bottom_sprites(const char *path) {
 #define HUD_SCORE_DIGITS 0x0086
 static unsigned char hud_sprites[HUD_SPRITES_SIZE];
 
-static int load_hud_sprites(const char *path) {
-    FILE *f = fopen(path, "rb");
-    if (!f) return -1;
-    if (fread(hud_sprites, 1, sizeof(hud_sprites), f) != sizeof(hud_sprites)) {
-        fclose(f); return -2;
-    }
-    fclose(f);
-    return 0;
-}
 
 static void draw_bottom_sprite(const unsigned char *bitmap, int x, int y_top,
                                 unsigned char colour) {
@@ -697,7 +647,7 @@ static int           ball3_dy     = -BALL_SPEED;
  * into the two random_number bytes. Ship that 8 KB source window from
  * the original program so bonuses / bombs / enemies consume the same
  * byte-stream shape as the Spectrum game. */
-static unsigned char *random_rom = NULL;
+static unsigned char random_rom[RANDOM_ROM_SIZE];
 
 
 
@@ -836,46 +786,6 @@ static unsigned char high_score_name[3] = { 0x0A, 0x0A, 0x0A };
  * endian bytes to A:\HISCORE.DAT (the floppy image). DOS floppy is
  * read/write under QEMU's if=floppy mode, so writes survive a reboot
  * as long as the disk image isn't rebuilt by `make floppy`. */
-#define HIGH_SCORE_FILE "HISCORE.DAT"
-static void load_high_score(void) {
-    FILE *f = fopen(HIGH_SCORE_FILE, "rb");
-    unsigned char buf[7];
-    size_t n;
-    high_score = 0;
-    high_score_name[0] = 0x0A;
-    high_score_name[1] = 0x0A;
-    high_score_name[2] = 0x0A;
-    if (!f) return;
-    n = fread(buf, 1, 7, f);
-    if (n >= 4) {
-        high_score =  (unsigned long)buf[0]
-                   | ((unsigned long)buf[1] <<  8)
-                   | ((unsigned long)buf[2] << 16)
-                   | ((unsigned long)buf[3] << 24);
-    }
-    if (n >= 7) {
-        /* Three name bytes appended (post-v2 file). Pre-v2 files
-         * stop after 4 bytes; the AAA default above stays. */
-        high_score_name[0] = buf[4];
-        high_score_name[1] = buf[5];
-        high_score_name[2] = buf[6];
-    }
-    fclose(f);
-}
-static void save_high_score(void) {
-    FILE *f = fopen(HIGH_SCORE_FILE, "wb");
-    unsigned char buf[7];
-    if (!f) return;
-    buf[0] = (unsigned char)(high_score & 0xFF);
-    buf[1] = (unsigned char)((high_score >> 8) & 0xFF);
-    buf[2] = (unsigned char)((high_score >> 16) & 0xFF);
-    buf[3] = (unsigned char)((high_score >> 24) & 0xFF);
-    buf[4] = high_score_name[0];
-    buf[5] = high_score_name[1];
-    buf[6] = high_score_name[2];
-    fwrite(buf, 1, 7, f);
-    fclose(f);
-}
 
 /* Power-up state: a single falling bonus on screen at a time. The
  * original (notes/plan-gameplay.md Phase H) drives this via
@@ -1169,79 +1079,11 @@ static const unsigned int spr_spark_frames[5] = {
 #define FRAME_CYCLES 4
 static unsigned char frame_l1[FRAME_CYCLES * FRAME_SIZE];
 
-static int load_levels(const char *path) {
-    FILE *f = fopen(path, "rb");
-    if (!f) return -1;
-    if (fread(levels, 1, sizeof(levels), f) != sizeof(levels)) {
-        fclose(f); return -2;
-    }
-    fclose(f);
-    return 0;
-}
 
-static int load_level_attrs(const char *path) {
-    FILE *f = fopen(path, "rb");
-    if (!f) return -1;
-    if (fread(level_attrs, 1, sizeof(level_attrs), f) != sizeof(level_attrs)) {
-        fclose(f); return -2;
-    }
-    fclose(f);
-    return 0;
-}
 
-static int load_bg_tile(const char *path) {
-    FILE *f = fopen(path, "rb");
-    if (!f) return -1;
-    if (fread(bg_tile, 1, sizeof(bg_tile), f) != sizeof(bg_tile)) {
-        fclose(f); return -2;
-    }
-    fclose(f);
-    return 0;
-}
 
-static int load_sprites(const char *path) {
-    FILE *f = fopen(path, "rb");
-    if (!f) return -1;
-    if (fread(sprites_blob, 1, sizeof(sprites_blob), f) != sizeof(sprites_blob)) {
-        fclose(f); return -2;
-    }
-    fclose(f);
-    return 0;
-}
 
-static int load_random_rom(const char *path) {
-    FILE *f = fopen(path, "rb");
-    unsigned int off = 0;
-    if (!f) return -1;
-    if (random_rom == NULL) {
-        random_rom = (unsigned char *)malloc(RANDOM_ROM_SIZE);
-        if (random_rom == NULL) {
-            fclose(f); return -3;
-        }
-    }
-    while (off < RANDOM_ROM_SIZE) {
-        unsigned int n = RANDOM_ROM_SIZE - off;
-        if (n > sizeof(screen_chunk)) n = sizeof(screen_chunk);
-        if (fread(screen_chunk, 1, n, f) != n) {
-            fclose(f); return -2;
-        }
-        memcpy(random_rom + off, screen_chunk, n);
-        off += n;
-    }
-    fclose(f);
-    rng_set_rom(random_rom);
-    return 0;
-}
 
-static int load_frame(const char *path) {
-    FILE *f = fopen(path, "rb");
-    if (!f) return -1;
-    if (fread(frame_l1, 1, sizeof(frame_l1), f) != sizeof(frame_l1)) {
-        fclose(f); return -2;
-    }
-    fclose(f);
-    return 0;
-}
 
 static unsigned long prof_bg_pit = 0;
 static unsigned long prof_frame_pit = 0;
@@ -3405,7 +3247,7 @@ static int blink_phase(void) {
     return (int)((bios_ticks() >> 1) & 1);   /* ~4.5 Hz half-period */
 }
 static void render_hiscore_screen(void) {
-    load_markup("MARKUP.BIN");
+    asset_load_variable("MARKUP.BIN", markup, MARKUP_MAX, &markup_len);
     fill(0, 0, SCREEN_W, SCREEN_H, COL_BORDER);
     draw_frame(10);                  /* bright red */
     render_markup();
@@ -3427,7 +3269,7 @@ static state_t run_title(void) {
 static state_t run_menu(void) {
     unsigned long last_input;
     int last_blink_phase = -1;
-    load_markup("MENUMARK.BIN");
+    asset_load_variable("MENUMARK.BIN", markup, MARKUP_MAX, &markup_len);
     render_menu_screen();
     last_input = bios_ticks();
     for (;;) {
@@ -7334,7 +7176,7 @@ static state_t run_level(void) {
                 }
                 if (high_score_beaten_this_game) {
                     input_new_record_name();
-                    save_high_score();
+                    high_score_save(high_score, high_score_name);
                 }
                 sound_silence();
                 return ST_TITLE;
@@ -7415,21 +7257,37 @@ int main(void) {
     /* Mode 13h + the ZX palette until main() returns. */
     ZxDisplay display;
 
-    if (load_font("FONT.BIN") != 0 ||
-        load_indicator("INDICAT.BIN") != 0 ||
-        load_bottom_sprites("BOTSPR.BIN") != 0 ||
-        load_hud_sprites("HUDSPR.BIN") != 0 ||
-        load_levels("LEVELS.BIN") != 0 ||
-        load_level_attrs("LVLATTR.BIN") != 0 ||
-        load_bg_tile("BGTILE.BIN") != 0 ||
-        load_frame("FRAMEL1.BIN") != 0 ||
-        load_sprites("SPRITES.BIN") != 0 ||
-        load_random_rom("RANDOM.BIN") != 0) {
+    /* INDICAT.BIN and BOTSPR.BIN each pack two player bitmaps back to
+     * back; the indicator's are preceded by a 2-byte header apiece. */
+    unsigned char indicator_file[2 + sizeof(ind_p1) + 2 + sizeof(ind_p2)];
+    unsigned char bottom_file[sizeof(bot_p1) + sizeof(bot_p2)];
+
+    const bool assets_loaded =
+        asset_load("FONT.BIN",    font,        sizeof(font)) &&
+        asset_load("HUDSPR.BIN",  hud_sprites, sizeof(hud_sprites)) &&
+        asset_load("LEVELS.BIN",  levels,      sizeof(levels)) &&
+        asset_load("LVLATTR.BIN", level_attrs, sizeof(level_attrs)) &&
+        asset_load("BGTILE.BIN",  bg_tile,     sizeof(bg_tile)) &&
+        asset_load("FRAMEL1.BIN", frame_l1,    sizeof(frame_l1)) &&
+        asset_load("SPRITES.BIN", sprites_blob, sizeof(sprites_blob)) &&
+        asset_load("INDICAT.BIN", indicator_file, sizeof(indicator_file)) &&
+        asset_load("BOTSPR.BIN",  bottom_file,    sizeof(bottom_file)) &&
+        asset_load_chunked("RANDOM.BIN", random_rom, RANDOM_ROM_SIZE,
+                           screen_chunk, sizeof(screen_chunk));
+
+    if (assets_loaded) {
+        memcpy(ind_p1, indicator_file + 2, sizeof(ind_p1));
+        memcpy(ind_p2, indicator_file + 2 + sizeof(ind_p1) + 2, sizeof(ind_p2));
+        memcpy(bot_p1, bottom_file, sizeof(bot_p1));
+        memcpy(bot_p2, bottom_file + sizeof(bot_p1), sizeof(bot_p2));
+        rng_set_rom(random_rom);
+    } else {
         fill(0, 0, SCREEN_W, SCREEN_H, 10 /* bright red */);
     }
     set_rocket_bonus_sprite_height(ROCKET_BONUS_H_PX);
 
-    load_high_score();
+    high_score_name[0] = high_score_name[1] = high_score_name[2] = 0x0A;
+    high_score_load(&high_score, high_score_name);
     timer_install();
     kbd_install();
 
