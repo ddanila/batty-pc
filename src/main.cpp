@@ -24,6 +24,7 @@
  * VGA mode 13h. Everything below draws through its scr_buff / attr_buff
  * and the dirty marks declared there. */
 #include "assets.h"
+#include "bricks.h"
 #include "physics.h"
 #include "rng.h"
 #include "zxvga.h"
@@ -303,10 +304,6 @@ static unsigned char level_attrs[ATTR_TOTAL_SIZE];
  * `spr_brik_1` and `briks_colors` are pulled verbatim from
  * original/disasm/gfx/briks.asm and original/disasm/batty.asm (label
  * `briks_colors`, 1-indexed by the brick code's low nibble). */
-static const unsigned char spr_brik_1[16] = {
-    0xFF, 0xFE, 0x80, 0x00, 0x80, 0x00, 0x80, 0x00,
-    0x80, 0x00, 0x80, 0x00, 0x80, 0x00, 0x00, 0x00
-};
 
 /* spr_bomb at $786A. Lives outside our SPRITES.BIN range ($7A8C+), so
  * embed it directly. 2-byte-wide x 16-row sprite, 66 bytes total. */
@@ -457,20 +454,6 @@ static unsigned char ball_mag_idx[3];
  * assert the original's pacing (8 frames x 2 interrupt edges = ~16). */
 static unsigned long brik_anim_probe_ticks = 0;
 
-/* Mirror of `briks_colors` at $AEEC. Original ASM uses
- *   LD HL,briks_colors-$01 ; CALL hl_add_a (A = cell low nibble 1..14)
- * so it reads briks_colors[low_nibble - 1]. Our C-side does
- *   briks_colors[iy_byte & 0x0F]
- * which expects 1-based indexing — slot [0] is a never-indexed placeholder. */
-static const unsigned char briks_colors[16] = {
-    0x00,                          /* [0] never indexed (low nibble == 0
-                                    * means "skip" per the cell format). */
-    0x57, 0x4F, 0x5F, 0x20, 0x70,  /* [1..5] normal bricks */
-    0x47, 0x57, 0x5F, 0x4F,        /* [6..9] hard (multi-hit) bricks */
-    0x00,                          /* [10] unused per original */
-    0x47, 0x57, 0x4F, 0x5F,        /* [11..14] indestructible bricks (e.g. L5 $2E) */
-    0x00                           /* [15] unused per original */
-};
 
 /* Per-cycle bg attribute. The original game's game_screen_draw_to_buffer
  * ($BE6B) fills the playfield via spr_level_textures - 4 sprites whose
@@ -1988,132 +1971,11 @@ static void render_lives(unsigned char cycle, unsigned char attr) {
 }
 
 
-/* --- Brick compositor (port of $ADE1..$AEEC) -------------------------- */
 
-/* Cursor offsets within scr_buff / attr_buff, walked by print_briks_c.
- * Mirror the original brik_addr_buf and brik_attr_buf. */
-static unsigned int brik_addr_buf;
-static unsigned int brik_attr_buf;
 
-/* Port of print_one_brik_buf ($AE82). Paints one brick into scr_buff at
- * `hl` (the top-left byte of the brick's 2-byte body), plus decoration:
- *   - 2 zero bytes one pixel-row above the brick (top edge)
- *   - bit 0 cleared in the 8 bytes left of the brick (left edge),
- *     unless the brick sits in the leftmost column
- *   - 2 zero bytes one pixel-row below (bottom edge)
- *   - bit 7 cleared in the 8 bytes right of the brick (right edge),
- *     unless the brick sits in the rightmost column
- * Finally the brick's two char cells in attr_buff are set to the colour
- * from briks_colors keyed by the descriptor's low nibble. */
-static void print_one_brik_buf_c(unsigned int hl, unsigned char iy_byte) {
-    unsigned int h;
-    int col_byte = (int)(hl & 0x1F);
-    int i;
-    unsigned int brick_top_y_px = hl >> 5;
-    unsigned int attr_off       = (brick_top_y_px >> 3) * 32u + (unsigned int)col_byte;
-    unsigned char attr;
 
-    /* Top edge: 2 zero bytes one pixel-row above the brick. */
-    scr_buff[hl - 32] = 0;
-    scr_buff[hl - 31] = 0;
 
-    /* Left edge: only if not the leftmost brick column (col_byte == 1). */
-    if (col_byte != 1) {
-        h = hl - 1;
-        for (i = 0; i < 8; i++) { scr_buff[h] &= 0xFE; h += 32; }
-    }
 
-    /* Body: 8 rows * 2 bytes from spr_brik_1. */
-    h = hl;
-    for (i = 0; i < 8; i++) {
-        scr_buff[h]     = spr_brik_1[i * 2];
-        scr_buff[h + 1] = spr_brik_1[i * 2 + 1];
-        h += 32;
-    }
-    /* h == hl + 256 now (= byte at col 0 of the row one below the brick). */
-
-    /* Bottom edge: 2 zero bytes one pixel-row below the brick. */
-    scr_buff[h]     = 0;
-    scr_buff[h + 1] = 0;
-
-    /* Right edge: only if not the rightmost brick column. The original
-     * tests `(L+1) AND $1F == $1E`, which is `col_byte == 29`. */
-    if (col_byte != 29) {
-        h = hl + 2;
-        for (i = 0; i < 8; i++) { scr_buff[h] &= 0x7F; h += 32; }
-    }
-
-    /* Color attr: 1-indexed lookup, write to both char cells the brick
-     * spans. Mirror of LAE82_4 ($AE9C): straight briks_colors lookup
-     * by low nibble, no per-state dimming. Earlier port dimmed
-     * multi-hit bricks after their first hit as a UX cue but the
-     * original draws them with their fresh colour throughout. */
-    attr = briks_colors[iy_byte & 0x0F];
-    attr_buff[attr_off]     = attr;
-    attr_buff[attr_off + 1] = attr;
-}
-
-/* Port of brik_shadow ($AE2A). Clears the bright bit (bit 6) on the 2
- * attr cells one char-row below each non-skip brick, dimming them so
- * they read as a drop shadow. Skips the second cell when it would
- * wrap past the rightmost attr column. */
-static void brik_shadow_c(unsigned int hl_attr, const unsigned char *cell_row) {
-    unsigned int h = hl_attr;
-    int col;
-    for (col = 0; col < 15; col++) {
-        unsigned char cell = cell_row[col];
-        if (!(cell & 0x80)) {
-            attr_buff[h] &= 0xBF;
-            if (((h + 1) & 0x1F) != 31) attr_buff[h + 1] &= 0xBF;
-        }
-        h += 2;
-    }
-}
-
-/* Port of print_briks ($ADE1). Walks the 12x15 level cell grid and
- * compositess each non-skip cell into scr_buff/attr_buff via
- * print_one_brik_buf_c + brik_shadow_c. */
-static void print_briks_c(const unsigned char *cells) {
-    int row, col;
-    brik_addr_buf = 0x401;   /* scr_buff + $401 = pixel (8, 32). */
-    brik_attr_buf = 0xA2;    /* attr_buff + $A2 = char (2, 5). */
-    for (row = 0; row < LVL_ROWS; row++) {
-        unsigned int hl = brik_addr_buf;
-        const unsigned char *cell_row = &cells[row * LVL_COLS];
-        for (col = 0; col < LVL_COLS; col++) {
-            if (!(cell_row[col] & 0x80)) {
-                print_one_brik_buf_c(hl, cell_row[col]);
-            }
-            hl += 2;
-        }
-        brik_shadow_c(brik_attr_buf, cell_row);
-        brik_addr_buf += 0x100;   /* +8 pixel rows (next brick row). */
-        brik_attr_buf += 0x20;    /* +1 char row. */
-    }
-}
-
-/* Row-scoped variant of print_briks_c: paint only brick rows [r0, r1].
- * Same per-row addressing (brik_addr_buf = 0x401 + row*0x100, attr base
- * 0xA2 + row*0x20), used by the incremental band-cache rebuild so a single
- * brick hit need not repaint the whole band. */
-static void print_briks_rows_c(const unsigned char *cells, int r0, int r1) {
-    int row, col;
-    for (row = r0; row <= r1; row++) {
-        unsigned int hl = 0x401u + (unsigned int)row * 0x100u;
-        const unsigned char *cell_row = &cells[row * LVL_COLS];
-        for (col = 0; col < LVL_COLS; col++) {
-            if (!(cell_row[col] & 0x80)) print_one_brik_buf_c(hl, cell_row[col]);
-            hl += 2;
-        }
-        brik_shadow_c(0xA2u + (unsigned int)row * 0x20u, cell_row);
-    }
-}
-
-/* Brick-band y range. print_briks_c writes to pixel rows 31..128 (the
- * 1-row top edge above the first brick row, 12 brick rows, and the
- * 1-row bottom edge below the last). */
-#define BRICK_BAND_Y_TOP 31
-#define BRICK_BAND_Y_BOT 128
 
 /* Brick compositor stage. Writes brick bricks/edges into scr_buff and
  * per-cell attrs (brick + shadow) into attr_buff for char rows 3..16.
@@ -2175,7 +2037,7 @@ static void render_brick_band(unsigned char level_idx) {
         }
     }
 
-    print_briks_c(cells);
+    paint_bricks(cells);
     print_border_shadow_c();
 }
 
@@ -2231,52 +2093,22 @@ static void render_brick_band_rows(unsigned char level_idx,
         }
     }
 
-    print_briks_rows_c(cells, r0, r1);
+    paint_brick_rows(cells, r0, r1);
 
     /* Edge fix-up 1: row r1's print zeroed its bottom-edge row, which in
      * the full ascending paint is overwritten by row r1+1's body row 0
      * where that brick is live — re-paint those two bytes plus the
      * side-edge bit clears print_one_brik would apply on that row. */
-    if (r1 + 1 < LVL_ROWS) {
-        unsigned int hl = 0x401u + (unsigned int)(r1 + 1) * 0x100u;
-        for (lvl_col = 0; lvl_col < LVL_COLS; lvl_col++) {
-            if (!(cells[(r1 + 1) * LVL_COLS + lvl_col] & 0x80)) {
-                int col_byte = 1 + 2 * lvl_col;
-                scr_buff[hl]     = spr_brik_1[0];
-                scr_buff[hl + 1] = spr_brik_1[1];
-                if (col_byte != 1)  scr_buff[hl - 1] &= 0xFE;
-                if (col_byte != 29) scr_buff[hl + 2] &= 0x7F;
-            }
-            hl += 2;
-        }
-    }
+    if (r1 + 1 < LVL_ROWS) repaint_row_body_top(cells, r1 + 1);
     /* Edge fix-up 4: row r1's body row 7 (pixel row 39+8*r1, bg-erased
      * and re-painted above) is canonically overwritten by row r1+1's
      * TOP-edge zeros where that brick is live — re-apply them. */
-    if (r1 + 1 < LVL_ROWS) {
-        unsigned int hl = 0x401u + (unsigned int)(r1 + 1) * 0x100u - 32u;
-        for (lvl_col = 0; lvl_col < LVL_COLS; lvl_col++) {
-            if (!(cells[(r1 + 1) * LVL_COLS + lvl_col] & 0x80)) {
-                scr_buff[hl]     = 0;
-                scr_buff[hl + 1] = 0;
-            }
-            hl += 2;
-        }
-    }
+    if (r1 + 1 < LVL_ROWS) repaint_row_top_edge(cells, r1 + 1);
     /* Edge fix-up 3: print's brik_shadow_c(r1) dimmed char row 5+r1,
      * which is row r1+1's CELL row — in the full ascending paint, row
      * r1+1's own print re-brightens its live cells' attrs right after.
      * Re-apply that write since r1+1 isn't printed here. */
-    if (r1 + 1 < LVL_ROWS) {
-        for (lvl_col = 0; lvl_col < LVL_COLS; lvl_col++) {
-            unsigned char cell = cells[(r1 + 1) * LVL_COLS + lvl_col];
-            if (!(cell & 0x80)) {
-                unsigned char a = briks_colors[cell & 0x0F];
-                attr_buff[(5 + r1) * 32 + 1 + 2 * lvl_col]     = a;
-                attr_buff[(5 + r1) * 32 + 2 + 2 * lvl_col]     = a;
-            }
-        }
-    }
+    if (r1 + 1 < LVL_ROWS) repaint_row_attrs(cells, r1 + 1);
     /* Edge fix-up 2: a destroyed cell in row r0 sits under row r0-1's
      * bottom-edge zeros; the caller's bg repaint erased them — restore
      * where the brick above is live. */

@@ -56,7 +56,7 @@ render_hud_to_buff    -> 1UP / HI / 2UP labels and score digits
 render_magnets        -> ON sprite always, OFF overlay for slots 2-3
 inner_border_line_c   -> 1 px inner border at byte 1 / byte 30,
                           lower three bands only in the port
-render_brick_band     -> level_attrs copy + print_briks_c + print_border_shadow_c
+render_brick_band     -> level_attrs copy + paint_bricks + print_border_shadow_c
 render_brick_flash    -> brick-destroyed flash (mid-game only)
 buff_to_vga           -> final scr/attr → VGA
 ```
@@ -155,10 +155,10 @@ is undestructible metal.
 starts each repaint with body attrs and shadow attrs already present.
 For runtime-destroyed cells (`cell & 0xC0 == 0x80`), `render_brick_band`
 resets both the body attr cells and the row directly below to the level
-background attr before calling `print_briks_c`.
+background attr before calling `paint_bricks` (src/bricks.cpp).
 
 That shadow-row reset is unconditional. If a live brick sits below the
-destroyed cell, `print_briks_c` writes that lower brick's body attr
+destroyed cell, `paint_bricks` writes that lower brick's body attr
 afterward. If the row below is empty or sentinel-only, the stale dimmed
 shadow attr disappears with the destroyed brick instead of tinting the
 background.

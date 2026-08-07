@@ -1,0 +1,182 @@
+/* See bricks.h. */
+
+#include "bricks.h"
+#include "zxvga.h"
+
+namespace {
+
+static const unsigned char spr_brik_1[16] = {
+    0xFF, 0xFE, 0x80, 0x00, 0x80, 0x00, 0x80, 0x00,
+    0x80, 0x00, 0x80, 0x00, 0x80, 0x00, 0x00, 0x00
+};
+
+/* Mirror of `briks_colors` at $AEEC. Original ASM uses
+ *   LD HL,briks_colors-$01 ; CALL hl_add_a (A = cell low nibble 1..14)
+ * so it reads briks_colors[low_nibble - 1]. Our C-side does
+ *   briks_colors[iy_byte & 0x0F]
+ * which expects 1-based indexing — slot [0] is a never-indexed placeholder. */
+static const unsigned char briks_colors[16] = {
+    0x00,                          /* [0] never indexed (low nibble == 0
+                                    * means "skip" per the cell format). */
+    0x57, 0x4F, 0x5F, 0x20, 0x70,  /* [1..5] normal bricks */
+    0x47, 0x57, 0x5F, 0x4F,        /* [6..9] hard (multi-hit) bricks */
+    0x00,                          /* [10] unused per original */
+    0x47, 0x57, 0x4F, 0x5F,        /* [11..14] indestructible bricks (e.g. L5 $2E) */
+    0x00                           /* [15] unused per original */
+};
+
+/* Cursors into the two planes, walked a brick row at a time.
+ * orig: brik_addr_buf, brik_attr_buf */
+unsigned int brik_addr_buf;
+unsigned int brik_attr_buf;
+
+/* Port of print_one_brik_buf ($AE82). Paints one brick into scr_buff at
+ * `hl` (the top-left byte of the brick's 2-byte body), plus decoration:
+ *   - 2 zero bytes one pixel-row above the brick (top edge)
+ *   - bit 0 cleared in the 8 bytes left of the brick (left edge),
+ *     unless the brick sits in the leftmost column
+ *   - 2 zero bytes one pixel-row below (bottom edge)
+ *   - bit 7 cleared in the 8 bytes right of the brick (right edge),
+ *     unless the brick sits in the rightmost column
+ * Finally the brick's two char cells in attr_buff are set to the colour
+ * from briks_colors keyed by the descriptor's low nibble. */
+void print_one_brik(unsigned int hl, unsigned char iy_byte) {
+    unsigned int h;
+    int col_byte = (int)(hl & 0x1F);
+    int i;
+    unsigned int brick_top_y_px = hl >> 5;
+    unsigned int attr_off       = (brick_top_y_px >> 3) * 32u + (unsigned int)col_byte;
+    unsigned char attr;
+
+    /* Top edge: 2 zero bytes one pixel-row above the brick. */
+    scr_buff[hl - 32] = 0;
+    scr_buff[hl - 31] = 0;
+
+    /* Left edge: only if not the leftmost brick column (col_byte == 1). */
+    if (col_byte != 1) {
+        h = hl - 1;
+        for (i = 0; i < 8; i++) { scr_buff[h] &= 0xFE; h += 32; }
+    }
+
+    /* Body: 8 rows * 2 bytes from spr_brik_1. */
+    h = hl;
+    for (i = 0; i < 8; i++) {
+        scr_buff[h]     = spr_brik_1[i * 2];
+        scr_buff[h + 1] = spr_brik_1[i * 2 + 1];
+        h += 32;
+    }
+    /* h == hl + 256 now (= byte at col 0 of the row one below the brick). */
+
+    /* Bottom edge: 2 zero bytes one pixel-row below the brick. */
+    scr_buff[h]     = 0;
+    scr_buff[h + 1] = 0;
+
+    /* Right edge: only if not the rightmost brick column. The original
+     * tests `(L+1) AND $1F == $1E`, which is `col_byte == 29`. */
+    if (col_byte != 29) {
+        h = hl + 2;
+        for (i = 0; i < 8; i++) { scr_buff[h] &= 0x7F; h += 32; }
+    }
+
+    /* Color attr: 1-indexed lookup, write to both char cells the brick
+     * spans. Mirror of LAE82_4 ($AE9C): straight briks_colors lookup
+     * by low nibble, no per-state dimming. Earlier port dimmed
+     * multi-hit bricks after their first hit as a UX cue but the
+     * original draws them with their fresh colour throughout. */
+    attr = briks_colors[iy_byte & 0x0F];
+    attr_buff[attr_off]     = attr;
+    attr_buff[attr_off + 1] = attr;
+}
+
+/* Port of brik_shadow ($AE2A). Clears the bright bit (bit 6) on the 2
+ * attr cells one char-row below each non-skip brick, dimming them so
+ * they read as a drop shadow. Skips the second cell when it would
+ * wrap past the rightmost attr column. */
+void paint_shadow_row(unsigned int hl_attr, const unsigned char *cell_row) {
+    unsigned int h = hl_attr;
+    int col;
+    for (col = 0; col < 15; col++) {
+        unsigned char cell = cell_row[col];
+        if (!(cell & 0x80)) {
+            attr_buff[h] &= 0xBF;
+            if (((h + 1) & 0x1F) != 31) attr_buff[h + 1] &= 0xBF;
+        }
+        h += 2;
+    }
+}
+
+}  /* namespace */
+
+/* Port of print_briks ($ADE1). Walks the 12x15 level cell grid and
+ * compositess each non-skip cell into scr_buff/attr_buff via
+ * print_one_brik_buf_c + brik_shadow_c. */
+void paint_bricks(const u8 *cells) {
+    int row, col;
+    brik_addr_buf = 0x401;   /* scr_buff + $401 = pixel (8, 32). */
+    brik_attr_buf = 0xA2;    /* attr_buff + $A2 = char (2, 5). */
+    for (row = 0; row < FIELD_ROWS; row++) {
+        unsigned int hl = brik_addr_buf;
+        const unsigned char *cell_row = &cells[row * FIELD_COLS];
+        for (col = 0; col < FIELD_COLS; col++) {
+            if (!(cell_row[col] & 0x80)) {
+                print_one_brik(hl, cell_row[col]);
+            }
+            hl += 2;
+        }
+        paint_shadow_row(brik_attr_buf, cell_row);
+        brik_addr_buf += 0x100;   /* +8 pixel rows (next brick row). */
+        brik_attr_buf += 0x20;    /* +1 char row. */
+    }
+}
+
+/* Row-scoped variant of print_briks_c: paint only brick rows [r0, r1].
+ * Same per-row addressing (brik_addr_buf = 0x401 + row*0x100, attr base
+ * 0xA2 + row*0x20), used by the incremental band-cache rebuild so a single
+ * brick hit need not repaint the whole band. */
+void paint_brick_rows(const u8 *cells, int first_row, int last_row) {
+    int row, col;
+    for (row = first_row; row <= last_row; row++) {
+        unsigned int hl = 0x401u + (unsigned int)row * 0x100u;
+        const unsigned char *cell_row = &cells[row * FIELD_COLS];
+        for (col = 0; col < FIELD_COLS; col++) {
+            if (!(cell_row[col] & 0x80)) print_one_brik(hl, cell_row[col]);
+            hl += 2;
+        }
+        paint_shadow_row(0xA2u + (unsigned int)row * 0x20u, cell_row);
+    }
+}
+
+void repaint_row_body_top(const u8 *cells, int row) {
+    unsigned int hl = 0x401u + (unsigned int)row * 0x100u;
+    for (int col = 0; col < FIELD_COLS; col++) {
+        if (!(cells[row * FIELD_COLS + col] & 0x80)) {
+            const int col_byte = 1 + 2 * col;
+            scr_buff[hl]     = spr_brik_1[0];
+            scr_buff[hl + 1] = spr_brik_1[1];
+            if (col_byte != 1)  scr_buff[hl - 1] &= 0xFE;
+            if (col_byte != 29) scr_buff[hl + 2] &= 0x7F;
+        }
+        hl += 2;
+    }
+}
+
+void repaint_row_top_edge(const u8 *cells, int row) {
+    unsigned int hl = 0x401u + (unsigned int)row * 0x100u - 32u;
+    for (int col = 0; col < FIELD_COLS; col++) {
+        if (!(cells[row * FIELD_COLS + col] & 0x80)) {
+            scr_buff[hl]     = 0;
+            scr_buff[hl + 1] = 0;
+        }
+        hl += 2;
+    }
+}
+
+void repaint_row_attrs(const u8 *cells, int row) {
+    for (int col = 0; col < FIELD_COLS; col++) {
+        const u8 cell = cells[row * FIELD_COLS + col];
+        if (cell & 0x80) continue;
+        const u8 attr = briks_colors[cell & 0x0F];
+        attr_buff[(4 + row) * ATTR_COLS + 1 + 2 * col] = attr;
+        attr_buff[(4 + row) * ATTR_COLS + 2 + 2 * col] = attr;
+    }
+}

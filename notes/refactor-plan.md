@@ -47,7 +47,8 @@ happened, and `make test-video` caught it.
 | 3a | `physics` — direction + bat deflection | 217 | **done** — 10 tests vs captured hardware tables |
 | 3b | collision geometry/effects split | 166 | **done** — 7 more tests |
 | 4 | `assets` | 167 | **done** — 6 tests |
-| 5 | level / bricks | 629 | next |
+| 5 | `bricks` — the compositor | 278 | **done** — 5 tests, byte-exact vs 15 captured screens |
+| 5b | level paint / band orchestration | ~350 | remains in main.cpp |
 | 6 | entities — objects, enemies, bonuses, weapons | ~950 | |
 | 7 | hud + text | 601 | |
 | 8 | sound | 272 | |
@@ -56,19 +57,23 @@ happened, and `make test-video` caught it.
 
 `main.cpp`: 7,746 → 7,403 so far. 49 host tests, all under a second.
 
-### Stage 5 is delicate
+### Stage 5, done
 
-The brick compositor (`print_one_brik_buf_c`, `brik_shadow_c`,
-`print_briks_c`, `render_brick_band`) walks `scr_buff` through raw offsets
-that mirror the original's Z80 addressing (`hl`, `hl - 32`, `hl + 2`),
-with edge cases keyed to literal column numbers (`col_byte != 1`,
-`col_byte != 29`). It is parity-critical and currently guarded only by
-10-second QEMU boots.
+The compositor moved to `src/bricks.cpp` and is now golden-tested against
+the original: `test-bricks` paints each of the 15 levels and compares
+19,296 brick body bytes against `build/level_gt/level_NN.scr`, byte-exact,
+in milliseconds.
 
-Do the test first: `build/level_gt/level_NN.scr` holds the original's
-captured screen for all 15 levels, so a host test can paint a level's
-brick band and diff the band region against it — before touching the
-compositor.
+Its three boundary repairs are named operations (`repaint_row_body_top`,
+`repaint_row_top_edge`, `repaint_row_attrs`) instead of `main.cpp`
+reaching into the module's tables to re-derive them. `test-bricks` proves
+a row-by-row repaint plus those repairs equals a full paint, on every
+level — the property the incremental band rebuild depends on and that
+known-bugs #1/#2 were violations of.
+
+What remains in `main.cpp` is the level orchestration around it:
+`render_brick_band` / `render_brick_band_rows` copy per-level attrs, reset
+destroyed cells to background, and drive the border shadow.
 
 ### Why replay is last, not first
 
