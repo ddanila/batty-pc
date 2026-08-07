@@ -11,11 +11,9 @@
  *   §5  Dirty rectangles   — track and flush only what changed
  *   §6  Masked blits       — pixels-only (clashing) vs attribute writes
  *
- * This file is #included by main.c (single translation unit — the 8086
- * small-memory-model build keeps everything in one code segment) and is
- * also compiled standalone by tests/test_zxvga.c under a host compiler.
- * Everything Watcom-specific sits behind __WATCOMC__; the DOS code path
- * is byte-for-byte what it was before the extraction. */
+ * Compiled into the DOS build via main.c, and standalone by
+ * tests/test_zxvga.c under a host compiler — the __WATCOMC__ guards pick
+ * the VGA surface (real hardware vs a plain array). */
 
 #include <string.h>
 
@@ -31,18 +29,14 @@
 /* §1  VGA surface                                                       */
 /* ===================================================================== */
 
+/* The DOS extender identity-maps the first megabyte, so VGA is an
+ * ordinary pointer. */
 #ifdef __WATCOMC__
-#  define ZXVGA_FAR __far
-static unsigned char __far *vga = (unsigned char __far *)0xA0000000L;
+static unsigned char *vga = (unsigned char *)0x000A0000;
 #else
-/* Host builds render into a plain array so the tests can inspect it.
- * There is no far/near distinction, and `_fmemset` / `_fmemcpy` (Watcom's
- * far-pointer string ops) become the standard functions. */
-#  define ZXVGA_FAR
+/* Host builds render into a plain array so the tests can inspect it. */
 static unsigned char zxvga_host_fb[SCREEN_W * SCREEN_H];
 static unsigned char *vga = zxvga_host_fb;
-#  define _fmemset memset
-#  define _fmemcpy memcpy
 #endif
 
 /* ZX Spectrum "acid" palette in 6-bit VGA DAC units. Non-bright slot
@@ -71,7 +65,7 @@ static void set_mode(unsigned char mode) {
     union REGS r;
     r.h.ah = 0x00;
     r.h.al = mode;
-    int86(0x10, &r, &r);
+    int386(0x10, &r, &r);
 }
 
 static void set_palette(const unsigned char *rgb, int count) {
@@ -98,7 +92,7 @@ static void set_palette(const unsigned char *rgb, int count) {
 static void fill(int x, int y, int w, int h, unsigned char c) {
     int row;
     for (row = 0; row < h; row++) {
-        _fmemset(vga + (long)(y + row) * SCREEN_W + x, c, (size_t)w);
+        memset(vga + (long)(y + row) * SCREEN_W + x, c, (size_t)w);
     }
 }
 
@@ -137,20 +131,11 @@ static unsigned char paper_pal(unsigned char attr) {
 static unsigned char ink_table[256];
 static unsigned char paper_table[256];
 
-/* The clash expansion table: for every attribute (flash bit dropped —
- * see zxvga.h) and every 4-bit pixel nibble, the 4 VGA palette indices
- * that nibble expands to. Leftmost pixel first, i.e. in the low byte, so
- * the table can be blasted straight out with string stores. */
-#ifdef BATTY_CPU386
-/* 386 build: one packed dword (4 px) per (attr, nibble), so the blit
- * emits two `stosd` (8 px) instead of four `stosw`. Byte order matches
- * the 8086 word table — leftmost pixel in the low byte — so the VGA
- * bytes written are bit-for-bit identical. This REPLACES the word table
- * (same 8 KB) rather than adding to it, keeping DGROUP within 64 KB. */
-static unsigned long vga_attr_nibble_dwords[128][16];
-#else
-static unsigned short vga_attr_nibble_words[128][16][2];
-#endif
+/* The clash expansion table: for every attribute (flash bit dropped — see
+ * zxvga.h) and every 4-bit pixel nibble, the 4 VGA palette indices that
+ * nibble expands to, packed leftmost-pixel-in-the-low-byte so a whole
+ * nibble is one 32-bit store. */
+static unsigned int vga_attr_nibble_dwords[128][16];
 
 static void init_pal_tables(void) {
     int i;
@@ -167,14 +152,9 @@ static void init_pal_tables(void) {
             unsigned char p1 = (n & 4) ? ink : paper;
             unsigned char p2 = (n & 2) ? ink : paper;
             unsigned char p3 = (n & 1) ? ink : paper;
-#ifdef BATTY_CPU386
             vga_attr_nibble_dwords[i][n] =
-                (unsigned long)p0 | ((unsigned long)p1 << 8) |
-                ((unsigned long)p2 << 16) | ((unsigned long)p3 << 24);
-#else
-            vga_attr_nibble_words[i][n][0] = (unsigned short)(p0 | ((unsigned short)p1 << 8));
-            vga_attr_nibble_words[i][n][1] = (unsigned short)(p2 | ((unsigned short)p3 << 8));
-#endif
+                (unsigned int)p0 | ((unsigned int)p1 << 8) |
+                ((unsigned int)p2 << 16) | ((unsigned int)p3 << 24);
         }
     }
 }
@@ -191,62 +171,6 @@ static void init_pal_tables(void) {
 static unsigned char scr_buff[6144];
 static unsigned char attr_buff[768];
 
-/* Bulk copy used by the compositors that rebuild bands of these buffers.
- * Hot enough on XT-class hardware to be worth the string op. */
-static void fast_memcpy(void *dest, const void *src, unsigned int n_bytes);
-
-#ifdef __WATCOMC__
-#  ifdef BATTY_CPU386
-/* 386 build: copy 4 bytes per element with `rep movsd`, then the 0..3
- * byte remainder with `rep movsb`. Halves the element count on the
- * band-rebuild / bg-cache copies that dominate full-recompose frames. */
-static void fast_memcpy(void *dest, const void *src, unsigned int n_bytes) {
-    _asm {
-        push es
-        push di
-        push si
-        mov ax, ds
-        mov es, ax
-        mov di, dest
-        mov si, src
-        mov cx, n_bytes
-        cld
-        mov dx, cx
-        shr cx, 2
-        rep movsd
-        mov cx, dx
-        and cx, 3
-        rep movsb
-        pop si
-        pop di
-        pop es
-    }
-}
-#  else
-static void fast_memcpy(void *dest, const void *src, unsigned int n_bytes) {
-    _asm {
-        push es
-        push di
-        push si
-        mov ax, ds
-        mov es, ax
-        mov di, dest
-        mov si, src
-        mov cx, n_bytes
-        cld
-        rep movsb
-        pop si
-        pop di
-        pop es
-    }
-}
-#  endif
-#else
-static void fast_memcpy(void *dest, const void *src, unsigned int n_bytes) {
-    memcpy(dest, src, n_bytes);
-}
-#endif
-
 /* ===================================================================== */
 /* §4  Clash blit to VGA                                                 */
 /* ===================================================================== */
@@ -256,93 +180,32 @@ static void fast_memcpy(void *dest, const void *src, unsigned int n_bytes) {
 static unsigned long prof_vga_rects = 0;
 static unsigned long prof_vga_bytes = 0;
 
-/* The expansion of one (pixel byte, cell attribute) pair into 8 VGA
- * pixels is where colour clash physically happens: the eight pixels can
- * only be this cell's ink or this cell's paper, whatever drew them. The
- * byte is split into two nibbles so a single table lookup covers 4
- * pixels — 2 stores per byte on 386, 4 on 8086.
+/* One (pixel byte, cell attribute) pair -> 8 VGA pixels, advancing `dest`.
+ * This is where colour clash physically happens: the eight pixels can only
+ * be this cell's ink or this cell's paper, whatever drew them.
  *
- * On DOS the inner loop is written out inline in each function below
- * (Watcom's `_asm` uses newlines as statement separators, so it cannot
- * be wrapped in a macro). The host build uses this equivalent, which
- * reads the SAME table — so a test comparing its output against an
- * independent ULA reference is testing the real expansion table, not a
- * reimplementation of it. */
-#ifndef __WATCOMC__
-#  ifdef BATTY_CPU386
-#    define ZXVGA_EMIT_BYTE(dest, b, attr)                                        \
-        do {                                                                      \
-            unsigned long zhi = vga_attr_nibble_dwords[(attr) & 0x7F][(b) >> 4];   \
-            unsigned long zlo = vga_attr_nibble_dwords[(attr) & 0x7F][(b) & 0x0F]; \
-            int zi;                                                               \
-            for (zi = 0; zi < 4; zi++) *(dest)++ = (unsigned char)(zhi >> (zi * 8)); \
-            for (zi = 0; zi < 4; zi++) *(dest)++ = (unsigned char)(zlo >> (zi * 8)); \
-        } while (0)
-#  else
-#    define ZXVGA_EMIT_BYTE(dest, b, attr)                                            \
-        do {                                                                          \
-            const unsigned short *zhi = vga_attr_nibble_words[(attr) & 0x7F][(b) >> 4];   \
-            const unsigned short *zlo = vga_attr_nibble_words[(attr) & 0x7F][(b) & 0x0F]; \
-            *(dest)++ = (unsigned char)zhi[0];                                        \
-            *(dest)++ = (unsigned char)(zhi[0] >> 8);                                 \
-            *(dest)++ = (unsigned char)zhi[1];                                        \
-            *(dest)++ = (unsigned char)(zhi[1] >> 8);                                 \
-            *(dest)++ = (unsigned char)zlo[0];                                        \
-            *(dest)++ = (unsigned char)(zlo[0] >> 8);                                 \
-            *(dest)++ = (unsigned char)zlo[1];                                        \
-            *(dest)++ = (unsigned char)(zlo[1] >> 8);                                 \
-        } while (0)
-#  endif
-#endif
+ * `dest` is always 4-byte aligned — (BORDER_Y + y) * 320 + 32 is divisible
+ * by 4 and every byte column advances by 8 — so both stores are aligned. */
+#define ZXVGA_EMIT_BYTE(dest, b, attr)                                       \
+    do {                                                                     \
+        const unsigned int *ztab = vga_attr_nibble_dwords[(attr) & 0x7F];    \
+        *(unsigned int *)(dest)       = ztab[(b) >> 4];                      \
+        *(unsigned int *)((dest) + 4) = ztab[(b) & 0x0F];                    \
+        (dest) += 8;                                                         \
+    } while (0)
 
 /* Expand the whole 256x192 playfield. 49152 VGA writes — reserved for
  * screen changes; per-frame updates go through the dirty flush below. */
 static void buff_to_vga(void) {
     int y, byte_col;
     for (y = 0; y < PLAYFIELD_H; y++) {
-        unsigned char ZXVGA_FAR *dest = vga + (long)(BORDER_Y + y) * SCREEN_W + BORDER_X;
+        unsigned char *dest = vga + (long)(BORDER_Y + y) * SCREEN_W + BORDER_X;
         const unsigned char *scr_row = &scr_buff[y * 32];
         const unsigned char *attr_row = &attr_buff[(y >> 3) * 32];
         for (byte_col = 0; byte_col < 32; byte_col++) {
             unsigned char b = scr_row[byte_col];
             unsigned char attr = attr_row[byte_col];
-#ifndef __WATCOMC__
             ZXVGA_EMIT_BYTE(dest, b, attr);
-#elif defined(BATTY_CPU386)
-            const unsigned long *hi = &vga_attr_nibble_dwords[attr & 0x7F][b >> 4];
-            const unsigned long *lo = &vga_attr_nibble_dwords[attr & 0x7F][b & 0x0F];
-
-            _asm {
-                les di, dest
-                mov si, hi
-                mov eax, [si]
-                stosd
-                mov si, lo
-                mov eax, [si]
-                stosd
-
-                mov word ptr dest, di
-            }
-#else
-            const unsigned short *hi = vga_attr_nibble_words[attr & 0x7F][b >> 4];
-            const unsigned short *lo = vga_attr_nibble_words[attr & 0x7F][b & 0x0F];
-
-            _asm {
-                les di, dest
-                mov si, hi
-                mov ax, [si]
-                stosw
-                mov ax, [si+2]
-                stosw
-                mov si, lo
-                mov ax, [si]
-                stosw
-                mov ax, [si+2]
-                stosw
-
-                mov word ptr dest, di
-            }
-#endif
         }
     }
 }
@@ -363,46 +226,14 @@ static void buff_to_vga_rect_bytes(int y0, int h, int byte_lo, int byte_hi) {
     prof_vga_rects++;
     prof_vga_bytes += (unsigned long)(y_end - y0) * (unsigned long)(byte_hi - byte_lo + 1) * 8UL;
     for (y = y0; y < y_end; y++) {
-        unsigned char ZXVGA_FAR *dest = vga + (long)(BORDER_Y + y) * SCREEN_W
+        unsigned char *dest = vga + (long)(BORDER_Y + y) * SCREEN_W
                                   + BORDER_X + byte_lo * 8;
         const unsigned char *scr_row = &scr_buff[y * 32];
         const unsigned char *attr_row = &attr_buff[(y >> 3) * 32];
         for (byte_col = byte_lo; byte_col <= byte_hi; byte_col++) {
             unsigned char b = scr_row[byte_col];
             unsigned char attr = attr_row[byte_col];
-#ifndef __WATCOMC__
             ZXVGA_EMIT_BYTE(dest, b, attr);
-#elif defined(BATTY_CPU386)
-            const unsigned long *hi = &vga_attr_nibble_dwords[attr & 0x7F][b >> 4];
-            const unsigned long *lo = &vga_attr_nibble_dwords[attr & 0x7F][b & 0x0F];
-            _asm {
-                les di, dest
-                mov si, hi
-                mov eax, [si]
-                stosd
-                mov si, lo
-                mov eax, [si]
-                stosd
-                mov word ptr dest, di
-            }
-#else
-            const unsigned short *hi = vga_attr_nibble_words[attr & 0x7F][b >> 4];
-            const unsigned short *lo = vga_attr_nibble_words[attr & 0x7F][b & 0x0F];
-            _asm {
-                les di, dest
-                mov si, hi
-                mov ax, [si]
-                stosw
-                mov ax, [si+2]
-                stosw
-                mov si, lo
-                mov ax, [si]
-                stosw
-                mov ax, [si+2]
-                stosw
-                mov word ptr dest, di
-            }
-#endif
         }
     }
 }

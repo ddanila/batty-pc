@@ -1,7 +1,10 @@
-# batty — MS-DOS recreation of Batty (Elite, 1987) targeting 8086 + VGA.
+# batty — MS-DOS recreation of Batty (Elite, 1987) targeting 386 + VGA.
 # Toolchain: Open Watcom v2 + mtools + QEMU.
+#
+# 32-bit protected mode via a flat memory model: the game is an LE
+# executable loaded by the DOS32A extender, which ships on the floppy.
 
-WATCOM_DIR ?= vendor/openwatcom-v2/current-build-2026-05-16
+WATCOM_DIR ?= vendor/openwatcom-v2/current-build-2026-08-01
 HOST_OS    := $(shell uname -s)
 HOST_ARCH  := $(shell uname -m)
 ifeq ($(HOST_OS),Darwin)
@@ -14,42 +17,36 @@ else
   WATCOM_BIN := $(WATCOM_DIR)/linux-amd64
 endif
 
-WCC        = $(WATCOM_BIN)/wcc
+WCC        = $(WATCOM_BIN)/wcc386
 WLINK      = $(WATCOM_BIN)/wlink
+WDIS       = $(WATCOM_BIN)/wdis
 WATCOM_H   = $(WATCOM_DIR)/h
-WATCOM_LIB = $(WATCOM_DIR)/lib286/dos
+WATCOM_LIB = $(WATCOM_DIR)/lib386/dos
+# Real-mode stub bound into the LE image; it loads the extender at startup.
+WSTUB      = $(WATCOM_DIR)/dos/wstub.exe
+# DOS32A, not DOS/4GW: a tenth the size, and DOS/4GW's hardware-interrupt
+# reflection breaks the INT 9 keyboard chain (the game hangs on the title
+# screen). The stub looks for the extender under the name DOS4GW.EXE.
+EXTENDER   = $(WATCOM_DIR)/dos/DOS32A.EXE
 
-# -0    = 8086 instruction set
-# -ms   = small memory model (64K code + 64K data)
-# -os   = optimize for size
-# -s    = no stack overflow checks
-# -za99 = C99
+# -bt=dos = 32-bit DOS target      -3  = 386 instruction set
+# -os     = optimize for size      -s  = no stack overflow checks
+# -za99   = C99                    -oi = inline intrinsics (memset/memcpy)
 # -w4 -we = max warnings, treat as errors
-# -oi   = inline intrinsics (memset/memcpy)
-WCCFLAGS = -0 -ms -os -s -za99 -w4 -we -oi -i=$(WATCOM_H)
+WCCFLAGS = -bt=dos -3 -os -s -za99 -w4 -we -oi -i=$(WATCOM_H)
+# `format os2 le` is the linear executable the extender loads.
+WLINKFMT = format os2 le option stub=$(WSTUB)
 
 SRC     = src/main.c
 OBJ      = $(SRC:src/%.c=build/%.obj)
 TEST_OBJ = build/main-test.obj
-# src/zxvga.c (the video engine) is #included by main.c rather than linked
-# separately — the 8086 small model wants one code segment — so it is a
-# build dependency alongside the headers, not a compilation unit.
+# src/zxvga.c (the video engine) is #included by main.c rather than compiled
+# separately, so it is a build dependency alongside the headers.
 HEADERS = $(wildcard src/*.h) src/zxvga.c
 EXE     = build/batty.exe
 TEST_EXE = build/batty-test.exe
 
-# --- Optional 386 build (additive; does NOT replace the 8086 build) ------
-# Same source, compiled with -3 + -dBATTY_CPU386 so the VGA blit uses
-# 32-bit `stosd` (8 px / 2 stores) and fast_memcpy uses `rep movsd`.
-# Requires a 386 to run; the default `batty.exe` stays 8086/XT-compatible.
-WCCFLAGS386 = -3 -ms -os -s -za99 -w4 -we -oi -dBATTY_CPU386 -i=$(WATCOM_H)
-EXE386       = build/batty386.exe
-OBJ386       = build/main-386.obj
-TEST_EXE386  = build/batty-test-386.exe
-TEST_OBJ386  = build/main-test-386.obj
-TEST_FLOPPY386 = build/batty-test-386.img
-# Which test EXE the test-floppy rule packs as BATTY.EXE (overridden by
-# the 386 parity gate). Default keeps `make test` on the 8086 build.
+# Which test EXE the test-floppy rule packs as BATTY.EXE.
 FLOPPY_TEST_EXE ?= $(TEST_EXE)
 
 ASSETS  = assets/loading.bin assets/hi_score.bin assets/main_menu.bin \
@@ -123,9 +120,6 @@ help:
 	@echo "  floppy        pack $(EXE) + assets onto $(FLOPPY_OUT)"
 	@echo "  run           build the floppy and boot it in QEMU (our recreation)"
 	@echo "  run-86box     build the floppy and boot it in 86Box (IBM XT + VGA)"
-	@echo "  exe386        build the optional 386 EXE (32-bit stosd/movsd blit)"
-	@echo "  run386        build the 386 floppy and boot it in QEMU"
-	@echo "  test-cpu386   pixel-parity gate for the 386 build vs the GT checkpoints"
 	@echo "  profile-auto  run deterministic headless QEMU render profile"
 	@echo "  profile-86box run 86Box with BATTY_RENDER_PROFILE=1 (sound off)"
 	@echo "  read-profile  extract and print PROFILE.TXT from $(FLOPPY_OUT)"
@@ -158,26 +152,10 @@ $(TEST_OBJ): src/main.c $(HEADERS) | build
 	$(WCC) $(WCCFLAGS) -dBATTY_SCORELESS_HUD -fo=$@ $<
 
 $(EXE): $(OBJ)
-	$(WLINK) name $@ format dos $(addprefix file ,$(OBJ)) libpath $(WATCOM_LIB) library clibs.lib
+	$(WLINK) name $@ $(WLINKFMT) $(addprefix file ,$(OBJ)) libpath $(WATCOM_LIB) library clib3r.lib
 
 $(TEST_EXE): $(TEST_OBJ)
-	$(WLINK) name $@ format dos file $(TEST_OBJ) libpath $(WATCOM_LIB) library clibs.lib
-
-# 386 objects/EXEs — same source, 386 codegen + 32-bit blit path.
-$(OBJ386): src/main.c $(HEADERS) | build
-	$(WCC) $(WCCFLAGS386) -fo=$@ $<
-
-$(TEST_OBJ386): src/main.c $(HEADERS) | build
-	$(WCC) $(WCCFLAGS386) -dBATTY_SCORELESS_HUD -fo=$@ $<
-
-$(EXE386): $(OBJ386)
-	$(WLINK) name $@ format dos file $(OBJ386) libpath $(WATCOM_LIB) library clibs.lib
-
-$(TEST_EXE386): $(TEST_OBJ386)
-	$(WLINK) name $@ format dos file $(TEST_OBJ386) libpath $(WATCOM_LIB) library clibs.lib
-
-# Build the 386 release EXE (the 8086 build is still `make all`).
-exe386: $(EXE386)
+	$(WLINK) name $@ $(WLINKFMT) file $(TEST_OBJ) libpath $(WATCOM_LIB) library clib3r.lib
 
 assets: $(ASSETS)
 
@@ -303,11 +281,12 @@ assets/random_seed.bin: original/blocks/03_DATA_headless.dat.bin
 floppy: $(FLOPPY_OUT)
 
 # Both floppies ship the same EXE + assets; only AUTOEXEC.BAT differs.
-# FLOPPY_EXE selects which EXE is packed (default 8086; floppy386 overrides).
+# FLOPPY_EXE selects which EXE is packed.
 FLOPPY_EXE ?= $(EXE)
 $(FLOPPY_OUT): $(FLOPPY_EXE) $(ASSETS) $(FLOPPY_SRC)
 	cp "$(FLOPPY_SRC)" $@
 	mcopy -i $@ -o $(FLOPPY_EXE) ::BATTY.EXE
+	mcopy -i $@ -o $(EXTENDER) ::DOS4GW.EXE
 	mcopy -i $@ -o assets/loading.bin  ::LOADING.BIN
 	mcopy -i $@ -o assets/hi_score.bin ::HISCORE.BIN
 	mcopy -i $@ -o assets/main_menu.bin ::MAINMENU.BIN
@@ -370,6 +349,7 @@ $(FLOPPY_OUT): $(FLOPPY_EXE) $(ASSETS) $(FLOPPY_SRC)
 $(TEST_FLOPPY_OUT): $(FLOPPY_TEST_EXE) $(ASSETS) $(FLOPPY_SRC)
 	cp "$(FLOPPY_SRC)" $@
 	mcopy -i $@ -o $(FLOPPY_TEST_EXE) ::BATTY.EXE
+	mcopy -i $@ -o $(EXTENDER) ::DOS4GW.EXE
 	mcopy -i $@ -o assets/loading.bin  ::LOADING.BIN
 	mcopy -i $@ -o assets/hi_score.bin ::HISCORE.BIN
 	mcopy -i $@ -o assets/main_menu.bin ::MAINMENU.BIN
@@ -619,24 +599,6 @@ test:
 	@rm -f $(TEST_FLOPPY_OUT)
 	@$(MAKE) $(TEST_FLOPPY_OUT)
 	python3 scripts/test_visual.py --floppy $(TEST_FLOPPY_OUT)
-
-# Pixel-parity gate for the 386 build: pack the 386 test EXE onto a
-# floppy and run the SAME visual checkpoints as `make test`. A PASS
-# proves the 32-bit stosd/movsd paths emit byte-identical VGA output to
-# the 8086 build (QEMU's CPU is 386+, so it runs the 386 EXE). Honours
-# BATTY_LEVEL like `make test`.
-test-cpu386:
-	@rm -f $(TEST_FLOPPY386)
-	@$(MAKE) $(TEST_FLOPPY386) BATTY_TEST_FLOPPY=$(TEST_FLOPPY386) FLOPPY_TEST_EXE=$(TEST_EXE386)
-	python3 scripts/test_visual.py --floppy $(TEST_FLOPPY386)
-
-# Build + boot the 386 release floppy in QEMU (mirrors `make run`).
-floppy386:
-	$(MAKE) $(FLOPPY_OUT) FLOPPY_OUT=$(FLOPPY_OUT) FLOPPY_EXE=$(EXE386)
-run386:
-	rm -f $(FLOPPY_OUT)
-	$(MAKE) $(FLOPPY_OUT) FLOPPY_EXE=$(EXE386)
-	bash scripts/run.sh $(FLOPPY_OUT)
 
 # One entry point for the gameplay frame-parity regression: the static
 # 5-checkpoint + per-level visual test, plus the byte-exact LAFFC collision
@@ -966,24 +928,13 @@ test-laffc-levels-sane:
 HOSTCC     ?= cc
 HOSTCFLAGS ?= -std=c99 -O1 -Wall -Wextra -Werror -Wno-unused-function
 VIDEO_TEST     = build/test_zxvga
-VIDEO_TEST_386 = build/test_zxvga386
 VIDEO_TEST_SRC = tests/test_zxvga.c src/zxvga.c src/zxvga.h
 
 $(VIDEO_TEST): $(VIDEO_TEST_SRC) | build
 	$(HOSTCC) $(HOSTCFLAGS) -o $@ tests/test_zxvga.c
 
-$(VIDEO_TEST_386): $(VIDEO_TEST_SRC) | build
-	$(HOSTCC) $(HOSTCFLAGS) -DBATTY_CPU386 -o $@ tests/test_zxvga.c
-
-test-video: $(VIDEO_TEST) $(VIDEO_TEST_386)
+test-video: $(VIDEO_TEST)
 	./$(VIDEO_TEST)
-	@echo
-	./$(VIDEO_TEST_386)
-	@echo
-	@./$(VIDEO_TEST) --dump build/zxvga-8086.fb
-	@./$(VIDEO_TEST_386) --dump build/zxvga-386.fb
-	@cmp build/zxvga-8086.fb build/zxvga-386.fb \
-	  && echo "  cpu386_table_equiv             64000 B               ok"
 
 test-hud: $(FLOPPY_OUT)
 	python3 scripts/test_hud.py --floppy $(FLOPPY_OUT)

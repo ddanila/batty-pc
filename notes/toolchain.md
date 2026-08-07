@@ -1,0 +1,72 @@
+# Toolchain and target
+
+batty targets a **386 in 32-bit protected mode**, built with Open Watcom v2
+from `vendor/openwatcom-v2/current-build-<date>/`.
+
+```
+wcc386 -bt=dos -3 -os -s -za99 -w4 -we -oi     # 32-bit DOS, 386 ISA
+wlink  format os2 le option stub=wstub.exe     # LE image + real-mode stub
+       library clib3r.lib                      # 32-bit DOS C library
+```
+
+The floppy carries `BATTY.EXE` plus the extender as `DOS4GW.EXE`.
+
+## Flat memory model
+
+The extender identity-maps the first megabyte, so:
+
+- `vga` is an ordinary pointer to `0x000A0000` — no segment, no `__far`
+- there is no near/far distinction anywhere, so no `_fmemcpy` / `_fmemset`
+  / `_fmalloc`
+- there is no 64 KB code or data ceiling, so data structures are sized for
+  clarity rather than to fit a segment
+- `memcpy` is the fastest bulk copy available; there is nothing to gain
+  from hand-written string-op assembly
+
+The video engine's blit writes 8 pixels as two aligned 32-bit stores
+straight from the expansion table. `(BORDER_Y + y) * 320 + 32` is divisible
+by 4 and every byte column advances by 8, so the alignment always holds.
+
+Use fixed-width-by-convention types in anything shared with the host test
+build: `unsigned long` is 4 bytes under Watcom 32-bit but **8 bytes** on a
+64-bit host, which silently doubles the width of a store. `unsigned int` is
+4 bytes on both.
+
+## Extender: DOS32A, not DOS/4GW
+
+Both ship in the OW2 snapshot. DOS32A is used because:
+
+1. It is 27 KB against DOS/4GW's 265 KB, on a 1.44 MB floppy.
+2. **Under DOS/4GW the game hangs on the title screen.** Its hardware
+   interrupt reflection does not deliver the INT 9 chain that `new_int9`
+   installs, so no keypress reaches the state machine and the state
+   machine never advances. Under DOS32A the same unmodified INT 8 / INT 9
+   handlers work.
+
+Point 2 is worth remembering: the symptom looks exactly like a broken
+keyboard handler, and the natural conclusion — "protected mode needs
+DPMI-aware interrupt handlers" — is wrong here. The handlers are fine.
+
+## C++
+
+`wpp386` is available and the C++ headers and `plib3r.lib` are vendored.
+Per kolobok's Makefile, Open Watcom's C++ is **C++98 plus `static_assert`,
+`decltype` and the `>>` template close**. Classes, destructors, references,
+overloading and templates all work; its template deduction does not (no
+array extents, and `const` is dropped when deducing from an array inside a
+`const` struct). There is no `enum class`, `constexpr`, `nullptr` or C++11
+library.
+
+## Verifying a refactor changed no code
+
+`wdis` is vendored for this. For pure code motion there is also a cheaper
+check that needs no disassembly — preprocess both revisions, normalise and
+sort, and diff the line multiset:
+
+```sh
+wcc386 <flags> -p old.c | grep -v '^\s*$' | sed 's/[[:space:]]\+/ /g' | sort > old.s
+wcc386 <flags> -p new.c | grep -v '^\s*$' | sed 's/[[:space:]]\+/ /g' | sort > new.s
+diff old.s new.s        # empty => same statements, only order changed
+```
+
+See `notes/video-engine.md` for how this was used on the zxvga extraction.

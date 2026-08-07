@@ -1,10 +1,9 @@
 /* Host-side tests for the video engine (src/zxvga.c).
  *
  * These compile the REAL engine source natively — no DOS, no emulator —
- * by way of the __WATCOMC__ guards in zxvga.c, which swap the inline-asm
- * inner loops for equivalent C and point `vga` at a plain array. So what
- * is under test is the shipping expansion table and the shipping blit
- * logic, not a model of them.
+ * the __WATCOMC__ guard in zxvga.c just points `vga` at a plain array. So
+ * what is under test is the shipping expansion table and the shipping
+ * blit logic, not a model of them.
  *
  * What they lock down, in one sentence: the Spectrum's attribute display
  * model, including colour clash, must survive exactly as-is.
@@ -30,9 +29,6 @@
  *                                 (clash spills to neighbours)
  *  11  golden_original_scr        a real screen from the original game
  *                                 expands to the expected pixels
- *
- * The 8086 and 386 expansion paths are compared by `make test-video`,
- * which builds this file twice and diffs the --dump output.
  *
  * Build: see the test-video target in the Makefile. */
 
@@ -553,10 +549,9 @@ static void test_golden_original_scr(const char *path) {
 }
 
 /* ===================================================================== */
-/* --dump: canonical framebuffer for the 8086-vs-386 comparison          */
+/* --dump: canonical framebuffer, for diffing against another build      */
 /* ===================================================================== */
-/* Both builds must produce byte-identical VGA output; `make test-video`
- * diffs these files. Uses fixed data so the two runs are comparable. */
+/* Fixed input data, so two builds' dumps are directly comparable. */
 
 static int dump_canonical(const char *path) {
     FILE *f;
@@ -586,13 +581,7 @@ int main(int argc, char **argv) {
         return dump_canonical(argv[2]);
     if (argc >= 2) golden = argv[1];
 
-    printf("zxvga video-engine tests (%s expansion path)\n",
-#ifdef BATTY_CPU386
-           "386 dword"
-#else
-           "8086 word"
-#endif
-           );
+    printf("zxvga video-engine tests\n");
 
     test_pal_tables_exhaustive();
     test_clash_expansion_vs_ula();

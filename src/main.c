@@ -21,11 +21,8 @@
 #include <string.h>
 
 /* The video engine — ZX Spectrum attribute/colour-clash emulation on
- * VGA mode 13h. Included rather than linked separately: the 8086
- * small-model build keeps one code segment, and this preserves the
- * single-translation-unit layout the rest of the file assumes.
- * Everything below draws through scr_buff / attr_buff and the dirty
- * marks declared there. */
+ * VGA mode 13h. Everything below draws through its scr_buff / attr_buff
+ * and the dirty marks declared there. */
 #include "zxvga.c"
 
 #define SCREEN_CHUNK_ROWS 16
@@ -47,7 +44,7 @@ static int blit_screen(const char *path) {
             return -2;
         }
         for (r = 0; r < rows; r++) {
-            _fmemcpy(vga + (long)(BORDER_Y + y + r) * SCREEN_W + BORDER_X,
+            memcpy(vga + (long)(BORDER_Y + y + r) * SCREEN_W + BORDER_X,
                      &screen_chunk[r * PLAYFIELD_W], PLAYFIELD_W);
         }
     }
@@ -87,7 +84,7 @@ static int load_font(const char *path) {
 static void draw_glyph(int x, int y, unsigned char color, unsigned char code) {
     int r, i;
     unsigned char b;
-    unsigned char __far *dst;
+    unsigned char *dst;
     if (code >= FONT_N) return;
     dst = vga + (long)y * SCREEN_W + x;
     for (r = 0; r < FONT_ROWS; r++) {
@@ -697,7 +694,7 @@ static int           ball3_dy     = -BALL_SPEED;
  * the original program so bonuses / bombs / enemies consume the same
  * byte-stream shape as the Spectrum game. */
 #define RANDOM_ROM_SIZE 0x2000
-static unsigned char __far *random_rom = NULL;
+static unsigned char *random_rom = NULL;
 static unsigned char random_e = 0x17;
 static unsigned char random_d = 0x8E;
 static unsigned int  random_seed_addr = 0x8000;
@@ -1242,7 +1239,7 @@ static int load_random_rom(const char *path) {
     unsigned int off = 0;
     if (!f) return -1;
     if (random_rom == NULL) {
-        random_rom = _fmalloc(RANDOM_ROM_SIZE);
+        random_rom = (unsigned char *)malloc(RANDOM_ROM_SIZE);
         if (random_rom == NULL) {
             fclose(f); return -3;
         }
@@ -1253,7 +1250,7 @@ static int load_random_rom(const char *path) {
         if (fread(screen_chunk, 1, n, f) != n) {
             fclose(f); return -2;
         }
-        _fmemcpy(random_rom + off, screen_chunk, n);
+        memcpy(random_rom + off, screen_chunk, n);
         off += n;
     }
     fclose(f);
@@ -1417,12 +1414,12 @@ static void paint_strip_to_buff(const unsigned char *pixels,
         && char_row_off + char_rows <= ATTR_ROWS) {
         int y;
         for (y = 0; y < rows_px; y++) {
-            fast_memcpy(&scr_buff[(y0_px + y) * 32 + byte_col_off],
+            memcpy(&scr_buff[(y0_px + y) * 32 + byte_col_off],
                         &pixels[y * cols_bytes],
                         (unsigned int)cols_bytes);
         }
         for (char_row = 0; char_row < char_rows; char_row++) {
-            fast_memcpy(&attr_buff[(char_row_off + char_row) * 32 + byte_col_off],
+            memcpy(&attr_buff[(char_row_off + char_row) * 32 + byte_col_off],
                         &attrs[char_row * attr_stride],
                         (unsigned int)cols_bytes);
         }
@@ -1474,10 +1471,10 @@ static void restore_top_frame_center(unsigned char cycle, unsigned char level_id
     const unsigned char *lattr = level_attrs + (unsigned int)level_idx * ATTR_BAND_SIZE;
     int y, cr;
     for (y = 0; y < FRAME_TOP_H_PX; y++) {
-        fast_memcpy(&scr_buff[y * 32 + 8], &top_px[y * 32 + 8], 3);
+        memcpy(&scr_buff[y * 32 + 8], &top_px[y * 32 + 8], 3);
     }
     for (cr = 0; cr < FRAME_TOP_H_PX / 8; cr++) {
-        fast_memcpy(&attr_buff[cr * 32 + 8], &lattr[cr * 32 + 8], 3);
+        memcpy(&attr_buff[cr * 32 + 8], &lattr[cr * 32 + 8], 3);
     }
 }
 
@@ -2324,7 +2321,7 @@ static void render_brick_band(unsigned char level_idx) {
 
     /* Copy the per-level attrs into char rows 3..16 (the brick band,
      * including frame side strips and pre-dimmed shadow rows). */
-    fast_memcpy(&attr_buff[3 * 32], &lattr[3 * ATTR_COLS], 14 * 32);
+    memcpy(&attr_buff[3 * 32], &lattr[3 * ATTR_COLS], 14 * 32);
 
     /* level_attrs.bin was captured with all bricks alive, so it carries
      * the brick colour in every brick cell. For cells whose brick is
@@ -2397,7 +2394,7 @@ static void render_brick_band_rows(unsigned char level_idx,
     if (level_idx >= N_LEVELS) return;
 
     /* Base attrs for the recomposited char rows (ATTR_COLS == 32). */
-    fast_memcpy(&attr_buff[cr0 * 32], &lattr[cr0 * ATTR_COLS],
+    memcpy(&attr_buff[cr0 * 32], &lattr[cr0 * ATTR_COLS],
                 (unsigned int)((cr1 - cr0 + 1) * 32));
 
     for (lvl_row = r0 - 1; lvl_row <= r1 + 1; lvl_row++) {
@@ -2698,7 +2695,7 @@ static void apply_magnet_toggle_visual(void) {
     y = magnet_py[i];
     if (magnet_on_state[i]) {
         if (spr_magnet_on_h23[0] == 0) {
-            fast_memcpy(spr_magnet_on_h23, spr_magnet_on,
+            memcpy(spr_magnet_on_h23, spr_magnet_on,
                         sizeof(spr_magnet_on_h23));
             spr_magnet_on_h23[1] = 0x17;     /* 30 -> 23 rows */
         }
@@ -2713,7 +2710,7 @@ static void apply_magnet_toggle_visual(void) {
     byte_hi = byte_lo + 4;
     if (byte_hi > 31) byte_hi = 31;
     for (yy = y; yy < y + 0x17 && yy < PLAYFIELD_H; yy++) {
-        fast_memcpy(&bg_scr_buff[(yy << 5) + byte_lo],
+        memcpy(&bg_scr_buff[(yy << 5) + byte_lo],
                     &scr_buff[(yy << 5) + byte_lo],
                     (unsigned int)(byte_hi - byte_lo + 1));
     }
@@ -2738,8 +2735,8 @@ static void render_level_screen_static(unsigned char level_idx) {
 static void build_static_background(unsigned char level_idx) {
     prof_static_rebuilds++;
     render_level_screen_static(level_idx);
-    fast_memcpy(bg_scr_buff, scr_buff, sizeof(bg_scr_buff));
-    fast_memcpy(bg_attr_buff, attr_buff, sizeof(bg_attr_buff));
+    memcpy(bg_scr_buff, scr_buff, sizeof(bg_scr_buff));
+    memcpy(bg_attr_buff, attr_buff, sizeof(bg_attr_buff));
     static_bg_cache_dirty = 0;
 }
 
@@ -2761,10 +2758,10 @@ static void build_static_brick_band_cache(unsigned char level_idx) {
                                 1, 30);
         render_brick_band(level_idx);
         for (y = BRICK_BAND_Y_TOP; y <= BRICK_BAND_Y_BOT; y++) {
-            fast_memcpy(&bg_scr_buff[(y << 5) + 1], &scr_buff[(y << 5) + 1], 30);
+            memcpy(&bg_scr_buff[(y << 5) + 1], &scr_buff[(y << 5) + 1], 30);
         }
         for (cr = 3; cr <= 16; cr++) {
-            fast_memcpy(&bg_attr_buff[cr << 5], &attr_buff[cr << 5], 32);
+            memcpy(&bg_attr_buff[cr << 5], &attr_buff[cr << 5], 32);
         }
         /* The rebuild rewrote scr_buff/attr_buff well beyond the brick
          * flash's small dirty rect (whole rows, shadow attrs on the row
@@ -2800,10 +2797,10 @@ static void build_static_brick_band_cache(unsigned char level_idx) {
         render_brick_band_rows(level_idx, R0, R1, cr0, cr1);
         /* Capture from the shared top-edge row down (print touches it). */
         for (y = py0 - 1; y <= py1; y++) {
-            fast_memcpy(&bg_scr_buff[(y << 5) + 1], &scr_buff[(y << 5) + 1], 30);
+            memcpy(&bg_scr_buff[(y << 5) + 1], &scr_buff[(y << 5) + 1], 30);
         }
         for (cr = cr0; cr <= cr1; cr++) {
-            fast_memcpy(&bg_attr_buff[cr << 5], &attr_buff[cr << 5], 32);
+            memcpy(&bg_attr_buff[cr << 5], &attr_buff[cr << 5], 32);
         }
         /* Flush every pixel row of every recomposited attr cell, plus
          * the shared top-edge pixel row (same rule as the full branch). */
@@ -2849,7 +2846,7 @@ static void restore_prev_dirty_from_static_cache(void) {
             if (prev_dirty_min_byte[s][y] != DIRTY_NONE) {
                 unsigned char lo = prev_dirty_min_byte[s][y];
                 unsigned char hi = prev_dirty_max_byte[s][y];
-                fast_memcpy(&scr_buff[(y << 5) + lo],
+                memcpy(&scr_buff[(y << 5) + lo],
                             &bg_scr_buff[(y << 5) + lo],
                             (unsigned int)(hi - lo + 1));
             }
@@ -2872,7 +2869,7 @@ static void restore_prev_dirty_from_static_cache(void) {
             }
         }
         if (byte_hi >= byte_lo) {
-            fast_memcpy(&attr_buff[(cr << 5) + byte_lo],
+            memcpy(&attr_buff[(cr << 5) + byte_lo],
                         &bg_attr_buff[(cr << 5) + byte_lo],
                         (unsigned int)(byte_hi - byte_lo + 1));
         }
@@ -2891,12 +2888,12 @@ static void restore_static_cache_rect_bytes(int y_start, int height,
     if (y_end > PLAYFIELD_H) y_end = PLAYFIELD_H;
     if (y_start >= y_end) return;
     for (y = y_start; y < y_end; y++) {
-        fast_memcpy(&scr_buff[(y << 5) + byte_lo],
+        memcpy(&scr_buff[(y << 5) + byte_lo],
                     &bg_scr_buff[(y << 5) + byte_lo],
                     (unsigned int)(byte_hi - byte_lo + 1));
     }
     for (cr = y_start >> 3; cr <= (y_end - 1) >> 3; cr++) {
-        fast_memcpy(&attr_buff[(cr << 5) + byte_lo],
+        memcpy(&attr_buff[(cr << 5) + byte_lo],
                     &bg_attr_buff[(cr << 5) + byte_lo],
                     (unsigned int)(byte_hi - byte_lo + 1));
     }
@@ -2912,10 +2909,10 @@ static void update_static_hud_top(unsigned char level_idx) {
     render_hud_to_buff();
     restore_top_frame_center(cycle, level_idx);
     for (y = 0; y < FRAME_TOP_H_PX; y++) {
-        fast_memcpy(&bg_scr_buff[y << 5], &scr_buff[y << 5], 32);
+        memcpy(&bg_scr_buff[y << 5], &scr_buff[y << 5], 32);
     }
     for (cr = 0; cr < FRAME_TOP_H_PX / 8; cr++) {
-        fast_memcpy(&bg_attr_buff[cr << 5], &attr_buff[cr << 5], 32);
+        memcpy(&bg_attr_buff[cr << 5], &attr_buff[cr << 5], 32);
     }
 }
 
@@ -3041,8 +3038,8 @@ static void render_menu_screen(void) {
 static unsigned long bios_ticks(void) {
     union REGS r;
     r.h.ah = 0;
-    int86(0x1A, &r, &r);
-    return ((unsigned long)r.x.cx << 16) | r.x.dx;
+    int386(0x1A, &r, &r);
+    return ((unsigned long)r.w.cx << 16) | r.w.dx;
 }
 
 /* --- 50 Hz timer harness (M4) ------------------------------------------
@@ -3057,11 +3054,11 @@ static unsigned long bios_ticks(void) {
  * When chained, the BIOS handler acks the IRQ (sends EOI to the PIC);
  * when not chained, we send the EOI ourselves. */
 #define PIT_DIV_50HZ 23864
-static void (__interrupt __far *prev_int8)(void) = NULL;
+static void (__interrupt *prev_int8)(void) = NULL;
 static volatile unsigned long pit_frame_counter = 0;
 static volatile unsigned int  bios_acc          = 0;
 
-static void __interrupt __far new_int8(void) {
+static void __interrupt new_int8(void) {
     unsigned int old;
     pit_frame_counter++;
     old = bios_acc;
@@ -3126,7 +3123,7 @@ static unsigned long pit_ticks(void) {
  * keys (gray arrows) send an 0xE0 prefix before the regular code -
  * we ignore the prefix and just track the resulting code so the
  * keypad arrows and the gray arrows both work. */
-static void (__interrupt __far *prev_int9)(void) = NULL;
+static void (__interrupt *prev_int9)(void) = NULL;
 static volatile unsigned char key_state[128];
 
 #define SC_ESC      0x01
@@ -3136,7 +3133,7 @@ static volatile unsigned char key_state[128];
 #define SC_LEFT     0x4B    /* arrow / keypad 4 */
 #define SC_RIGHT    0x4D    /* arrow / keypad 6 */
 
-static void __interrupt __far new_int9(void) {
+static void __interrupt new_int9(void) {
     unsigned char sc = inp(0x60);
     if (sc != 0xE0) {                       /* skip the extended-key prefix */
         if (sc & 0x80) key_state[sc & 0x7F] = 0;
@@ -4465,14 +4462,14 @@ static void apply_replay_bat_object_override(void) {
     unsigned char bytes[sizeof(object_t)];
     if (replay_parse_hex_bytes(getenv("BATTY_REPLAY_BAT_OBJECT"),
                                bytes, (int)sizeof(bytes)) != 0) return;
-    fast_memcpy(&objects[OBJ_BAT_1], bytes, sizeof(bytes));
+    memcpy(&objects[OBJ_BAT_1], bytes, sizeof(bytes));
 }
 
 static void apply_replay_ball_object_override(void) {
     unsigned char bytes[sizeof(object_t)];
     if (replay_parse_hex_bytes(getenv("BATTY_REPLAY_BALL_OBJECT"),
                                bytes, (int)sizeof(bytes)) != 0) return;
-    fast_memcpy(&objects[OBJ_BALL_1], bytes, sizeof(bytes));
+    memcpy(&objects[OBJ_BALL_1], bytes, sizeof(bytes));
 }
 
 static void apply_replay_ball_motion_override(void) {
@@ -4502,7 +4499,7 @@ static void apply_replay_enemy_object_override(void) {
     unsigned char bytes[sizeof(object_t)];
     if (replay_parse_hex_bytes(getenv("BATTY_REPLAY_ENEMY_OBJECT"),
                                bytes, (int)sizeof(bytes)) != 0) return;
-    fast_memcpy(&objects[OBJ_ENEMY], bytes, sizeof(bytes));
+    memcpy(&objects[OBJ_ENEMY], bytes, sizeof(bytes));
 }
 
 /* Bake a falling bonus for the falling-object regression gate.
@@ -7197,7 +7194,7 @@ static state_t run_level(void) {
          * 5984 — sounds in-flight at level entry shouldn't bleed into
          * the new round. */
         snd_q_silence_all();
-        fast_memcpy(live_level, &levels[(int)i * LVL_CELLS], LVL_CELLS);
+        memcpy(live_level, &levels[(int)i * LVL_CELLS], LVL_CELLS);
         apply_replay_random_override();
         apply_replay_bat_object_override();
         apply_replay_ball_object_override();
@@ -7235,7 +7232,7 @@ static state_t run_level(void) {
             union REGS r;
             r.h.ah = 0x05;              /* INT 16h: store keystroke */
             r.w.cx = 0x1C0D;            /* scancode $1C, ascii CR (ENTER) */
-            int86(0x16, &r, &r);
+            int386(0x16, &r, &r);
         }
         if (play_brik_anim()) return ST_QUIT;
         /* Replay parity hook: block here until the harness sends a key,

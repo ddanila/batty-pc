@@ -45,23 +45,21 @@ game's own blink effects work by rewriting attributes instead.
 
 ## It is #included, not linked
 
-`main.c` does `#include "zxvga.c"`. The 8086 small-memory-model build wants
-one 64 KB code segment, and a single translation unit keeps every symbol
-`static` and the layout unchanged. The Makefile lists `src/zxvga.c` in
-`HEADERS` so edits trigger a rebuild.
+`main.c` does `#include "zxvga.c"`, so the two are one translation unit and
+every symbol stays `static`. The Makefile lists `src/zxvga.c` in `HEADERS`
+so edits trigger a rebuild.
 
 Making it a separately-compiled `.obj` would mean promoting ~30 statics to
-externals; there is ~11 KB of headroom in the code segment for it, but it
-buys an enforced boundary at the cost of intra-TU optimisation. Not done —
-the tests below make it a cheap change later if it's ever wanted.
+externals. Not done yet — the tests below make it a cheap change whenever
+an enforced boundary is wanted.
 
 ## Host-native tests: `make test-video`
 
-The inline-asm inner loops sit behind `#ifdef __WATCOMC__`; under any other
-compiler they fall back to equivalent C and `vga` points at a plain array.
-So `tests/test_zxvga.c` compiles the **real engine source** natively — the
-shipping expansion table and blit logic, not a model of them — and runs in
-milliseconds instead of a 10 s QEMU boot. That buys exhaustive coverage:
+A single `#ifdef __WATCOMC__` picks the VGA surface — real hardware, or a
+plain array. So `tests/test_zxvga.c` compiles the **real engine source**
+natively, the shipping expansion table and blit logic rather than a model
+of them, and runs in milliseconds instead of a 10 s QEMU boot. That buys
+exhaustive coverage:
 
 - every one of the 256 attributes -> ink/paper
 - every (attribute, pixel byte) pair vs an **independent ULA reference**
@@ -78,8 +76,6 @@ milliseconds instead of a 10 s QEMU boot. That buys exhaustive coverage:
 - attribute writes take whole cells, and clip correctly
 - a real 6912-byte screen from the original game (`original/Batty.scr`)
   expands to the expected pixels
-- the 8086 word-table and 386 dword-table paths produce byte-identical
-  output (the target builds the test twice and `cmp`s a canonical frame)
 
 Wired into `make parity-check`. It needs no emulator, so unlike the QEMU
 gates it is viable on hosted CI (see testing.md on why the QEMU suite is
@@ -89,16 +85,13 @@ not).
 
 Worth reusing for any future code-motion refactor of this file:
 
-1. **Preprocessed token multiset.** `wcc -p` both revisions, strip blank
+1. **Preprocessed token multiset.** Preprocess both revisions, strip blank
    lines, normalise whitespace, `sort`, `diff`. For pure code motion this
-   is **empty** — it was, for both the 8086 and 386 variants. That proves
-   no statement was added, dropped, or altered; only order changed, which
-   is semantically neutral for file-scope definitions with constant
-   initialisers.
-2. **EXE size.** `batty.exe`, `batty-test.exe` and `batty386.exe` came out
-   byte-size-identical. `batty-test-386.exe` shrank 16 bytes — reordering
-   changes jump displacements, so some near jumps encode short. Encoding
-   only; the token multiset above rules out any code difference.
+   is **empty** — it was, for every build variant. That proves no statement
+   was added, dropped, or altered; only order changed, which is
+   semantically neutral for file-scope definitions with constant
+   initialisers. See `notes/toolchain.md` for the exact commands.
+2. **EXE size**, as a cross-check on the above.
 3. **The gates.** `make test` (5 states, pixel-identical) plus
    `make parity-check-parallel`.
 

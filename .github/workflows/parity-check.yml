@@ -25,6 +25,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build the DOS test EXE (compile check, in-tree linux-amd64 OpenWatcom)
         run: make build/batty-test.exe
+      - name: Video-engine tests (host-native, exhaustive, no emulator)
+        run: make test-video
       - name: Source-level regression gates (no emulator)
         run: |
           make test-l3-replay-seed

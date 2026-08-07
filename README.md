@@ -1,14 +1,14 @@
 # batty-pc
 
-MS-DOS / 8086 re-creation of **Batty** (Elite Software / Hit-Pak, 1987,
+MS-DOS re-creation of **Batty** (Elite Software / Hit-Pak, 1987,
 ZX Spectrum 48K). VGA mode 13h (320×200×256), 1:1 pixel-faithful inside
 the 256×192 playfield, border around it. Built with Open Watcom v2,
 boots in QEMU.
 
-The default `batty.exe` is 8086 (runs on a PC/XT up). An optional
-**386 build** (`make exe386` / `make run386`) uses 32-bit `stosd`/`movsd`
-in the VGA blit and `fast_memcpy` — faster on a 386DX, pixel-identical
-output (`make test-cpu386`). See `notes/performance.md`.
+Targets a **386** in 32-bit protected mode: `batty.exe` is an LE image
+loaded by the DOS32A extender, which ships alongside it on the floppy.
+The flat memory model means no segmentation and no 64 KB limits — see
+`notes/toolchain.md`.
 
 ## Status
 
@@ -150,8 +150,9 @@ targets — install them on demand.
 ### Vendored — ready to use
 
 - `vendor/openwatcom-v2/current-build-<date>/` — trimmed Open Watcom v2
-  daily snapshot (`wcc`, `wlink`, `h/`, `lib286/dos/clibs.lib`), per-host
-  binaries for macOS arm64 / x64 and Linux x64. Refresh with
+  daily snapshot (`wcc386`, `wpp386`, `wlink`, `wdis`, `h/`, the 32-bit
+  DOS libraries and the DOS32A extender), per-host binaries for macOS
+  arm64 / x64 and Linux x64. Refresh with
   `scripts/vendor_openwatcom.sh` (needs `gh`).
 - `vendor/msdos/floppy-minimal.img` — 1.44 MB MS-DOS 4.0 boot floppy.
   Refresh with `scripts/vendor_msdos.sh` (needs `gh`).

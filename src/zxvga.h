@@ -63,11 +63,9 @@
  *
  * PORTABILITY
  * -----------
- * The blit inner loops use Watcom inline asm on DOS. Under any other
- * compiler they fall back to equivalent plain C, and `vga` points at a
- * host buffer instead of 0xA0000 — that is what lets tests/test_zxvga.c
- * exercise this exact source natively. See the __WATCOMC__ guards in
- * zxvga.c; the DOS code path is unchanged by their presence. */
+ * On DOS `vga` points at 0xA0000; under any other compiler it points at a
+ * host buffer, which is what lets tests/test_zxvga.c exercise this exact
+ * source natively. That one guard is the only target-specific thing here. */
 
 #ifndef ZXVGA_H
 #define ZXVGA_H
