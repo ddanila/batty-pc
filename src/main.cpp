@@ -388,7 +388,6 @@ static unsigned char ball_mag_idx[3];
 /* PIT-tick duration of the last completed level-intro shimmer pass,
  * exported via PROBE.TXT (brik_anim_ticks=) so the regression test can
  * assert the original's pacing (8 frames x 2 interrupt edges = ~16). */
-static unsigned long brik_anim_probe_ticks = 0;
 
 
 /* Per-cycle bg attribute. The original game's game_screen_draw_to_buffer
@@ -462,19 +461,12 @@ static unsigned char last_primary_launch_x = 0;
 static unsigned char last_primary_launch_y = 0;
 static unsigned char last_primary_launch_dir = 0;
 static unsigned char last_primary_launch_speed = 0;
-static unsigned int  launch_probe_frames = 0;
-static unsigned int  launch_probe_countdown = 0;
-static unsigned char launch_probe_active = 0;
-static unsigned int  frame_probe_frames = 0;
-static unsigned int  frame_probe_countdown = 0;
-static unsigned char frame_probe_active = 0;
 /* 0 while the level-init PROBE.TXT write (the seeded pre-gameplay state)
  * is emitted; set to 1 once the gameplay main loop is entered. The harness
  * reads `probe_phase` to tell a real checkpoint write apart from the init
  * write it would see if a BATTY_REPLAY_WAIT_KEY wake key was missed (a slow
  * boot host-timing race), so it can re-boot instead of trusting stale seed
  * state. See scripts/test_visual.py read_gameplay_probe(). */
-static unsigned char probe_from_gameplay = 0;
 /* Deterministic mid-game capture checkpoints. BATTY_VISUAL_PROBE_FRAMES
  * is a comma-separated list of ascending absolute frame indices; the
  * port runs to each in turn, halts (so the harness can grab a drift-free
@@ -482,11 +474,6 @@ static unsigned char probe_from_gameplay = 0;
  * reproduces the original single-shot behaviour. This is the port side
  * of the frame-step parity sweep (see notes/replay-harness.md). */
 #define VISUAL_PROBE_MAX 16
-static unsigned int  visual_probe_list[VISUAL_PROBE_MAX];
-static unsigned char visual_probe_count = 0;
-static unsigned char visual_probe_index = 0;
-static unsigned int  visual_probe_countdown = 0;
-static unsigned char visual_probe_active = 0;
 /* Offset from BAT_X where the ball sits while stuck. Defaults to
  * BALL_X_OFFSET_ON_BAT for the standard "ball respawns at bat
  * centre" cases (level entry, life lost). The CATCH bonus rewrites
@@ -512,7 +499,6 @@ static unsigned char bullet_cooldown = 0;
 /* Total laser shots fired this level (diagnostic, exposed via the probe so
  * the fire-cadence gate can assert the 12-frame period). Reset at level
  * entry. */
-static unsigned int  dbg_shots_fired = 0;
 /* Test hook: when set (BATTY_AUTO_FIRE), the laser fires every frame the
  * cooldown permits, simulating held SPACE so the cadence is gate-checkable
  * without driving keyboard input through the capture harness. */
@@ -654,6 +640,37 @@ static unsigned long high_score = 0;
 
 /* The milestone thresholds live in scoring.h. */
 static unsigned char live_adds_awarded = 0;
+
+/* The replay harness's own state. None of this affects the game: every
+ * field is driven by a BATTY_* environment variable and read back through
+ * PROBE.TXT, so a gate can seed a scenario and check what happened.
+ *
+ * Grouped so the scaffolding is visibly separate from the game's state —
+ * and so it can move out of main.cpp once it has somewhere to go. */
+struct ProbeState {
+    unsigned long brik_anim_ticks;    /* intro shimmer duration, in PIT edges */
+
+    /* Halt after N primary-ball launches / N frames. */
+    unsigned int  launch_frames, launch_countdown;
+    unsigned char launch_active;
+    unsigned int  frame_frames, frame_countdown;
+    unsigned char frame_active;
+
+    /* Whether the next PROBE write is a gameplay checkpoint or the
+     * pre-gameplay seed. */
+    unsigned char from_gameplay;
+
+    /* Frames at which to dump the screen for a visual comparison. */
+    unsigned int  visual_list[VISUAL_PROBE_MAX];
+    unsigned char visual_count, visual_index;
+    unsigned int  visual_countdown;
+    unsigned char visual_active;
+
+    unsigned int  shots_fired;        /* laser cadence gate */
+    unsigned char serial_enabled;     /* frame-completion signal over COM1 */
+};
+
+static ProbeState probe;
 
 /* Mirror of flag_extra_life — set when the player catches a LIFE bonus
  * in the current round, prevents another LIFE drop until the round
@@ -1288,9 +1305,9 @@ static void record_primary_launch(void) {
     last_primary_launch_y = BALL_Y;
     last_primary_launch_dir = objects[OBJ_BALL_1].dir;
     last_primary_launch_speed = objects[OBJ_BALL_1].speed;
-    if (launch_probe_frames != 0) {
-        launch_probe_countdown = launch_probe_frames;
-        launch_probe_active = 1;
+    if (probe.launch_frames != 0) {
+        probe.launch_countdown = probe.launch_frames;
+        probe.launch_active = 1;
     }
 }
 
@@ -3711,12 +3728,11 @@ static void write_replay_briks_data(FILE *f) {
  * 0x3F8; bounded spin on the LSR THR-empty bit (0x20 @ 0x3FD) so it never
  * hangs and is a harmless no-op when no serial backend is attached. Opt-in
  * via BATTY_SERIAL_PROBE so existing wall-clock callers are unaffected. */
-static unsigned char serial_probe_enabled = 0;
 
 static void serial_probe_signal(void) {
     static const char msg[] = "PROBE\r\n";
     int k;
-    if (!serial_probe_enabled) return;
+    if (!probe.serial_enabled) return;
     for (k = 0; msg[k] != '\0'; k++) {
         unsigned int spin = 0;
         while (!(inp(0x3FD) & 0x20) && ++spin < 60000u) { }
@@ -3730,7 +3746,7 @@ static void write_replay_probe(void) {
     if (getenv("BATTY_REPLAY_PROBE") == NULL) return;
     f = fopen("PROBE.TXT", "wt");
     if (!f) return;
-    fprintf(f, "probe_phase=%s\n", probe_from_gameplay ? "play" : "init");
+    fprintf(f, "probe_phase=%s\n", probe.from_gameplay ? "play" : "init");
     fprintf(f, "round_number=%02X\n", (unsigned)round_number);
     fprintf(f, "current_level=%02X\n", (unsigned)current_level_idx_var);
     fprintf(f, "bricks_quantity=%02X\n", (unsigned)live_bricks_remaining());
@@ -3740,7 +3756,7 @@ static void write_replay_probe(void) {
     fprintf(f, "enemy_repicks=arrival%u_margin%u_turns%u\n",
             enemy_arrival_repicks, enemy_margin_repicks,
             enemy_turn_calls);
-    fprintf(f, "brik_anim_ticks=%lu\n", brik_anim_probe_ticks);
+    fprintf(f, "brik_anim_ticks=%lu\n", probe.brik_anim_ticks);
     fprintf(f, "magnet_state=count%02X_on%02X%02X%02X%02X_ball0_c%02X_d%02X_e%02X_i%02X\n",
             (unsigned)magnet_count,
             (unsigned)magnet_on_state[0], (unsigned)magnet_on_state[1],
@@ -3786,7 +3802,7 @@ static void write_replay_probe(void) {
             (unsigned)bullet_active[0], (unsigned)(bullet_x[0] & 0xFF),
             (unsigned)(bullet_y[0] & 0xFF));
     fprintf(f, "\nlaser_fire_state=shots%04X_cd%02X",
-            (unsigned)dbg_shots_fired, (unsigned)bullet_cooldown);
+            (unsigned)probe.shots_fired, (unsigned)bullet_cooldown);
     fprintf(f, "\nspeed_ramp_state=ramp%04X_spd%02X",
             (unsigned)ball_speed_ramp, (unsigned)objects[OBJ_BALL_1].speed);
     fprintf(f, "\nblast_state=ticks%02X_frame%02X",
@@ -3806,13 +3822,13 @@ static void write_replay_probe(void) {
             (unsigned)last_primary_launch_dir,
             (unsigned)last_primary_launch_speed);
     fprintf(f, "\nlaunch_probe_state=%04X%04X%02X",
-            (unsigned)launch_probe_frames,
-            (unsigned)launch_probe_countdown,
-            (unsigned)launch_probe_active);
+            (unsigned)probe.launch_frames,
+            (unsigned)probe.launch_countdown,
+            (unsigned)probe.launch_active);
     fprintf(f, "\nframe_probe_state=%04X%04X%02X",
-            (unsigned)frame_probe_frames,
-            (unsigned)frame_probe_countdown,
-            (unsigned)frame_probe_active);
+            (unsigned)probe.frame_frames,
+            (unsigned)probe.frame_countdown,
+            (unsigned)probe.frame_active);
     fprintf(f, "\nbonus_state=%02X%02X%02X%02X%02X%04X",
             (unsigned)bonus_active,
             (unsigned)bonus_type,
@@ -4105,7 +4121,7 @@ static void try_fire_laser(void) {
     bullet_y[free_slot] = BAT_Y - 1;
     bat_fire_anim_ticks = 8;
     bullet_cooldown = 0x18;          /* 12 frames @ -2 / frame */
-    dbg_shots_fired++;
+    probe.shots_fired++;
     sound_queue(SND_SHOT);
 }
 
@@ -5480,7 +5496,7 @@ static int play_brik_anim(void) {
                              * rewrites itself to RET after the first call, so
                              * the ping fires once even though spr_brik_5 appears
                              * twice in anim_brik. */
-    brik_anim_probe_ticks = pit_ticks();
+    probe.brik_anim_ticks = pit_ticks();
     for (step = 0; step < 8; step++) {
         unsigned long t;
         unsigned char frame = brik_anim_order[step];
@@ -5505,7 +5521,7 @@ static int play_brik_anim(void) {
             ping_played = 1;
         }
     }
-    brik_anim_probe_ticks = pit_ticks() - brik_anim_probe_ticks;
+    probe.brik_anim_ticks = pit_ticks() - probe.brik_anim_ticks;
     sound_silence();
     return 0;
 }
@@ -5879,7 +5895,7 @@ static void reset_level_state(unsigned char lvl_idx) {
     bullet_blast_ticks[0] = 0;
     bullet_blast_ticks[1] = 0;
     bullet_cooldown       = 0;
-    dbg_shots_fired       = 0;
+    probe.shots_fired       = 0;
     rocket_active      = 0;
     rocket_clear_completed = 0;
     set_rocket_bonus_sprite_height(ROCKET_BONUS_H_PX);
@@ -6100,35 +6116,35 @@ static state_t run_level(void) {
     high_score_beaten_this_game = 0;
     {
         const char *p = getenv("BATTY_LAUNCH_FRAMES");
-        launch_probe_frames = (p && *p) ? (unsigned int)atoi(p) : 0;
-        launch_probe_countdown = 0;
-        launch_probe_active = 0;
+        probe.launch_frames = (p && *p) ? (unsigned int)atoi(p) : 0;
+        probe.launch_countdown = 0;
+        probe.launch_active = 0;
         p = getenv("BATTY_FRAME_PROBE");
-        frame_probe_frames = (p && *p) ? (unsigned int)atoi(p) : 0;
-        frame_probe_countdown = frame_probe_frames;
-        frame_probe_active = (frame_probe_frames != 0) ? 1 : 0;
+        probe.frame_frames = (p && *p) ? (unsigned int)atoi(p) : 0;
+        probe.frame_countdown = probe.frame_frames;
+        probe.frame_active = (probe.frame_frames != 0) ? 1 : 0;
         p = getenv("BATTY_VISUAL_PROBE_FRAMES");
-        visual_probe_count = 0;
-        visual_probe_index = 0;
+        probe.visual_count = 0;
+        probe.visual_index = 0;
         if (p && *p) {
             /* Comma-separated ascending absolute frame indices. Values
              * not strictly greater than the previous one are dropped so
              * the per-checkpoint countdown deltas stay positive. */
             unsigned int prev = 0;
-            while (*p && visual_probe_count < VISUAL_PROBE_MAX) {
+            while (*p && probe.visual_count < VISUAL_PROBE_MAX) {
                 unsigned int v;
                 while (*p == ',' || *p == ' ') p++;
                 if (*p == '\0') break;
                 v = (unsigned int)atoi(p);
                 if (v > prev) {
-                    visual_probe_list[visual_probe_count++] = v;
+                    probe.visual_list[probe.visual_count++] = v;
                     prev = v;
                 }
                 while (*p && *p != ',') p++;
             }
         }
-        visual_probe_active = (visual_probe_count != 0) ? 1 : 0;
-        visual_probe_countdown = visual_probe_active ? visual_probe_list[0] : 0;
+        probe.visual_active = (probe.visual_count != 0) ? 1 : 0;
+        probe.visual_countdown = probe.visual_active ? probe.visual_list[0] : 0;
     }
 
     /* The original loops levels forever (increment_round_number at
@@ -6167,7 +6183,7 @@ static state_t run_level(void) {
          * render_level_screen, which paints from this state. */
         magnet_level_init(lvl_idx);
 
-        probe_from_gameplay = 0;         /* this PROBE write is the pre-gameplay seed */
+        probe.from_gameplay = 0;         /* this PROBE write is the pre-gameplay seed */
         write_replay_probe();
         render_level_screen(lvl_idx);
         if (!show_level_intro((unsigned int)round_number)) return ST_QUIT;
@@ -6175,7 +6191,7 @@ static state_t run_level(void) {
 
         cycle     = (unsigned char)(i & 3);
         bg_attr   = bg_attr_per_cycle[i & 3];
-        probe_from_gameplay = 1;         /* PROBE writes below are checkpoints */
+        probe.from_gameplay = 1;         /* PROBE writes below are checkpoints */
         start     = bios_ticks();
         last_tick = pit_ticks();
         for (;;) {
@@ -6250,17 +6266,17 @@ static state_t run_level(void) {
                     ball_speed_ramp_tick();
                     step_ball();
                     ball_moved = 1;
-                    if (launch_probe_active) {
-                        if (launch_probe_countdown > 0) launch_probe_countdown--;
-                        if (launch_probe_countdown == 0) {
+                    if (probe.launch_active) {
+                        if (probe.launch_countdown > 0) probe.launch_countdown--;
+                        if (probe.launch_countdown == 0) {
                             write_replay_probe();
                             serial_probe_signal();
                             return ST_QUIT;
                         }
                     }
-                    if (frame_probe_active) {
-                        if (frame_probe_countdown > 0) frame_probe_countdown--;
-                        if (frame_probe_countdown == 0) {
+                    if (probe.frame_active) {
+                        if (probe.frame_countdown > 0) probe.frame_countdown--;
+                        if (probe.frame_countdown == 0) {
                             write_replay_probe();
                             serial_probe_signal();
                             return ST_QUIT;
@@ -6387,9 +6403,9 @@ static state_t run_level(void) {
                 }
             }
 
-            if (visual_probe_active && frame_ticked) {
-                if (visual_probe_countdown > 0) visual_probe_countdown--;
-                if (visual_probe_countdown == 0) {
+            if (probe.visual_active && frame_ticked) {
+                if (probe.visual_countdown > 0) probe.visual_countdown--;
+                if (probe.visual_countdown == 0) {
                     /* Reached a checkpoint: write the probe, then halt so
                      * the harness can grab a deterministic capture. The
                      * wake key resumes play toward the next checkpoint;
@@ -6402,13 +6418,13 @@ static state_t run_level(void) {
                         sound_tick();
                     }
                     (void)getch();
-                    visual_probe_index++;
-                    if (visual_probe_index >= visual_probe_count) {
+                    probe.visual_index++;
+                    if (probe.visual_index >= probe.visual_count) {
                         return ST_QUIT;
                     }
-                    visual_probe_countdown =
-                        visual_probe_list[visual_probe_index]
-                        - visual_probe_list[visual_probe_index - 1];
+                    probe.visual_countdown =
+                        probe.visual_list[probe.visual_index]
+                        - probe.visual_list[probe.visual_index - 1];
                 }
             }
 
@@ -6510,7 +6526,7 @@ int main(void) {
     }
     if (getenv("BATTY_FORCE_FULL_FLUSH_EACH_FRAME") != NULL) force_full_flush_each_frame = 1;
     if (getenv("BATTY_SUPPRESS_NO_BALL_DEATH") != NULL) suppress_no_ball_death = 1;
-    if (getenv("BATTY_SERIAL_PROBE") != NULL) serial_probe_enabled = 1;
+    if (getenv("BATTY_SERIAL_PROBE") != NULL) probe.serial_enabled = 1;
     if (getenv("BATTY_AUTO_FIRE") != NULL) auto_fire = 1;
     if (getenv("BATTY_FULL_BAND_REBUILD") != NULL) force_full_band_rebuild = 1;
     {

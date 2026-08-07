@@ -11,7 +11,7 @@ edge-triggered by a SPACE keypress the capture harness can't hold down.
 
 This gate adds a BATTY_AUTO_FIRE test hook that calls the (now extracted)
 try_fire_laser() every frame — simulating held SPACE deterministically —
-and a dbg_shots_fired counter exposed via `laser_fire_state`. With the bat
+and a shots-fired counter exposed via `laser_fire_state`. With the bat
 baked into LASER mode (bonus_applied=0x01) and the ball hidden, it probes
 the shot count at f1/f12/f13 and asserts the 12-frame period:
   f1 -> 1 shot, f12 -> still 1, f13 -> 2.
