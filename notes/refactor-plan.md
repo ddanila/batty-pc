@@ -50,12 +50,12 @@ happened, and `make test-video` caught it.
 | 5 | `bricks` — the compositor | 278 | **done** — 5 tests, byte-exact vs 15 captured screens |
 | 5b | level paint / band orchestration | ~350 | remains in main.cpp |
 | 6 | entities — objects, enemies, bonuses, weapons | ~950 | |
-| 7 | hud + text | 601 | |
+| 7 | `hud` — glyphs, markup, score | 175 | **done** — 6 tests |
 | 8 | `sound` — queue + envelopes | 366 | **done** — 7 tests; had NO coverage before |
 | 9 | `run_level` decomposition | 684 | |
 | 1 | replay / probe scaffolding | 480 | **last** — see below |
 
-`main.cpp`: 7,746 → 6,988 so far. 66 host tests, all under a second.
+`main.cpp`: 7,746 → 6,911 so far. 72 host tests, all under a second.
 
 ### Stage 5, done
 

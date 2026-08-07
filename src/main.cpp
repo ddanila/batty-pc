@@ -25,6 +25,7 @@
  * and the dirty marks declared there. */
 #include "assets.h"
 #include "bricks.h"
+#include "hud.h"
 #include "sound.h"
 #include "physics.h"
 #include "rng.h"
@@ -66,91 +67,20 @@ static void show(const char *path) {
     }
 }
 
-/* 36 × 6 = 216 B. Small enough to live in near data, big enough to
- * justify loading from disk once rather than embedding as a const. */
-#define FONT_N      43
-#define FONT_ROWS   6
-static unsigned char font[FONT_N * FONT_ROWS];
 
 
 /* Draw glyph `code` (0..35) at VGA pixel (x, y) using palette index
  * `color`. Bits are OR'd onto whatever's there; pixels with bit 0
  * are left as-is. Glyph is 6 rows × 8 cols. */
-static void draw_glyph(int x, int y, unsigned char color, unsigned char code) {
-    int r, i;
-    unsigned char b;
-    unsigned char *dst;
-    if (code >= FONT_N) return;
-    dst = vga + (long)y * SCREEN_W + x;
-    for (r = 0; r < FONT_ROWS; r++) {
-        b = font[code * FONT_ROWS + r];
-        for (i = 0; i < 8; i++) {
-            if (b & (0x80 >> i)) dst[i] = color;
-        }
-        dst += SCREEN_W;
-    }
-}
-
-/* The markup buffer (extracted from snap1 RAM at 0x8FD1).
- * Format (see notes/encoding.md):
- *   header row: <0x38|0x30> Y attr count digits... 0x24
- *   data row:   <0x58>      Y attr count <count payload bytes>
- *   payload:    0x00..0x09 digit, 0x0A..0x23 letter,
- *               0x26 space, 0x40..0x47 inline colour change.
- * Records terminate when the next row-marker (0x58|0x38|0x30) is seen
- * or at 0x24 (end-of-field). */
-#define MARKUP_MAX 512
-static unsigned char markup[MARKUP_MAX];
-static unsigned markup_len;
 
 
-/* All row markers observed are multiples of 8 in [0x30, 0x70):
- *   0x30 0x38 0x40 0x50 0x58 0x60 0x68 …
- * And `marker / 8` is the X column in cells (0x30→6, 0x68→13).
- * One record-walker handles them all. */
-static int is_row_marker(unsigned char b) {
-    /* Any non-zero multiple of 8 — col = b / 8. Observed markers
-     * span col 2 (0x10, "000000" P1 score) through col 25 (0xC8,
-     * "2 UP" label). Zero is filtered out so it's never a marker. */
-    return b != 0 && (b & 7) == 0;
-}
+
 
 /* Record: marker | Y | attr | count | count payload bytes.
  * Payload bytes: 0x00-0x09 = digit, 0x0A-0x23 = letter, 0x24-0x2A =
  * specials (period/comma/space/dash/_/II/=), 0x40-0x4F = in-band
  * colour escape. */
-static int render_record(int p) {
-    unsigned char marker = markup[p++];
-    unsigned char y_pix  = markup[p++];
-    unsigned char attr   = markup[p++];
-    unsigned char count  = markup[p++];
-    unsigned char colour = attr_to_palette(attr);
-    int x = BORDER_X + (int)(marker / 8) * 8;
-    int y = BORDER_Y + y_pix - 5;
-    int i;
-    for (i = 0; i < count; i++) {
-        unsigned char c = markup[p++];
-        if (c == 0x26) {
-            /* explicit no-draw — the font's space glyph might have
-             * stray bits we don't want painted. */
-        } else if (c <= 0x2A) {
-            draw_glyph(x, y, colour, c);
-        } else if (c >= 0x40 && c <= 0x4F) {
-            colour = attr_to_palette(c);
-            x -= 8;             /* attribute is in-band: don't advance X */
-        }
-        x += 8;
-    }
-    return p;
-}
 
-static void render_markup(void) {
-    int p = 0;
-    while (p < markup_len) {
-        if (is_row_marker(markup[p])) p = render_record(p);
-        else                          p++;
-    }
-}
 
 /* 2-pixel-thick frame around the 256×192 playfield — matches the
  * original's drawn-in-pixels frame (not just the attribute gutter).
@@ -5516,19 +5446,12 @@ static void draw_text(int x, int y, unsigned char colour,
 }
 
 /* Encode an unsigned long as 6 digit-codes (most significant first). */
-static void score_to_codes(unsigned long s, unsigned char out[6]) {
-    int i;
-    for (i = 5; i >= 0; i--) {
-        out[i] = (unsigned char)(s % 10);
-        s /= 10;
-    }
-}
 
 #ifndef BATTY_SCORELESS_HUD
 static void draw_score_digits_original(int x, int y, unsigned long value) {
     unsigned char digits[6];
     int i;
-    score_to_codes(value, digits);
+    score_to_digits(value, digits);
     for (i = 0; i < 6; i++) {
         const unsigned char *digit = hud_sprites + HUD_SCORE_DIGITS + 2 + digits[i] * 16;
         int row;
@@ -5570,10 +5493,10 @@ static void render_game_over(void) {
     unsigned char digits[6];
     fill(0, 0, SCREEN_W, SCREEN_H, 0);
     draw_text(BORDER_X + 4 * 8 + 4, BORDER_Y + 70, 15, go, (int)sizeof(go));
-    score_to_codes(score, digits);
+    score_to_digits(score, digits);
     draw_text(BORDER_X + 3 * 8,        BORDER_Y +  95, 15, sc_lbl, (int)sizeof(sc_lbl));
     draw_text(BORDER_X + 3 * 8 + 6*8,  BORDER_Y +  95, 15, digits, 6);
-    score_to_codes(high_score, digits);
+    score_to_digits(high_score, digits);
     draw_text(BORDER_X + 3 * 8,        BORDER_Y + 110, 15, hi_lbl, (int)sizeof(hi_lbl));
     draw_text(BORDER_X + 3 * 8 + 6*8,  BORDER_Y + 110, 15, digits, 6);
     /* Saved initials, painted to the right of the HI score line.
