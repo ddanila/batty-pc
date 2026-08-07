@@ -32,11 +32,11 @@
 /* The DOS extender identity-maps the first megabyte, so VGA is an
  * ordinary pointer. */
 #ifdef __WATCOMC__
-static unsigned char *vga = (unsigned char *)0x000A0000;
+unsigned char *vga = (unsigned char *)0x000A0000;
 #else
 /* Host builds render into a plain array so the tests can inspect it. */
 static unsigned char zxvga_host_fb[SCREEN_W * SCREEN_H];
-static unsigned char *vga = zxvga_host_fb;
+unsigned char *vga = zxvga_host_fb;
 #endif
 
 /* ZX Spectrum "acid" palette in 6-bit VGA DAC units. Non-bright slot
@@ -87,7 +87,7 @@ static void set_palette(const u8 *rgb, int count) {
 }
 #endif
 
-static void fill(int x, int y, int w, int h, u8 c) {
+void fill(int x, int y, int w, int h, u8 c) {
     for (int row = 0; row < h; row++) {
         memset(vga + (long)(y + row) * SCREEN_W + x, c, (size_t)w);
     }
@@ -95,7 +95,7 @@ static void fill(int x, int y, int w, int h, u8 c) {
 
 /* The playfield is 256x192 centred in the 320x200 mode — paint the
  * surrounding letterbox. */
-static void clear_playfield_border() {
+void clear_playfield_border() {
     fill(0, 0, SCREEN_W, BORDER_Y, COL_BORDER);
     fill(0, BORDER_Y + PLAYFIELD_H, SCREEN_W,
          SCREEN_H - BORDER_Y - PLAYFIELD_H, COL_BORDER);
@@ -106,21 +106,13 @@ static void clear_playfield_border() {
 
 static void init_pal_tables();
 
-/* Owns the video mode for its lifetime: mode 13h and the ZX palette on
- * construction, text mode on destruction. Declaring one in main() means
- * no return path can leave the display in a graphics mode. */
-class ZxDisplay {
-public:
-    ZxDisplay() {
-        set_mode(0x13);
-        set_palette(zx_palette, 16);
-        init_pal_tables();
-    }
-    ~ZxDisplay() { set_mode(0x03); }
-private:
-    ZxDisplay(const ZxDisplay &);              /* not copyable */
-    ZxDisplay &operator=(const ZxDisplay &);
-};
+ZxDisplay::ZxDisplay() {
+    set_mode(0x13);
+    set_palette(zx_palette, 16);
+    init_pal_tables();
+}
+
+ZxDisplay::~ZxDisplay() { set_mode(0x03); }
 
 /* ===================================================================== */
 /* §2  Attribute model                                                   */
@@ -128,7 +120,7 @@ private:
 
 /* Ink colour of an attribute whose paper is known to be 0 — the glyph and
  * markup renderers draw on a black cell, so only the ink matters. */
-static u8 attr_to_palette(u8 attr) { return attr_ink(attr); }
+u8 attr_to_palette(u8 attr) { return attr_ink(attr); }
 
 static u8 ink_table[256];
 static u8 paper_table[256];
@@ -169,8 +161,8 @@ static void init_pal_tables() {
 /* The two planes, mirroring the original's offscreen buffers at
  * $DA00 / $D700. Address them through the accessors below rather than
  * open-coding the arithmetic. */
-static u8 scr_buff[SCR_BUFF_SIZE];
-static u8 attr_buff[ATTR_BUFF_SIZE];
+u8 scr_buff[SCR_BUFF_SIZE];
+u8 attr_buff[ATTR_BUFF_SIZE];
 
 ZX_STATIC_ASSERT(BYTES_PER_ROW == ATTR_COLS,
                  "a byte of pixels and a character cell are both 8 px wide");
@@ -193,8 +185,8 @@ inline u8 *vga_at(int x, int y) {
 
 /* Where the module's share of the render profile is tallied
  * (write_profile_report in main.c prints these). */
-static unsigned long prof_vga_rects = 0;
-static unsigned long prof_vga_bytes = 0;
+unsigned long prof_vga_rects = 0;
+unsigned long prof_vga_bytes = 0;
 
 /* One (pixel byte, cell attribute) pair -> 8 VGA pixels, advancing `dest`.
  * This is where colour clash physically happens: the eight pixels can only
@@ -208,7 +200,7 @@ inline void emit_byte(u8 *&dest, u8 pixels, u8 attr) {
 
 /* Expand the whole 256x192 playfield. 49152 VGA writes — reserved for
  * screen changes; per-frame updates go through the dirty flush below. */
-static void buff_to_vga() {
+void buff_to_vga() {
     for (int y = 0; y < PLAYFIELD_H; y++) {
         u8 *dest = vga_at(0, y);
         const u8 *pixels = scr_row(y);
@@ -223,7 +215,7 @@ static void buff_to_vga() {
  * [y0, y0+h) and byte columns [byte_lo, byte_hi]. Byte columns are also
  * character-cell columns, so a rect can never split a cell horizontally
  * and the attribute lookup stays valid. */
-static void buff_to_vga_rect_bytes(int y0, int h, int byte_lo, int byte_hi) {
+void buff_to_vga_rect_bytes(int y0, int h, int byte_lo, int byte_hi) {
     int y_end = y0 + h;
     if (byte_lo < 0) byte_lo = 0;
     if (byte_hi > BYTES_PER_ROW - 1) byte_hi = BYTES_PER_ROW - 1;
@@ -250,22 +242,22 @@ static void buff_to_vga_rect_bytes(int y0, int h, int byte_lo, int byte_hi) {
 /* §5  Dirty rectangles                                                  */
 /* ===================================================================== */
 
-static unsigned char dirty_min_byte[DIRTY_SLOTS][PLAYFIELD_H];
-static unsigned char dirty_max_byte[DIRTY_SLOTS][PLAYFIELD_H];
+unsigned char dirty_min_byte[DIRTY_SLOTS][PLAYFIELD_H];
+unsigned char dirty_max_byte[DIRTY_SLOTS][PLAYFIELD_H];
 /* Pixel-row span of prev_dirty (set by carry_dirty_with_previous), so the
  * per-frame restore scans only the rows touched last frame instead of all
  * PLAYFIELD_H. Init full so the first restore (before any carry) is safe. */
-static int prev_dirty_y_lo = 0;
-static int prev_dirty_y_hi = PLAYFIELD_H - 1;
+int prev_dirty_y_lo = 0;
+int prev_dirty_y_hi = PLAYFIELD_H - 1;
 /* Pixel-row span of THIS frame's current dirty marks (reset each frame in
  * clear_dirty_ranges, grown by mark_dirty_bytes / mark_all_dirty), so
  * carry_dirty_with_previous can scan only [current ∪ prev] rows. */
-static int cur_dirty_y_lo = PLAYFIELD_H;
-static int cur_dirty_y_hi = -1;
-static unsigned char prev_dirty_min_byte[DIRTY_SLOTS][PLAYFIELD_H];
-static unsigned char prev_dirty_max_byte[DIRTY_SLOTS][PLAYFIELD_H];
+int cur_dirty_y_lo = PLAYFIELD_H;
+int cur_dirty_y_hi = -1;
+unsigned char prev_dirty_min_byte[DIRTY_SLOTS][PLAYFIELD_H];
+unsigned char prev_dirty_max_byte[DIRTY_SLOTS][PLAYFIELD_H];
 
-static void clear_dirty_ranges(unsigned char mins[DIRTY_SLOTS][PLAYFIELD_H],
+void clear_dirty_ranges(unsigned char mins[DIRTY_SLOTS][PLAYFIELD_H],
                                unsigned char maxs[DIRTY_SLOTS][PLAYFIELD_H]) {
     int s;
     for (s = 0; s < DIRTY_SLOTS; s++) {
@@ -280,7 +272,7 @@ static void clear_dirty_ranges(unsigned char mins[DIRTY_SLOTS][PLAYFIELD_H],
 
 /* Add [byte_lo, byte_hi] to row `y`: reuse a free slot, extend a slot it
  * touches or abuts, else merge into whichever slot grows least. */
-static void mark_dirty_byte_row(unsigned char mins[DIRTY_SLOTS][PLAYFIELD_H],
+void mark_dirty_byte_row(unsigned char mins[DIRTY_SLOTS][PLAYFIELD_H],
                                 unsigned char maxs[DIRTY_SLOTS][PLAYFIELD_H],
                                 int y, int byte_lo, int byte_hi) {
     int s;
@@ -311,7 +303,7 @@ static void mark_dirty_byte_row(unsigned char mins[DIRTY_SLOTS][PLAYFIELD_H],
     if (byte_hi > maxs[best_slot][y]) maxs[best_slot][y] = (unsigned char)byte_hi;
 }
 
-static void mark_dirty_bytes(int y_start, int height, int byte_lo, int byte_hi) {
+void mark_dirty_bytes(int y_start, int height, int byte_lo, int byte_hi) {
     int y;
     int end = y_start + height;
     if (byte_lo < 0) byte_lo = 0;
@@ -327,7 +319,7 @@ static void mark_dirty_bytes(int y_start, int height, int byte_lo, int byte_hi) 
     }
 }
 
-static void mark_dirty_rect_px(int x_start, int y_start, int width, int height) {
+void mark_dirty_rect_px(int x_start, int y_start, int width, int height) {
     int x_end = x_start + width;
     int byte_lo;
     int byte_hi;
@@ -347,7 +339,7 @@ static void mark_dirty_rect_px(int x_start, int y_start, int width, int height) 
  * outside the sprite keep the clash colour on VGA after the attr is
  * restored — the enemy fly-over residue of known-bugs.md #2.
  * X needs no rounding (dirty ranges are byte == cell granular). */
-static void mark_dirty_cell_rect_px(int x, int y, int w, int h) {
+void mark_dirty_cell_rect_px(int x, int y, int w, int h) {
     int y0, y1;
     if (h <= 0) return;
     y0 = y & ~7;
@@ -355,7 +347,7 @@ static void mark_dirty_cell_rect_px(int x, int y, int w, int h) {
     mark_dirty_rect_px(x, y0, w, y1 - y0 + 1);
 }
 
-static void mark_all_dirty(void) {
+void mark_all_dirty(void) {
     int y;
     for (y = 0; y < PLAYFIELD_H; y++) {
         dirty_min_byte[0][y] = 0;
@@ -398,7 +390,7 @@ static void flush_dirty_slot_to_vga(int slot) {
     }
 }
 
-static void flush_dirty_to_vga(void) {
+void flush_dirty_to_vga(void) {
     flush_dirty_slot_to_vga(0);
     flush_dirty_slot_to_vga(1);
 }
@@ -432,7 +424,7 @@ inline void apply_mask(u8 &dest, u8 mask, u8 pixels) {
  *
  * x need not be byte-aligned: each source byte then straddles two
  * destination bytes and is shifted into both. */
-static void blit_masked_to_scr_buff(const Sprite &sprite, int x_px, int y_px) {
+void blit_masked_to_scr_buff(const Sprite &sprite, int x_px, int y_px) {
     const int w = sprite.width_bytes();
     const int h = sprite.height();
     const int shift     = x_px & 7;
@@ -474,7 +466,7 @@ static void blit_masked_to_scr_buff(const Sprite &sprite, int x_px, int y_px) {
  *
  * Pixel-at-a-time rather than byte-at-a-time because the destination is
  * 8 bits per pixel, so there is nothing to pack. */
-static void blit_masked_sprite(const Sprite &sprite, int x_px, int y_px,
+void blit_masked_sprite(const Sprite &sprite, int x_px, int y_px,
                                u8 ink, u8 paper) {
     const int w = sprite.width_bytes();
     const int h = sprite.height();
@@ -503,7 +495,7 @@ static void blit_masked_sprite(const Sprite &sprite, int x_px, int y_px,
  * the finest granularity colour has, so a sprite that sets attrs
  * repaints its neighbours' pixels too. Callers that use this must mark
  * dirty with mark_dirty_cell_rect_px, not mark_dirty_rect_px. */
-static void blit_sprite_attrs_to_buff_clipped(int x_px, int y_px, int w_px, int h_px,
+void blit_sprite_attrs_to_buff_clipped(int x_px, int y_px, int w_px, int h_px,
                                               u8 attr,
                                               int clip_left_px, int clip_right_px) {
     int x0 = x_px;

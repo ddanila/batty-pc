@@ -67,24 +67,7 @@
 #ifndef ZXVGA_H
 #define ZXVGA_H
 
-/* Fixed-width aliases. Watcom's 32-bit `long` is 4 bytes but a 64-bit
- * host's is 8, which silently doubles the width of a store through a
- * cast — use these in anything the host test build also compiles. */
-typedef unsigned char  u8;
-typedef unsigned short u16;
-typedef unsigned int   u32;      /* 4 bytes on both */
-
-/* Open Watcom's C++ is C++98 plus static_assert; the host build is strict
- * C++98, which has neither. One macro so the assertions read the same in
- * both, and cost nothing in either. */
-#if defined(__WATCOMC__)
-#  define ZX_STATIC_ASSERT(cond, msg) static_assert(cond, msg)
-#else
-#  define ZX_SA_CAT_(a, b) a##b
-#  define ZX_SA_CAT(a, b)  ZX_SA_CAT_(a, b)
-#  define ZX_STATIC_ASSERT(cond, msg) \
-       typedef char ZX_SA_CAT(zx_static_assert_, __LINE__)[(cond) ? 1 : -1]
-#endif
+#include "types.h"
 
 /* --- VGA mode 13h geometry ------------------------------------------- */
 const int SCREEN_W    = 320;
@@ -130,11 +113,89 @@ private:
     const u8 *d;
 };
 
+/* --- The video mode --------------------------------------------------- */
+
+/* Owns the video mode for its lifetime: mode 13h and the ZX palette on
+ * construction, text mode on destruction. Declaring one in main() means no
+ * return path can leave the display in a graphics mode. */
+class ZxDisplay {
+public:
+    ZxDisplay();
+    ~ZxDisplay();
+private:
+    ZxDisplay(const ZxDisplay &);
+    ZxDisplay &operator=(const ZxDisplay &);
+};
+
+/* The mode 13h framebuffer. Game code writes through this directly only
+ * for the few things that bypass the attribute plane (glyphs, whole-screen
+ * asset blits); everything else goes through the two planes below. */
+extern u8 *vga;
+
+void fill(int x, int y, int w, int h, u8 c);
+void clear_playfield_border();
+
+/* Ink colour of an attribute whose paper is 0 — what the glyph and markup
+ * renderers draw with. */
+u8 attr_to_palette(u8 attr);
+
+/* --- The two planes --------------------------------------------------- */
+
+extern u8 scr_buff[SCR_BUFF_SIZE];
+extern u8 attr_buff[ATTR_BUFF_SIZE];
+
+/* Expand both planes to VGA. buff_to_vga is the whole playfield; the rect
+ * form takes rows [y0, y0+h) and byte columns [byte_lo, byte_hi], which are
+ * also cell columns, so a rect never splits a cell horizontally. */
+void buff_to_vga();
+void buff_to_vga_rect_bytes(int y0, int h, int byte_lo, int byte_hi);
+
+/* Pixels only — never touches attr_buff, so what it draws clashes into
+ * whatever colours its cells already carry. */
+void blit_masked_to_scr_buff(const Sprite &sprite, int x_px, int y_px);
+
+/* Straight to VGA in caller-supplied colours, bypassing the attribute
+ * plane entirely. */
+void blit_masked_sprite(const Sprite &sprite, int x_px, int y_px,
+                        u8 ink, u8 paper);
+
+/* The only attribute writer: recolours whole 8x8 cells, because that is
+ * the only granularity colour has. Callers must mark dirty with
+ * mark_dirty_cell_rect_px, not mark_dirty_rect_px. */
+void blit_sprite_attrs_to_buff_clipped(int x_px, int y_px, int w_px, int h_px,
+                                       u8 attr,
+                                       int clip_left_px, int clip_right_px);
+
 /* --- Dirty-rectangle tracking ---------------------------------------- */
 /* Per pixel row we keep up to DIRTY_SLOTS disjoint byte-column spans, so
  * two far-apart sprites on the same row don't force a flush of
  * everything between them. DIRTY_NONE marks an unused slot. */
 const u8  DIRTY_NONE  = 0xFF;
 const int DIRTY_SLOTS = 2;
+
+extern u8  dirty_min_byte[DIRTY_SLOTS][PLAYFIELD_H];
+extern u8  dirty_max_byte[DIRTY_SLOTS][PLAYFIELD_H];
+extern u8  prev_dirty_min_byte[DIRTY_SLOTS][PLAYFIELD_H];
+extern u8  prev_dirty_max_byte[DIRTY_SLOTS][PLAYFIELD_H];
+/* Pixel-row spans of the current and previous frames' marks, so the
+ * per-frame restore and carry scan only the rows that matter. */
+extern int cur_dirty_y_lo, cur_dirty_y_hi;
+extern int prev_dirty_y_lo, prev_dirty_y_hi;
+
+void clear_dirty_ranges(u8 mins[DIRTY_SLOTS][PLAYFIELD_H],
+                        u8 maxs[DIRTY_SLOTS][PLAYFIELD_H]);
+void mark_dirty_byte_row(u8 mins[DIRTY_SLOTS][PLAYFIELD_H],
+                         u8 maxs[DIRTY_SLOTS][PLAYFIELD_H],
+                         int y, int byte_lo, int byte_hi);
+void mark_dirty_bytes(int y_start, int height, int byte_lo, int byte_hi);
+void mark_dirty_rect_px(int x_start, int y_start, int width, int height);
+/* Cell-aligned: an attribute write recolours the whole cell, so the flush
+ * must cover every pixel row of every touched cell. */
+void mark_dirty_cell_rect_px(int x, int y, int w, int h);
+void mark_all_dirty();
+void flush_dirty_to_vga();
+
+/* Tallied by the blit; write_profile_report prints them. */
+extern unsigned long prof_vga_rects, prof_vga_bytes;
 
 #endif /* ZXVGA_H */

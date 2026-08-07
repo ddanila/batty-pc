@@ -42,13 +42,13 @@ WLINKFMT = format os2 le option stub=$(WSTUB)
 # Modules compile to their own object and expose a header; main.cpp is
 # the state machine and wiring. (zxvga.cpp is still #included -- it has no
 # separate object yet.)
-MODULES = src/rng.cpp src/physics.cpp src/assets.cpp
+MODULES = src/rng.cpp src/physics.cpp src/assets.cpp src/zxvga.cpp
 SRC     = src/main.cpp $(MODULES)
 OBJ      = $(patsubst src/%.cpp,build/%.obj,$(SRC))
 TEST_OBJ = $(patsubst src/%.cpp,build/%-test.obj,$(SRC))
 # src/zxvga.cpp (the video engine) is #included by main.cpp rather than
 # compiled separately, so it is a build dependency alongside the headers.
-HEADERS = $(wildcard src/*.h) src/zxvga.cpp
+HEADERS = $(wildcard src/*.h)
 EXE     = build/batty.exe
 TEST_EXE = build/batty-test.exe
 

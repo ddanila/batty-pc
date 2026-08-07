@@ -71,15 +71,13 @@ is moving to:
 dropping bit 7, so a flashing attribute renders as its steady state. The
 game's own blink effects work by rewriting attributes instead.
 
-## It is #included, not linked
+## Its API is 28 symbols
 
-`main.cpp` does `#include "zxvga.cpp"`, so the two are one translation unit and
-every symbol stays `static`. The Makefile lists `src/zxvga.cpp` in `HEADERS`
-so edits trigger a rebuild.
-
-Making it a separately-compiled `.obj` would mean promoting ~30 statics to
-externals. Not done yet — the tests below make it a cheap change whenever
-an enforced boundary is wanted.
+`zxvga.cpp` compiles to its own object; `zxvga.h` declares the whole API —
+the two planes, the blits, the dirty marks, `ZxDisplay`, and `vga` itself.
+Everything else (the palette, the mode/DAC setters, the expansion table,
+`flush_dirty_slot_to_vga`) is private, and the linker enforces that rather
+than convention doing it.
 
 ## Host-native tests: `make test-video`
 

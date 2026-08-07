@@ -26,7 +26,7 @@
 #include "assets.h"
 #include "physics.h"
 #include "rng.h"
-#include "zxvga.cpp"
+#include "zxvga.h"
 
 #define SCREEN_CHUNK_ROWS 16
 static unsigned char screen_chunk[SCREEN_CHUNK_ROWS * PLAYFIELD_W];
@@ -2360,7 +2360,6 @@ static void paint_bg_to_buff(unsigned char attr, unsigned char cycle) {
  * each pixel via the surrounding char cell's attr_buff entry. Mirrors
  * the original game's final-frame paint (game_screen_draw_to_buffer
  * at $BE6B followed by buffer-to-screen copy). */
-static void buff_to_vga_rect_bytes(int y0, int h, int byte_lo, int byte_hi);
 static void paint_bg_window_to_buff(unsigned char attr, unsigned char cycle,
                                     int y0, int h, int byte_lo, int byte_hi);
 
