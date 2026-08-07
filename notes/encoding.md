@@ -61,7 +61,7 @@ glyph at that index. For data rows, count is exactly 14 = 6 score digits
 
 Scores are stored MSB-first as 7 byte-digits with literal leading zeros
 preserved (max 9,999,999). The DOS port's HUD renders 6 digits instead
-— see `score_to_codes` in `src/main.c`.
+— see `score_to_codes` in `src/main.cpp`.
 
 ## Verified examples (snap1 = hi-score state)
 

@@ -14,7 +14,7 @@ asserts the countdown + derived frame:
   f1 -> ticks 7 frame 3, f3 -> 5/2, f5 -> 3/1, f7 -> 1/0  (f8 -> inactive).
 
 Deterministic (the baked/hidden-ball scenario is frame-exact). ZEsarUX-free
-(port-only); needs QEMU + mtools. See src/main.c step_bullet_blast /
+(port-only); needs QEMU + mtools. See src/main.cpp step_bullet_blast /
 render_bullet_blast.
 """
 import re

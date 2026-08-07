@@ -49,7 +49,7 @@ What follows is ordered by value. Workstreams 1–4 make the port
 ## WS1 — Menu start semantics (small, do first)
 
 **What:** Pressing 0/ENTER in the menu currently falls through the
-attract chain (`src/main.c` ~L4006 "would start a game; advance for
+attract chain (`src/main.cpp` ~L4006 "would start a game; advance for
 now") instead of starting the selected game directly. Port the
 original `main_menu` dispatch (see `routines/main_menu.asm` in the
 disasm): 0/ENTER → start game in `selected_mode`, and make
@@ -82,7 +82,7 @@ behaviour unchanged.
 2 PLAYERS alternates turns, unlike the C64 version). Per-player state
 swap on life loss — score, lives, round, brick field — plus 1UP/2UP HUD
 labels, the round-banner player digit (hardcoded `$01` today,
-`src/main.c` ~L7302), and per-player hi-score entry. The object model
+`src/main.cpp` ~L7302), and per-player hi-score entry. The object model
 already carries `object_bat_2` ($9B3E) and the original's per-player
 data structures are in the disasm (`preparation`/`record_table`
 routines, `txt_player_N` strings).

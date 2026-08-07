@@ -24,7 +24,7 @@ ATTR_BASE = 6144
 TOP_ROWS_PX  = 24       # HUD: y=0..7 frame ornament + y=8..15 labels +
                         # y=16..23 score digits.
 SIDE_ROWS_PX = 168      # y=24..191 (side frame below the HUD)
-SIDE_BYTES_W = 1   # Only the actual ornament column; see main.c FRAME_SIDE_W.
+SIDE_BYTES_W = 1   # Only the actual ornament column; see main.cpp FRAME_SIDE_W.
 # One representative level per cycle (yellow / green / cyan / white).
 CYCLES = ['build/level_gt/level_01.scr',
           'build/level_gt/level_02.scr',

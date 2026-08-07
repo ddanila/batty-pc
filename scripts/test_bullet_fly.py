@@ -21,7 +21,7 @@ frame-deterministic for the other motion gates, so TOL is kept tight; if a
 boot-jitter false-fail ever appears, widen to 6 (one frame).
 
 ZEsarUX-free (port-only); needs QEMU + mtools. See scripts/test_bonus_fall.py
-and src/main.c step_bullet_one.
+and src/main.cpp step_bullet_one.
 """
 import re
 import subprocess

@@ -19,7 +19,7 @@ independently hand-computed accel progression from y0=40:
 constant regression (e.g. de=0x10) roughly doubles the fall — far outside.
 
 ZEsarUX-free (port-only); needs QEMU + mtools. See scripts/test_bonus_fall.py
-(the bonus uses the same accel) and src/main.c step_bomb / motion_accel_step.
+(the bonus uses the same accel) and src/main.cpp step_bomb / motion_accel_step.
 """
 import re
 import subprocess

@@ -124,7 +124,7 @@ something not already captured in `original/disasm/` or the `notes/`
 ## Repo layout
 
 ```
-src/main.c          The entire DOS implementation (Open Watcom v2, 16-bit)
+src/main.cpp          The entire DOS implementation (Open Watcom v2, 16-bit)
 notes/              Project knowledge (read these first)
 original/
   batty.tap         Original tape image
@@ -225,7 +225,7 @@ Workflow for a new port:
 
 1. Find the routine in `original/disasm/batty.asm` by its named label
    (`handling_ball`, `print_briks`, `enemy_prepare`, …).
-2. Port it into `src/main.c`, citing the routine name in the code
+2. Port it into `src/main.cpp`, citing the routine name in the code
    comment so the lineage is searchable.
 3. Add a one-paragraph entry in `notes/<topic>.md` if the routine
    exposes a non-obvious invariant (encoding, RAM layout, timing

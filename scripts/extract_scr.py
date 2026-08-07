@@ -4,7 +4,7 @@
 The ZX screen layout interleaves pixel rows in a way that's a pain for
 random access on a Z80 but trivial to undo here. Each output byte is
 a palette index in 0..15 (bright<<3 | colour); the matching palette
-lives in src/main.c.
+lives in src/main.cpp.
 
 Flash bit is ignored — we render the steady frame.
 """

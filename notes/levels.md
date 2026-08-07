@@ -3,7 +3,7 @@
 Decoding reference for the 15 levels at
 `original/blocks/03_DATA_headless.dat.bin` (= our
 `assets/levels.bin`, 2700 B = 15 levels × 180 B). The runtime
-brick collision + rendering logic lives in `src/main.c`
+brick collision + rendering logic lives in `src/main.cpp`
 (`brick_collision`, `print_one_brik_buf_c`) and is documented in
 [`blitter-port.md`](blitter-port.md).
 
@@ -66,7 +66,7 @@ Each level is **180 raw bytes**, one byte per cell in a **12-row ×
   multi-hit brick already damaged once and primed for the next hit
   to take it out (e.g. `$11`..`$15`).
 - low nibble (`0x0F`) — brick TYPE / COLOUR index into
-  `briks_colors[]` (`src/main.c`).
+  `briks_colors[]` (`src/main.cpp`).
 
 Cells with bit 7 set are skipped during rendering. All others get
 blitted as a 16×8-px sprite at `(1 + 2*col byte_col, 4 + row char_row)`

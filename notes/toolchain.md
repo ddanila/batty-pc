@@ -4,9 +4,9 @@ batty targets a **386 in 32-bit protected mode**, built with Open Watcom v2
 from `vendor/openwatcom-v2/current-build-<date>/`.
 
 ```
-wcc386 -bt=dos -3 -os -s -za99 -w4 -we -oi     # 32-bit DOS, 386 ISA
+wpp386 -bt=dos -3 -os -s -w4 -we -oi           # 32-bit DOS, 386 ISA
 wlink  format os2 le option stub=wstub.exe     # LE image + real-mode stub
-       library clib3r.lib                      # 32-bit DOS C library
+       library clib3r.lib library plib3r.lib   # 32-bit DOS C and C++ libs
 ```
 
 The floppy carries `BATTY.EXE` plus the extender as `DOS4GW.EXE`.
@@ -47,15 +47,32 @@ Point 2 is worth remembering: the symptom looks exactly like a broken
 keyboard handler, and the natural conclusion — "protected mode needs
 DPMI-aware interrupt handlers" — is wrong here. The handlers are fine.
 
-## C++
+## C++ dialect
 
-`wpp386` is available and the C++ headers and `plib3r.lib` are vendored.
-Per kolobok's Makefile, Open Watcom's C++ is **C++98 plus `static_assert`,
-`decltype` and the `>>` template close**. Classes, destructors, references,
-overloading and templates all work; its template deduction does not (no
-array extents, and `const` is dropped when deducing from an array inside a
-`const` struct). There is no `enum class`, `constexpr`, `nullptr` or C++11
-library.
+The sources are `.cpp`, compiled by `wpp386`. Open Watcom's C++ is
+**C++98 plus `static_assert`, `decltype` and the `>>` template close**.
+
+Available and used: classes, constructors/destructors, references,
+overloading, default arguments, `bool`, `inline` functions, `static_assert`,
+const-correctness, templates.
+
+Not available: `enum class`, `constexpr`, `nullptr`, `auto`, range-`for`,
+the C++11 library. Template *deduction* is also weak — it cannot deduce
+array extents, and drops `const` when deducing from an array inside a
+`const` struct.
+
+Two things bit during the switch, both worth knowing before writing new
+code:
+
+- **No tentative definitions.** C lets `static int x;` appear twice at file
+  scope; C++ treats each as a definition. A forward `static int x;` followed
+  later by `static int x = 0;` is an error — the first one already defines
+  and zero-initialises it, so delete the second.
+- **`inp()` returns `unsigned int`.** Assigning it to `unsigned char`
+  warns, and the build is `-we`. Cast at the call site.
+
+The host test build uses `c++ -std=c++98`, deliberately matching the
+compiler's ceiling so a host-only feature cannot creep into shared code.
 
 ## Verifying a refactor changed no code
 

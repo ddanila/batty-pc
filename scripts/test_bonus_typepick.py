@@ -29,7 +29,7 @@ a regression pin:
 Forces a drop (RANDOM hi nibble < 5) with rng_perframe ON and varies the
 seed to vary the pick; ball hidden + no-ball-death suppressed.
 
-ZEsarUX-free (port-only); needs QEMU + mtools. See src/main.c try_spawn_bonus
+ZEsarUX-free (port-only); needs QEMU + mtools. See src/main.cpp try_spawn_bonus
 and test_bonus_drop.py (the drop-decision side).
 """
 import re

@@ -76,7 +76,7 @@ against the magnet body otherwise.
 Direction encoding (empirical, from the gate runs): $00=right, $10=up,
 $20=left, $30=down.
 
-## Port (src/main.c)
+## Port (src/main.cpp)
 
 - `magnet_count/px/py/on_state[4]` + `ball_mag_cool/delta/exit/idx[3]` —
   the runtime state; `magnet_level_init(level)` at level entry rolls the

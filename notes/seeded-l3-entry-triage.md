@@ -37,7 +37,7 @@ GT (0 px).
 The 1568 px decomposes (port frame-0 vs L3 GT) as:
 
 - **bricks, y=32..104: 1129 px** — a *transient* brick state.
-  `play_brik_anim()` (`src/main.c`) runs the 8-step metal-brick reveal
+  `play_brik_anim()` (`src/main.cpp`) runs the 8-step metal-brick reveal
   and **leaves its last animation frame on screen**; the static brick
   repaint only happens in the first main-loop iteration *after* the
   WAIT_KEY pause. So the pause captures bricks mid/post-reveal, not
@@ -45,8 +45,8 @@ The 1568 px decomposes (port frame-0 vs L3 GT) as:
   because it captures *after* the field settles, not at the pause.
 - **magnets, y=104..128: 439 px** — the magnet ON/OFF blink state
   differs. `render_level_screen` (called twice at level entry, 6107 +
-  6109) calls `render_magnets` (`src/main.c:2836`), whose blink uses
-  `next_random()` (`src/main.c:2671`) unless `test_mode_pin_blink`
+  6109) calls `render_magnets` (`src/main.cpp:2836`), whose blink uses
+  `next_random()` (`src/main.cpp:2671`) unless `test_mode_pin_blink`
   (`BATTYALL=1`) forces the deterministic `i>=2` pattern — which itself
   need not match the original's actual blink at entry.
 

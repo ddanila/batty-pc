@@ -23,7 +23,7 @@
 /* The video engine — ZX Spectrum attribute/colour-clash emulation on
  * VGA mode 13h. Everything below draws through its scr_buff / attr_buff
  * and the dirty marks declared there. */
-#include "zxvga.c"
+#include "zxvga.cpp"
 
 #define SCREEN_CHUNK_ROWS 16
 static unsigned char screen_chunk[SCREEN_CHUNK_ROWS * PLAYFIELD_W];
@@ -1336,8 +1336,8 @@ static unsigned short pit_current_ticks(void) {
     unsigned short val;
     _disable();
     outp(0x43, 0x00);
-    low = inp(0x40);
-    high = inp(0x40);
+    low  = (unsigned char)inp(0x40);
+    high = (unsigned char)inp(0x40);
     _enable();
     val = (unsigned short)(((unsigned short)high << 8) | low);
     return val;
@@ -1353,7 +1353,7 @@ static unsigned short prof_elapsed(void) {
     if (now <= last_prof_tick) {
         diff = last_prof_tick - now;
     } else {
-        diff = (last_prof_tick - now) + 23864u;
+        diff = (unsigned short)((last_prof_tick - now) + 23864u);
     }
     last_prof_tick = now;
     return diff;
@@ -2091,7 +2091,7 @@ static void run_dot_punch(int abs_x) {
     scr_buff[off] &= run_dot_mask[abs_x & 7];
 }
 
-static int test_mode_pin_blink;   /* forward — defined further down */
+static int test_mode_pin_blink;   /* set by BATTYALL env */
 
 static void render_running_dot(void) {
     int bat_w, bat_left;
@@ -3055,7 +3055,6 @@ static unsigned long bios_ticks(void) {
  * when not chained, we send the EOI ourselves. */
 #define PIT_DIV_50HZ 23864
 static void (__interrupt *prev_int8)(void) = NULL;
-static volatile unsigned long pit_frame_counter = 0;
 static volatile unsigned int  bios_acc          = 0;
 
 static void __interrupt new_int8(void) {
@@ -3134,7 +3133,7 @@ static volatile unsigned char key_state[128];
 #define SC_RIGHT    0x4D    /* arrow / keypad 6 */
 
 static void __interrupt new_int9(void) {
-    unsigned char sc = inp(0x60);
+    unsigned char sc = (unsigned char)inp(0x60);
     if (sc != 0xE0) {                       /* skip the extended-key prefix */
         if (sc & 0x80) key_state[sc & 0x7F] = 0;
         else           key_state[sc & 0x7F] = 1;
@@ -3434,7 +3433,6 @@ static int auto_advance = 0;
  * pins it to 0 (BLACK / invisible) so the screendump matches snap2's
  * captured BLACK half deterministically. `make run` uses real-time
  * bios_ticks so the user sees the actual blink. */
-static int test_mode_pin_blink = 0;          /* set by BATTYALL env */
 static int blink_phase(void) {
     if (test_mode_pin_blink) return 0;
     return (int)((bios_ticks() >> 1) & 1);   /* ~4.5 Hz half-period */

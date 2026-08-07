@@ -29,7 +29,7 @@ DESTROYED_CELL_DIFF_MIN = 80
 
 
 def source_guard():
-    src = Path("src/main.c").read_text()
+    src = Path("src/main.cpp").read_text()
     forbidden = [
         "attr_buff[char_row * 32 + col_byte]     = 0x47",
         "scr_buff[y * 32 + col_byte]     = 0xFF",

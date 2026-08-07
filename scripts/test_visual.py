@@ -14,7 +14,7 @@ import sys
 import time
 from pathlib import Path
 
-# 6-bit DAC values written by src/main.c (ZX_LO=56, ZX_HI=63).
+# 6-bit DAC values written by src/main.cpp (ZX_LO=56, ZX_HI=63).
 # QEMU's mode-13h output scales them by plain shift-2 (no LSB replication):
 # DAC 56 -> 0xE0 (224), DAC 63 -> 0xFF (255). DAC 0 -> 0.
 ZX_LO = 56
@@ -415,8 +415,8 @@ def main():
 
     # Source-code lint: catch this class of regression even when state4
     # can't (= the buggy code path is only exercised mid-gameplay).
-    failed += lint_moving_object_attrs(Path('src/main.c'))
-    failed += lint_bat_redraw_window(Path('src/main.c'))
+    failed += lint_moving_object_attrs(Path('src/main.cpp'))
+    failed += lint_bat_redraw_window(Path('src/main.cpp'))
 
     sys.exit(failed)
 

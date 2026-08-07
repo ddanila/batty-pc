@@ -108,7 +108,7 @@ boot-wall-clock roulette — so `test-enemy-steer` flaked: on boots landing
 on phase 0 the 4-frame turn slid one frame across the probe checkpoints and
 dir read one step ahead (0x12/0x13/0x14 at f16/20/24). Now
 `BATTY_REPLAY_COUNTER=<hex>` pins `pit_frame_counter` at the WAIT_KEY
-release (main.c, after the wake-key getch), and the steer test bakes
+release (main.cpp, after the wake-key getch), and the steer test bakes
 phase 2: swept all 4 phases — 0 reproduces the flake deterministically,
 1/2/3 reproduce the GT dirs, and 2 also matches x exactly (167/167/165)
 with the probe frames maximally far from the turn boundaries (turns at

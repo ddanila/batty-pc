@@ -318,7 +318,7 @@ The "almost certainly a captured level_attrs edge value" guess above is
   and the port leads by ~2 capture indices consistently (port f5=22px vs
   orig f5=18px = the same lead).
 
-**Why:** the port's visual-probe halt is at `main.c:7430` — *after* the
+**Why:** the port's visual-probe halt is at `main.cpp:7430` — *after* the
 frame's full `handling_object` + redraw (post-update). ZEsarUX captures at
 the `$BA83` breakpoint — the *top* of the main loop (pre-update). So port
 frame N ≈ orig frame N+1 by construction; the brick-hit transient then adds
@@ -403,7 +403,7 @@ known-bugs.md #3 regression. The L3 measurements in this note are
 unaffected (briks_data is empty at the L3 capture point — see the
 2026-06-05 CORRECTION). Same wrong claim propagated to parity-gaps.md and
 parity-status.md (fixed 2026-06-11) and to the `step_brick_hit_anim`
-comment in src/main.c (now marked KNOWN-WRONG pending the behaviour fix).
+comment in src/main.cpp (now marked KNOWN-WRONG pending the behaviour fix).
 
 ## FIXED (2026-06-11): one-pass behaviour restored
 

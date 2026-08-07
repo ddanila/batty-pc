@@ -38,7 +38,7 @@ reference.
 ## Asset addresses
 
 Sprite blob spans `0x7A8C..0x8F50` in the original (= our
-`assets/sprites.bin`, 4724 B). All `SPR_*` offsets in `src/main.c`
+`assets/sprites.bin`, 4724 B). All `SPR_*` offsets in `src/main.cpp`
 are computed as `(absolute - 0x7A8C)`. To find a sprite's absolute
 address, search `original/disasm/gfx/sprites_with_masks_2.asm` for
 the `spr_*:` label and read the `Data block at NNNN` comment above

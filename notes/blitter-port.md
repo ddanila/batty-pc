@@ -39,13 +39,13 @@ so its `OR`/`XOR` operands are transformed — the **output** matches
 our direct-bitops formula, the intermediate operands don't. Verified
 empirically against per-level GTs.
 
-`blit_masked_to_scr_buff_ptr` in `src/zxvga.c` handles non-byte-aligned
+`blit_masked_to_scr_buff_ptr` in `src/zxvga.cpp` handles non-byte-aligned
 x with a per-row shift across two destination bytes — same shape as
 the original's table-driven path, computed at runtime in C.
 
 ## Compose order
 
-`render_level_screen` in `src/main.c` does:
+`render_level_screen` in `src/main.cpp` does:
 
 ```
 paint_bg              -> bg pattern + bg_attr in attr_buff
@@ -137,7 +137,7 @@ Cell encoding in `assets/levels.bin` (180 B/level, 12 rows × 15 cols):
 |     |  final hit (e.g. `$11`..`$15`)                 |
 | 0–3 | low nibble = colour index into `briks_colors[]` |
 
-Collision flow (`brick_collision` in `src/main.c`):
+Collision flow (`brick_collision` in `src/main.cpp`):
 
 - bit 7 set: pass through (skip).
 - bit 5 set: bounce, no destruction.

@@ -194,7 +194,7 @@ The "PLAYER 1 / ROUND XX" window shown ~1.2s at each level entry
     bottom.
 
 - **Port bug (fixed 2026-06-18, user-reported):** `show_round_banner`
-  in `src/main.c` used the raw bytes 143 / 158 as the *top* Y of
+  in `src/main.cpp` used the raw bytes 143 / 158 as the *top* Y of
   `draw_text` (which is top-anchored), so both lines sat 5px low —
   jammed against the box bottom (1px gap) instead of centred. Fix:
   pass `BORDER_Y+138` / `BORDER_Y+153`. Verified byte-exact against the

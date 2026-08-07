@@ -30,7 +30,7 @@ measure under QEMU's fast disk.
 
 **The perf loop was concluded here (2026-06-05).** Rendering is at its
 floor. If perf work resumes, the untouched lever is LOAD TIME (the asset/
-level `fread`s in src/main.c around the file-load helpers — batching small
+level `fread`s in src/main.cpp around the file-load helpers — batching small
 reads helps the real DOS/floppy target even though QEMU's fast disk hides
 it); that was identified but not pursued. The render-cost work is complete.
 
@@ -58,7 +58,7 @@ runtime — recompiling buys nothing there. The flag only matters for the
 8086 build can't emit. See the chip-vs-flag discussion in
 `notes/menu.md`'s coordinate note era / the git log around this commit.
 
-Built from the SAME `src/main.c`; the 386 paths are tiny `#ifdef
+Built from the SAME `src/main.cpp`; the 386 paths are tiny `#ifdef
 BATTY_CPU386` islands in the two blit loops and `fast_memcpy`. Parity is
 gated: `make test-cpu386` packs `batty-test-386.exe` and runs the same
 visual checkpoints as `make test` (QEMU's CPU is 386+). Verified

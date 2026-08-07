@@ -14,7 +14,7 @@ asserts the *invariant*:
     THROUGH the brick (crossed its far edge while still overlapping its
     column/row), it tunneled -> FAIL.
 
-Geometry (matches brick_collision / laffc_collision in src/main.c):
+Geometry (matches brick_collision / laffc_collision in src/main.cpp):
   grid index = row*15 + col, row 0..11, col 0..14
   cell solid  = (v & 0x80) == 0      (0x80 = destroyed, 0xC0 = empty)
   brick_top_y = 32 + row*8 ; brick is 8 px tall, 16 px wide

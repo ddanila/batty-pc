@@ -1,4 +1,4 @@
-/* Host-side tests for the video engine (src/zxvga.c).
+/* Host-side tests for the video engine (src/zxvga.cpp).
  *
  * These compile the REAL engine source natively — no DOS, no emulator —
  * the __WATCOMC__ guard in zxvga.c just points `vga` at a plain array. So
@@ -11,7 +11,7 @@
  *   1  pal_tables_exhaustive      attr -> ink/paper for all 256 attrs
  *   2  clash_expansion_vs_ula     every (attr, byte) vs an independent
  *                                 ULA reference written from the
- *                                 hardware spec, not from zxvga.c
+ *                                 hardware spec, not from zxvga.cpp
  *   3  flash_bit_ignored          attr and attr|0x80 render identically
  *   4  blit_stays_in_playfield    the 320x200 border is never touched
  *   5  rect_flush_equiv_full      a rect flush == a full repaint, inside
@@ -36,7 +36,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "../src/zxvga.c"
+#include "../src/zxvga.cpp"
 
 /* ===================================================================== */
 /* Harness                                                               */

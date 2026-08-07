@@ -18,7 +18,7 @@ C scoring code.
   row 0  colour 5 -> 120      row 5  colour 5 -> 70
   row 11 colour 5 -> 10       row 3  colour 6 -> 90*2 = 180
 
-ZEsarUX-free (port-only); needs QEMU + mtools. See src/main.c
+ZEsarUX-free (port-only); needs QEMU + mtools. See src/main.cpp
 step_bullet_one (brick-hit scoring) / points_table.
 """
 import re

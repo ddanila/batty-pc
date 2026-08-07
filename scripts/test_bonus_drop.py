@@ -18,7 +18,7 @@ not from the C code, so this validates the port implements the 5/16 rule
 Ball hidden + no-ball-death suppressed so the forced bonus is the only one;
 probe `bonus_state` at f1 (still falling) and assert active == expected.
 
-ZEsarUX-free (port-only); needs QEMU + mtools. See src/main.c try_spawn_bonus
+ZEsarUX-free (port-only); needs QEMU + mtools. See src/main.cpp try_spawn_bonus
 / rng_sample and notes/rng-model.md.
 """
 import re

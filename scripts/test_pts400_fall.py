@@ -18,7 +18,7 @@ independently hand-computed progression from y0=40:
 accel (vs bonus) makes a constant regression even more obvious.
 
 ZEsarUX-free (port-only); needs QEMU + mtools. See scripts/test_bonus_fall.py
-/ test_bomb_fall.py and src/main.c step_pts_400 / motion_accel_step.
+/ test_bomb_fall.py and src/main.cpp step_pts_400 / motion_accel_step.
 """
 import re
 import subprocess

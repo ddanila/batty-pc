@@ -17,7 +17,7 @@ the shot count at f1/f12/f13 and asserts the 12-frame period:
   f1 -> 1 shot, f12 -> still 1, f13 -> 2.
 A regression to 0x16 fires shot 2 at f12 (so f12 -> 2), which this catches.
 
-ZEsarUX-free (port-only); needs QEMU + mtools. See src/main.c try_fire_laser
+ZEsarUX-free (port-only); needs QEMU + mtools. See src/main.cpp try_fire_laser
 and notes/parity-status.md.
 """
 import re

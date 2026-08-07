@@ -158,7 +158,7 @@ counter phase at each halt (lessons.md, third instance) — the "frame
 
 ## Magnet ON/OFF semantics (iter-21 + iter-34)
 
-`render_magnets` in `src/main.c` draws each level's magnets per
+`render_magnets` in `src/main.cpp` draws each level's magnets per
 `magnets_per_level[]`. Per the original `print_magnets` ($8D4C) and
 the `gfx_screen_elements` table at $77F0:
 

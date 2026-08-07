@@ -17,7 +17,7 @@ else
   WATCOM_BIN := $(WATCOM_DIR)/linux-amd64
 endif
 
-WCC        = $(WATCOM_BIN)/wcc386
+WPP        = $(WATCOM_BIN)/wpp386
 WLINK      = $(WATCOM_BIN)/wlink
 WDIS       = $(WATCOM_BIN)/wdis
 WATCOM_H   = $(WATCOM_DIR)/h
@@ -31,18 +31,20 @@ EXTENDER   = $(WATCOM_DIR)/dos/DOS32A.EXE
 
 # -bt=dos = 32-bit DOS target      -3  = 386 instruction set
 # -os     = optimize for size      -s  = no stack overflow checks
-# -za99   = C99                    -oi = inline intrinsics (memset/memcpy)
+# -oi     = inline intrinsics (memset/memcpy)
 # -w4 -we = max warnings, treat as errors
-WCCFLAGS = -bt=dos -3 -os -s -za99 -w4 -we -oi -i=$(WATCOM_H)
+# Open Watcom's C++ is C++98 plus static_assert/decltype -- see
+# notes/toolchain.md for what is and isn't available.
+WPPFLAGS = -bt=dos -3 -os -s -w4 -we -oi -i=$(WATCOM_H)
 # `format os2 le` is the linear executable the extender loads.
 WLINKFMT = format os2 le option stub=$(WSTUB)
 
-SRC     = src/main.c
-OBJ      = $(SRC:src/%.c=build/%.obj)
+SRC     = src/main.cpp
+OBJ      = $(SRC:src/%.cpp=build/%.obj)
 TEST_OBJ = build/main-test.obj
-# src/zxvga.c (the video engine) is #included by main.c rather than compiled
-# separately, so it is a build dependency alongside the headers.
-HEADERS = $(wildcard src/*.h) src/zxvga.c
+# src/zxvga.cpp (the video engine) is #included by main.cpp rather than
+# compiled separately, so it is a build dependency alongside the headers.
+HEADERS = $(wildcard src/*.h) src/zxvga.cpp
 EXE     = build/batty.exe
 TEST_EXE = build/batty-test.exe
 
@@ -145,17 +147,17 @@ help:
 build:
 	@mkdir -p build
 
-build/%.obj: src/%.c $(HEADERS) | build
-	$(WCC) $(WCCFLAGS) -fo=$@ $<
+build/%.obj: src/%.cpp $(HEADERS) | build
+	$(WPP) $(WPPFLAGS) -fo=$@ $<
 
-$(TEST_OBJ): src/main.c $(HEADERS) | build
-	$(WCC) $(WCCFLAGS) -dBATTY_SCORELESS_HUD -fo=$@ $<
+$(TEST_OBJ): src/main.cpp $(HEADERS) | build
+	$(WPP) $(WPPFLAGS) -dBATTY_SCORELESS_HUD -fo=$@ $<
 
 $(EXE): $(OBJ)
-	$(WLINK) name $@ $(WLINKFMT) $(addprefix file ,$(OBJ)) libpath $(WATCOM_LIB) library clib3r.lib
+	$(WLINK) name $@ $(WLINKFMT) $(addprefix file ,$(OBJ)) libpath $(WATCOM_LIB) library clib3r.lib library plib3r.lib
 
 $(TEST_EXE): $(TEST_OBJ)
-	$(WLINK) name $@ $(WLINKFMT) file $(TEST_OBJ) libpath $(WATCOM_LIB) library clib3r.lib
+	$(WLINK) name $@ $(WLINKFMT) file $(TEST_OBJ) libpath $(WATCOM_LIB) library clib3r.lib library plib3r.lib
 
 assets: $(ASSETS)
 
@@ -232,7 +234,7 @@ assets/bg_tile.bin: build/level_gt/level_01.scr scripts/extract_bg_tile.py
 #   spr_big_ball, spr_lives_indicator, spr_ball_normal,
 #   spr_bat_normal, spr_bat_big, spr_ufo_1..6, spr_bird_1..6,
 #   spr_alien_blast_1..5, spr_bonus_* through spr_bonus_triple_ball
-# (offsets recorded in main.c). Format per sprite: (width_bytes,
+# (offsets recorded in main.cpp). Format per sprite: (width_bytes,
 # height_rows) + rows of (mask, pixel) pairs per byte-column,
 # drawn via blit_masked_sprite.
 # The tape slice is patched to reproduce the original's BOOT-TIME state
@@ -920,18 +922,18 @@ test-laffc-levels-sane:
 	python3 scripts/test_laffc_levels_sane.py --levels $(SANE_LEVELS) --frames $(SANE_FRAMES)
 
 # --- Video-engine tests (host-native; no DOS, no emulator) --------------
-# Compiles src/zxvga.c with the host compiler — the __WATCOMC__ guards swap
-# the inline-asm inner loops for equivalent C and point `vga` at an array —
-# so these exercise the SHIPPING expansion table and blit logic directly.
+# Compiles src/zxvga.cpp with the host compiler — the __WATCOMC__ guard just
+# points `vga` at an array — so these exercise the SHIPPING expansion table
+# and blit logic directly.
 # Milliseconds, so the clash model can be checked exhaustively (every attr
 # x every byte) rather than sampled through a 10 s QEMU boot.
-HOSTCC     ?= cc
-HOSTCFLAGS ?= -std=c99 -O1 -Wall -Wextra -Werror -Wno-unused-function
+HOSTCXX      ?= c++
+HOSTCXXFLAGS ?= -std=c++98 -O1 -Wall -Wextra -Werror -Wno-unused-function
 VIDEO_TEST     = build/test_zxvga
-VIDEO_TEST_SRC = tests/test_zxvga.c src/zxvga.c src/zxvga.h
+VIDEO_TEST_SRC = tests/test_zxvga.cpp src/zxvga.cpp src/zxvga.h
 
 $(VIDEO_TEST): $(VIDEO_TEST_SRC) | build
-	$(HOSTCC) $(HOSTCFLAGS) -o $@ tests/test_zxvga.c
+	$(HOSTCXX) $(HOSTCXXFLAGS) -o $@ tests/test_zxvga.cpp
 
 test-video: $(VIDEO_TEST)
 	./$(VIDEO_TEST)

@@ -19,7 +19,7 @@ Mid-plateau probe points (each plateau is 4 frames wide) give ±1 robustness
 for free; the scenario has proven exact in practice.
 
 ZEsarUX-free (port-only); needs QEMU + mtools. See scripts/test_enemy_steer.py
-(same bake, moving ball) and src/main.c handling_bird_obj.
+(same bake, moving ball) and src/main.cpp handling_bird_obj.
 """
 import re
 import subprocess

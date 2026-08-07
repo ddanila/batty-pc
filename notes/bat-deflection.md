@@ -106,7 +106,7 @@ does not return cleanly from `LAB1F` (don't use it as a probe dir).
 
 `LAB1F` is now ported literally into `step_ball`'s bat-contact path
 (`bat_deflect_dir` + `bat_zone_tbl_normal/big` + `bat_deflect_tbl` +
-`bat_reflect_dir`/`bat_dir_index` in `src/main.c`), replacing the 5-zone
+`bat_reflect_dir`/`bat_dir_index` in `src/main.cpp`), replacing the 5-zone
 approximation. The offset is `next_x + 3 - BAT_X`; an enlarged bat
 (`bat_extra_px != 0`) selects the LABFC table. Unmatched incoming dirs
 (pure-vertical 0x10 / non-multiple-of-4, which never reach the bat in real

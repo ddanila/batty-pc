@@ -25,7 +25,7 @@ TOP_BAND_H = 5
 
 
 def source_guard() -> None:
-    src = Path("src/main.c").read_text()
+    src = Path("src/main.cpp").read_text()
     if "int banner_y = BORDER_Y + 133;" not in src:
         raise SystemExit("FAIL: round banner must start at original window y=$85/$A458 -> playfield y=133")
     if "BATTY_HOLD_ROUND_BANNER" not in src:

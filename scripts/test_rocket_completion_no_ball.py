@@ -19,7 +19,7 @@ BALL_AREA_ROI = (80, 140, 180, 188)
 
 
 def source_guard() -> None:
-    src = Path("src/main.c").read_text()
+    src = Path("src/main.cpp").read_text()
     required = [
         "BALL_HIDE();\n                ball2_active = 0;\n                ball3_active = 0;",
         "force_full_flush = 1;\n                redraw_full_with_ball(i);",

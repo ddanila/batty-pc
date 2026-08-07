@@ -1,7 +1,7 @@
 # state4 / state5_bat_band — how we got to 0 px
 
 Historical record of how `state4_level1` went from 507 px → 0 px on L1.
-The fixes themselves are all live in `src/main.c`; this file preserves
+The fixes themselves are all live in `src/main.cpp`; this file preserves
 the technique notes that survive each iteration.
 
 ## Iter 3: blit formula — `(~mask & screen) | (mask & pix)`

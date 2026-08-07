@@ -14,7 +14,7 @@ then probes a new `effects_state` line at f2 and asserts the effect fired.
 Expected values are the documented effect constants (8 px widen, lives
 3->4), not derived from the C effect code. Deterministic + non-circular.
 
-ZEsarUX-free (port-only); needs QEMU + mtools. See src/main.c bonus_apply
+ZEsarUX-free (port-only); needs QEMU + mtools. See src/main.cpp bonus_apply
 (BONUS_TYPE_* switch) and test_bonus_effects.py (the bonus_applied side).
 """
 import re

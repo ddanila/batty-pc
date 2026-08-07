@@ -19,7 +19,7 @@ code differs from the 0xFF level-entry value are used, so a registered
 catch is unambiguous. Composes with test-laser-cadence (which bakes
 bonus_applied=0x01 directly): catch LASER -> 0x01 -> fires.
 
-ZEsarUX-free (port-only); needs QEMU + mtools. See src/main.c bonus_apply /
+ZEsarUX-free (port-only); needs QEMU + mtools. See src/main.cpp bonus_apply /
 our_to_orig_bonus.
 """
 import re

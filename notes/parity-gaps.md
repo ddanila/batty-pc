@@ -47,7 +47,7 @@ Several paths use gameplay-equivalent but not byte-exact motion:
   (`make test-laffc-ball-frame1`). `BATTY_LEGACY_COLLISION=1` reverts.
   Full decode + status in `notes/laffc-decode.md`.
 - **bat-ball deflection (primary ball)** — DONE. The `LAB1F` ($AB1F) port
-  (`bat_deflect_dir` in `src/main.c`) replaces the 5-zone approximation
+  (`bat_deflect_dir` in `src/main.cpp`) replaces the 5-zone approximation
   for the primary ball: snap ball y to the bat top, `offset =
   next_x+3-BAT_X`, walk the `LABEE`/`LABFC` threshold→zone table,
   optionally double-reflect `dir=((dir^$1F)+1)&$3F`, look up

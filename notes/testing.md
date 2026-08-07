@@ -1,7 +1,7 @@
 # Visual regression test
 
 > **`make test-video` is the one gate here that needs no emulator.** It
-> compiles the video engine (`src/zxvga.c`) with the host compiler and
+> compiles the video engine (`src/zxvga.cpp`) with the host compiler and
 > checks the ZX attribute/colour-clash model exhaustively — every attr x
 > every byte — in milliseconds. See [`video-engine.md`](video-engine.md).
 > Everything below drives QEMU or ZEsarUX and costs ~10 s per boot.
@@ -329,7 +329,7 @@ The `BATTY_LEVEL=N` env var:
   floppy first to force a rebuild on env changes).
 - Makefile also passes `BATTY_START_LEVEL=1` through for replay targets;
   when set, the DOS port starts directly in `ST_LEVEL` after asset load.
-- `src/main.c` `getenv("BATTY_LEVEL")` in `run_level` sets
+- `src/main.cpp` `getenv("BATTY_LEVEL")` in `run_level` sets
   `round_number = N-1` so the run-level loop enters at level N.
 - `scripts/test_visual.py` switches `state4_level1`'s expected snapshot
   to `build/level_gt/level_NN.scr` (default = L1).

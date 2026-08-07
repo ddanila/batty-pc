@@ -1,9 +1,9 @@
-# The video engine (`src/zxvga.c`)
+# The video engine (`src/zxvga.cpp`)
 
 The ZX Spectrum display model — and its defining artefact, colour clash —
-lives in `src/zxvga.{c,h}`, extracted from `src/main.c` on 2026-08-07.
+lives in `src/zxvga.{cpp,h}`, extracted from `src/main.cpp` on 2026-08-07.
 Game content (bricks, bat, HUD, background tiles, level assets) stays in
-`main.c` and talks to the engine only through `scr_buff` / `attr_buff`
+`main.cpp` and talks to the engine only through `scr_buff` / `attr_buff`
 and the dirty marks.
 
 ## Why clash is a feature here, not a bug
@@ -30,7 +30,7 @@ original's behaviour) and `make test-video` (host, exhaustive).
 
 ## Layout
 
-`src/zxvga.c` is one file in six sections:
+`src/zxvga.cpp` is one file in six sections:
 
 1. **VGA surface** — mode set, DAC palette upload, rectangle fill
 2. **Attribute model** — attr byte -> ink/paper -> the expansion table
@@ -45,8 +45,8 @@ game's own blink effects work by rewriting attributes instead.
 
 ## It is #included, not linked
 
-`main.c` does `#include "zxvga.c"`, so the two are one translation unit and
-every symbol stays `static`. The Makefile lists `src/zxvga.c` in `HEADERS`
+`main.cpp` does `#include "zxvga.cpp"`, so the two are one translation unit and
+every symbol stays `static`. The Makefile lists `src/zxvga.cpp` in `HEADERS`
 so edits trigger a rebuild.
 
 Making it a separately-compiled `.obj` would mean promoting ~30 statics to
@@ -56,7 +56,7 @@ an enforced boundary is wanted.
 ## Host-native tests: `make test-video`
 
 A single `#ifdef __WATCOMC__` picks the VGA surface — real hardware, or a
-plain array. So `tests/test_zxvga.c` compiles the **real engine source**
+plain array. So `tests/test_zxvga.cpp` compiles the **real engine source**
 natively, the shipping expansion table and blit logic rather than a model
 of them, and runs in milliseconds instead of a 10 s QEMU boot. That buys
 exhaustive coverage:

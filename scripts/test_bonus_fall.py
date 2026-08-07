@@ -20,7 +20,7 @@ A real constant/algorithm regression (e.g. de=0x10) roughly doubles the
 fall (~+57 px at f60) — far outside the slack.
 
 ZEsarUX-free (port-only); needs QEMU + mtools. See notes/parity-status.md
-(bonus economy) and src/main.c step_bonus / motion_accel_step.
+(bonus economy) and src/main.cpp step_bonus / motion_accel_step.
 """
 import re
 import subprocess

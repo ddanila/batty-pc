@@ -3,7 +3,7 @@
 The frame-step gate (`make capture-timeline-both`) isolates the
 port-vs-original residual to **brick collision**: the ball starts inside
 the L3 brick band, hits a brick on frame 1, and the port's
-`brick_collision` (`src/main.c`) reflects/positions it differently from
+`brick_collision` (`src/main.cpp`) reflects/positions it differently from
 the original `LAFFC` (`original/disasm/batty.asm:4470`). Frame-1 residual
 is ~212 px, dominated by white↔magenta swaps = the **ball at a different
 position** because the two collide differently. First divergence is
@@ -135,7 +135,7 @@ axis".
 
 ## Implementation status (2026-06-04)
 
-`laffc_collision` (`src/main.c`) is in, gated behind **`BATTY_LAFFC=1`**
+`laffc_collision` (`src/main.cpp`) is in, gated behind **`BATTY_LAFFC=1`**
 (default off → the proven `brick_collision` still runs, static
 regression 5/5). The shared destroy/half-hit/shimmer tail was extracted
 into `brick_hit_resolve(col,row,axis)` (behavior-preserving) and is used

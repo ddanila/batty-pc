@@ -13,7 +13,7 @@ into both bat objects so the bat flies up with the rocket.
 from pathlib import Path
 
 
-SRC = Path("src/main.c")
+SRC = Path("src/main.cpp")
 
 
 def main() -> int:

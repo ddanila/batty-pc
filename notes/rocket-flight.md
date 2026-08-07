@@ -157,7 +157,7 @@ behaviour change is greenlit. Two code changes + one risk + the GT recipe.
 
 ### Change A — flight: fly over INTACT bricks (remove the tunnel)
 
-In `step_rocket` (src/main.c), delete the bbox-sweep cell-destruction loop
+In `step_rocket` (src/main.cpp), delete the bbox-sweep cell-destruction loop
 (the `for (r...) for (c...)` that does `*cell |= 0x80` /
 `brick_flash_spawn` / `try_spawn_bonus` while the rocket rises). Keep the
 motion block, the `BAT_Y = rocket_y - 6` attach, and the fly-off branch.
@@ -225,7 +225,7 @@ The deferral above was the *engineering* recommendation; the user
 explicitly chose "Implement rocket end-tally" (AskUserQuestion), overriding
 it for the visible end-of-level score-count behaviour. So Change B shipped:
 `play_rocket_award_tally(level_idx)` + `redraw_level_scene` (defined after
-`redraw_with_death_sparks` in src/main.c). It sweeps the 15×12 grid
+`redraw_with_death_sparks` in src/main.cpp). It sweeps the 15×12 grid
 row-major, awards `points_table[row]` (×2 if the colour nibble >= 6) per
 live brick, paces **one PIT tick per brick** with the scene + score
 redrawn each tick (bricks stay visible — matching `add_points_for_left_briks`

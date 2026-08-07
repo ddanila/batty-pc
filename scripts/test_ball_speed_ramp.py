@@ -20,7 +20,7 @@ so the speed VALUE is robust to the run-to-run boot-phase jitter:
   ramp 0x93, base spd 6                     -> 6   (cap holds, no 7)
 
 Expected from the documented mechanic (threshold 0x94, +1, cap 6), not the
-C code. ZEsarUX-free (port-only); needs QEMU + mtools. See src/main.c
+C code. ZEsarUX-free (port-only); needs QEMU + mtools. See src/main.cpp
 ball_speed_ramp_tick.
 """
 import re

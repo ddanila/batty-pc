@@ -9,7 +9,7 @@ $AE, speed is 2, and handling_spark reflects through bounce_wall.
 from pathlib import Path
 
 
-SRC = Path("src/main.c")
+SRC = Path("src/main.cpp")
 
 
 def simulate_original(xs, frames=36, direction_start=0x03):
