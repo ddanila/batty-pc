@@ -2983,7 +2983,7 @@ static void bonus_apply(unsigned char type) {
  * The sprite's last 4 px (rows 2+ have mask \$F0 in byte 3) are
  * transparent shadow, not visible bat surface — ball passing through
  * those pixels shouldn't register a hit. */
-#define BAT_BODY_W 28
+/* BAT_BODY_W comes from physics.h. */
 static int eff_bat_left(void)  { return BAT_X - bat_extra_px; }
 static int eff_bat_right(void) { return BAT_X + BAT_BODY_W + bat_extra_px; }
 
@@ -6220,42 +6220,15 @@ static state_t run_level(void) {
                  * random_generate` per main-loop pass). Gated so the
                  * default on-demand model is byte-unchanged. */
                 if (rng_perframe) next_random();
-                /* Per-frame keyboard polling - mirrors
-                 * get_left_player_ctrl_state ($A161) which reads the
-                 * keyboard half-row IN A,($FE) and updates
-                 * ctrl_btns_pressed.x bits 0/1, then handling_bat at
-                 * $9F64 SUB/ADD $04 on (IX+$02). Step is 4 px / 50 Hz
-                 * tick = 200 px/sec, matching the original. */
-                /* Margins port of check_left_margin (\$ACA2) +
-                 * check_right_margin (\$ACBC). The original BIG_BAT
-                 * grows body to the right only (sprite stays anchored
-                 * at bat_x), so its clamp uses (\$F8 - body_w). Our
-                 * port renders BIG_BAT centred on BAT_X by shifting
-                 * the sprite \$bat_extra_px\$ to the left, so the
-                 * VISIBLE body extends bat_extra_px on each side:
-                 *   visible left  = BAT_X - bat_extra_px
-                 *   visible right = BAT_X + BAT_BODY_W + bat_extra_px
-                 * Clamp those to the playfield [8, 248]. */
-                {
-                    int min_now = 8 + bat_extra_px;
-                    int max_now = 248 - BAT_BODY_W - bat_extra_px;
-                    /* Original handling_bat moves x by ±4 UNCONDITIONALLY
-                     * (SUB/ADD $04), then handling_bat_no_transform clamps
-                     * every frame via check_left_margin ($08) /
-                     * check_right_margin ($F8 - body_w). Match that
-                     * move-then-clamp: a guard-BEFORE-move lets the bat
-                     * rest up to 3 px PAST the margin (from x=min+2 a
-                     * guarded -4 lands on min-2 and sticks), whereas the
-                     * original always clamps to exactly the margin. Compute
-                     * in int so the unsigned-char BAT_X can't wrap on the
-                     * subtract; both keys pressed still cancels (net 0). */
-                    int bx = (int)BAT_X;
-                    if (!rocket_active && key_state[SC_LEFT])  bx -= 4;
-                    if (!rocket_active && key_state[SC_RIGHT]) bx += 4;
-                    if (bx < min_now) bx = min_now;
-                    if (bx > max_now) bx = max_now;
-                    BAT_X = (unsigned char)bx;
-                }
+                /* Steering. The arrows are polled from key_state[] rather
+                 * than read from the BIOS buffer, so holding one steers
+                 * continuously at 4 px per 50 Hz tick = 200 px/s, as the
+                 * original's get_left_player_ctrl_state does. A rocket in
+                 * flight carries the bat, so the player cannot steer. */
+                BAT_X = (unsigned char)bat_step_x(
+                    BAT_X, bat_extra_px,
+                    !rocket_active && key_state[SC_LEFT],
+                    !rocket_active && key_state[SC_RIGHT]);
                 if (ball_stuck) {
                     /* Ball rides the bat at the catch offset (= where it
                      * hit, when the CATCH bonus stuck it; otherwise the

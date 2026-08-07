@@ -407,6 +407,73 @@ static void test_bounce_changes_direction() {
     report("bounce_changes_direction", before, "full band sweep      ok");
 }
 
+/* --- Bat steering ------------------------------------------------------ */
+
+/* The bat must never come to rest off the playfield, from any starting
+ * position and any key combination. Guarding the move instead of clamping
+ * after it leaves the bat up to 3 px past the margin. */
+static void test_bat_never_rests_outside() {
+    const int before = failures;
+    int outside = 0;
+    for (int extra = 0; extra <= 8; extra += 2) {
+        const int min_x = BAT_MARGIN_LEFT + extra;
+        const int max_x = BAT_MARGIN_RIGHT - BAT_BODY_W - extra;
+        for (int x = -16; x < 280; x++) {
+            for (int keys = 0; keys < 4; keys++) {
+                const int got = bat_step_x(x, extra, (keys & 1) != 0, (keys & 2) != 0);
+                if (got < min_x || got > max_x) outside++;
+            }
+        }
+    }
+    check(outside == 0, "%d results landed outside the playfield\n", outside);
+    report("bat_never_rests_outside", before, "5 widths x 296 x 4   ok");
+}
+
+/* Repeatedly steering into a wall must settle EXACTLY on the margin, not
+ * short of it -- that difference is visible as a gap the original does
+ * not have. */
+static void test_bat_settles_on_the_margin() {
+    const int before = failures;
+    for (int extra = 0; extra <= 8; extra += 4) {
+        int x = 120;
+        for (int i = 0; i < 100; i++) x = bat_step_x(x, extra, true, false);
+        check(x == BAT_MARGIN_LEFT + extra,
+              "extra %d: settled at %d, expected exactly %d\n",
+              extra, x, BAT_MARGIN_LEFT + extra);
+
+        x = 120;
+        for (int i = 0; i < 100; i++) x = bat_step_x(x, extra, false, true);
+        check(x == BAT_MARGIN_RIGHT - BAT_BODY_W - extra,
+              "extra %d: settled at %d, expected exactly %d\n",
+              extra, x, BAT_MARGIN_RIGHT - BAT_BODY_W - extra);
+    }
+    report("bat_settles_on_the_margin", before, "both walls, 3 widths ok");
+}
+
+/* Both keys cancel; neither key holds position. */
+static void test_bat_opposing_keys_cancel() {
+    const int before = failures;
+    int moved = 0;
+    for (int x = 40; x < 200; x++) {
+        if (bat_step_x(x, 0, true, true) != x) moved++;
+        if (bat_step_x(x, 0, false, false) != x) moved++;
+    }
+    check(moved == 0, "%d positions moved when they should not have\n", moved);
+    report("bat_opposing_keys_cancel", before, "160 positions        ok");
+}
+
+/* A step is 4 px, which at 50 Hz is the original's 200 px/s. */
+static void test_bat_step_is_four_pixels() {
+    const int before = failures;
+    int wrong = 0;
+    for (int x = 40; x < 200; x++) {
+        if (bat_step_x(x, 0, true, false)  != x - 4) wrong++;
+        if (bat_step_x(x, 0, false, true) != x + 4) wrong++;
+    }
+    check(wrong == 0, "%d steps were not 4 px\n", wrong);
+    report("bat_step_is_four_pixels", before, "160 positions        ok");
+}
+
 int main() {
     printf("physics tests\n");
     test_deflection_matches_hardware();
@@ -427,6 +494,10 @@ int main() {
     test_bounce_clears_the_cell();
     test_reflection_fixed_points_are_unreachable();
     test_bounce_changes_direction();
-    printf("\n%s\n", failures ? "FAILED" : "18 tests, 0 failed");
+    test_bat_never_rests_outside();
+    test_bat_settles_on_the_margin();
+    test_bat_opposing_keys_cancel();
+    test_bat_step_is_four_pixels();
+    printf("\n%s\n", failures ? "FAILED" : "22 tests, 0 failed");
     return failures ? 1 : 0;
 }

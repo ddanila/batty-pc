@@ -285,3 +285,17 @@ BallBounce laffc_bounce(const LaffcHit &hit, u8 dir,
     }
     return out;
 }
+
+int bat_step_x(int bat_x, int extra_px, bool move_left, bool move_right) {
+    const int min_x = BAT_MARGIN_LEFT + extra_px;
+    const int max_x = BAT_MARGIN_RIGHT - BAT_BODY_W - extra_px;
+
+    /* int throughout: the caller's x is a u8 and would wrap on the
+     * subtract before the clamp ever saw it. */
+    if (move_left)  bat_x -= 4;
+    if (move_right) bat_x += 4;
+
+    if (bat_x < min_x) bat_x = min_x;
+    if (bat_x > max_x) bat_x = max_x;
+    return bat_x;
+}

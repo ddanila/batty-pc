@@ -55,6 +55,28 @@ u8 bat_reflect_dir(u8 dir);
  * arises in play — a synthetic 0x10 ball does not return cleanly. */
 int bat_dir_index(u8 dir);
 
+/* --- The bat ---------------------------------------------------------- */
+
+const int BAT_BODY_W = 28;
+/* The playfield the bat is clamped into. */
+const int BAT_MARGIN_LEFT  = 0x08;
+const int BAT_MARGIN_RIGHT = 0xF8;
+
+/* One frame of bat movement, clamped to the playfield.
+ *
+ * orig: handling_bat $9F64 (SUB/ADD $04), then check_left_margin $ACA2 /
+ * check_right_margin $ACBC.
+ *
+ * The ORDER is the point. The original moves unconditionally and clamps
+ * afterwards, every frame. Guarding the move instead lets the bat rest
+ * up to 3 px past the margin -- from x = min+2 a guarded -4 lands on
+ * min-2 and sticks -- where the original always finishes exactly on the
+ * margin. Both keys held cancels out, as it does on the Spectrum.
+ *
+ * A big bat is drawn centred on x, so its visible body extends
+ * `extra_px` on each side and the clamp tightens by that much. */
+int bat_step_x(int bat_x, int extra_px, bool move_left, bool move_right);
+
 /* --- Sweep: the rectangle-overlap path (secondary balls, fallback) ---- */
 
 struct BrickHit {
