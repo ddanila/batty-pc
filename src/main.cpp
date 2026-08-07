@@ -957,33 +957,42 @@ static unsigned char frame_l1[FRAME_CYCLES * FRAME_SIZE];
 
 
 
-static unsigned long prof_bg_pit = 0;
-static unsigned long prof_frame_pit = 0;
-static unsigned long prof_hud_pit = 0;
-static unsigned long prof_bricks_pit = 0;
-static unsigned long prof_vga_pit = 0;
-static unsigned long prof_frames_count = 0;
 /* prof_vga_rects / prof_vga_bytes are tallied by the video engine (zxvga.c). */
-static unsigned long prof_static_rebuilds = 0;
 /* Brick-band cache rebuilds (build_static_brick_band_cache): count, total
  * char-rows re-composited, and PIT ticks spent. rows/rebuilds shows the
  * incremental win directly (full = 14, scoped ~= 3). */
-static unsigned long prof_band_rebuilds = 0;
-static unsigned long prof_band_rows = 0;
-static unsigned long prof_band_pit = 0;
 /* Force the whole-band rebuild path (A/B baseline for the incremental
  * scoping). Set by BATTY_FULL_BAND_REBUILD. */
 static unsigned char force_full_band_rebuild = 0;
-static unsigned long prof_full_dynamic_frames = 0;
-static unsigned long prof_ball_only_frames = 0;
-static unsigned long prof_ball_object_frames = 0;
-static unsigned long prof_ball_dirty_block_bat = 0;
-static unsigned long prof_ball_dirty_block_static = 0;
-static unsigned long prof_ball_dirty_block_hud = 0;
-static unsigned long prof_ball_dirty_block_objects = 0;
-static unsigned long prof_ball_dirty_block_bricks = 0;
-static unsigned long prof_ball_dirty_block_balls = 0;
-static unsigned long prof_ball_dirty_block_bat_fx = 0;
+/* Where the render profile accumulates. Written only when
+ * BATTY_RENDER_PROFILE is set, and dumped to PROFILE.TXT at exit.
+ *
+ * The `blocked_by_*` counters exist to answer one question: when a frame
+ * could not take the cheap ball-only redraw path, what stopped it? Each
+ * frame increments exactly the one that vetoed, so the tally says where
+ * to look rather than just how often the fast path missed. */
+struct RenderProfile {
+    /* PIT ticks spent in each stage. */
+    unsigned long bg_pit, frame_pit, hud_pit, bricks_pit, vga_pit, band_pit;
+
+    unsigned long frames;
+    unsigned long static_rebuilds;
+    unsigned long band_rebuilds, band_rows;   /* rows/rebuilds shows the
+                                               * incremental win directly:
+                                               * a full band is 14 rows,
+                                               * a scoped one about 3. */
+
+    /* Which redraw path each frame took. */
+    unsigned long full_dynamic_frames, ball_only_frames, ball_object_frames;
+
+    /* What vetoed the ball-only path, when something did. */
+    unsigned long blocked_by_bat, blocked_by_static, blocked_by_hud;
+    unsigned long blocked_by_objects, blocked_by_bricks, blocked_by_balls;
+    unsigned long blocked_by_bat_fx;
+};
+
+static RenderProfile prof;
+
 static unsigned long profile_auto_frames = 0;
 /* While set the frame body does no physics; only P (toggle), ESC
  * (quit) and ENTER (advance) are acted on. */
@@ -1055,29 +1064,29 @@ static void write_profile_report(void) {
     FILE *f = fopen("A:\\PROFILE.TXT", "w");
     if (!f) f = fopen("PROFILE.TXT", "w");
     if (f) {
-        unsigned long total = prof_bg_pit + prof_frame_pit + prof_hud_pit + prof_bricks_pit + prof_vga_pit;
-        fprintf(f, "Profiling Report over %lu frames:\n", prof_frames_count);
+        unsigned long total = prof.bg_pit + prof.frame_pit + prof.hud_pit + prof.bricks_pit + prof.vga_pit;
+        fprintf(f, "Profiling Report over %lu frames:\n", prof.frames);
         if (total > 0) {
-            fprintf(f, "  paint_bg_to_buff:     %lu (%u%%)\n", prof_bg_pit, (unsigned)((prof_bg_pit * 100) / total));
-            fprintf(f, "  paint_frame_to_buff:  %lu (%u%%)\n", prof_frame_pit, (unsigned)((prof_frame_pit * 100) / total));
-            fprintf(f, "  HUD / Lives:          %lu (%u%%)\n", prof_hud_pit, (unsigned)((prof_hud_pit * 100) / total));
-            fprintf(f, "  render_brick_band:    %lu (%u%%)\n", prof_bricks_pit, (unsigned)((prof_bricks_pit * 100) / total));
-            fprintf(f, "  buff_to_vga:          %lu (%u%%)\n", prof_vga_pit, (unsigned)((prof_vga_pit * 100) / total));
+            fprintf(f, "  paint_bg_to_buff:     %lu (%u%%)\n", prof.bg_pit, (unsigned)((prof.bg_pit * 100) / total));
+            fprintf(f, "  paint_frame_to_buff:  %lu (%u%%)\n", prof.frame_pit, (unsigned)((prof.frame_pit * 100) / total));
+            fprintf(f, "  HUD / Lives:          %lu (%u%%)\n", prof.hud_pit, (unsigned)((prof.hud_pit * 100) / total));
+            fprintf(f, "  render_brick_band:    %lu (%u%%)\n", prof.bricks_pit, (unsigned)((prof.bricks_pit * 100) / total));
+            fprintf(f, "  buff_to_vga:          %lu (%u%%)\n", prof.vga_pit, (unsigned)((prof.vga_pit * 100) / total));
         }
-        fprintf(f, "  static rebuilds:      %lu\n", prof_static_rebuilds);
-        fprintf(f, "  band rebuilds:        %lu\n", prof_band_rebuilds);
-        fprintf(f, "  band rows rebuilt:    %lu\n", prof_band_rows);
-        fprintf(f, "  band rebuild PIT:     %lu\n", prof_band_pit);
-        fprintf(f, "  full dynamic frames:  %lu\n", prof_full_dynamic_frames);
-        fprintf(f, "  ball-only frames:     %lu\n", prof_ball_only_frames);
-        fprintf(f, "  ball-object frames:   %lu\n", prof_ball_object_frames);
-        fprintf(f, "  ball block bat:       %lu\n", prof_ball_dirty_block_bat);
-        fprintf(f, "  ball block static:    %lu\n", prof_ball_dirty_block_static);
-        fprintf(f, "  ball block HUD:       %lu\n", prof_ball_dirty_block_hud);
-        fprintf(f, "  ball block objects:   %lu\n", prof_ball_dirty_block_objects);
-        fprintf(f, "  ball block bricks:    %lu\n", prof_ball_dirty_block_bricks);
-        fprintf(f, "  ball block balls:     %lu\n", prof_ball_dirty_block_balls);
-        fprintf(f, "  ball block bat FX:    %lu\n", prof_ball_dirty_block_bat_fx);
+        fprintf(f, "  static rebuilds:      %lu\n", prof.static_rebuilds);
+        fprintf(f, "  band rebuilds:        %lu\n", prof.band_rebuilds);
+        fprintf(f, "  band rows rebuilt:    %lu\n", prof.band_rows);
+        fprintf(f, "  band rebuild PIT:     %lu\n", prof.band_pit);
+        fprintf(f, "  full dynamic frames:  %lu\n", prof.full_dynamic_frames);
+        fprintf(f, "  ball-only frames:     %lu\n", prof.ball_only_frames);
+        fprintf(f, "  ball-object frames:   %lu\n", prof.ball_object_frames);
+        fprintf(f, "  ball block bat:       %lu\n", prof.blocked_by_bat);
+        fprintf(f, "  ball block static:    %lu\n", prof.blocked_by_static);
+        fprintf(f, "  ball block HUD:       %lu\n", prof.blocked_by_hud);
+        fprintf(f, "  ball block objects:   %lu\n", prof.blocked_by_objects);
+        fprintf(f, "  ball block bricks:    %lu\n", prof.blocked_by_bricks);
+        fprintf(f, "  ball block balls:     %lu\n", prof.blocked_by_balls);
+        fprintf(f, "  ball block bat FX:    %lu\n", prof.blocked_by_bat_fx);
         fprintf(f, "  VGA rect flushes:     %lu\n", prof_vga_rects);
         fprintf(f, "  VGA bytes written:    %lu\n", prof_vga_bytes);
         fprintf(f, "  sound disabled:       %u\n", (unsigned)(sound_is_enabled() ? 0 : 1));
@@ -2134,7 +2143,7 @@ static void render_level_screen_static(unsigned char level_idx) {
 }
 
 static void build_static_background(unsigned char level_idx) {
-    prof_static_rebuilds++;
+    prof.static_rebuilds++;
     render_level_screen_static(level_idx);
     memcpy(bg_scr_buff, scr_buff, sizeof(bg_scr_buff));
     memcpy(bg_attr_buff, attr_buff, sizeof(bg_attr_buff));
@@ -2170,7 +2179,7 @@ static void build_static_brick_band_cache(unsigned char level_idx) {
          * touched attr cell, or the parts outside the flash rect go stale
          * on VGA — the post-destroy leftovers of known-bugs.md #1. */
         mark_dirty_bytes(3 * 8, (16 - 3 + 1) * 8, 0, 31);
-        prof_band_rows += 14;
+        prof.band_rows += 14;
     } else {
         /* Incremental: re-composite [R0, R1] = the dirty brick rows
          * widened by one row each side, so every attr/pixel the window
@@ -2206,12 +2215,12 @@ static void build_static_brick_band_cache(unsigned char level_idx) {
         /* Flush every pixel row of every recomposited attr cell, plus
          * the shared top-edge pixel row (same rule as the full branch). */
         mark_dirty_bytes(py0 - 1, (cr1 * 8 + 7) - (py0 - 1) + 1, 0, 31);
-        prof_band_rows += (unsigned long)(cr1 - cr0 + 1);
+        prof.band_rows += (unsigned long)(cr1 - cr0 + 1);
     }
     t1 = pit_current_ticks();
-    prof_band_pit += (t1 <= t0) ? (unsigned long)(t0 - t1)
+    prof.band_pit += (t1 <= t0) ? (unsigned long)(t0 - t1)
                                 : (unsigned long)((t0 - t1) + 23864u);
-    prof_band_rebuilds++;
+    prof.band_rebuilds++;
     static_bg_cache_dirty = 0;
 }
 
@@ -4802,10 +4811,10 @@ static void redraw_full_with_ball(unsigned char level_idx) {
      * 2026-06-12 via the fly-over A/B harness, frame-12 247px diff vs
      * the dirty path, which correctly draws sprites over the frame). */
     restore_top_frame_center(cycle, level_idx);
-    prof_bg_pit += prof_elapsed();
+    prof.bg_pit += prof_elapsed();
 
     /* The frame itself is static and baked into bg_scr_buff/bg_attr_buff. */
-    prof_frame_pit += prof_elapsed();
+    prof.frame_pit += prof_elapsed();
 
     if (BALL_VISIBLE) {
         render_ball_to_buff(BALL_X, BALL_Y, bg_attr);
@@ -4838,7 +4847,7 @@ static void redraw_full_with_ball(unsigned char level_idx) {
 
     /* Lives and HUD are static in the cached background and are rebuilt
      * only when score/lives/brick-animation invalidation requires it. */
-    prof_hud_pit += prof_elapsed();
+    prof.hud_pit += prof_elapsed();
 
     render_brick_flash_to_buff();
     if (brick_flash_ticks) {
@@ -4939,7 +4948,7 @@ static void redraw_full_with_ball(unsigned char level_idx) {
     /* (restore_top_frame_center used to run here — moved BEFORE the
      * object compose so it can't erase sprites overlapping the frame
      * centre; see the comment at the new call site above.) */
-    prof_bricks_pit += prof_elapsed();
+    prof.bricks_pit += prof_elapsed();
 
     if (force_full_flush) {
         for (y = 0; y < PLAYFIELD_H; y++) {
@@ -4956,10 +4965,10 @@ static void redraw_full_with_ball(unsigned char level_idx) {
         carry_dirty_with_previous();
     }
     flush_dirty_to_vga();
-    prof_vga_pit += prof_elapsed();
+    prof.vga_pit += prof_elapsed();
 
-    prof_frames_count++;
-    prof_full_dynamic_frames++;
+    prof.frames++;
+    prof.full_dynamic_frames++;
 }
 
 #define BALL_DIRTY_BLOCK_BAT      0x0001
@@ -5003,19 +5012,19 @@ static unsigned int ball_dirty_blockers(int bat_moved) {
 
 static void prof_note_ball_dirty_blockers(unsigned int blockers) {
     if (blockers & (BALL_DIRTY_BLOCK_BAT | BALL_DIRTY_BLOCK_FORCED))
-        prof_ball_dirty_block_bat++;
+        prof.blocked_by_bat++;
     if (blockers & BALL_DIRTY_BLOCK_STATIC)
-        prof_ball_dirty_block_static++;
+        prof.blocked_by_static++;
     if (blockers & BALL_DIRTY_BLOCK_HUD)
-        prof_ball_dirty_block_hud++;
+        prof.blocked_by_hud++;
     if (blockers & BALL_DIRTY_BLOCK_OBJECTS)
-        prof_ball_dirty_block_objects++;
+        prof.blocked_by_objects++;
     if (blockers & BALL_DIRTY_BLOCK_BRICKS)
-        prof_ball_dirty_block_bricks++;
+        prof.blocked_by_bricks++;
     if (blockers & BALL_DIRTY_BLOCK_BALLS)
-        prof_ball_dirty_block_balls++;
+        prof.blocked_by_balls++;
     if (blockers & BALL_DIRTY_BLOCK_BAT_FX)
-        prof_ball_dirty_block_bat_fx++;
+        prof.blocked_by_bat_fx++;
 }
 
 static int can_redraw_ball_with_simple_objects(unsigned int blockers) {
@@ -5153,19 +5162,19 @@ static void redraw_ball_only(unsigned char level_idx) {
     prof_start();
     restore_prev_dirty_from_static_cache();
     clear_dirty_ranges(dirty_min_byte, dirty_max_byte);
-    prof_bg_pit += prof_elapsed();
+    prof.bg_pit += prof_elapsed();
 
     render_ball_to_buff(BALL_X, BALL_Y, bg_attr);
     mark_dirty_rect_px(BALL_X, BALL_Y, 16, 12);
     redraw_bat_dirty(cycle, bg_attr);
-    prof_bricks_pit += prof_elapsed();
+    prof.bricks_pit += prof_elapsed();
 
     carry_dirty_with_previous();
     flush_dirty_to_vga();
-    prof_vga_pit += prof_elapsed();
+    prof.vga_pit += prof_elapsed();
 
-    prof_frames_count++;
-    prof_ball_only_frames++;
+    prof.frames++;
+    prof.ball_only_frames++;
 }
 
 static void redraw_ball_with_simple_objects(unsigned char level_idx) {
@@ -5175,20 +5184,20 @@ static void redraw_ball_with_simple_objects(unsigned char level_idx) {
     prof_start();
     restore_prev_dirty_from_static_cache();
     clear_dirty_ranges(dirty_min_byte, dirty_max_byte);
-    prof_bg_pit += prof_elapsed();
+    prof.bg_pit += prof_elapsed();
 
     render_ball_to_buff(BALL_X, BALL_Y, bg_attr);
     mark_dirty_rect_px(BALL_X, BALL_Y, 16, 12);
     redraw_bat_dirty(cycle, bg_attr);
     render_simple_objects_to_buff_and_mark(bg_attr);
-    prof_bricks_pit += prof_elapsed();
+    prof.bricks_pit += prof_elapsed();
 
     carry_dirty_with_previous();
     flush_dirty_to_vga();
-    prof_vga_pit += prof_elapsed();
+    prof.vga_pit += prof_elapsed();
 
-    prof_frames_count++;
-    prof_ball_object_frames++;
+    prof.frames++;
+    prof.ball_object_frames++;
 }
 
 /* Render a short string of N character codes via draw_glyph, anchored
@@ -6429,7 +6438,7 @@ static state_t run_level(void) {
             }
 
             if (profile_auto_frames != 0
-                && prof_frames_count >= profile_auto_frames) {
+                && prof.frames >= profile_auto_frames) {
                 write_replay_probe();
                 return ST_QUIT;
             }
