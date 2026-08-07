@@ -33,9 +33,9 @@ EXTENDER   = $(WATCOM_DIR)/dos/DOS32A.EXE
 # -os     = optimize for size      -s  = no stack overflow checks
 # -oi     = inline intrinsics (memset/memcpy)
 # -w4 -we = max warnings, treat as errors
-# Open Watcom's C++ is C++98 plus static_assert/decltype -- see
-# notes/toolchain.md for what is and isn't available.
-WPPFLAGS = -bt=dos -3 -os -s -w4 -we -oi -i=$(WATCOM_H)
+# -zastd=c++0x enables the handful of C++11 features Open Watcom has
+# (static_assert, decltype, the >> template close). See notes/toolchain.md.
+WPPFLAGS = -bt=dos -3 -os -s -w4 -we -oi -zastd=c++0x -i=$(WATCOM_H)
 # `format os2 le` is the linear executable the extender loads.
 WLINKFMT = format os2 le option stub=$(WSTUB)
 

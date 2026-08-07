@@ -90,7 +90,7 @@ static int rng_range(int lo, int hi) {   /* inclusive */
 /* Independent reference model of the ZX ULA                             */
 /* ===================================================================== */
 /* Written from the hardware description, deliberately NOT reusing
- * ink_pal/paper_pal/the expansion table — otherwise a bug in those would
+ * attr_ink/attr_paper/the expansion table — otherwise a bug in those would
  * agree with itself and the test would pass. */
 
 #define REF_ATTR_INK(a)    (((a) & 0x07) | (((a) & 0x40) ? 8 : 0))
@@ -383,7 +383,7 @@ static void test_dirty_cell_rect_rounding(void) {
 
 static unsigned char sprite_buf[2 + 8 * 24 * 2];
 
-static const unsigned char *make_sprite(int w, int h) {
+static Sprite make_sprite(int w, int h) {
     int i;
     sprite_buf[0] = (unsigned char)w;
     sprite_buf[1] = (unsigned char)h;
@@ -393,7 +393,7 @@ static const unsigned char *make_sprite(int w, int h) {
         sprite_buf[2 + i * 2]     = mask;
         sprite_buf[2 + i * 2 + 1] = pix;
     }
-    return sprite_buf;
+    return Sprite(sprite_buf);
 }
 
 /* ===================================================================== */
@@ -406,7 +406,7 @@ static void test_sprite_blit_preserves_attrs(void) {
     begin("sprite_blit_preserves_attrs");
     rng_seed(0x0B1EC7);
     for (iter = 0; iter < 2000; iter++) {
-        const unsigned char *spr;
+        Sprite spr(sprite_buf);
         int w = rng_range(1, 6);
         int h = rng_range(1, 20);
         /* Include off-playfield positions on every side — clipping paths
@@ -416,7 +416,7 @@ static void test_sprite_blit_preserves_attrs(void) {
         randomize_buffers();
         memcpy(attr_before, attr_buff, sizeof(attr_before));
         spr = make_sprite(w, h);
-        blit_masked_to_scr_buff_ptr(spr, x, y);
+        blit_masked_to_scr_buff(spr, x, y);
         CHECK(memcmp(attr_before, attr_buff, sizeof(attr_before)) == 0,
               "sprite %dx%d at (%d,%d) modified attr_buff\n", w, h, x, y);
     }
@@ -440,8 +440,8 @@ static void test_clash_confines_to_cell_pair(void) {
         int k, cy, cx, py, px, offenders = 0;
         randomize_buffers();
         for (k = 0; k < 12; k++) {
-            const unsigned char *spr = make_sprite(rng_range(1, 5), rng_range(1, 16));
-            blit_masked_to_scr_buff_ptr(spr, rng_range(-8, PLAYFIELD_W),
+            Sprite spr = make_sprite(rng_range(1, 5), rng_range(1, 16));
+            blit_masked_to_scr_buff(spr, rng_range(-8, PLAYFIELD_W),
                                              rng_range(-8, PLAYFIELD_H));
         }
         buff_to_vga();

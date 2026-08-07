@@ -11,8 +11,8 @@
  *   §5  Dirty rectangles   — track and flush only what changed
  *   §6  Masked blits       — pixels-only (clashing) vs attribute writes
  *
- * Compiled into the DOS build via main.c, and standalone by
- * tests/test_zxvga.c under a host compiler — the __WATCOMC__ guards pick
+ * Compiled into the DOS build via main.cpp, and standalone by
+ * tests/test_zxvga.cpp under a host compiler — the __WATCOMC__ guard picks
  * the VGA surface (real hardware vs a plain array). */
 
 #include <string.h>
@@ -61,17 +61,16 @@ static const unsigned char zx_palette[16 * 3] = {
 };
 
 #ifdef __WATCOMC__
-static void set_mode(unsigned char mode) {
+static void set_mode(u8 mode) {
     union REGS r;
     r.h.ah = 0x00;
     r.h.al = mode;
     int386(0x10, &r, &r);
 }
 
-static void set_palette(const unsigned char *rgb, int count) {
-    int i;
+static void set_palette(const u8 *rgb, int count) {
     outp(0x3C8, 0);
-    for (i = 0; i < count * 3; i++) outp(0x3C9, rgb[i]);
+    for (int i = 0; i < count * 3; i++) outp(0x3C9, rgb[i]);
 }
 #else
 /* Host stand-ins: no BIOS, no DAC ports. set_palette records what would
@@ -79,26 +78,24 @@ static void set_palette(const unsigned char *rgb, int count) {
 static unsigned char zxvga_host_dac[256 * 3];
 static int zxvga_host_dac_len;
 
-static void set_mode(unsigned char mode) { (void)mode; }
+static void set_mode(u8 mode) { (void)mode; }
 
-static void set_palette(const unsigned char *rgb, int count) {
-    int i;
-    for (i = 0; i < count * 3 && i < (int)sizeof(zxvga_host_dac); i++)
+static void set_palette(const u8 *rgb, int count) {
+    for (int i = 0; i < count * 3 && i < (int)sizeof(zxvga_host_dac); i++)
         zxvga_host_dac[i] = rgb[i];
     zxvga_host_dac_len = count * 3;
 }
 #endif
 
-static void fill(int x, int y, int w, int h, unsigned char c) {
-    int row;
-    for (row = 0; row < h; row++) {
+static void fill(int x, int y, int w, int h, u8 c) {
+    for (int row = 0; row < h; row++) {
         memset(vga + (long)(y + row) * SCREEN_W + x, c, (size_t)w);
     }
 }
 
 /* The playfield is 256x192 centred in the 320x200 mode — paint the
  * surrounding letterbox. */
-static void clear_playfield_border(void) {
+static void clear_playfield_border() {
     fill(0, 0, SCREEN_W, BORDER_Y, COL_BORDER);
     fill(0, BORDER_Y + PLAYFIELD_H, SCREEN_W,
          SCREEN_H - BORDER_Y - PLAYFIELD_H, COL_BORDER);
@@ -107,54 +104,60 @@ static void clear_playfield_border(void) {
          SCREEN_W - BORDER_X - PLAYFIELD_W, PLAYFIELD_H, COL_BORDER);
 }
 
+static void init_pal_tables();
+
+/* Owns the video mode for its lifetime: mode 13h and the ZX palette on
+ * construction, text mode on destruction. Declaring one in main() means
+ * no return path can leave the display in a graphics mode. */
+class ZxDisplay {
+public:
+    ZxDisplay() {
+        set_mode(0x13);
+        set_palette(zx_palette, 16);
+        init_pal_tables();
+    }
+    ~ZxDisplay() { set_mode(0x03); }
+private:
+    ZxDisplay(const ZxDisplay &);              /* not copyable */
+    ZxDisplay &operator=(const ZxDisplay &);
+};
+
 /* ===================================================================== */
 /* §2  Attribute model                                                   */
 /* ===================================================================== */
 
-/* ZX attribute byte (paper=0 always here) -> our palette index. */
-static unsigned char attr_to_palette(unsigned char attr) {
-    /* bit 6 = bright, bits 0..2 = ink colour. */
-    unsigned char bright = (attr >> 6) & 1;
-    unsigned char ink    = attr & 7;
-    return (unsigned char)(bright * 8 + ink);
-}
+/* Ink colour of an attribute whose paper is known to be 0 — the glyph and
+ * markup renderers draw on a black cell, so only the ink matters. */
+static u8 attr_to_palette(u8 attr) { return attr_ink(attr); }
 
-/* ZX attribute byte -> our 16-entry palette indices for ink + paper.
- * attr = flash | bright | paper(3) | ink(3). bit 6 = bright. */
-static unsigned char ink_pal(unsigned char attr) {
-    return (unsigned char)((attr & 7) | ((attr & 0x40) >> 3));
-}
-static unsigned char paper_pal(unsigned char attr) {
-    return (unsigned char)(((attr >> 3) & 7) | ((attr & 0x40) >> 3));
-}
-
-static unsigned char ink_table[256];
-static unsigned char paper_table[256];
+static u8 ink_table[256];
+static u8 paper_table[256];
 
 /* The clash expansion table: for every attribute (flash bit dropped — see
  * zxvga.h) and every 4-bit pixel nibble, the 4 VGA palette indices that
  * nibble expands to, packed leftmost-pixel-in-the-low-byte so a whole
  * nibble is one 32-bit store. */
-static unsigned int vga_attr_nibble_dwords[128][16];
+static u32 vga_attr_nibble_dwords[128][16];
+ZX_STATIC_ASSERT(sizeof(u32) == 4, "the expansion table stores 4 pixels per entry");
 
-static void init_pal_tables(void) {
-    int i;
-    for (i = 0; i < 256; i++) {
-        ink_table[i] = ink_pal((unsigned char)i);
-        paper_table[i] = paper_pal((unsigned char)i);
+static void init_pal_tables() {
+    for (int a = 0; a < 256; a++) {
+        ink_table[a]   = attr_ink(u8(a));
+        paper_table[a] = attr_paper(u8(a));
     }
-    for (i = 0; i < 128; i++) {
-        int n;
-        unsigned char ink = ink_table[i];
-        unsigned char paper = paper_table[i];
-        for (n = 0; n < 16; n++) {
-            unsigned char p0 = (n & 8) ? ink : paper;
-            unsigned char p1 = (n & 4) ? ink : paper;
-            unsigned char p2 = (n & 2) ? ink : paper;
-            unsigned char p3 = (n & 1) ? ink : paper;
-            vga_attr_nibble_dwords[i][n] =
-                (unsigned int)p0 | ((unsigned int)p1 << 8) |
-                ((unsigned int)p2 << 16) | ((unsigned int)p3 << 24);
+    /* Flash (bit 7) is not emulated, so only 128 attributes are distinct. */
+    for (int a = 0; a < 128; a++) {
+        const u8 ink   = ink_table[a];
+        const u8 paper = paper_table[a];
+        for (int nibble = 0; nibble < 16; nibble++) {
+            u32 packed = 0;
+            /* Bit 3 is the leftmost pixel and goes in the LOW byte, so the
+             * whole nibble stores little-endian in screen order. */
+            for (int bit = 0; bit < 4; bit++) {
+                const u8 px = (nibble & (8 >> bit)) ? ink : paper;
+                packed |= u32(px) << (bit * 8);
+            }
+            vga_attr_nibble_dwords[a][nibble] = packed;
         }
     }
 }
@@ -163,13 +166,26 @@ static void init_pal_tables(void) {
 /* §3  ZX framebuffer                                                    */
 /* ===================================================================== */
 
-/* `scr_buff` and `attr_buff` mirror the original's offscreen buffers
- * at $DA00 / $D700. Layout: scr_buff is row-major, 32 bytes/row * 192
- * rows; attr_buff is 32 cols * 24 rows of ZX attribute bytes. Pixel
- * (x, y) lives at scr_buff[y*32 + x/8] bit (7 - x%8); attribute at
- * attr_buff[(y/8)*32 + x/8]. */
-static unsigned char scr_buff[6144];
-static unsigned char attr_buff[768];
+/* The two planes, mirroring the original's offscreen buffers at
+ * $DA00 / $D700. Address them through the accessors below rather than
+ * open-coding the arithmetic. */
+static u8 scr_buff[SCR_BUFF_SIZE];
+static u8 attr_buff[ATTR_BUFF_SIZE];
+
+ZX_STATIC_ASSERT(BYTES_PER_ROW == ATTR_COLS,
+                 "a byte of pixels and a character cell are both 8 px wide");
+ZX_STATIC_ASSERT(sizeof(scr_buff) == 6144,  "scr_buff matches the ZX layout");
+ZX_STATIC_ASSERT(sizeof(attr_buff) == 768,  "attr_buff matches the ZX layout");
+
+/* Start of pixel row y, and of the attribute row covering it. Eight pixel
+ * rows share one attribute row — that ratio is the whole of colour clash. */
+inline u8 *scr_row(int y)  { return &scr_buff[y * BYTES_PER_ROW]; }
+inline u8 *attr_row(int y) { return &attr_buff[(y / CELL_PX) * ATTR_COLS]; }
+
+/* Playfield pixel (x, y) in the mode 13h framebuffer. */
+inline u8 *vga_at(int x, int y) {
+    return vga + (BORDER_Y + y) * SCREEN_W + BORDER_X + x;
+}
 
 /* ===================================================================== */
 /* §4  Clash blit to VGA                                                 */
@@ -182,30 +198,23 @@ static unsigned long prof_vga_bytes = 0;
 
 /* One (pixel byte, cell attribute) pair -> 8 VGA pixels, advancing `dest`.
  * This is where colour clash physically happens: the eight pixels can only
- * be this cell's ink or this cell's paper, whatever drew them.
- *
- * `dest` is always 4-byte aligned — (BORDER_Y + y) * 320 + 32 is divisible
- * by 4 and every byte column advances by 8 — so both stores are aligned. */
-#define ZXVGA_EMIT_BYTE(dest, b, attr)                                       \
-    do {                                                                     \
-        const unsigned int *ztab = vga_attr_nibble_dwords[(attr) & 0x7F];    \
-        *(unsigned int *)(dest)       = ztab[(b) >> 4];                      \
-        *(unsigned int *)((dest) + 4) = ztab[(b) & 0x0F];                    \
-        (dest) += 8;                                                         \
-    } while (0)
+ * be this cell's ink or this cell's paper, whatever drew them. */
+inline void emit_byte(u8 *&dest, u8 pixels, u8 attr) {
+    const u32 *table = vga_attr_nibble_dwords[attr & 0x7F];
+    *(u32 *)(dest)     = table[pixels >> 4];
+    *(u32 *)(dest + 4) = table[pixels & 0x0F];
+    dest += 8;
+}
 
 /* Expand the whole 256x192 playfield. 49152 VGA writes — reserved for
  * screen changes; per-frame updates go through the dirty flush below. */
-static void buff_to_vga(void) {
-    int y, byte_col;
-    for (y = 0; y < PLAYFIELD_H; y++) {
-        unsigned char *dest = vga + (long)(BORDER_Y + y) * SCREEN_W + BORDER_X;
-        const unsigned char *scr_row = &scr_buff[y * 32];
-        const unsigned char *attr_row = &attr_buff[(y >> 3) * 32];
-        for (byte_col = 0; byte_col < 32; byte_col++) {
-            unsigned char b = scr_row[byte_col];
-            unsigned char attr = attr_row[byte_col];
-            ZXVGA_EMIT_BYTE(dest, b, attr);
+static void buff_to_vga() {
+    for (int y = 0; y < PLAYFIELD_H; y++) {
+        u8 *dest = vga_at(0, y);
+        const u8 *pixels = scr_row(y);
+        const u8 *attrs  = attr_row(y);
+        for (int col = 0; col < BYTES_PER_ROW; col++) {
+            emit_byte(dest, pixels[col], attrs[col]);
         }
     }
 }
@@ -215,25 +224,24 @@ static void buff_to_vga(void) {
  * character-cell columns, so a rect can never split a cell horizontally
  * and the attribute lookup stays valid. */
 static void buff_to_vga_rect_bytes(int y0, int h, int byte_lo, int byte_hi) {
-    int y, byte_col;
     int y_end = y0 + h;
     if (byte_lo < 0) byte_lo = 0;
-    if (byte_hi > 31) byte_hi = 31;
+    if (byte_hi > BYTES_PER_ROW - 1) byte_hi = BYTES_PER_ROW - 1;
     if (byte_lo > byte_hi) return;
     if (y_end > PLAYFIELD_H) y_end = PLAYFIELD_H;
     if (y0 < 0) y0 = 0;
     if (y0 >= y_end) return;
+
     prof_vga_rects++;
-    prof_vga_bytes += (unsigned long)(y_end - y0) * (unsigned long)(byte_hi - byte_lo + 1) * 8UL;
-    for (y = y0; y < y_end; y++) {
-        unsigned char *dest = vga + (long)(BORDER_Y + y) * SCREEN_W
-                                  + BORDER_X + byte_lo * 8;
-        const unsigned char *scr_row = &scr_buff[y * 32];
-        const unsigned char *attr_row = &attr_buff[(y >> 3) * 32];
-        for (byte_col = byte_lo; byte_col <= byte_hi; byte_col++) {
-            unsigned char b = scr_row[byte_col];
-            unsigned char attr = attr_row[byte_col];
-            ZXVGA_EMIT_BYTE(dest, b, attr);
+    prof_vga_bytes += (unsigned long)(y_end - y0)
+                    * (unsigned long)(byte_hi - byte_lo + 1) * 8UL;
+
+    for (int y = y0; y < y_end; y++) {
+        u8 *dest = vga_at(byte_lo * 8, y);
+        const u8 *pixels = scr_row(y);
+        const u8 *attrs  = attr_row(y);
+        for (int col = byte_lo; col <= byte_hi; col++) {
+            emit_byte(dest, pixels[col], attrs[col]);
         }
     }
 }
@@ -399,128 +407,92 @@ static void flush_dirty_to_vga(void) {
 /* §6  Masked blits                                                      */
 /* ===================================================================== */
 
-/* Masked blit into the 1-bit scr_buff: per byte,
- *   scr_buff' = (~mask & scr_buff) | (mask & pix)
- * i.e. mask=1 bits take the pix bit (1 = ink, 0 = paper at the
- * buff_to_vga pass), mask=0 bits are PRESERVED (transparent).
- *
- * ATTRIBUTES ARE NOT TOUCHED — that is the point. A sprite drawn this
- * way inherits each cell's existing ink/paper, i.e. it clashes, exactly
- * as the original's print_obj_to_buff ($B82C) does.
- *
- * Encoding note (the full story is in notes/bird-render-parity.md):
- * this operates on the TAPE sprite encoding (assets/sprites.bin). The
- * original blits `(mask | scr) ^ pix` on data its boot-time
- * gfx_inverse pass transformed to pix^mask — the two compositions are
- * bit-identical on mask=1 bits. On mask=0 bits the original would XOR
- * stray pix bits into the background, but NO shipped sprite has pix
- * bits outside its mask (verified exhaustively over all 49 sprites;
- * the single exception is one bit in bird_4's garbage 15th row — see
- * the note), so the preserve-semantics here is equivalent. An earlier
- * version of this comment described `(mask|scr)^pix` outcomes
- * including an "XOR shadow" — that table never matched this code and
- * misled a whole triage; the dotted bat shadow comes from mask=1
- * dither bits, not XOR.
- * Handles non-byte-aligned x by emitting each source byte across two
- * destination bytes with a per-row shift. */
-static void blit_masked_to_scr_buff_ptr(const unsigned char *src,
-                                         int x_px, int y_px) {
-    int w = src[0];
-    int h = src[1];
-    const unsigned char *p = src + 2;
-    int shift     = x_px & 7;
-    int start_col = x_px >> 3;
-    int row, col_byte;
+/* Composite one byte of sprite over one byte of the pixel plane. */
+inline void apply_mask(u8 &dest, u8 mask, u8 pixels) {
+    dest = u8((~mask & dest) | (mask & pixels));
+}
 
-    if (shift == 0) {
-        for (row = 0; row < h; row++) {
-            int y = y_px + row;
-            if (y < 0 || y >= PLAYFIELD_H) { p += (unsigned)w * 2; continue; }
-            unsigned int row_base = (unsigned int)y * 32U;
-            for (col_byte = 0; col_byte < w; col_byte++) {
-                unsigned char mask = *p++;
-                unsigned char pix  = *p++;
-                int dst_l = start_col + col_byte;
-                if (dst_l >= 0 && dst_l < 32) {
-                    unsigned char *d = &scr_buff[row_base + dst_l];
-                    *d = (unsigned char)(((unsigned char)(~mask) & *d) | (mask & pix));
-                }
-            }
-        }
-    } else {
-        int rshift = 8 - shift;
-        for (row = 0; row < h; row++) {
-            int y = y_px + row;
-            if (y < 0 || y >= PLAYFIELD_H) { p += (unsigned)w * 2; continue; }
-            unsigned int row_base = (unsigned int)y * 32U;
-            for (col_byte = 0; col_byte < w; col_byte++) {
-                unsigned char mask = *p++;
-                unsigned char pix  = *p++;
-                int dst_l = start_col + col_byte;
-                int dst_r = dst_l + 1;
-                unsigned char m_l = (unsigned char)(mask >> shift);
-                unsigned char p_l = (unsigned char)(pix  >> shift);
-                unsigned char m_r = (unsigned char)(mask << rshift);
-                unsigned char p_r = (unsigned char)(pix  << rshift);
+/* Masked blit into the 1-bit scr_buff: per destination byte,
+ *   scr_buff' = (~mask & scr_buff) | (mask & pixels)
+ * so mask=1 bits take the sprite's bit (which buff_to_vga later resolves
+ * to the cell's ink or paper) and mask=0 bits are PRESERVED — transparent.
+ *
+ * ATTRIBUTES ARE NOT TOUCHED — that is the point. A sprite drawn this way
+ * inherits each cell's existing ink/paper, i.e. it clashes, exactly as the
+ * original's print_obj_to_buff ($B82C) does.
+ *
+ * Encoding note (the full story is in notes/bird-render-parity.md): this
+ * operates on the TAPE sprite encoding (assets/sprites.bin). The original
+ * blits `(mask | scr) ^ pix` on data its boot-time gfx_inverse pass
+ * transformed to pix^mask; the two compositions are bit-identical on
+ * mask=1 bits. On mask=0 bits the original would XOR stray pix bits into
+ * the background, but no shipped sprite has pix bits outside its mask
+ * (verified over all 49; the one exception is a bit in bird_4's garbage
+ * 15th row), so preserve-semantics is equivalent.
+ *
+ * x need not be byte-aligned: each source byte then straddles two
+ * destination bytes and is shifted into both. */
+static void blit_masked_to_scr_buff(const Sprite &sprite, int x_px, int y_px) {
+    const int w = sprite.width_bytes();
+    const int h = sprite.height();
+    const int shift     = x_px & 7;
+    const int start_col = x_px >> 3;
+    const u8 *p = sprite.pixels();
 
-                if (dst_l >= 0 && dst_l < 32) {
-                    unsigned char *d = &scr_buff[row_base + dst_l];
-                    *d = (unsigned char)(((unsigned char)(~m_l) & *d) | (m_l & p_l));
-                }
-                if (dst_r >= 0 && dst_r < 32) {
-                    unsigned char *d = &scr_buff[row_base + dst_r];
-                    *d = (unsigned char)(((unsigned char)(~m_r) & *d) | (m_r & p_r));
-                }
+    for (int row = 0; row < h; row++) {
+        const int y = y_px + row;
+        if (y < 0 || y >= PLAYFIELD_H) { p += w * 2; continue; }
+        u8 *dest_row = scr_row(y);
+
+        for (int col = 0; col < w; col++) {
+            const u8 mask   = *p++;
+            const u8 pixels = *p++;
+            const int left  = start_col + col;
+
+            if (shift == 0) {
+                if (left >= 0 && left < BYTES_PER_ROW)
+                    apply_mask(dest_row[left], mask, pixels);
+            } else {
+                const int right = left + 1;
+                if (left >= 0 && left < BYTES_PER_ROW)
+                    apply_mask(dest_row[left], u8(mask >> shift), u8(pixels >> shift));
+                if (right >= 0 && right < BYTES_PER_ROW)
+                    apply_mask(dest_row[right], u8(mask << (8 - shift)),
+                                                u8(pixels << (8 - shift)));
             }
         }
     }
 }
 
-/* Blit an original-format masked sprite at playfield (x_px, y_px).
+/* Blit a masked sprite STRAIGHT TO VGA in caller-supplied colours,
+ * bypassing the attribute plane — used where the caller already knows the
+ * cell colours and wants no clash.
  *
- * Sprite layout (verbatim from the program at $7A8C+):
- *   byte 0     = width in bytes
- *   byte 1     = height in rows
- *   then h * w pairs of (mask_byte, pixel_byte) per byte-column.
+ *   mask=1, pixel=0  ->  ink    (the sprite's solid body)
+ *   mask=1, pixel=1  ->  paper  (its internal texture)
+ *   mask=0           ->  background preserved (transparent)
  *
- * Original blit (sub_94BC's inner loop at byte_put_width_*):
- *   screen' = (mask | screen) ^ pixel
- *   per 8-pixel chunk. For VGA we walk each bit individually:
- *     mask=1, pixel=0  ->  ink     (the sprite's solid body)
- *     mask=1, pixel=1  ->  paper   (the sprite's internal texture)
- *     mask=0           ->  preserve background (sprite transparent)
- *   The XOR-on-mask=0 case (shadow effect) collapses to "preserve"
- *   here because we don't track screen as 1-bit; visually the bat
- *   shadow rows pick up mask=1 bits on their own.
- *
- * This one goes STRAIGHT TO VGA with caller-supplied ink/paper, i.e. it
- * bypasses the attribute plane entirely — used where the caller already
- * knows the cell colours. */
-static void blit_masked_sprite_ptr(const unsigned char *src,
-                                    int x_px, int y_px,
-                                    unsigned char ink, unsigned char paper);
+ * Pixel-at-a-time rather than byte-at-a-time because the destination is
+ * 8 bits per pixel, so there is nothing to pack. */
+static void blit_masked_sprite(const Sprite &sprite, int x_px, int y_px,
+                               u8 ink, u8 paper) {
+    const int w = sprite.width_bytes();
+    const int h = sprite.height();
+    const u8 *p = sprite.pixels();
 
-static void blit_masked_sprite_ptr(const unsigned char *src,
-                                    int x_px, int y_px,
-                                    unsigned char ink, unsigned char paper) {
-    int w = src[0];
-    int h = src[1];
-    const unsigned char *p = src + 2;
-    int row, col_byte, bit;
-    for (row = 0; row < h; row++) {
-        int y = y_px + row;
-        for (col_byte = 0; col_byte < w; col_byte++) {
-            unsigned char mask = *p++;
-            unsigned char pix  = *p++;
-            int base_x = x_px + col_byte * 8;
-            for (bit = 0; bit < 8; bit++) {
-                if (mask & (0x80 >> bit)) {
-                    int x = base_x + bit;
-                    if (x < 0 || x >= PLAYFIELD_W) continue;
-                    if (y < 0 || y >= PLAYFIELD_H) continue;
-                    vga[(long)(BORDER_Y + y) * SCREEN_W + BORDER_X + x] =
-                        (pix & (0x80 >> bit)) ? paper : ink;
-                }
+    for (int row = 0; row < h; row++) {
+        const int y = y_px + row;
+        for (int col = 0; col < w; col++) {
+            const u8 mask   = *p++;
+            const u8 pixels = *p++;
+            const int base_x = x_px + col * 8;
+            for (int bit = 0; bit < 8; bit++) {
+                const u8 select = u8(0x80 >> bit);
+                if (!(mask & select)) continue;          /* transparent */
+                const int x = base_x + bit;
+                if (x < 0 || x >= PLAYFIELD_W)  continue;
+                if (y < 0 || y >= PLAYFIELD_H)  continue;
+                *vga_at(x, y) = (pixels & select) ? paper : ink;
             }
         }
     }
@@ -532,25 +504,24 @@ static void blit_masked_sprite_ptr(const unsigned char *src,
  * repaints its neighbours' pixels too. Callers that use this must mark
  * dirty with mark_dirty_cell_rect_px, not mark_dirty_rect_px. */
 static void blit_sprite_attrs_to_buff_clipped(int x_px, int y_px, int w_px, int h_px,
-                                              unsigned char attr,
+                                              u8 attr,
                                               int clip_left_px, int clip_right_px) {
     int x0 = x_px;
     int x1 = x_px + w_px;
-    int col_lo, col_hi, row_lo, row_hi, r, c;
-    if (x0 < clip_left_px) x0 = clip_left_px;
+    if (x0 < clip_left_px)  x0 = clip_left_px;
     if (x1 > clip_right_px) x1 = clip_right_px;
     if (x1 <= x0) return;
-    col_lo = x0 / 8;
-    col_hi = (x1 - 1) / 8;
-    row_lo = y_px / 8;
-    row_hi = (y_px + h_px - 1) / 8;
+
+    int col_lo = x0 / CELL_PX;
+    int col_hi = (x1 - 1) / CELL_PX;
+    int row_lo = y_px / CELL_PX;
+    int row_hi = (y_px + h_px - 1) / CELL_PX;
     if (col_lo < 0) col_lo = 0;
     if (row_lo < 0) row_lo = 0;
     if (col_hi >= ATTR_COLS) col_hi = ATTR_COLS - 1;
     if (row_hi >= ATTR_ROWS) row_hi = ATTR_ROWS - 1;
-    for (r = row_lo; r <= row_hi; r++) {
-        for (c = col_lo; c <= col_hi; c++) {
-            attr_buff[r * 32 + c] = attr;
-        }
-    }
+
+    for (int r = row_lo; r <= row_hi; r++)
+        for (int c = col_lo; c <= col_hi; c++)
+            attr_buff[r * ATTR_COLS + c] = attr;
 }

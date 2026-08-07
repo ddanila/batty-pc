@@ -1483,12 +1483,12 @@ static void restore_top_frame_center(unsigned char cycle, unsigned char level_id
  * the raw sprite pointer to the engine. */
 static void blit_masked_sprite(unsigned int sprite_off, int x_px, int y_px,
                                unsigned char ink, unsigned char paper) {
-    blit_masked_sprite_ptr(sprites_blob + sprite_off, x_px, y_px, ink, paper);
+    blit_masked_sprite(sprites_blob + sprite_off, x_px, y_px, ink, paper);
 }
 
 static void blit_masked_to_scr_buff(unsigned int sprite_off,
                                      int x_px, int y_px) {
-    blit_masked_to_scr_buff_ptr(sprites_blob + sprite_off, x_px, y_px);
+    blit_masked_to_scr_buff(sprites_blob + sprite_off, x_px, y_px);
 }
 
 /* Sprite width/height live in the blob's first two bytes (bytes, rows). */
@@ -2643,9 +2643,9 @@ static void render_magnets(unsigned char level_idx) {
          * rows (23..29) are painted under BOTH states and persist
          * regardless of later toggles, exactly like the original (the
          * toggle redraw is 23 rows tall — circle only). */
-        blit_masked_to_scr_buff_ptr(spr_magnet_on, x, y);
+        blit_masked_to_scr_buff(spr_magnet_on, x, y);
         if (!magnet_on_state[i]) {
-            blit_masked_to_scr_buff_ptr(spr_magnet_off, x, y);
+            blit_masked_to_scr_buff(spr_magnet_off, x, y);
         }
     }
 }
@@ -2699,9 +2699,9 @@ static void apply_magnet_toggle_visual(void) {
                         sizeof(spr_magnet_on_h23));
             spr_magnet_on_h23[1] = 0x17;     /* 30 -> 23 rows */
         }
-        blit_masked_to_scr_buff_ptr(spr_magnet_on_h23, x, y);
+        blit_masked_to_scr_buff(spr_magnet_on_h23, x, y);
     } else {
-        blit_masked_to_scr_buff_ptr(spr_magnet_off, x, y);
+        blit_masked_to_scr_buff(spr_magnet_off, x, y);
     }
     /* Bake the window into the static bg cache (the magnet is part of
      * the cached background) and mark it for the VGA flush. 5 bytes
@@ -3612,7 +3612,7 @@ static unsigned int current_rocket_spr(void) {
  * and can't carry over the ball's scr_buff write. */
 static void render_ball(int x, int y, unsigned char attr) {
     unsigned int spr = big_ball_active() ? SPR_BIG_BALL : SPR_BALL_NORMAL;
-    blit_masked_sprite(spr, x, y, ink_pal(attr), paper_pal(attr));
+    blit_masked_sprite(spr, x, y, attr_ink(attr), attr_paper(attr));
 }
 
 /* Map our BONUS_TYPE_* enum to the original spr_bonus_* sprite offset. */
@@ -6048,7 +6048,7 @@ static void redraw_full_with_ball(unsigned char level_idx) {
         }
     }
     if (bomb_active) {
-        blit_masked_to_scr_buff_ptr(spr_bomb_data, bomb_x, bomb_y);
+        blit_masked_to_scr_buff(spr_bomb_data, bomb_x, bomb_y);
         mark_dirty_rect_px(bomb_x, bomb_y, 16, 16);
     }
     if (pts_400_active) {
@@ -6263,7 +6263,7 @@ static void render_simple_objects_to_buff_and_mark(unsigned char bg_attr) {
     /* Enemy bomb: a single falling sprite, same dirty treatment as a bonus
      * (the bat-collision kill is handled in step_bomb, not here). */
     if (bomb_active) {
-        blit_masked_to_scr_buff_ptr(spr_bomb_data, bomb_x, bomb_y);
+        blit_masked_to_scr_buff(spr_bomb_data, bomb_x, bomb_y);
         mark_dirty_rect_px(bomb_x, bomb_y, 16, 16);
     }
     if (pts_400_active) {
@@ -6388,9 +6388,9 @@ static void draw_score_digits_original(int x, int y, unsigned long value) {
 }
 
 static void render_hud_to_buff(void) {
-    blit_masked_to_scr_buff_ptr(hud_sprites + HUD_SPR_1UP, 0x1C, 0x0C);
-    blit_masked_to_scr_buff_ptr(hud_sprites + HUD_SPR_2UP, 0xCC, 0x0C);
-    blit_masked_to_scr_buff_ptr(hud_sprites + HUD_SPR_HI,  0x78, 0x0C);
+    blit_masked_to_scr_buff(hud_sprites + HUD_SPR_1UP, 0x1C, 0x0C);
+    blit_masked_to_scr_buff(hud_sprites + HUD_SPR_2UP, 0xCC, 0x0C);
+    blit_masked_to_scr_buff(hud_sprites + HUD_SPR_HI,  0x78, 0x0C);
     draw_score_digits_original(0x10, 0x15, score);
     draw_score_digits_original(0x68, 0x15, high_score);
     draw_score_digits_original(0xC0, 0x15, 0);
@@ -7707,9 +7707,8 @@ int main(void) {
     if (getenv("BATTY_NOSOUND") != NULL || getenv("BATTY_SOUND_OFF") != NULL
         || getenv("BATTY_RENDER_PROFILE") != NULL)
         sound_disabled = 1;
-    set_mode(0x13);
-    set_palette(zx_palette, 16);
-    init_pal_tables();
+    /* Mode 13h + the ZX palette until main() returns. */
+    ZxDisplay display;
 
     if (load_font("FONT.BIN") != 0 ||
         load_indicator("INDICAT.BIN") != 0 ||
@@ -7742,6 +7741,5 @@ int main(void) {
     kbd_restore();
     timer_restore();
     write_profile_report();
-    set_mode(0x03);
     return 0;
 }

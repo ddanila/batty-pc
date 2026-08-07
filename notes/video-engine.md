@@ -28,6 +28,34 @@ residue (#2) were both violations of. It is now gated three ways:
 `test-sprite-attr-parity` and `test-enemy-attr-parity` (QEMU, against the
 original's behaviour) and `make test-video` (host, exhaustive).
 
+## Style
+
+This module is the reference for the C++ conventions the rest of the port
+is moving to:
+
+- **`ZX_STATIC_ASSERT` for anything the comments used to merely claim** —
+  buffer sizes against the geometry, `BYTES_PER_ROW == ATTR_COLS`, and the
+  blit's 4-byte alignment. Change `BORDER_X` to an odd multiple and the
+  build fails instead of the screen corrupting at runtime.
+- **Named layout accessors** (`scr_row`, `attr_row`, `vga_at`) so the
+  addressing arithmetic is written once rather than inlined everywhere.
+- **`Sprite`** wraps the raw `[w][h][(mask,pixel)...]` blob, so call sites
+  read `sprite.height()` instead of `src[1]`. It converts implicitly from
+  `const u8 *`, which retires the old `_ptr`-suffixed twin of every blit —
+  one name, two overloads.
+- **RAII for paired operations.** `ZxDisplay` sets mode 13h and the palette
+  on construction and restores text mode on destruction, so no return path
+  can leave the display in a graphics mode.
+- **`inline` functions instead of function-like macros** (`emit_byte`,
+  `apply_mask`, `attr_ink`, `attr_paper`).
+- **`u8` / `u32` aliases** in anything the host build also compiles —
+  Watcom's 32-bit `long` is 4 bytes and a 64-bit host's is 8, and a cast
+  through the wrong one silently doubles a store's width. That bug
+  happened; `make test-video` caught it.
+
+`static_assert` needs `-zastd=c++0x`; the host build is strict C++98, so
+`ZX_STATIC_ASSERT` falls back to a negative-array-size typedef there.
+
 ## Layout
 
 `src/zxvga.cpp` is one file in six sections:
@@ -63,8 +91,8 @@ exhaustive coverage:
 
 - every one of the 256 attributes -> ink/paper
 - every (attribute, pixel byte) pair vs an **independent ULA reference**
-  written from the hardware spec (deliberately not reusing `ink_pal` /
-  `paper_pal`, or a bug would agree with itself)
+  written from the hardware spec (deliberately not reusing `attr_ink` /
+  `attr_paper`, or a bug would agree with itself)
 - `attr` and `attr | 0x80` render identically (flash not emulated)
 - rect flush == full repaint inside the rect, no-op outside it
 - dirty flush == full repaint, over random edit sets — the contract every
