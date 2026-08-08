@@ -22,7 +22,7 @@ def source_guard() -> None:
     src = Path("src/main.cpp").read_text()
     required = [
         "BALL_HIDE();\n    ball.stuck = 0;\n    ball.extra2_active = 0;",
-        "force_full_flush = 1;\n                redraw_full_with_ball(i);",
+        "cache.full_flush = 1;\n                redraw_full_with_ball(i);",
         "BATTY_HOLD_ROCKET_CLEAR",
     ]
     missing = [needle for needle in required if needle not in src]

@@ -2012,18 +2012,26 @@ static void paint_bg_window_to_buff(unsigned char attr, unsigned char cycle,
 
 static unsigned char bg_scr_buff[6144];
 static unsigned char bg_attr_buff[768];
-static int static_bg_dirty = 1;
-static int static_bg_cache_dirty = 0;
-/* Dirty brick-row range [lo, hi] accumulated since the last band-cache
- * build, so the rebuild can re-composite only the changed rows instead of
- * the whole band. Default = whole band (a full rebuild). */
-static int brick_dirty_lo = 0;
-static int brick_dirty_hi = LVL_ROWS - 1;
-static int force_full_flush = 1;
-
-static unsigned long prev_score = 0xFFFFFFFFUL;
-static unsigned long prev_high_score = 0xFFFFFFFFUL;
-static int prev_lives = -1;
+/* The static background cache: the level scene with no moving objects,
+ * held in bg_scr_buff/bg_attr_buff so a dirty frame can restore from it
+ * instead of repainting. */
+struct StaticCache {
+    int bg_dirty;             /* the whole cache needs rebuilding */
+    int band_dirty;           /* only the brick band does */
+    /* Brick rows changed since the last band build, so the rebuild can
+     * re-composite just those. Default spans the whole band. */
+    int brick_row_lo;
+    int brick_row_hi;
+    int full_flush;           /* push every row to VGA this frame */
+    /* What the cache currently shows. The HUD skips its redraw while
+     * these still match the live values. */
+    unsigned long drawn_score;
+    unsigned long drawn_high_score;
+    int drawn_lives;
+};
+static StaticCache cache = {
+    1, 0, 0, LVL_ROWS - 1, 1, 0xFFFFFFFFUL, 0xFFFFFFFFUL, -1
+};
 
 /* Set up the level's runtime magnet state — the state half of
  * print_magnets ($8D4C). Coordinates from magnets_per_level; the
@@ -2204,7 +2212,7 @@ static void build_static_background(unsigned char level_idx) {
     render_level_screen_static(level_idx);
     memcpy(bg_scr_buff, scr_buff, sizeof(bg_scr_buff));
     memcpy(bg_attr_buff, attr_buff, sizeof(bg_attr_buff));
-    static_bg_cache_dirty = 0;
+    cache.band_dirty = 0;
 }
 
 static void build_static_brick_band_cache(unsigned char level_idx) {
@@ -2212,8 +2220,8 @@ static void build_static_brick_band_cache(unsigned char level_idx) {
     unsigned char cycle   = (unsigned char)(level_idx & 3);
     int y;
     int cr;
-    int lo = brick_dirty_lo;
-    int hi = brick_dirty_hi;
+    int lo = cache.brick_row_lo;
+    int hi = cache.brick_row_hi;
     unsigned short t0 = pit_current_ticks();
     unsigned short t1;
 
@@ -2278,27 +2286,27 @@ static void build_static_brick_band_cache(unsigned char level_idx) {
     prof.band_pit += (t1 <= t0) ? (unsigned long)(t0 - t1)
                                 : (unsigned long)((t0 - t1) + 23864u);
     prof.band_rebuilds++;
-    static_bg_cache_dirty = 0;
+    cache.band_dirty = 0;
 }
 
 static void mark_static_bg_cache_dirty(void) {
     /* Whole-band dirty (level entry, rocket clear, multi-cell changes). */
-    brick_dirty_lo = 0;
-    brick_dirty_hi = LVL_ROWS - 1;
-    static_bg_cache_dirty = 1;
+    cache.brick_row_lo = 0;
+    cache.brick_row_hi = LVL_ROWS - 1;
+    cache.band_dirty = 1;
 }
 
 /* Mark a single brick row dirty, unioning into the pending range. Lets the
  * band-cache rebuild scope to just the rows a brick hit touched. */
 static void mark_brick_row_dirty(int row) {
-    if (!static_bg_cache_dirty) {
-        brick_dirty_lo = row;
-        brick_dirty_hi = row;
+    if (!cache.band_dirty) {
+        cache.brick_row_lo = row;
+        cache.brick_row_hi = row;
     } else {
-        if (row < brick_dirty_lo) brick_dirty_lo = row;
-        if (row > brick_dirty_hi) brick_dirty_hi = row;
+        if (row < cache.brick_row_lo) cache.brick_row_lo = row;
+        if (row > cache.brick_row_hi) cache.brick_row_hi = row;
     }
-    static_bg_cache_dirty = 1;
+    cache.band_dirty = 1;
 }
 
 static void restore_prev_dirty_from_static_cache(void) {
@@ -2387,12 +2395,12 @@ static void render_level_screen(unsigned char level_idx) {
     unsigned char bg_attr = bg_attr_per_cycle[level_idx & 3];
     unsigned char cycle   = (unsigned char)(level_idx & 3);
 
-    static_bg_dirty = 1;
-    static_bg_cache_dirty = 0;
+    cache.bg_dirty = 1;
+    cache.band_dirty = 0;
     clear_dirty_ranges(prev_dirty_min_byte, prev_dirty_max_byte);
-    prev_score = 0xFFFFFFFFUL;
-    prev_high_score = 0xFFFFFFFFUL;
-    prev_lives = -1;
+    cache.drawn_score = 0xFFFFFFFFUL;
+    cache.drawn_high_score = 0xFFFFFFFFUL;
+    cache.drawn_lives = -1;
 
     fill(0, 0, SCREEN_W, SCREEN_H, COL_BORDER);
     draw_frame(10);              /* bright red — placeholder */
@@ -4842,38 +4850,38 @@ static void redraw_full_with_ball(unsigned char level_idx) {
 
     prof_start();
 
-    score_dirty = (player.score != prev_score || player.high_score != prev_high_score);
-    lives_dirty = (player.lives != prev_lives);
+    score_dirty = (player.score != cache.drawn_score || player.high_score != cache.drawn_high_score);
+    lives_dirty = (player.lives != cache.drawn_lives);
     can_local_hud = (magnets_per_level[level_idx][0] == 0);
     bat_full_dirty = (BAT_X != BAT_PREV_X)
                   || (BAT_Y != bat.drawn_y)
                   || (bat.extra_px != bat.drawn_extra_px)
                   || (objects[OBJ_BAT_1].bonus_applied != bat.drawn_bonus)
                   || (bat.fire_anim_ticks != bat.drawn_fire_ticks);
-    if (force_full_flush || lives_dirty || (score_dirty && !can_local_hud)) {
-        static_bg_dirty = 1;
+    if (cache.full_flush || lives_dirty || (score_dirty && !can_local_hud)) {
+        cache.bg_dirty = 1;
     }
 
     /* Clear BEFORE the static branch so build_static_brick_band_cache's
      * window mark survives into this frame's flush. */
     clear_dirty_ranges(dirty_min_byte, dirty_max_byte);
-    if (static_bg_dirty) {
+    if (cache.bg_dirty) {
         build_static_background(level_idx);
-        static_bg_dirty = 0;
-        prev_score = player.score;
-        prev_high_score = player.high_score;
-        prev_lives = player.lives;
-        force_full_flush = 1;
-    } else if (static_bg_cache_dirty) {
+        cache.bg_dirty = 0;
+        cache.drawn_score = player.score;
+        cache.drawn_high_score = player.high_score;
+        cache.drawn_lives = player.lives;
+        cache.full_flush = 1;
+    } else if (cache.band_dirty) {
         build_static_brick_band_cache(level_idx);
         restore_prev_dirty_from_static_cache();
     } else {
         restore_prev_dirty_from_static_cache();
     }
-    if (!static_bg_dirty && score_dirty && can_local_hud) {
+    if (!cache.bg_dirty && score_dirty && can_local_hud) {
         update_static_hud_top(level_idx);
-        prev_score = player.score;
-        prev_high_score = player.high_score;
+        cache.drawn_score = player.score;
+        cache.drawn_high_score = player.high_score;
         mark_dirty_bytes(0, FRAME_TOP_H_PX, 0, 31);
     }
     /* A magnet toggled this frame: redraw its circle now, while scr_buff
@@ -4965,7 +4973,7 @@ static void redraw_full_with_ball(unsigned char level_idx) {
     }
     prof.bricks_pit += prof_elapsed();
 
-    if (force_full_flush) {
+    if (cache.full_flush) {
         for (y = 0; y < PLAYFIELD_H; y++) {
             int s;
             for (s = 0; s < DIRTY_SLOTS; s++) {
@@ -4974,7 +4982,7 @@ static void redraw_full_with_ball(unsigned char level_idx) {
             }
         }
         mark_all_dirty();
-        force_full_flush = 0;
+        cache.full_flush = 0;
     } else {
         /* Flush both the old sprite positions and the new sprite positions. */
         carry_dirty_with_previous();
@@ -5005,8 +5013,8 @@ static unsigned int ball_dirty_blockers(int bat_moved) {
      * the dirty path like a moving ball — no need to force full (helps the
      * MAGNET-hold + pre-launch states). */
     if (!BALL_VISIBLE) blockers |= BALL_DIRTY_BLOCK_BALLS;
-    if (static_bg_dirty || static_bg_cache_dirty || force_full_flush) blockers |= BALL_DIRTY_BLOCK_STATIC;
-    if (player.score != prev_score || player.high_score != prev_high_score || player.lives != prev_lives) blockers |= BALL_DIRTY_BLOCK_HUD;
+    if (cache.bg_dirty || cache.band_dirty || cache.full_flush) blockers |= BALL_DIRTY_BLOCK_STATIC;
+    if (player.score != cache.drawn_score || player.high_score != cache.drawn_high_score || player.lives != cache.drawn_lives) blockers |= BALL_DIRTY_BLOCK_HUD;
     if (bonus.active || pts_marker.active || bomb.active || rocket.active) blockers |= BALL_DIRTY_BLOCK_OBJECTS;
     if (objects[OBJ_ENEMY].sprite_set != 0) blockers |= BALL_DIRTY_BLOCK_OBJECTS;
     if (any_bullet_active() || any_bullet_blast()) blockers |= BALL_DIRTY_BLOCK_OBJECTS;
@@ -6022,7 +6030,7 @@ static InputAction handle_input(int &ball_moved, int &bat_moved,
                 /* Resuming: schedule a full redraw to erase banner. */
                 bat_moved = 1;
                 ball_moved = 1;
-                force_full_flush = 1;
+                cache.full_flush = 1;
             }
             return INPUT_SKIP_FRAME;
         }
@@ -6392,7 +6400,7 @@ static state_t run_level(void) {
                 ball_moved = 1;
             }
             if (force_full_flush_each_frame && ball_moved) {
-                force_full_flush = 1;
+                cache.full_flush = 1;
             }
 
             if (ball_moved) {
@@ -6487,7 +6495,7 @@ static state_t run_level(void) {
                 BALL_HIDE();
                 ball.extra2_active = 0;
                 ball.extra3_active = 0;
-                force_full_flush = 1;
+                cache.full_flush = 1;
                 redraw_full_with_ball(i);
                 if (getenv("BATTY_HOLD_ROCKET_CLEAR") != NULL) {
                     while (!kbhit()) sound_tick();

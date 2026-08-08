@@ -60,7 +60,7 @@ happened, and `make test-video` caught it.
 | 10 | state owners — structs at file scope | 113 vars | **done** — 11 clusters, see below |
 | 1 | replay / probe scaffolding | 480 | **last** — see below |
 
-`main.cpp`: 7,746 → 6,704. 100 host tests + source gates, all via `make test-fast` in seconds.
+`main.cpp`: 7,746 → 6,712. 100 host tests + source gates, all via `make test-fast` in seconds.
 
 ### Stage 5b: one destroyed-cell reset, not two
 
@@ -175,8 +175,18 @@ exist to consolidate.
 
 Done: `ProbeState`, `RenderProfile`, `BallState`, `BatState`,
 `BombState`, `MagnetState`, `PtsMarkerState`, `BrickFlashState`,
-`BonusState`, `RocketState`, `PlayerState`. Every cluster identified at
-the start of the stage now has an owner.
+`BonusState`, `RocketState`, `PlayerState`, `StaticCache`.
+
+`StaticCache` was not on the original list — the eight variables behind
+the static-background cache (`static_bg_dirty`, `static_bg_cache_dirty`,
+the brick-row dirty range, `force_full_flush`, and the three `prev_*`
+values the HUD compares against) read as unrelated flags scattered
+across the render code. They are one thing: what the cache holds and
+what still needs rebuilding. The `prev_*` names became `drawn_*`, which
+says what they are rather than when they were set.
+
+Finding it after declaring the stage complete is the point: clusters are
+easier to see once the surrounding code has names.
 
 `PlayerState` needed a different tool from the rest. `score` and `lives`
 are English words that occur in comments and — the trap —
