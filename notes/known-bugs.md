@@ -236,3 +236,33 @@ No gate covers it. `test-bullet-fly`, `test-laser-cadence` and
 `test-bullet-dirty-redraw` all fire bullets promptly, so no run
 accumulates the bulletless full-redraw frames that would separate the
 two phases.
+
+
+## 11. The narrow bat redraw disagrees with the full redraw at both wall clamps
+
+Found by making `test-bat-redraw-window` deterministic (see
+notes/testing.md). Once the two boots land the bat at the *same* X, the
+remaining difference is reproducible — 5/5 runs, identical pixel counts.
+
+**Left clamp (bat at 8..36): 6 px.** The bat's background window covers
+the lives indicators, and `redraw_bat` repaints them via `render_lives`
+while `redraw_bat_dirty` does not. The indicator pixels the bat sprite
+does not itself cover are lost. Differing pixels: x=8, rows
+173/174/181/182/183/185.
+
+**Right clamp (bat at 220..248): 2 px.** x=247 — the bat's rightmost
+pixel column — on rows 181 and 183 only. `redraw_bat_dirty`'s
+non-firing branch reflushes a single row (`BAT_Y + 6`, the running-dot
+row); rows 181 and 183 sit either side of it and keep whatever the last
+full bat draw left. So the final movement frame's edge handling is what
+is at fault, not the parked frame.
+
+Not fixed. The obvious repairs both give back what the narrow path is
+for: calling `paint_frame_to_buff`/`render_lives` from the dirty path
+repaints the whole frame every frame, and widening the reflush to
+`BAT_H_PX` rows makes it no longer narrow. The fix wants a targeted
+restore of just the overlapped region, which is a design decision on the
+hot path and not a rename.
+
+Whether either is visible in play: both need the bat held against a wall,
+which is reachable.

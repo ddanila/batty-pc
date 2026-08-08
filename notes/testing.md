@@ -476,3 +476,38 @@ time is set by `test-levels-sweep` alone, so the suite cannot go below
 `test-bat-redraw-window` passed this run (26.3s). It is intermittent,
 not broken — see the flakiness note above; one green run is not
 evidence it is fixed.
+
+### test-bat-redraw-window: the flakiness is explained, and it is not timing alone
+
+Measured at HEAD: **5 failures in 8 runs**, diff varying 143..232 px.
+
+The varying magnitude was the clue — a real redraw defect gives a stable
+count. The two captures come from separate boots and QEMU `sendkey` is
+wall-clock: each press holds the key for however many 50 Hz frames
+elapse, and the bat moves 4 px per frame held. The two runs finished up
+to 12 px apart, and the gate compared a bat at one X against a bat at
+another.
+
+Two things were wrong in my first reading of the evidence. Measuring the
+"bat span" across the ROI showed the two runs agreeing — but that
+measurement was picking up the level's background pattern, not the bat.
+Rendering the band as ASCII showed the 12 px offset immediately. Look at
+the pixels before trusting a summary statistic over them.
+
+Driving the bat into a wall clamp fixes the position: `bat_step_x`
+clamps at 8 and at 220, so once both runs saturate the end position is
+independent of how many presses registered. Counting discrete presses
+does **not** get there — each `sendkey` lands on roughly half a frame of
+key-down, so 40 presses bought only ~22 of the 27 frames needed.
+`sendkey <key> <hold_ms>` does: two 800 ms holds saturate with margin.
+
+With that, the gate is deterministic — and **red**, at both clamps, for
+the two reasons in known-bugs.md #11. The original ROI (64..192) only
+passed because the bat's landing position wandered; any deterministic
+parking puts the bat outside that window, which would make the
+comparison vacuous rather than green.
+
+So the gate is left as it was for now. It cannot be both deterministic
+and green until #11 is fixed, and a gate that passes because its subject
+drifted out of frame is worse than a flaky one. The reproduction is
+recorded above; the work is now a render fix, not a test fix.
