@@ -689,3 +689,21 @@ removing the fix fails it at exactly 6 px.
 The earlier conclusion here — that it could not be both deterministic
 and green — was right at the time and is now obsolete: it could not be,
 until the defect underneath was fixed.
+
+### First fully green full-suite run
+
+`--full`, **54 gates, all green, 343.4s** (serial would be ~2106s;
+6.1x on 14 cores, 7 at a time).
+
+The two earlier full runs were 50/51 — the miss both times was
+`test-bat-redraw-window`, which is now deterministic and green because
+the defect it was hiding (known-bugs #11) is fixed.
+
+Gate count went 51 -> 54 today: `test-blast-dirty-redraw`,
+`test-game-over`, `test-stuck-ball-offset` and `test-visual-checkpoints`
+were added to cover paths nothing reached — a blast frame across the
+dirty/full boundary, the game-over sequence, the stuck-ball offset
+invariant, and the multi-checkpoint probe.
+
+Wall time is still set by `test-levels-sweep` at 267s, so the suite
+cannot drop below ~4.5 minutes without splitting that gate.
