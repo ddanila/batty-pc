@@ -169,7 +169,8 @@ static void test_direction_components_are_crossed() {
 
 /* CHARACTERISATION, not an endorsement. dir_to_delta disagrees with
  * dir_to_dxdy on quadrants 0x10 and 0x30 — the two conventions mirror
- * each other there. dir_to_delta drives ONLY the multiball extra balls,
+ * each other there. dir_to_delta has NO production consumer since the
+ * extras were unified onto dir_to_dxdy (known-bugs #8),
  * so secondary balls move mirrored relative to the primary in half the
  * directions. Whether that matches the original is unverified; see
  * notes/known-bugs.md. This test pins the current behaviour so the

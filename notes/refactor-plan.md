@@ -60,7 +60,7 @@ happened, and `make test-video` caught it.
 | 10 | state owners — structs at file scope | 113 vars | **done** — 11 clusters, see below |
 | 1 | replay / probe scaffolding | 480 | **last** — see below |
 
-`main.cpp`: 7,746 → 6,747. 100 host tests + source gates, all via `make test-fast` in seconds.
+`main.cpp`: 7,746 → 6,735. 100 host tests + source gates, all via `make test-fast` in seconds.
 
 ### Stage 5b: one destroyed-cell reset, not two
 
@@ -501,13 +501,31 @@ blast be the feedback. Unifying them looks like an obvious simplification
 and would quietly delete that difference. Worth doing only with the
 divergence written into whatever replaces both.
 
+### The (void) casts were hiding something bigger
+
+Three dead locals silenced with `(void)` turned up while splitting
+`step_ball` and `step_bonus`. Sweeping the rest found a fourth —
+`(void)in_dx; (void)in_dy;` in `step_extra_ball` — and that one was not
+a local but two parameters, fed from `ball.extra2_dx/dy` and
+`extra3_dx/dy`.
+
+Those four fields were **written and never read**. That is what
+known-bugs #8 turned on: the mirrored `dir_to_delta` convention was
+computed into them and discarded, while `step_extra_ball` moved the
+extras with `dir_to_dxdy` exactly like the primary. A documented bug
+with no gameplay effect, found by following a `(void)` cast.
+
 ## What this has already found
 
-`known-bugs.md` #8 — multiball extra balls use a direction convention
-mirrored from the primary ball's in two of four quadrants. It sat in
-`main.cpp` for the whole project and surfaced within minutes of those
-functions becoming pure and testable. Not fixed: which side is right is
-unknown without an oracle capture.
+`known-bugs.md` #8 — multiball extra balls appeared to use a direction
+convention mirrored from the primary ball's in two of four quadrants. It
+sat in `main.cpp` for the whole project and surfaced within minutes of
+those functions becoming pure and testable.
+
+It has since been shown to have no gameplay effect: the mirrored values
+went into four `BallState` fields nothing read. Finding that took the
+same tools — a pure function, a characterisation test naming the
+disagreement, and then a sweep for `(void)`-silenced parameters.
 
 That is the argument for the whole exercise. The gates prove the port
 still matches the original; they do not make the code answerable to

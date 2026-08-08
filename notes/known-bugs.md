@@ -167,16 +167,26 @@ to what the same `dir` byte means for the primary. Found while extracting
 `delta_vs_dxdy_conventions` pins the current behaviour so it stays
 visible.
 
-Not fixed, because it is not yet known which side is right. The primary
-ball's convention is hardware-verified (dir `$1F` moves left, probed via
-`capture_frame_timeline_original.py --probe-ball`); `dir_to_delta` has no
-such anchor. Changing it would alter multiball trajectories, so it needs
-an oracle capture of the original's extra-ball motion first — the
-`$B7EA` + `$BA24` poke recipe in notes/testing.md generalises to it.
+**It has no gameplay effect, established 2026-08-08.** `dir_to_delta`'s
+only production consumer was `spawn_extra_ball`, which wrote its results
+into `ball.extra2_dx/dy` and `extra3_dx/dy` — four fields that nothing
+ever read. `step_extra_ball` moves the extras with `dir_to_dxdy(o->dir,
+o->speed, ...)`, the same call the primary uses, from the object table.
+The mirrored convention was computed and discarded.
 
-Existing gates do not catch this: `test-ball-paths-no-tunnel` asserts
-extra balls never tunnel through bricks or escape the walls, both of
-which hold regardless of which quadrant convention is used.
+The dead fields and the discarded call are now gone, which leaves
+`dir_to_delta` with no production consumer at all — only
+`tests/test_physics.cpp` exercises it, as a characterisation of a
+faithful port.
+
+So there is nothing to fix in the game, and no oracle capture is needed.
+What remains is a naming trap: two functions that decode the same `dir`
+byte disagree in two of four quadrants, and only one of them is wired
+up. `delta_vs_dxdy_conventions_differ` keeps that visible.
+
+That also explains why no gate ever caught it —
+`test-ball-paths-no-tunnel` holds under either convention because
+neither is in play.
 
 
 ## 9. The two redraw paths marked different rects for a bullet blast — resolved

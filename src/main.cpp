@@ -699,8 +699,6 @@ struct BallState {
     unsigned int big_ticks;           /* BIG_BALL bonus, counts down */
 
     unsigned char extra2_active, extra3_active;
-    int           extra2_dx, extra2_dy;
-    int           extra3_dx, extra3_dy;
 
     /* Magnet capture, per ball. */
     unsigned char mag_cool[3], mag_delta[3], mag_exit[3], mag_idx[3];
@@ -711,8 +709,6 @@ static BallState ball = {
     1, BALL_X_OFFSET_ON_BAT, 0,
     0, 0,
     0, 0,
-    +BALL_SPEED, -BALL_SPEED,
-    -BALL_SPEED, -BALL_SPEED,
     {0,0,0}, {0,0,0}, {0,0,0}, {0,0,0}
 };
 
@@ -2870,7 +2866,7 @@ static void set_rocket_bonus_sprite_height(unsigned char height) {
  * the original copies ball_1's speed and a derived direction. */
 static void spawn_extra_ball(unsigned char slot,
                              unsigned char x, unsigned char y,
-                             unsigned char dir, int *dx, int *dy) {
+                             unsigned char dir) {
     Object *o = &objects[slot];
     o->sprite_set = 0x02;
     o->x_coord    = x;
@@ -2879,7 +2875,6 @@ static void spawn_extra_ball(unsigned char slot,
     o->speed      = objects[OBJ_BALL_1].speed;
     o->x_coord_hi = 0;
     o->y_coord_hi = 0;
-    dir_to_delta(dir, dx, dy);
 }
 
 /* The rocket clear runs with only the caught bat and the rocket alive —
@@ -3030,10 +3025,8 @@ static void bonus_apply(unsigned char type) {
             if (!ball.extra2_active && !ball.extra3_active) {
                 const ExtraBallDirs dirs =
                     extra_ball_dirs(delta_to_dir(ball.dx, ball.dy));
-                spawn_extra_ball(OBJ_BALL_2, BALL_X, BALL_Y, dirs.second,
-                                 &ball.extra2_dx, &ball.extra2_dy);
-                spawn_extra_ball(OBJ_BALL_3, BALL_X, BALL_Y, dirs.third,
-                                 &ball.extra3_dx, &ball.extra3_dy);
+                spawn_extra_ball(OBJ_BALL_2, BALL_X, BALL_Y, dirs.second);
+                spawn_extra_ball(OBJ_BALL_3, BALL_X, BALL_Y, dirs.third);
                 ball.extra2_active = 1;
                 ball.extra3_active = 1;
                 sound_queue(SND_TRIPLE_BALL);
@@ -3601,10 +3594,8 @@ static void apply_replay_multiball(void) {
     if (ball.extra2_active || ball.extra3_active) return;
     /* Both extras inherit the primary's direction, unlike a real catch,
      * so the gate probes step_extra_ball on a known trajectory. */
-    spawn_extra_ball(OBJ_BALL_2, 96, 150, objects[OBJ_BALL_1].dir,
-                     &ball.extra2_dx, &ball.extra2_dy);
-    spawn_extra_ball(OBJ_BALL_3, 160, 150, objects[OBJ_BALL_1].dir,
-                     &ball.extra3_dx, &ball.extra3_dy);
+    spawn_extra_ball(OBJ_BALL_2, 96, 150, objects[OBJ_BALL_1].dir);
+    spawn_extra_ball(OBJ_BALL_3, 160, 150, objects[OBJ_BALL_1].dir);
     ball.extra2_active = 1;
     ball.extra3_active = 1;
 }
@@ -4607,12 +4598,10 @@ static void step_ball(void) {
  * (reflect_obj_dir), brick collision (LAFFC), and bat deflection (LAB1F /
  * bat_deflect_dir) as step_ball — reading dir/q8.8 from the object table.
  * Only the primary's stuck/catch and life-decrement paths are omitted (an
- * extra just deactivates off the bottom). The legacy integer in_dx/in_dy
- * are no longer used. Correct by construction (reuses the byte-exact
- * primary path); validated by the liveness sweep + the primary ball gate
- * (unaffected). */
+ * extra just deactivates off the bottom). Correct by construction (it
+ * reuses the byte-exact primary path); validated by the liveness sweep
+ * and the primary ball gate. */
 static void step_extra_ball(unsigned char *in_active,
-                             int *in_dx, int *in_dy,
                              unsigned char obj_idx) {
     Object *o = &objects[obj_idx];
     int next_x, next_y, dx_q8, dy_q8, hit;
@@ -4622,7 +4611,6 @@ static void step_extra_ball(unsigned char *in_active,
     int bat_top   = BAT_Y;
     int ball_sz   = eff_ball_size();
     int x_max     = PLAYFIELD_W - 8 - ball_sz;
-    (void)in_dx; (void)in_dy;          /* legacy integer deltas unused now */
     if (!*in_active) return;
     /* Magnet capture/curve/release — the original runs ONE handling_ball
      * per ball, so extras share the exact same LA27E_0..11 block (their
@@ -4675,11 +4663,11 @@ static void step_extra_ball(unsigned char *in_active,
 }
 
 static void step_ball2(void) {
-    step_extra_ball(&ball.extra2_active, &ball.extra2_dx, &ball.extra2_dy, OBJ_BALL_2);
+    step_extra_ball(&ball.extra2_active, OBJ_BALL_2);
 }
 
 static void step_ball3(void) {
-    step_extra_ball(&ball.extra3_active, &ball.extra3_dx, &ball.extra3_dy, OBJ_BALL_3);
+    step_extra_ball(&ball.extra3_active, OBJ_BALL_3);
 }
 
 /* M3 minimal play loop. For each level: full render once, then poll
