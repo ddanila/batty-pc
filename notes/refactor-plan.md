@@ -60,7 +60,7 @@ happened, and `make test-video` caught it.
 | 10 | state owners — structs at file scope | 113 vars | **done** — 11 clusters, see below |
 | 1 | replay / probe scaffolding | 480 | **last** — see below |
 
-`main.cpp`: 7,746 → 6,741. 100 host tests + source gates, all via `make test-fast` in seconds.
+`main.cpp`: 7,746 → 6,744. 100 host tests + source gates, all via `make test-fast` in seconds.
 
 ### Stage 5, done
 
@@ -247,7 +247,10 @@ flash and hit animations where the dirty path relies on the carry (that
 one is deliberate), and the bullet render's guard, which is not —
 known-bugs #10.
 
-`bonus_apply`'s KILL_ALIENS arm became `blast_active_alien`. Note the
+`bonus_apply`'s KILL_ALIENS arm became `blast_active_alien`, and the
+ROCKET arm's object-hiding became `hide_objects_for_rocket_clear` —
+that one moved a needle in `test_rocket_completion_no_ball.py`, which
+greps the block with its exact indentation. Note the
 coverage limit: `test-bonus-effects` checks only that the catch sets
 `bat.bonus_applied = $09`, so the blast body — alien to sprite_set $0A,
 +350, SND_ALIEN_BLAST — is not gated by anything. That arm rests on

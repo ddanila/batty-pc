@@ -2873,6 +2873,26 @@ static void set_rocket_bonus_sprite_height(unsigned char height) {
 
 /* Apply the effect that comes with `type`. Catching the same type
  * while already active extends the duration. */
+/* The rocket clear runs with only the caught bat and the rocket alive —
+ * everything else vanishes rather than carrying on underneath it.
+ * orig: LBAED_6 */
+static void hide_objects_for_rocket_clear(void) {
+    int i;
+    BALL_HIDE();
+    ball.stuck = 0;
+    ball.extra2_active = 0;
+    ball.extra3_active = 0;
+    objects[OBJ_BALL_2].sprite_set = 0x82;
+    objects[OBJ_BALL_3].sprite_set = 0x82;
+    objects[OBJ_ENEMY].sprite_set = 0;
+    bomb.active = 0;
+    pts_marker.active = 0;
+    for (i = 0; i < N_BULLETS; i++) {
+        bullet_active[i] = 0;
+        bullet_blast_ticks[i] = 0;
+    }
+}
+
 /* Turn the alien currently on screen into its death blast. A blast
  * (sprite_set $0A) is already dying, so it is left alone.
  * orig: $A4D2 centres the 16x13 blast over the alien */
@@ -2953,24 +2973,7 @@ static void bonus_apply(unsigned char type) {
                 rocket.active = 1;
                 rocket.clear_completed = 0;
                 set_rocket_bonus_sprite_height(ROCKET_H_PX);
-                /* Original LBAED_6 hides every object while the rocket
-                 * clear loop runs, then keeps the caught bat + rocket
-                 * alive. Mirror the visible result: the ball, bullets,
-                 * alien, bomb, and any marker vanish for the rocket
-                 * sequence instead of continuing to play underneath. */
-                BALL_HIDE();
-                ball.stuck = 0;
-                ball.extra2_active = 0;
-                ball.extra3_active = 0;
-                objects[OBJ_BALL_2].sprite_set = 0x82;
-                objects[OBJ_BALL_3].sprite_set = 0x82;
-                bomb.active = 0;
-                bullet_active[0] = 0;
-                bullet_active[1] = 0;
-                bullet_blast_ticks[0] = 0;
-                bullet_blast_ticks[1] = 0;
-                pts_marker.active = 0;
-                objects[OBJ_ENEMY].sprite_set = 0;
+                hide_objects_for_rocket_clear();
                 /* Original get_rocket at $AA9D:
                  *   rocket.x = bat_x + 4 (normal) or +12 (big)
                  *   rocket.y = bat_y + 6 (inside the bat body)
