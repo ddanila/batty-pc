@@ -4808,6 +4808,30 @@ static void render_falling_objects_to_buff(unsigned char bg_attr) {
 
 static void render_enemy_to_buff_and_mark(unsigned char bg_attr);
 
+/* Push the composed frame to VGA.
+ *
+ * Normally the carry unions this frame's dirty rects with last frame's,
+ * so the sprites' previous positions are erased as well as their new
+ * ones drawn. A full flush pushes every row instead — but it still
+ * copies this frame's rects forward first, because mark_all_dirty()
+ * widens what goes out now and not what the NEXT frame restores. */
+static void flush_composed_frame(void) {
+    if (cache.full_flush) {
+        int y, s;
+        for (y = 0; y < PLAYFIELD_H; y++) {
+            for (s = 0; s < DIRTY_SLOTS; s++) {
+                prev_dirty_min_byte[s][y] = dirty_min_byte[s][y];
+                prev_dirty_max_byte[s][y] = dirty_max_byte[s][y];
+            }
+        }
+        mark_all_dirty();
+        cache.full_flush = 0;
+    } else {
+        carry_dirty_with_previous();
+    }
+    flush_dirty_to_vga();
+}
+
 /* Anything about the bat that changes its pixels, not just its position:
  * a resize, a caught bonus (the body sprite carries it) or a laser
  * fire-animation frame all need the whole body redrawn. */
@@ -4896,7 +4920,7 @@ static void refresh_static_background(unsigned char level_idx) {
 static void redraw_full_with_ball(unsigned char level_idx) {
     unsigned char bg_attr = bg_attr_per_cycle[level_idx & 3];
     unsigned char cycle   = (unsigned char)(level_idx & 3);
-    int y, i;
+    int i;
     int bat_full_dirty;
 
     prof_start();
@@ -4970,21 +4994,7 @@ static void redraw_full_with_ball(unsigned char level_idx) {
     }
     prof.bricks_pit += prof_elapsed();
 
-    if (cache.full_flush) {
-        for (y = 0; y < PLAYFIELD_H; y++) {
-            int s;
-            for (s = 0; s < DIRTY_SLOTS; s++) {
-                prev_dirty_min_byte[s][y] = dirty_min_byte[s][y];
-                prev_dirty_max_byte[s][y] = dirty_max_byte[s][y];
-            }
-        }
-        mark_all_dirty();
-        cache.full_flush = 0;
-    } else {
-        /* Flush both the old sprite positions and the new sprite positions. */
-        carry_dirty_with_previous();
-    }
-    flush_dirty_to_vga();
+    flush_composed_frame();
     prof.vga_pit += prof_elapsed();
 
     prof.frames++;

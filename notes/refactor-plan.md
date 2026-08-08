@@ -60,7 +60,7 @@ happened, and `make test-video` caught it.
 | 10 | state owners — structs at file scope | 113 vars | **done** — 11 clusters, see below |
 | 1 | replay / probe scaffolding | 480 | **last** — see below |
 
-`main.cpp`: 7,746 → 6,719. 100 host tests + source gates, all via `make test-fast` in seconds.
+`main.cpp`: 7,746 → 6,729. 100 host tests + source gates, all via `make test-fast` in seconds.
 
 ### Stage 5b: one destroyed-cell reset, not two
 
@@ -265,6 +265,12 @@ paint the brick flash and hit animations, because those sub-loops drive
 their own frames with no dirty carry to restore them from. Folding the
 two together would have silently added magnets and the top-frame repair
 to both.
+
+`flush_composed_frame` took the tail. The non-obvious half is the full
+flush: it still copies this frame's dirty rects forward before calling
+`mark_all_dirty()`, because that call widens what goes out *now*, not
+what the next frame restores from. Inline, the copy loop looked like
+something the `mark_all_dirty()` on the next line made redundant.
 
 `PlayerState` needed a different tool from the rest. `score` and `lives`
 are English words that occur in comments and — the trap —
