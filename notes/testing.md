@@ -620,3 +620,26 @@ second key is now `bonus_pts_raw`.
 left the PREVIOUS run's file in place, so the gate asserted on stale
 state — which is how renaming a probe key produced `''` for a key that
 was present on the floppy. It now unlinks the target first.
+
+### test-midgame-brick-replay is load-sensitive
+
+Fails intermittently at high concurrency with
+
+    ValueError: unexpected PPM size 720x400; expected 320x200 or 640x400
+
+720x400 is TEXT mode: the screendump happened before the boot reached
+graphics. `replay_harness.py` paces its captures with fixed sleeps, and
+with seven QEMU instances competing those sleeps are sometimes short.
+
+Seen twice at `--jobs 7`; passes standalone and at `--jobs 3`, and was
+green in both full-suite runs. Distinct from the stale-floppy bug above,
+which produced the same symptom for a different reason — that one is
+fixed.
+
+It also fails the serial retry often enough to be reported as believed,
+the same limit noted for `test-bat-redraw-window`: the retry separates
+contention from not-contention, not flaky from real.
+
+The replay itself is not fully deterministic either — `random_number`
+differs run to run (DAA5, F6E6). The gate does not assert on it, but
+that is worth knowing before writing one that does.

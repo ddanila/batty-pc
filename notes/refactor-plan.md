@@ -60,7 +60,7 @@ happened, and `make test-video` caught it.
 | 10 | state owners — structs at file scope | 113 vars | **done** — 11 clusters, see below |
 | 1 | replay / probe scaffolding | 480 | **last** — see below |
 
-`main.cpp`: 7,746 → 6,761. 100 host tests + source gates, all via `make test-fast` in seconds.
+`main.cpp`: 7,746 → 6,778. 100 host tests + source gates, all via `make test-fast` in seconds.
 
 ### Stage 5b: one destroyed-cell reset, not two
 
@@ -563,6 +563,13 @@ PIT-paced pump it is. The helper keeps `death_sparks[i]` indexing rather
 than taking a pointer — `test-death-sparks` greps four compacted
 fragments containing `death_sparks[i].dir`, and a pointer rewrite would
 have broken all four for no gain.
+
+`write_replay_probe` then split into `probe_write_entities` (the
+playfield's own state) and `probe_write_harness_state` (what the replay
+knobs seeded and the checkpoints counted), leaving the header and the
+bulk level dumps inline. PROBE.TXT's newline-as-prefix convention makes
+any such split a byte-stream risk, so it was checked the same way as
+last time: captured before, captured after, diffed — identical.
 
 ## What this has already found
 

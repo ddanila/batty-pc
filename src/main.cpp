@@ -3761,36 +3761,10 @@ static void probe_write_object(FILE *f, const char *name, unsigned char slot) {
     fputc('\n', f);
 }
 
-static void write_replay_probe(void) {
-    FILE *f;
-    int i;
-    if (getenv("BATTY_REPLAY_PROBE") == NULL) return;
-    f = fopen("PROBE.TXT", "wt");
-    if (!f) return;
-    fprintf(f, "probe_phase=%s\n", probe.from_gameplay ? "play" : "init");
-    fprintf(f, "round_number=%02X\n", (unsigned)round_number);
-    fprintf(f, "current_level=%02X\n", (unsigned)current_level_idx_var);
-    fprintf(f, "bricks_quantity=%02X\n", (unsigned)live_bricks_remaining());
-    fprintf(f, "score=%06lu\n", player.score);
-    fprintf(f, "random_number=%04X\n", (unsigned)rng_current());
-    fprintf(f, "random_seed=%04X\n", (unsigned)rng_seed_addr());
-    fprintf(f, "enemy_repicks=arrival%u_margin%u_turns%u\n",
-            enemy_arrival_repicks, enemy_margin_repicks,
-            enemy_turn_calls);
-    fprintf(f, "brik_anim_ticks=%lu\n", probe.brik_anim_ticks);
-    fprintf(f, "magnet_state=count%02X_on%02X%02X%02X%02X_ball0_c%02X_d%02X_e%02X_i%02X\n",
-            (unsigned)magnets.count,
-            (unsigned)magnets.on_state[0], (unsigned)magnets.on_state[1],
-            (unsigned)magnets.on_state[2], (unsigned)magnets.on_state[3],
-            (unsigned)ball.mag_cool[0], (unsigned)ball.mag_delta[0],
-            (unsigned)ball.mag_exit[0], (unsigned)ball.mag_idx[0]);
-    probe_write_object(f, "ball_1", OBJ_BALL_1);
-    probe_write_object(f, "bat_1", OBJ_BAT_1);
-    probe_write_object(f, "enemy", OBJ_ENEMY);
-    /* Extra balls (multiball) — so the collision-invariant sweep can probe
-     * step_extra_ball's path (no-tunnel) the same way it probes the primary. */
-    probe_write_object(f, "ball_2", OBJ_BALL_2);
-    probe_write_object(f, "ball_3", OBJ_BALL_3);
+/* Everything on the playfield besides the objects dumped above: the
+ * falling bonus, bomb, +400 marker, bullets, and the counters the gates
+ * read to check RNG-dependent drops against the original. */
+static void probe_write_entities(FILE *f) {
     /* Bonus/bomb state (the original shares object_bonus $9B80 for both).
      * Used to verify RNG-dependent drops match the original (e.g. that the
      * RNG-perframe flip + seed do not spawn a spurious bonus). */
@@ -3821,6 +3795,11 @@ static void write_replay_probe(void) {
             (unsigned)(bat.extra_target & 0xFF),
             (unsigned)(ball.big_ticks != 0),
             (unsigned)(player.lives & 0xFF));
+}
+
+/* The harness's own state — what the replay knobs seeded and what the
+ * checkpoints counted. None of it is game state. */
+static void probe_write_harness_state(FILE *f) {
     fprintf(f, "\nnormal_launch_state=%02X%02X%02X%02X%02X",
             (unsigned)probe.last_launch.valid,
             (unsigned)probe.last_launch.x,
@@ -3846,6 +3825,40 @@ static void write_replay_probe(void) {
             (unsigned)(bonus.y & 0xFF),
             (unsigned)pts_marker.active,
             (unsigned)(pts_marker.sprite & 0xFFFFu));
+}
+
+static void write_replay_probe(void) {
+    FILE *f;
+    int i;
+    if (getenv("BATTY_REPLAY_PROBE") == NULL) return;
+    f = fopen("PROBE.TXT", "wt");
+    if (!f) return;
+    fprintf(f, "probe_phase=%s\n", probe.from_gameplay ? "play" : "init");
+    fprintf(f, "round_number=%02X\n", (unsigned)round_number);
+    fprintf(f, "current_level=%02X\n", (unsigned)current_level_idx_var);
+    fprintf(f, "bricks_quantity=%02X\n", (unsigned)live_bricks_remaining());
+    fprintf(f, "score=%06lu\n", player.score);
+    fprintf(f, "random_number=%04X\n", (unsigned)rng_current());
+    fprintf(f, "random_seed=%04X\n", (unsigned)rng_seed_addr());
+    fprintf(f, "enemy_repicks=arrival%u_margin%u_turns%u\n",
+            enemy_arrival_repicks, enemy_margin_repicks,
+            enemy_turn_calls);
+    fprintf(f, "brik_anim_ticks=%lu\n", probe.brik_anim_ticks);
+    fprintf(f, "magnet_state=count%02X_on%02X%02X%02X%02X_ball0_c%02X_d%02X_e%02X_i%02X\n",
+            (unsigned)magnets.count,
+            (unsigned)magnets.on_state[0], (unsigned)magnets.on_state[1],
+            (unsigned)magnets.on_state[2], (unsigned)magnets.on_state[3],
+            (unsigned)ball.mag_cool[0], (unsigned)ball.mag_delta[0],
+            (unsigned)ball.mag_exit[0], (unsigned)ball.mag_idx[0]);
+    probe_write_object(f, "ball_1", OBJ_BALL_1);
+    probe_write_object(f, "bat_1", OBJ_BAT_1);
+    probe_write_object(f, "enemy", OBJ_ENEMY);
+    /* Extra balls (multiball) — so the collision-invariant sweep can probe
+     * step_extra_ball's path (no-tunnel) the same way it probes the primary. */
+    probe_write_object(f, "ball_2", OBJ_BALL_2);
+    probe_write_object(f, "ball_3", OBJ_BALL_3);
+    probe_write_entities(f);
+    probe_write_harness_state(f);
     write_replay_briks_data(f);
     fprintf(f, "\ncurrent_level_copy=");
     for (i = 0; i < LVL_CELLS; i++) fprintf(f, "%02X", live_level[i]);
