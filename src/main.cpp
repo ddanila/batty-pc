@@ -6156,6 +6156,25 @@ static InputAction handle_input(int &ball_moved, int &bat_moved,
     return INPUT_NONE;
 }
 
+/* A stuck ball rides the bat at the catch offset (where it hit, when
+ * the CATCH bonus stuck it; otherwise BALL_X_OFFSET_ON_BAT) until SPACE
+ * or the timeout auto-launches it. */
+static void ride_stuck_ball_on_bat(void) {
+    BALL_X = BAT_X + ball.stuck_offset_x;
+    /* $A6 = 166 for the launch rest (LA27E_15); a ball held by the
+     * MAGNET bonus rests 1px lower at $A7 = 167 (LAB1F_3). The bat's
+     * active bonus ($03 = MAGNET, the original's IY+$14) selects. */
+    BALL_Y = BAT_Y - BALL_H_PX +
+             (objects[OBJ_BAT_1].bonus_applied == 0x03 ? 1 : 0);
+    ball.stuck_ticks++;
+    if (ball.stuck_ticks >= STUCK_TIMEOUT) {
+        ball.stuck = 0;          /* auto-launch */
+        sound_queue(SND_BALL_START);
+        primary_ball_launch_from_bat();
+        record_primary_launch();
+    }
+}
+
 /* Mirror LBAED's ordering: object_rocket is checked
  * before balls_quantity, and an active rocket jumps to the rocket
  * loop instead of LBC10's bat-explosion path. The rocket catch hides
@@ -6408,25 +6427,8 @@ static state_t run_level(void) {
                     !rocket.active && key_state[SC_LEFT],
                     !rocket.active && key_state[SC_RIGHT]);
                 if (ball.stuck) {
-                    /* Ball rides the bat at the catch offset (= where it
-                     * hit, when the CATCH bonus stuck it; otherwise the
-                     * default BALL_X_OFFSET_ON_BAT) until SPACE or
-                     * timeout. */
-                    BALL_X = BAT_X + ball.stuck_offset_x;
-                    /* $A6 = 166 for the launch rest (LA27E_15); a ball
-                     * held by the MAGNET bonus rests 1px lower at $A7 =
-                     * 167 (LAB1F_3). The bat's active bonus ($03 = MAGNET,
-                     * the original's IY+$14) selects which. */
-                    BALL_Y = BAT_Y - BALL_H_PX +
-                             (objects[OBJ_BAT_1].bonus_applied == 0x03 ? 1 : 0);
+                    ride_stuck_ball_on_bat();
                     ball_moved = 1;
-                    ball.stuck_ticks++;
-                    if (ball.stuck_ticks >= STUCK_TIMEOUT) {
-                        ball.stuck = 0;          /* auto-launch */
-                        sound_queue(SND_BALL_START);
-                        primary_ball_launch_from_bat();
-                        record_primary_launch();
-                    }
                 } else if (BALL_VISIBLE) {
                     /* SLOW is now a ball-speed reset ($02), not a
                      * frame-skip — handling_ball runs every frame in the

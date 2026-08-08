@@ -207,6 +207,16 @@ across two lines. A comment reflow is enough to break a source needle,
 which is the argument for the check running in a second rather than
 only in CI.
 
+`ride_stuck_ball_on_bat` took the last inline block: the ball's ride on
+the bat between a catch and its launch.
+
+Named so far, in frame order: `handle_input`, `ride_stuck_ball_on_bat`,
+`probe_checkpoint_due`, `step_active_entities`, `handle_no_ball_death`,
+`kill_enemies_by_balls`, `award_score_milestones`, `roll_high_score`,
+`entities_need_redraw`. What is left in the loop body is the frame tick,
+the RNG/magnet sampling that must stay ordered against it, and the
+redraw path selection.
+
 Order from here:
 
 1. the frame loop, into named phases
