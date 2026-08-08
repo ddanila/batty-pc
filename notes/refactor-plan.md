@@ -61,7 +61,7 @@ happened, and `make test-video` caught it.
 | 1a | `replay_parse` — the BATTY_REPLAY_* value formats | 75 | **done** — 7 tests |
 | 1 | replay / probe scaffolding | ~430 | **last** — see below |
 
-`main.cpp`: 7,746 → 6,853. 100 host tests + source gates, all via `make test-fast` in seconds.
+`main.cpp`: 7,746 → 6,870. 100 host tests + source gates, all via `make test-fast` in seconds.
 
 ### Stage 5b: one destroyed-cell reset, not two
 
@@ -511,6 +511,14 @@ to protect, violated three commits after naming it. Inert today, because
 the port's ball object handler is a stub, but `call_for_all_obj`
 dispatches on `sprite_set` and the probe dumps those objects. It uses
 the helper now.
+
+`bounce_enemy_off_margins` did for the alien what
+`bounce_ball_off_side_walls` did for the ball: three near-identical
+branches, each clamping, reflecting and re-aiming, became one. The
+ordering it preserves is the interesting part —
+`enemy_target_away_from_margins` reads the object's CURRENT position, so
+the clamped coordinates must be written before it is called or the new
+target is picked from the edge it just hit.
 
 `try_spawn_bonus` split in two: whether to drop (two guards and a 5/16
 roll that does NOT advance the RNG) and `pick_bonus_type`, the 16-try

@@ -1495,6 +1495,45 @@ static void ball_reflect_descriptor(int flip_x, int flip_y) {
 
 
 
+/* Keep an alien inside the playfield. A side reflection is (0x20 - dir),
+ * the ceiling (0x40 - dir), both masked to the 6-bit direction.
+ *
+ * Each bounce also re-aims: enemy_target_away_from_margins reads the
+ * object's CURRENT position, so the clamped coordinates are written
+ * before it is called — re-aiming from the pre-clamp position would
+ * pick a target off the edge it just hit.
+ *
+ * There is no floor. Returns false when the alien has gone off the
+ * bottom, which deactivates it (bit 7 of sprite_set) and ends its
+ * frame. */
+static bool bounce_enemy_off_margins(Object *o, int *nx, int *ny,
+                                     long *nx_q8, long *ny_q8) {
+    const int x_max = PLAYFIELD_W - 8 - (int)o->w_body_px;
+
+    if (*nx < 8 || *nx > x_max) {
+        *nx = (*nx < 8) ? 8 : x_max;
+        *nx_q8 = (long)*nx << 8;
+        o->dir = (unsigned char)((0x20 - o->dir) & 0x3F);
+        o->x_coord = (unsigned char)*nx;
+        o->y_coord = (unsigned char)*ny;
+        enemy_target_away_from_margins(*o);
+    }
+
+    if (*ny >= PLAYFIELD_H) {
+        o->sprite_set |= 0x80;
+        return false;
+    }
+    if (*ny < 8) {
+        *ny = 8;
+        *ny_q8 = (long)*ny << 8;
+        o->dir = (unsigned char)((0x40 - o->dir) & 0x3F);
+        o->x_coord = (unsigned char)*nx;
+        o->y_coord = (unsigned char)*ny;
+        enemy_target_away_from_margins(*o);
+    }
+    return true;
+}
+
 /* Birds/UFOs use a reduced port of the original 6-bit direction-table
  * movement. The original also uses LAA7B target steering and collision
  * reactions; here we keep the same q8.8 motion shape and periodically
@@ -1546,29 +1585,7 @@ static void handling_bird_obj(Object *o) {
     ny_q8 = ((long)o->y_coord << 8) + o->y_coord_hi + dy_q8;
     nx = (int)(nx_q8 >> 8);
     ny = (int)(ny_q8 >> 8);
-    if (nx < 8) {
-        nx = 8; nx_q8 = (long)nx << 8;
-        o->dir = (unsigned char)((0x20 - o->dir) & 0x3F);
-        o->x_coord = (unsigned char)nx;
-        o->y_coord = (unsigned char)ny;
-        enemy_target_away_from_margins(*o);
-    } else if (nx >= PLAYFIELD_W - 8 - (int)o->w_body_px) {
-        nx = PLAYFIELD_W - 8 - (int)o->w_body_px; nx_q8 = (long)nx << 8;
-        o->dir = (unsigned char)((0x20 - o->dir) & 0x3F);
-        o->x_coord = (unsigned char)nx;
-        o->y_coord = (unsigned char)ny;
-        enemy_target_away_from_margins(*o);
-    }
-    if (ny < 8) {
-        ny = 8; ny_q8 = (long)ny << 8;
-        o->dir = (unsigned char)((0x40 - o->dir) & 0x3F);
-        o->x_coord = (unsigned char)nx;
-        o->y_coord = (unsigned char)ny;
-        enemy_target_away_from_margins(*o);
-    } else if (ny >= PLAYFIELD_H) {
-        o->sprite_set |= 0x80;
-        return;
-    }
+    if (!bounce_enemy_off_margins(o, &nx, &ny, &nx_q8, &ny_q8)) return;
     o->x_coord = (unsigned char)nx;
     o->x_coord_hi = (unsigned char)(nx_q8 & 0xFF);
     o->y_coord = (unsigned char)ny;
