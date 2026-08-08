@@ -60,7 +60,7 @@ happened, and `make test-video` caught it.
 | 10 | state owners — structs at file scope | 113 vars | **done** — 11 clusters, see below |
 | 1 | replay / probe scaffolding | 480 | **last** — see below |
 
-`main.cpp`: 7,746 → 6,785. 100 host tests + source gates, all via `make test-fast` in seconds.
+`main.cpp`: 7,746 → 6,790. 100 host tests + source gates, all via `make test-fast` in seconds.
 
 ### Stage 5b: one destroyed-cell reset, not two
 
@@ -577,6 +577,16 @@ toggle samples the CURRENT RNG value, which is last frame's, because the
 per-frame tick has not run yet. Swapping the two lines changes which
 frames toggle a magnet, and nothing but a comment said so. Now the
 comment sits on a function whose two statements are the whole of it.
+
+`visual_checkpoint_tick` took the BATTY_VISUAL_PROBE_FRAMES countdown,
+turning a `return ST_QUIT` buried four levels deep into a `false`.
+
+Verifying it needed a step off the gate suite: every gate passes a
+SINGLE checkpoint, so none exercises the delta arithmetic between
+checkpoints or the not-the-last-one branch. Driving
+`capture_frame_timeline.py --frames 20,40,60` by hand does, and it
+reported three deterministic checkpoints. Worth knowing that the
+multi-checkpoint path has no gate at all.
 
 ## What this has already found
 

@@ -6342,6 +6342,34 @@ static void play_game_over(void) {
     sound_silence();
 }
 
+/* Count down to the next BATTY_VISUAL_PROBE_FRAMES checkpoint and, on
+ * reaching one, write the probe and halt so the harness can take a
+ * deterministic capture. A key resumes play toward the next checkpoint.
+ *
+ * False means this was the last checkpoint and the run should quit, so
+ * QEMU exits cleanly. A single-value probe has count == 1 and stops
+ * here, exactly as the older single-shot path did.
+ *
+ * The countdown between checkpoints is a delta, which is why
+ * probe_init_from_env drops any value not strictly greater than the one
+ * before it. */
+static bool visual_checkpoint_tick(void) {
+    if (!probe.visual_active) return true;
+    if (probe.visual_countdown > 0) probe.visual_countdown--;
+    if (probe.visual_countdown != 0) return true;
+
+    write_replay_probe();
+    serial_probe_signal();               /* reached frame N -> tell harness */
+    while (!kbhit()) sound_tick();
+    (void)getch();
+
+    probe.visual_index++;
+    if (probe.visual_index >= probe.visual_count) return false;
+    probe.visual_countdown = probe.visual_list[probe.visual_index]
+                           - probe.visual_list[probe.visual_index - 1];
+    return true;
+}
+
 /* The main loop's RNG work, in the original's order at LB9E8_2.
  *
  * The magnet toggle samples the CURRENT value — it is reading LAST
@@ -6513,30 +6541,7 @@ static state_t run_level(void) {
                 }
             }
 
-            if (probe.visual_active && frame_ticked) {
-                if (probe.visual_countdown > 0) probe.visual_countdown--;
-                if (probe.visual_countdown == 0) {
-                    /* Reached a checkpoint: write the probe, then halt so
-                     * the harness can grab a deterministic capture. The
-                     * wake key resumes play toward the next checkpoint;
-                     * after the final one we quit so QEMU exits cleanly.
-                     * A single-value probe has count==1 and quits here,
-                     * exactly as the original single-shot path did. */
-                    write_replay_probe();
-                    serial_probe_signal();   /* reached frame N -> tell harness */
-                    while (!kbhit()) {
-                        sound_tick();
-                    }
-                    (void)getch();
-                    probe.visual_index++;
-                    if (probe.visual_index >= probe.visual_count) {
-                        return ST_QUIT;
-                    }
-                    probe.visual_countdown =
-                        probe.visual_list[probe.visual_index]
-                        - probe.visual_list[probe.visual_index - 1];
-                }
-            }
+            if (frame_ticked && !visual_checkpoint_tick()) return ST_QUIT;
 
             if (dbg.profile_auto_frames != 0
                 && prof.frames >= dbg.profile_auto_frames) {

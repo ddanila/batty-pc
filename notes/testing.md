@@ -652,3 +652,16 @@ means the guest never left text mode:
     guest still in 720x400 TEXT mode — the capture beat the boot to
     graphics. Check the gate's SLEEPs (or run it at lower --jobs); this
     is not a pixel difference.
+
+### No gate drives more than one visual checkpoint
+
+Every gate sets `BATTY_VISUAL_PROBE_FRAMES` to a single frame and
+rebuilds the floppy when it wants another. So the multi-checkpoint path
+— the delta between consecutive checkpoints, and resuming after one that
+is not the last — is exercised only by `capture_frame_timeline.py`,
+which is a tool, not a gate.
+
+    python3 scripts/capture_frame_timeline.py --floppy build/batty-test.img \
+        --frames 20,40,60 --wait-key --out build/tl_check
+
+That is the check to run by hand after touching the checkpoint code.
