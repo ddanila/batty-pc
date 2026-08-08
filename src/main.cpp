@@ -4805,6 +4805,23 @@ static void carry_dirty_with_previous(void) {
  *   - paint ball, bomb, 400pts, alien into scr_buff (each picks up
  *     its surrounding char cell's bg attr at buff_to_vga time)
  *   - HUD labels/scores join scr_buff before the same buff_to_vga pass. */
+/* Multi-ball extras: full 16x12 moving balls, same dirty treatment as
+ * the primary (the carry erases last frame's position). */
+static void render_extra_balls_to_buff(unsigned char bg_attr) {
+    if (ball.extra2_active) {
+        render_ball_to_buff(objects[OBJ_BALL_2].x_coord,
+                            objects[OBJ_BALL_2].y_coord, bg_attr);
+        mark_dirty_rect_px(objects[OBJ_BALL_2].x_coord,
+                           objects[OBJ_BALL_2].y_coord, 16, 12);
+    }
+    if (ball.extra3_active) {
+        render_ball_to_buff(objects[OBJ_BALL_3].x_coord,
+                            objects[OBJ_BALL_3].y_coord, bg_attr);
+        mark_dirty_rect_px(objects[OBJ_BALL_3].x_coord,
+                           objects[OBJ_BALL_3].y_coord, 16, 12);
+    }
+}
+
 /* The three single-sprite falling objects, blitted and dirty-marked the
  * same way on every redraw path. The bomb's bat-collision kill belongs
  * to step_bomb, not here. */
@@ -4946,18 +4963,7 @@ static void redraw_full_with_ball(unsigned char level_idx) {
      * parent UFO the paths rendered different pixels (the f50 21px A/B
      * delta, notes/bird-render-parity.md). The enemy paints OVER the
      * bomb/bonus; the rocket paints over everything. */
-    if (ball.extra2_active) {
-        render_ball_to_buff(objects[OBJ_BALL_2].x_coord,
-                            objects[OBJ_BALL_2].y_coord, bg_attr);
-        mark_dirty_rect_px(objects[OBJ_BALL_2].x_coord,
-                           objects[OBJ_BALL_2].y_coord, 16, 12);
-    }
-    if (ball.extra3_active) {
-        render_ball_to_buff(objects[OBJ_BALL_3].x_coord,
-                            objects[OBJ_BALL_3].y_coord, bg_attr);
-        mark_dirty_rect_px(objects[OBJ_BALL_3].x_coord,
-                           objects[OBJ_BALL_3].y_coord, 16, 12);
-    }
+    render_extra_balls_to_buff(bg_attr);
     render_bullet_to_buff();
     for (i = 0; i < N_BULLETS; i++) {
         if (bullet_active[i]) {
@@ -5138,20 +5144,7 @@ static void render_simple_objects_to_buff_and_mark(unsigned char bg_attr) {
      * overlapping its parent UFO rendered differently on the dirty path
      * vs the full path — the f50 21px A/B delta
      * (notes/bird-render-parity.md). */
-    /* Multi-ball extras: full 16×12 moving balls, same dirty treatment as
-     * the primary (the carry erases last frame's position). */
-    if (ball.extra2_active) {
-        render_ball_to_buff(objects[OBJ_BALL_2].x_coord,
-                            objects[OBJ_BALL_2].y_coord, bg_attr);
-        mark_dirty_rect_px(objects[OBJ_BALL_2].x_coord,
-                           objects[OBJ_BALL_2].y_coord, 16, 12);
-    }
-    if (ball.extra3_active) {
-        render_ball_to_buff(objects[OBJ_BALL_3].x_coord,
-                            objects[OBJ_BALL_3].y_coord, bg_attr);
-        mark_dirty_rect_px(objects[OBJ_BALL_3].x_coord,
-                           objects[OBJ_BALL_3].y_coord, 16, 12);
-    }
+    render_extra_balls_to_buff(bg_attr);
     /* Laser bullets + impact blasts: small fast sprites, redrawable on the
      * dirty path like the ball. render_*_to_buff blit into scr_buff; mark
      * each live slot's rect (the carry restores last frame's position, so

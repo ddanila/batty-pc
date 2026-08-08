@@ -177,3 +177,28 @@ an oracle capture of the original's extra-ball motion first — the
 Existing gates do not catch this: `test-ball-paths-no-tunnel` asserts
 extra balls never tunnel through bricks or escape the walls, both of
 which hold regardless of which quadrant convention is used.
+
+
+## 9. The two redraw paths mark different rects for a bullet blast
+
+`redraw_full_with_ball` marks each live blast slot as `16 x 8`; the
+dirty path's `render_simple_objects_to_buff_and_mark` marks the same
+slot as `16 x 12`. Everything else about the two blocks is identical.
+
+Found while sweeping the two paths for shared code after
+`render_falling_objects_to_buff` and `render_extra_balls_to_buff` were
+unified. Those two were byte-identical and could be merged; this one
+cannot, because the paths genuinely disagree and it is not yet known
+which height is right.
+
+The blast sprite's real height would settle it — `spr_blast_frames`
+indexes into `sprites_blob`, whose per-sprite header carries the height,
+so it is readable without an oracle capture. Until then neither number
+is provably correct: 12 over-marks and costs a little flush bandwidth,
+8 under-marks and would leave stale pixels if the sprite is taller than
+8 rows.
+
+No gate covers it. The blast is drawn on both paths, but no gate
+compares a blast frame across the dirty/full boundary the way
+`test-*-dirty-redraw` does for balls, bombs and bonuses. That comparison
+is the test worth writing before touching either number.

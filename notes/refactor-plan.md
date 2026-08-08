@@ -225,7 +225,14 @@ lines, twice. That is the shape known-bugs #1 and #2 had: two paints of
 the same thing, one of them updated. `render_falling_objects_to_buff`
 makes it one.
 
-Worth sweeping the rest of the two paths for the same pattern.
+The sweep found one more identical block — the multi-ball extras, now
+`render_extra_balls_to_buff` — and one genuine divergence: the two paths
+mark different rect heights for a bullet blast. That one is
+known-bugs #9, not a merge.
+
+What is left differing between the paths is deliberate: the full path
+paints the brick flash and hit animations, the dirty path relies on the
+carry.
 
 Order from here:
 
