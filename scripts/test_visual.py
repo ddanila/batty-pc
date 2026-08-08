@@ -87,6 +87,17 @@ def ppm_inner_to_indices(path: Path):
         scale = 1
     elif (w, h) == (SCREEN_W * 2, SCREEN_H * 2):
         scale = 2
+    elif (w, h) == (720, 400):
+        # The VGA text mode QEMU boots into. The guest never reached mode
+        # 13h, so the screendump fired before the game started drawing —
+        # a capture that outran the boot, not a rendering difference.
+        # Seen when many QEMU instances compete and a gate's fixed SLEEPs
+        # are too short (notes/testing.md), and when a floppy was built
+        # into a state that never reaches the playfield.
+        raise ValueError(
+            f'{path}: guest still in 720x400 TEXT mode — the capture beat '
+            f'the boot to graphics. Check the gate\'s SLEEPs (or run it at '
+            f'lower --jobs); this is not a pixel difference.')
     else:
         raise ValueError(f'unexpected PPM size {w}x{h}; expected 320x200 or 640x400')
     out = bytearray(PLAYFIELD_W * PLAYFIELD_H)

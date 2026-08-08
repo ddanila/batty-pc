@@ -643,3 +643,12 @@ contention from not-contention, not flaky from real.
 The replay itself is not fully deterministic either — `random_number`
 differs run to run (DAA5, F6E6). The gate does not assert on it, but
 that is worth knowing before writing one that does.
+
+`ppm_inner_to_indices` now names this case instead of reporting it as an
+unexpected image size. It cost twenty minutes to identify twice, because
+`unexpected PPM size 720x400` reads like a rendering difference when it
+means the guest never left text mode:
+
+    guest still in 720x400 TEXT mode — the capture beat the boot to
+    graphics. Check the gate's SLEEPs (or run it at lower --jobs); this
+    is not a pixel difference.
