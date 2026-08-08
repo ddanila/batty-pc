@@ -66,6 +66,7 @@ FULL_EXTRA_GATES = [
     "test-levels-sweep", "test-enemy-flyover-redraw", "test-normal-ball-launch",
     "test-laffc-levels-sane", "test-hud", "test-round-banner-border",
     "test-brick-flash", "test-death-sparks", "test-rocket-bonus",
+    "test-game-over",
     "test-bonus-fall", "test-bomb-fall", "test-pts400-fall", "test-bullet-fly",
     "test-laser-cadence", "test-enemy-anim", "test-bonus-drop",
     "test-bonus-effects", "test-bonus-effects2", "test-bonus-typepick",

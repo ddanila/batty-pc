@@ -548,6 +548,15 @@ cycle stops at LEVEL. So the game-over path, the high-score save and
 name entry rest on being code motion. Worth a gate at some point: it is
 the one screen a player always reaches and nothing checks.
 
+`test-game-over` is now that gate — a source gate, not a visual one.
+`exercise_gameloop.py` drives the real screen but loses three lives on
+three 9-second wall-clock waits, which is exactly what makes
+`test-bat-redraw-window` flaky; a gate built that way would flake too.
+So it checks the four LBC10_6 ordering facts a screendump could not
+distinguish anyway: capture the high score before drawing, save after
+name entry, hold ~65 BIOS ticks with any key cutting it short, and queue
+no sound. A visual gate is still worth adding on top.
+
 ## What this has already found
 
 `known-bugs.md` #8 — multiball extra balls appeared to use a direction
