@@ -60,7 +60,7 @@ happened, and `make test-video` caught it.
 | 10 | state owners — structs at file scope | 113 vars | **done** — 11 clusters, see below |
 | 1 | replay / probe scaffolding | 480 | **last** — see below |
 
-`main.cpp`: 7,746 → 6,797. 100 host tests + source gates, all via `make test-fast` in seconds.
+`main.cpp`: 7,746 → 6,804. 100 host tests + source gates, all via `make test-fast` in seconds.
 
 ### Stage 5b: one destroyed-cell reset, not two
 
@@ -612,6 +612,17 @@ clear both — no bug, just the pattern.
 
 Both of these are worth more than the line count says: a step extracted
 is easier to read, an invariant extracted is harder to violate.
+
+`sweep_bricks_for_primary` then named the collision *policy* rather than
+another step: LAFFC where it fires, `brick_collision` as the backstop
+for cases it declines, and the four return codes documented at the one
+place that produces them.
+
+Coverage note: **no gate sets `BATTY_LEGACY_COLLISION`**, so the
+fallback-only path is unexercised by the suite. It was booted by hand
+here and runs, but with a stuck ball no collision occurs — the switch is
+effectively untested. Worth knowing before trusting it as an A/B
+baseline.
 
 ## What this has already found
 

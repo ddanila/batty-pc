@@ -4473,6 +4473,25 @@ static void rest_ball_on_bat(void) {
              (objects[OBJ_BAT_1].bonus_applied == 0x03 ? 1 : 0);
 }
 
+/* Which axis, if any, the primary ball entered a brick through:
+ *   0 = no hit
+ *   1 = vertical   (caller flips dy)
+ *   2 = horizontal (caller flips dx)
+ *   3 = LAFFC already resolved it, position and direction included
+ *
+ * LAFFC is byte-exact where it fires but returns 0 for cases it does not
+ * resolve — an unported two-cell straddle on a layout other than L3 —
+ * so brick_collision backs it up and a ball can never pass through a
+ * brick LAFFC declined. On L3 the fallback never triggers, so parity is
+ * unchanged. BATTY_LEGACY_COLLISION drops back to brick_collision alone. */
+static int sweep_bricks_for_primary(int next_x, int next_y) {
+    int hit;
+    if (!dbg.use_laffc) return brick_collision(BALL_X, BALL_Y, next_x, next_y);
+    hit = laffc_collision(&objects[OBJ_BALL_1], BALL_X, BALL_Y, next_x, next_y);
+    if (hit == 0) hit = brick_collision(BALL_X, BALL_Y, next_x, next_y);
+    return hit;
+}
+
 /* A stuck ball rides the bat at the catch offset (where it hit, when
  * the CATCH bonus stuck it; otherwise BALL_X_OFFSET_ON_BAT) until SPACE
  * or the timeout auto-launches it. */
@@ -4580,22 +4599,10 @@ static void step_ball(void) {
         lose_primary_ball();
         return;
     }
-    /* Brick collision: side-aware. brick_collision tells us which axis
-     * the ball entered through; we reverse + unwind that axis. */
+    /* Side-aware brick collision: the sweep says which axis the ball
+     * entered through, and we reverse and unwind that axis. */
     {
-        int hit;
-        if (dbg.use_laffc) {
-            /* LAFFC-exact bounce where it fires (returns 3 = handled, or 0
-             * = no hit). Fall back to the proven brick_collision when LAFFC
-             * reports no hit, so the byte-exact path can never pass through
-             * a brick it failed to resolve (e.g. an unported two-cell
-             * straddle on a layout other than L3). On L3 LAFFC handles the
-             * hit, so the fallback never triggers and parity is unchanged. */
-            hit = laffc_collision(&objects[OBJ_BALL_1], BALL_X, BALL_Y, next_x, next_y);
-            if (hit == 0) hit = brick_collision(BALL_X, BALL_Y, next_x, next_y);
-        } else {
-            hit = brick_collision(BALL_X, BALL_Y, next_x, next_y);
-        }
+        const int hit = sweep_bricks_for_primary(next_x, next_y);
         if (hit == 3) {
             /* LAFFC path already reflected the direction and snapped the
              * ball to the cell edge (in BALL_X/BALL_Y). LAFFC_26-29 set
