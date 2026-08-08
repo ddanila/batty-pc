@@ -65,6 +65,13 @@ def needles(path: Path):
 
     Literals reached through a variable (`guard = "..."; if guard not in
     src`) are picked up too, by resolving simple string assignments.
+
+    Yields (text, line, scoped). `scoped` marks a needle whose
+    right-hand side is not a plain name -- `needle not in
+    compact[idx:idx + 220]` asserts a POSITION, and all this checker can
+    confirm is that the text still exists somewhere. Those are counted
+    and reported separately so a green run does not claim more than it
+    checked.
     """
     try:
         tree = ast.parse(path.read_text())
@@ -101,6 +108,8 @@ def needles(path: Path):
         if not any(isinstance(op, ast.NotIn) for op in node.ops):
             continue
         left = node.left
+        rhs = node.comparators[0] if node.comparators else None
+        scoped = not isinstance(rhs, ast.Name)
         if isinstance(left, ast.Constant) and isinstance(left.value, str):
             text, line = left.value, node.lineno
         elif isinstance(left, ast.Name) and left.id in bound:
@@ -113,12 +122,12 @@ def needles(path: Path):
                    or _iterates(tree, left.id, src_name):
                     for t, ln in items:
                         if len(t) >= MIN_LEN:
-                            yield t, ln
+                            yield t, ln, scoped
             continue
         else:
             continue
         if len(text) >= MIN_LEN:
-            yield text, line
+            yield text, line, scoped
 
 
 def main() -> int:
@@ -130,9 +139,12 @@ def main() -> int:
 
     stale = []
     checked = 0
+    scoped_count = 0
     for gate in gates:
-        for text, line in needles(gate):
+        for text, line, scoped in needles(gate):
             checked += 1
+            if scoped:
+                scoped_count += 1
             if text in src or "".join(text.split()) in compact:
                 continue
             stale.append((gate.name, line, text))
@@ -148,6 +160,11 @@ def main() -> int:
         return 1
 
     print(f"PASS gate_greps: {checked} source needles across {len(gates)} gates still match")
+    if scoped_count:
+        print(f"  note: {scoped_count} of them assert a POSITION in the source "
+              f"(e.g. `not in compact[idx:idx+220]`).")
+        print("  Only their existence was checked here; run the gate itself "
+              "to confirm the position.")
     return 0
 
 

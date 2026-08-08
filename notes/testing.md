@@ -578,3 +578,15 @@ So a green `test-gate-greps` narrows where a rename can hurt; it does not
 prove the source gates still pass. `make test-fast` runs the gates
 themselves and is what actually answers that — the grep check is a
 one-second early warning, not a substitute.
+
+The checker now says so itself. A needle whose right-hand side is not a
+plain name is counted as **position-scoped** and reported separately:
+
+    PASS gate_greps: 34 source needles across 20 gates still match
+      note: 2 of them assert a POSITION in the source (e.g. `not in
+      compact[idx:idx+220]`).
+      Only their existence was checked here; run the gate itself to
+      confirm the position.
+
+A tool that silently under-reports is worse than one that admits its
+limit, because the whole point of it is to be trusted in a second.
