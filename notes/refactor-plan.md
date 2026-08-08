@@ -60,7 +60,7 @@ happened, and `make test-video` caught it.
 | 10 | state owners — structs at file scope | 113 vars | **done** — 11 clusters, see below |
 | 1 | replay / probe scaffolding | 480 | **last** — see below |
 
-`main.cpp`: 7,746 → 6,746. 100 host tests + source gates, all via `make test-fast` in seconds.
+`main.cpp`: 7,746 → 6,753. 100 host tests + source gates, all via `make test-fast` in seconds.
 
 ### Stage 5b: one destroyed-cell reset, not two
 
@@ -538,6 +538,15 @@ and before `render_level_screen`, which paints from that state.
 That also removed `i`, a function-scope alias for `lvl_idx` whose own
 comment said it existed only because "the cycle / bg_attr code below
 reads `i`". Six call sites now name the level they are drawing.
+
+`play_game_over` followed: the GAME OVER hold and the name-entry screen.
+
+Coverage note — **no gate covers it**. `scripts/exercise_gameloop.py`
+drives the loop until all three lives are gone and screendumps the
+screen, but it is a manual tool, not a gate; `make test`'s four-state
+cycle stops at LEVEL. So the game-over path, the high-score save and
+name entry rest on being code motion. Worth a gate at some point: it is
+the one screen a player always reaches and nothing checks.
 
 ## What this has already found
 

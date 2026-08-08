@@ -6282,6 +6282,41 @@ static unsigned char initial_round_number(void) {
     return 0;
 }
 
+/* The end of a game: the GAME OVER hold, then the name-entry screen if
+ * the player beat the high score.
+ *
+ * LBC10_6 plays no sound — its preceding pause_clear_screen_attrib just
+ * drains the queue while the screen clears — and it holds for
+ * `pause_long B=$0C` = 12 * 0.3 s, which is ~65 BIOS ticks at 18.2 Hz.
+ * The hold is not gated on auto_advance: the original waits regardless,
+ * and TIMED_OUT is permanently false, which would strand the player on
+ * the screen. Any key cuts it short.
+ *
+ * The high score is saved only after name entry, so the file gets the
+ * new score and the player's initials together. */
+static void play_game_over(void) {
+    unsigned long start;
+
+    if (player.score > player.high_score) {
+        player.high_score = player.score;
+        high_score_beaten_this_game = 1;
+    }
+    sound_stop_all();
+    render_game_over();
+
+    start = bios_ticks();
+    while (bios_ticks() - start < 65UL) {
+        sound_tick();
+        if (kbhit()) { getch(); break; }
+    }
+
+    if (high_score_beaten_this_game) {
+        input_new_record_name();
+        high_score_save(player.high_score, high_score_name);
+    }
+    sound_silence();
+}
+
 /* Set up a level and show its intro. False means the player quit during
  * the intro. */
 static bool enter_level(unsigned char lvl_idx) {
@@ -6479,35 +6514,7 @@ static state_t run_level(void) {
 
             /* End-of-life conditions. */
             if (player.lives == 0) {
-                if (player.score > player.high_score) {
-                    player.high_score = player.score;
-                    high_score_beaten_this_game = 1;
-                    /* Save deferred until after the name-entry screen
-                     * so the file holds the new high + the player's
-                     * initials together. */
-                }
-                sound_stop_all();
-                /* Original LBC10_6 plays no game-over sound — the
-                 * preceding pause_clear_screen_attrib just drains the
-                 * sound queue while the screen clears. Dropping our
-                 * 100 Hz drone for byte-exact silence here. */
-                render_game_over();
-                /* Hold GAME OVER for ~3.6 s — matches LBC10_6's
-                 * `pause_long B=\$0C` (= 12 * 0.3 s). 18.2 Hz BIOS ticks
-                 * × 3.6 s ≈ 65. Not gated on auto_advance — the
-                 * original's pause_clear_screen_attrib waits regardless,
-                 * and TIMED_OUT would be a no-op with auto_advance=0,
-                 * leaving the player stuck on the screen. */
-                start = bios_ticks();
-                while (bios_ticks() - start < 65UL) {
-                    sound_tick();
-                    if (kbhit()) { getch(); break; }
-                }
-                if (high_score_beaten_this_game) {
-                    input_new_record_name();
-                    high_score_save(player.high_score, high_score_name);
-                }
-                sound_silence();
+                play_game_over();
                 return ST_TITLE;
             }
             /* Mirror LBAED_0's exit conditions:
