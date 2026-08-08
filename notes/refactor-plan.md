@@ -200,6 +200,13 @@ gate** — `test_scoring.cpp` covers the pure `lives_earned`, and nothing
 plays long enough to cross a threshold in an emulator. Changes there
 rest on being pure code motion, not on a gate.
 
+`handle_no_ball_death` was last. Extracting it tripped
+`test-gate-greps`: `test_rocket_bonus.py` greps for the breadcrumb
+`before balls_quantity`, and rewrapping the comment split that phrase
+across two lines. A comment reflow is enough to break a source needle,
+which is the argument for the check running in a second rather than
+only in CI.
+
 Order from here:
 
 1. the frame loop, into named phases

@@ -6156,6 +6156,24 @@ static InputAction handle_input(int &ball_moved, int &bat_moved,
     return INPUT_NONE;
 }
 
+/* Mirror LBAED's ordering: object_rocket is checked
+ * before balls_quantity, and an active rocket jumps to the rocket
+ * loop instead of LBC10's bat-explosion path. The rocket catch hides
+ * all balls while the level-clear sequence runs, so that temporary
+ * no-ball state must not cost a life. */
+static void handle_no_ball_death(void) {
+    if (!rocket.active
+        && !rocket.clear_completed
+        && !suppress_no_ball_death
+        && !BALL_VISIBLE
+        && !ball.extra2_active
+        && !ball.extra3_active) {
+        play_bat_explosion(current_level_idx_var);
+        if (player.lives > 0) player.lives--;
+        if (player.lives > 0) respawn_primary_ball();
+    }
+}
+
 /* Each threshold in live_add_thresholds crossed since the last check
  * awards one extra life. orig: $0395 score_update_3 */
 static void award_score_milestones(void) {
@@ -6426,22 +6444,7 @@ static state_t run_level(void) {
                 }
                 if (auto_fire) try_fire_laser();   /* held-SPACE sim (test) */
                 step_active_entities();
-                /* Mirror LBAED's ordering: object_rocket is checked
-                 * before balls_quantity, and an active rocket jumps to
-                 * the rocket loop instead of LBC10's bat-explosion
-                 * path. The rocket catch hides all balls while the
-                 * level-clear sequence runs, so that temporary no-ball
-                 * state must not cost a life. */
-                if (!rocket.active
-                    && !rocket.clear_completed
-                    && !suppress_no_ball_death
-                    && !BALL_VISIBLE
-                    && !ball.extra2_active
-                    && !ball.extra3_active) {
-                    play_bat_explosion(current_level_idx_var);
-                    if (player.lives > 0) player.lives--;
-                    if (player.lives > 0) respawn_primary_ball();
-                }
+                handle_no_ball_death();
                 /* Mirror of LB9E8_2..LB9E8_3 ($BA83..$BAD9):
                  *   enemy_prepare    -- maybe spawn alien
                  *   handling_bat     -- bat motion (here via key_state)
