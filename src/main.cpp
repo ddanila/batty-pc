@@ -2903,6 +2903,18 @@ static void hide_objects_for_rocket_clear(void) {
     }
 }
 
+/* The bat's active bonus lives in BOTH bat objects — object_bat_1 and
+ * the second bat the original keeps for the rocket flight — and they
+ * must not disagree, so nothing writes one without the other. $FF means
+ * "no bat-side effect".
+ *
+ * The one exception is the ROCKET catch's INC (IY+$14), which increments
+ * each in place; see attach_rocket_to_bat. */
+static void set_bat_bonus(unsigned char code) {
+    objects[OBJ_BAT_1].bonus_applied = code;
+    objects[OBJ_BAT_2].bonus_applied = code;
+}
+
 /* Start the level-clear flight: the rocket emerges from inside the bat
  * and step_rocket destroys every destructible cell it passes through,
  * so the level is visibly cleared rather than just dissolving.
@@ -2967,8 +2979,7 @@ static void bonus_apply(unsigned char type) {
      * LASER clears the LASER state. */
     if (type != BONUS_TYPE_ROCKET) {
         unsigned char orig_code = bonus_to_original(type);
-        objects[OBJ_BAT_1].bonus_applied = orig_code;
-        objects[OBJ_BAT_2].bonus_applied = orig_code;
+        set_bat_bonus(orig_code);
     }
     switch (type) {
         case BONUS_TYPE_LIFE:     player.lives++; life_dropped_this_round = 1; break;
@@ -2977,8 +2988,7 @@ static void bonus_apply(unsigned char type) {
              * overwrites bat.bonus_applied to \$FF (= no bat-side state)
              * after the universal assignment. SLOW is ball-side; the
              * bat doesn't track it. */
-            objects[OBJ_BAT_1].bonus_applied = 0xFF;
-            objects[OBJ_BAT_2].bonus_applied = 0xFF;
+            set_bat_bonus(0xFF);
             /* Original LA67B_7: SLOW sets ALL ball speeds to $02 (the
              * minimum) — `LD A,$02; LD (object_ball_1+$07),A` etc. It
              * does NOT reset the speed-up ramp counter, so the ball
@@ -3026,8 +3036,7 @@ static void bonus_apply(unsigned char type) {
             /* Original at LA67B_8 (\$3074): `LD (IY+\$14),\$FF` after
              * setting balls_quantity = 3 — overwrites bat.bonus_applied
              * to \$FF (TRIPLE_BALL is ball-side, not bat-side). */
-            objects[OBJ_BAT_1].bonus_applied = 0xFF;
-            objects[OBJ_BAT_2].bonus_applied = 0xFF;
+            set_bat_bonus(0xFF);
             if (!ball.extra2_active && !ball.extra3_active) {
                 const ExtraBallDirs dirs =
                     extra_ball_dirs(delta_to_dir(ball.dx, ball.dy));
@@ -3118,8 +3127,7 @@ static void tick_big_ball_timer(void) {
     if (ball.big_ticks == 0 || (pit_ticks() & 1UL) != 0) return;
     ball.big_ticks--;
     if (ball.big_ticks == 0 && objects[OBJ_BAT_1].bonus_applied == 0x07) {
-        objects[OBJ_BAT_1].bonus_applied = 0xFF;
-        objects[OBJ_BAT_2].bonus_applied = 0xFF;
+        set_bat_bonus(0xFF);
     }
 }
 
@@ -3586,8 +3594,7 @@ static void apply_replay_bullet_override(void) {
 static void apply_replay_bigball(void) {
     if (getenv("BATTY_REPLAY_BIGBALL") == NULL) return;
     ball.big_ticks = BIG_BALL_DURATION;
-    objects[OBJ_BAT_1].bonus_applied = 0x07;
-    objects[OBJ_BAT_2].bonus_applied = 0x07;
+    set_bat_bonus(0x07);
 }
 
 /* Bake two extra balls (multi-ball) for the deterministic extra-ball dirty
@@ -5763,8 +5770,7 @@ static void respawn_primary_ball(void) {
      * for the Y offset was 1 px too high. */
     BALL_Y = BAT_Y - BALL_H_PX;
     primary_ball_set_velocity(+1, -BALL_SPEED);
-    objects[OBJ_BAT_1].bonus_applied = 0xFF;
-    objects[OBJ_BAT_2].bonus_applied = 0xFF;
+    set_bat_bonus(0xFF);
     bat.big_ticks  = 0;
     ball.big_ticks = 0;
     ball.speed_ramp = 0;     /* fresh life: ball restarts at base speed */
@@ -5960,8 +5966,7 @@ static void reset_level_state(unsigned char lvl_idx) {
     run_dot_frame = 0x0E;               /* matches running_dot_frame_1up reset */
     bat.extra_px   = 0;
     bat.extra_target  = 0;
-    objects[OBJ_BAT_1].bonus_applied = 0xFF;
-    objects[OBJ_BAT_2].bonus_applied = 0xFF;
+    set_bat_bonus(0xFF);
     /* Mirror all_var_init's `clear_hl_buff` of sounds_queue at line
      * 5984 — sounds in-flight at level entry shouldn't bleed into
      * the new round. */

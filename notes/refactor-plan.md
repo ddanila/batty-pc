@@ -60,7 +60,7 @@ happened, and `make test-video` caught it.
 | 10 | state owners — structs at file scope | 113 vars | **done** — 11 clusters, see below |
 | 1 | replay / probe scaffolding | 480 | **last** — see below |
 
-`main.cpp`: 7,746 → 6,790. 100 host tests + source gates, all via `make test-fast` in seconds.
+`main.cpp`: 7,746 → 6,795. 100 host tests + source gates, all via `make test-fast` in seconds.
 
 ### Stage 5b: one destroyed-cell reset, not two
 
@@ -585,8 +585,21 @@ Verifying it needed a step off the gate suite: every gate passes a
 SINGLE checkpoint, so none exercises the delta arithmetic between
 checkpoints or the not-the-last-one branch. Driving
 `capture_frame_timeline.py --frames 20,40,60` by hand does, and it
-reported three deterministic checkpoints. Worth knowing that the
-multi-checkpoint path has no gate at all.
+reported three deterministic checkpoints. `test-visual-checkpoints` now gates its
+resume half — and says in its own docstring that it does not gate the
+delta, because the capture tool names files after the requested frame
+rather than the one that fired.
+
+`set_bat_bonus` then named an invariant rather than a step: the bat's
+active bonus lives in BOTH bat objects, and seven separate places wrote
+the pair by hand. Writing one without the other is a plausible bug that
+nothing would catch — `enemy_prepare` even reads the two separately, a
+defensive check that implies someone once worried about it.
+
+The ROCKET catch's `INC (IY+$14)` is left as two increments rather than
+routed through the setter: converting it would assume the two are always
+equal, which is exactly the assumption the defensive read declines to
+make.
 
 ## What this has already found
 
