@@ -61,7 +61,7 @@ happened, and `make test-video` caught it.
 | 1a | `replay_parse` — the BATTY_REPLAY_* value formats | 75 | **done** — 7 tests |
 | 1 | replay / probe scaffolding | ~430 | **last** — see below |
 
-`main.cpp`: 7,746 → 6,844. 100 host tests + source gates, all via `make test-fast` in seconds.
+`main.cpp`: 7,746 → 6,853. 100 host tests + source gates, all via `make test-fast` in seconds.
 
 ### Stage 5b: one destroyed-cell reset, not two
 
@@ -511,6 +511,12 @@ to protect, violated three commits after naming it. Inert today, because
 the port's ball object handler is a stub, but `call_for_all_obj`
 dispatches on `sprite_set` and the probe dumps those objects. It uses
 the helper now.
+
+`try_spawn_bonus` split in two: whether to drop (two guards and a 5/16
+roll that does NOT advance the RNG) and `pick_bonus_type`, the 16-try
+re-roll loop that does. Keeping those apart matters because the two
+halves use the RNG differently, and that difference was previously
+explained in a comment spanning both.
 
 `build_static_brick_band_cache` split into `rebuild_band_cache_full` and
 `rebuild_band_cache_rows`, leaving the outer function as the choice

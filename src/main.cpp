@@ -3268,67 +3268,76 @@ static void step_pts_400(void) {
  * retry up to 16 times if the picked code maps to an unsupported
  * effect. No-op if a bonus is already in flight or the cadence
  * counter isn't at a spawn-multiple. */
-static void try_spawn_bonus(int col, int row) {
+/* Roll a bonus type from `tbl`, honouring the original's re-roll rules.
+ * Returns BONUS_TYPE_UNSUPPORTED if 16 tries all landed on something
+ * excluded or unported.
+ *
+ * generate_new_bonus re-rolls when the pick equals `current_bonus`,
+ * which $9D5A sets to the bat's active bonus just before generating —
+ * so comparing against bat.bonus_applied is byte-faithful, not an
+ * approximation. It stops back-to-back duplicates of the same effect.
+ *
+ * Per-type exclusions, L9D5A_2..L9D5A_9:
+ *   $02 TRIPLE_BALL  extras already in play
+ *   $04 SLOW         a ball already at the minimum speed
+ *   $05 LIFE         already dropped this round
+ *   $06 ROCKET       one already in flight
+ * and from round 6 the rocket takes an extra (random & $C0) re-roll, so
+ * about three in four would-be rockets are rejected and the bonus turns
+ * ~4x rarer late on ($9D6F's CP $06 / JR C / AND $C0 / JR NZ chain).
+ *
+ * Each try advances the RNG: generate_new_bonus re-CALLs
+ * random_generate per retry. */
+static unsigned char pick_bonus_type(const unsigned char *tbl) {
     int tries;
-    const unsigned char *tbl;
-    if (bonus.active) return;
-    /* The original shares object_bonus between falling bonus and bomb,
-     * so a bomb in flight blocks new bonus spawns. We keep separate
-     * state but mirror the mutual exclusion here. */
-    if (bomb.active) return;
-    /* Mirror the test at $A2CC: drop a bonus iff (random & 0x0F) < 5,
-     * i.e. 5/16 ≈ 31% per destroyed brick. (Earlier port used a
-     * deterministic every-Nth counter — close in average rate but
-     * obvious as a pattern to the player.) */
-    /* Drop chance: the original reads random_number+$01 WITHOUT advancing
-     * (read-current; brik_value: LD A,(random_number+$01) / CP $05 /
-     * CALL C,set_bonus) -> rng_sample. The bonus TYPE pick below keeps
-     * next_random(): generate_new_bonus re-CALLs random_generate each
-     * retry, so each iteration advances. */
-    if ((random_hi(rng_sample()) & 0x0F) >= 5) return;
-    tbl = (round_number >= 6) ? bonus_table_second : bonus_table_first;
     for (tries = 0; tries < 16; tries++) {
-        unsigned int rnd = next_random();
-        unsigned char idx = (unsigned char)(random_hi(rnd) & 0x0F);
-        unsigned char code = tbl[idx];
+        const unsigned int rnd = next_random();
+        const unsigned char code = tbl[random_hi(rnd) & 0x0F];
         unsigned char mapped;
-        /* Original generate_new_bonus re-rolls when the picked bonus
-         * equals `current_bonus`. The setup at $9D5A sets
-         * `current_bonus = (object_bat_1+$14)` (= bat.bonus_applied) just
-         * before generating (the 2-player path uses object_bat_2+$14), so
-         * comparing to bat.bonus_applied here is byte-faithful, not an
-         * approximation. Prevents back-to-back duplicates of the same bat
-         * effect. */
+
         if (code == objects[OBJ_BAT_1].bonus_applied) continue;
-        /* Per-type exclusions from L9D5A_2..L9D5A_9:
-         *   $02 (TRIPLE_BALL): skip if extra balls already in play
-         *   $04 (SLOW): skip if SLOW already active
-         *   $05 (LIFE): skip if already dropped this round
-         *   $06 (ROCKET): skip if rocket in flight
-         * From round 6 onwards, rocket gets an extra (random & $C0)
-         * re-roll: ~3/4 of would-be rockets get rejected, making the
-         * bonus ~4x rarer in late levels (port of $9D6F's CP $06 /
-         * JR C / AND $C0 / JR NZ chain). */
         if (code == 0x02 && (ball.extra2_active || ball.extra3_active)) continue;
-        /* Original generate_new_bonus re-rolls SLOW if a ball is already
-         * at the minimum speed $02 (it checks object_ball_N+$07 == $02).
-         * With the speed-ramp model, that's `primary ball speed <= base`. */
         if (code == 0x04 && objects[OBJ_BALL_1].speed <= BALL_SPEED) continue;
         if (code == 0x05 && life_dropped_this_round) continue;
         if (code == 0x06 && rocket.active) continue;
         if (code == 0x06 && round_number >= 6
             && (random_lo(rnd) & 0xC0) != 0) continue;
+
         mapped = bonus_from_original(code);
-        if (mapped != BONUS_TYPE_UNSUPPORTED) {
-            bonus.active = 1;
-            bonus.x = 8 + col * 16 + (16 - BONUS_W_PX) / 2;
-            bonus.y = 32 + row * 8;
-            bonus.type = mapped;
-            bonus.motion.acc = 0;
-            bonus.motion.frac = 0;
-            return;
-        }
+        if (mapped != BONUS_TYPE_UNSUPPORTED) return mapped;
     }
+    return BONUS_TYPE_UNSUPPORTED;
+}
+
+/* A destroyed brick may drop a bonus. Called from every destruction
+ * site — ball, bullet, rocket sweep — so the cadence does not depend on
+ * what destroyed the brick.
+ *
+ * The chance is 5/16 (about 31%) per brick, from the test at $A2CC. It
+ * reads random_number WITHOUT advancing it (rng_sample); only the type
+ * pick advances the RNG. An earlier port used a deterministic every-Nth
+ * counter — the same average rate, but visible as a pattern.
+ *
+ * A bomb in flight blocks the drop: the original shares object_bonus
+ * between the two, and the port mirrors that exclusion despite keeping
+ * them in separate state. */
+static void try_spawn_bonus(int col, int row) {
+    const unsigned char *tbl;
+    unsigned char type;
+
+    if (bonus.active || bomb.active) return;
+    if ((random_hi(rng_sample()) & 0x0F) >= 5) return;
+
+    tbl  = (round_number >= 6) ? bonus_table_second : bonus_table_first;
+    type = pick_bonus_type(tbl);
+    if (type == BONUS_TYPE_UNSUPPORTED) return;
+
+    bonus.active = 1;
+    bonus.x = 8 + col * 16 + (16 - BONUS_W_PX) / 2;
+    bonus.y = 32 + row * 8;
+    bonus.type = type;
+    bonus.motion.acc = 0;
+    bonus.motion.frac = 0;
 }
 
 /* Track the destroyed brick cell long enough to dirty its full original
