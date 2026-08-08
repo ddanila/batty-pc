@@ -116,8 +116,10 @@ Worth writing down because they repeated:
 1. `test-death-sparks` greps source for code stage 3a moved to another
    module. Red for six commits. I was running `parity-check-parallel`,
    which excludes the source gates CI runs.
-2. `parity-check-parallel` without `--full` is **8 of 49 gates**. Every
-   "all gates green" in this refactor meant the fast core only.
+2. `parity-check-parallel` without `--full` is **8 of 51 gates**. Every
+   "all gates green" in this refactor meant the fast core only. The full
+   suite now runs green end-to-end in 341s (notes/testing.md), so there
+   is no longer a cost argument for skipping it before a push.
 3. `test-rocket-bonus` greps for `!ball2_active`, which the BallState
    grouping renamed. I reported that commit as "test-fast green" having
    piped test-fast's output past myself without reading it.

@@ -449,3 +449,30 @@ one line down in `build/test_brick_flash/qemu.log`:
 `Could not open 'build/batty-test-9.img': No such file or directory`.
 
 Read the qemu.log before reading the traceback.
+
+### The full suite now completes
+
+`python3 scripts/run_gates_parallel.py --full` — **51 gates, all green,
+341.6s wall** (serial would be ~2090s; 6.1x on 14 cores, 7 at a time).
+
+It had never finished before. Two earlier attempts were killed at 90
+minutes, which read as "the emulator gates are just slow" and was wrong
+on both counts: they were not slow, they were deadlocked on each other's
+floppy images, and the suite is in fact a five-minute check.
+
+The two fixes that got it there:
+
+- every gate honours `BATTY_TEST_FLOPPY` (30 scripts hardcoded
+  `build/batty-test.img` and silently read another job's image)
+- `test_brick_flash.py` stopped filtering `BATTY_TEST_FLOPPY` out of the
+  environment when rebuilding its own floppy
+
+Slowest gates, worth knowing before adding more: `test-levels-sweep`
+267s, `test-laffc-levels-sane` 205s, `test-ball-no-tunnel` 100s,
+`test-bonus-typepick` 90s, `test-ball-paths-no-tunnel` 82s. The wall
+time is set by `test-levels-sweep` alone, so the suite cannot go below
+~4.5 minutes without splitting that one.
+
+`test-bat-redraw-window` passed this run (26.3s). It is intermittent,
+not broken — see the flakiness note above; one green run is not
+evidence it is fixed.
