@@ -188,6 +188,12 @@ says what they are rather than when they were set.
 Finding it after declaring the stage complete is the point: clusters are
 easier to see once the surrounding code has names.
 
+The five `last_primary_launch_*` variables then folded into `ProbeState`
+as a nested `last_launch`. They were never game state — only
+`record_primary_launch` writes them and only `write_replay_probe` reads
+them — so they were harness state sitting in the middle of the ball
+declarations. Five fewer loose names for stage 1 to account for.
+
 `PlayerState` needed a different tool from the rest. `score` and `lives`
 are English words that occur in comments and — the trap —
 in `fprintf(f, "score=%06lu\n", score)`, whose *literal* is the

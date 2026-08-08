@@ -453,11 +453,6 @@ static unsigned char bg_tile[BG_TILE_CYCLES * BG_TILE_SIZE];
  * IX-relative access). The primary ball uses the descriptor's
  * direction/speed plus the +03/+05 fractional bytes for movement;
  * the legacy integer deltas remain for the two extra balls. */
-static unsigned char last_primary_launch_valid = 0;
-static unsigned char last_primary_launch_x = 0;
-static unsigned char last_primary_launch_y = 0;
-static unsigned char last_primary_launch_dir = 0;
-static unsigned char last_primary_launch_speed = 0;
 /* 0 while the level-init PROBE.TXT write (the seeded pre-gameplay state)
  * is emitted; set to 1 once the gameplay main loop is entered. The harness
  * reads `probe_phase` to tell a real checkpoint write apart from the init
@@ -655,6 +650,11 @@ static PlayerState player = {0, LIVES_INIT, 0, 0};
  * and so it can move out of main.cpp once it has somewhere to go. */
 struct ProbeState {
     unsigned long brik_anim_ticks;    /* intro shimmer duration, in PIT edges */
+
+    /* The last primary-ball launch, read back by the launch gate. */
+    struct LaunchCapture {
+        unsigned char valid, x, y, dir, speed;
+    } last_launch;
 
     /* Halt after N primary-ball launches / N frames. */
     unsigned int  launch_frames, launch_countdown;
@@ -1371,11 +1371,11 @@ static void primary_ball_launch_from_bat(void) {
 }
 
 static void record_primary_launch(void) {
-    last_primary_launch_valid = 1;
-    last_primary_launch_x = BALL_X;
-    last_primary_launch_y = BALL_Y;
-    last_primary_launch_dir = objects[OBJ_BALL_1].dir;
-    last_primary_launch_speed = objects[OBJ_BALL_1].speed;
+    probe.last_launch.valid = 1;
+    probe.last_launch.x = BALL_X;
+    probe.last_launch.y = BALL_Y;
+    probe.last_launch.dir = objects[OBJ_BALL_1].dir;
+    probe.last_launch.speed = objects[OBJ_BALL_1].speed;
     if (probe.launch_frames != 0) {
         probe.launch_countdown = probe.launch_frames;
         probe.launch_active = 1;
@@ -3856,11 +3856,11 @@ static void write_replay_probe(void) {
             (unsigned)(ball.big_ticks != 0),
             (unsigned)(player.lives & 0xFF));
     fprintf(f, "\nnormal_launch_state=%02X%02X%02X%02X%02X",
-            (unsigned)last_primary_launch_valid,
-            (unsigned)last_primary_launch_x,
-            (unsigned)last_primary_launch_y,
-            (unsigned)last_primary_launch_dir,
-            (unsigned)last_primary_launch_speed);
+            (unsigned)probe.last_launch.valid,
+            (unsigned)probe.last_launch.x,
+            (unsigned)probe.last_launch.y,
+            (unsigned)probe.last_launch.dir,
+            (unsigned)probe.last_launch.speed);
     fprintf(f, "\nlaunch_probe_state=%04X%04X%02X",
             (unsigned)probe.launch_frames,
             (unsigned)probe.launch_countdown,
