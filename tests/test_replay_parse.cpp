@@ -104,12 +104,80 @@ static void test_bad_hex_blobs_rejected() {
     report("bad_hex_blobs_rejected", before, "7 rejects            ok");
 }
 
+/* BATTY_VISUAL_PROBE_FRAMES. The port walks this list by subtracting
+ * consecutive entries, so every delta must be positive — a repeated or
+ * out-of-order value would stall the run or skip a checkpoint. Those
+ * values are DROPPED rather than rejecting the whole list, so a sloppy
+ * env still produces a usable ascending sequence. */
+static void test_frame_lists_parse() {
+    const int before = failures;
+    unsigned int f[8];
+
+    check(replay_parse_frame_list("20,40,60", f, 8) == 3
+          && f[0] == 20 && f[1] == 40 && f[2] == 60,
+          "\"20,40,60\" gave %u,%u,%u\n", f[0], f[1], f[2]);
+    check(replay_parse_frame_list("12", f, 8) == 1 && f[0] == 12,
+          "single checkpoint gave %u\n", f[0]);
+    check(replay_parse_frame_list(" 20 , 40 ", f, 8) == 2
+          && f[0] == 20 && f[1] == 40, "spaces were not tolerated\n");
+    report("frame_lists_parse", before, "1..3 + spaces        ok");
+}
+
+/* Every kept value must be strictly greater than the last, so the
+ * deltas the port subtracts are never zero or negative. */
+static void test_frame_lists_stay_ascending() {
+    const int before = failures;
+    unsigned int f[8];
+    static const char *specs[] = {
+        "20,20,40",     /* repeat */
+        "20,10,40",     /* backwards */
+        "40,20,60",     /* backwards then recovering */
+        "0,20,40",      /* leading 0 is not > the initial prev */
+    };
+    for (unsigned i = 0; i < sizeof(specs) / sizeof(specs[0]); i++) {
+        const int n = replay_parse_frame_list(specs[i], f, 8);
+        for (int k = 1; k < n; k++) {
+            check(f[k] > f[k - 1],
+                  "%s kept %u after %u — the delta would be <= 0\n",
+                  specs[i], f[k], f[k - 1]);
+        }
+        check(n > 0, "%s was reduced to nothing\n", specs[i]);
+    }
+    check(replay_parse_frame_list(NULL, f, 8) == 0, "NULL gave a list\n");
+    check(replay_parse_frame_list("", f, 8) == 0, "empty gave a list\n");
+    report("frame_lists_stay_ascending", before, "4 sloppy specs       ok");
+}
+
+/* The list is written into a fixed slot array; overrunning it would
+ * corrupt whatever follows. */
+static void test_frame_lists_respect_max() {
+    const int before = failures;
+    /* Deliberately roomier than `max`, with sentinels past it. Sizing it
+     * to exactly `max` would make an overrun undefined behaviour, and a
+     * test that corrupts its own stack cannot report anything — the
+     * first version of this test smashed the failure counter and
+     * reported success while the parser wrote 6 values into 4 slots. */
+    unsigned int f[8];
+    for (int i = 0; i < 8; i++) f[i] = 0xDEAD;
+
+    const int n = replay_parse_frame_list("10,20,30,40,50,60", f, 3);
+    check(n == 3, "max 3 kept %d values\n", n);
+    check(f[0] == 10 && f[1] == 20 && f[2] == 30,
+          "max 3 kept %u,%u,%u\n", f[0], f[1], f[2]);
+    check(f[3] == 0xDEAD && f[4] == 0xDEAD,
+          "wrote past max: slot 3 = %u, slot 4 = %u\n", f[3], f[4]);
+    report("frame_lists_respect_max", before, "6 values into 3      ok");
+}
+
 int main() {
     printf("replay_parse tests\n");
     test_int_lists_parse();
     test_bad_int_lists_change_nothing();
     test_hex_blobs_parse();
     test_bad_hex_blobs_rejected();
-    printf("\n%d tests, %d failed\n", 4, failures);
+    test_frame_lists_parse();
+    test_frame_lists_stay_ascending();
+    test_frame_lists_respect_max();
+    printf("\n%d tests, %d failed\n", 7, failures);
     return failures ? 1 : 0;
 }

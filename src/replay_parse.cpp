@@ -46,3 +46,21 @@ bool replay_parse_hex_bytes(const char *spec, u8 *out, int n) {
     }
     return spec[n * 2] == '\0';
 }
+
+int replay_parse_frame_list(const char *spec, unsigned int *out, int max) {
+    unsigned int prev = 0;
+    int count = 0;
+    if (spec == NULL) return 0;
+    while (*spec && count < max) {
+        unsigned int v;
+        while (*spec == ',' || *spec == ' ') spec++;
+        if (*spec == '\0') break;
+        v = (unsigned int)atoi(spec);
+        if (v > prev) {
+            out[count++] = v;
+            prev = v;
+        }
+        while (*spec && *spec != ',') spec++;
+    }
+    return count;
+}

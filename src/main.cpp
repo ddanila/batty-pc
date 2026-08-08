@@ -6293,26 +6293,10 @@ static void probe_init_from_env(void) {
     probe.frame_frames = (p && *p) ? (unsigned int)atoi(p) : 0;
     probe.frame_countdown = probe.frame_frames;
     probe.frame_active = (probe.frame_frames != 0) ? 1 : 0;
-    p = getenv("BATTY_VISUAL_PROBE_FRAMES");
-    probe.visual_count = 0;
     probe.visual_index = 0;
-    if (p && *p) {
-        /* Comma-separated ascending absolute frame indices. Values
-         * not strictly greater than the previous one are dropped so
-         * the per-checkpoint countdown deltas stay positive. */
-        unsigned int prev = 0;
-        while (*p && probe.visual_count < VISUAL_PROBE_MAX) {
-            unsigned int v;
-            while (*p == ',' || *p == ' ') p++;
-            if (*p == '\0') break;
-            v = (unsigned int)atoi(p);
-            if (v > prev) {
-                probe.visual_list[probe.visual_count++] = v;
-                prev = v;
-            }
-            while (*p && *p != ',') p++;
-        }
-    }
+    probe.visual_count = (unsigned char)replay_parse_frame_list(
+        getenv("BATTY_VISUAL_PROBE_FRAMES"),
+        probe.visual_list, VISUAL_PROBE_MAX);
     probe.visual_active = (probe.visual_count != 0) ? 1 : 0;
     probe.visual_countdown = probe.visual_active ? probe.visual_list[0] : 0;
 }

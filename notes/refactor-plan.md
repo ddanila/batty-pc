@@ -58,10 +58,10 @@ happened, and `make test-video` caught it.
 | 8 | `sound` — queue + envelopes | 366 | **done** — 7 tests; had NO coverage before |
 | 9 | `run_level` decomposition | 684 -> 370 | **in progress** — prologue, input, bat steering, scoring extracted |
 | 10 | state owners — structs at file scope | 113 vars | **done** — 11 clusters, see below |
-| 1a | `replay_parse` — the BATTY_REPLAY_* value formats | 45 | **done** — 4 tests |
+| 1a | `replay_parse` — the BATTY_REPLAY_* value formats | 75 | **done** — 7 tests |
 | 1 | replay / probe scaffolding | ~430 | **last** — see below |
 
-`main.cpp`: 7,746 → 6,824. 100 host tests + source gates, all via `make test-fast` in seconds.
+`main.cpp`: 7,746 → 6,808. 100 host tests + source gates, all via `make test-fast` in seconds.
 
 ### Stage 5b: one destroyed-cell reset, not two
 
@@ -500,6 +500,19 @@ copies out only on success.
 That is worth more than the line count: a half-seeded replay value puts
 the game in a state nobody asked for, and the gate then reports a game
 bug.
+
+`replay_parse_frame_list` followed — `BATTY_VISUAL_PROBE_FRAMES`. Its
+rule is the one `visual_checkpoint_tick` depends on: values not strictly
+greater than the previous are DROPPED, because the port walks the list
+by subtracting consecutive entries and a repeat would give a zero delta.
+That was a comment inside `probe_init_from_env`; it is now three tests.
+
+Mutation-testing it produced a lesson of its own. The first
+`respect_max` test sized its array to exactly `max`, so the mutation
+that ignores `max` overran the buffer, corrupted the failure counter and
+reported SUCCESS. A test that provokes undefined behaviour cannot report
+anything. It now uses a roomier array with sentinels past the limit, and
+an off-by-one mutation fails it with `wrote past max: slot 3 = 40`.
 
 ### Why replay is last, not first
 

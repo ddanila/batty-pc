@@ -36,4 +36,16 @@ bool replay_parse_ints(const char *spec, long *out, int count);
  * skipped, so a truncated blob cannot half-seed an object. */
 bool replay_parse_hex_bytes(const char *spec, u8 *out, int n);
 
+/* BATTY_VISUAL_PROBE_FRAMES: ascending absolute frame indices, comma
+ * separated, spaces tolerated. Writes at most `max` values into `out`
+ * and returns how many it kept.
+ *
+ * Values not STRICTLY greater than the one before are dropped rather
+ * than rejected. That is not leniency for its own sake — the port walks
+ * the list by subtracting consecutive entries, so a repeated or
+ * out-of-order value would give a zero or negative countdown and the
+ * run would either stall or skip a checkpoint. Dropping them keeps
+ * every delta positive. */
+int replay_parse_frame_list(const char *spec, unsigned int *out, int max);
+
 #endif /* BATTY_REPLAY_PARSE_H */
