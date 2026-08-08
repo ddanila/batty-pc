@@ -146,7 +146,17 @@ exist to consolidate.
 
 Done: `ProbeState`, `RenderProfile`, `BallState`, `BatState`,
 `BombState`, `MagnetState`, `PtsMarkerState`, `BrickFlashState`,
-`BonusState`, `RocketState`. Remaining cluster: score/lives (4).
+`BonusState`, `RocketState`, `PlayerState`. Every cluster identified at
+the start of the stage now has an owner.
+
+`PlayerState` needed a different tool from the rest. `score` and `lives`
+are English words that occur in comments and — the trap —
+in `fprintf(f, "score=%06lu\n", score)`, whose *literal* is the
+PROBE.TXT key a dozen gates parse. A word-boundary rename over the whole
+file rewrites that key and every probe-reading gate fails at once, with
+nothing pointing at the rename. `scripts/rename_code_only.py` segments
+the source into code / string / char / comment runs and substitutes only
+in code.
 
 Each rename must be checked against the source-grepping gates first —
 `make test-gate-greps` names the ones that would break, in a second.

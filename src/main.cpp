@@ -623,11 +623,6 @@ static void bomb_launch(int x, int y) {
  *   sprite_set == 0x82  -> inactive, not drawn (BIT 7 set per
  *                          original obj_processing convention) */
 
-/* Game-loop state. score is a plain integer; the original uses a
- * 3-byte BCD-ish representation across current_score_1up + the in-game
- * digits at score_1up_in_game. lives starts at 3 per original
- * game_restart at $B9A0 (LD A,$03 / LD (lives_1up),A). */
-
 /* Per-brick scoring table from points_table at $AFE4 (BCD source,
  * decimal here). Indexed by brik_value+$01 in the original - that
  * byte tracks the ball's row position so top-row bricks score more
@@ -639,12 +634,18 @@ static const unsigned int points_table[12] = {
     120, 110, 100, 90, 80, 70, 60, 50, 40, 30, 20, 10
 };
 #define LIVES_INIT          3
-static unsigned long score      = 0;
-static int           lives      = LIVES_INIT;
-static unsigned long high_score = 0;
 
-/* The milestone thresholds live in scoring.h. */
-static unsigned char live_adds_awarded = 0;
+/* The original keeps the score as 3-byte BCD across current_score_1up
+ * and the in-game digits at score_1up_in_game; the port uses a plain
+ * integer. Milestone thresholds for live_adds_awarded live in
+ * scoring.h. orig: $B9A0 game_restart sets lives to 3 */
+struct PlayerState {
+    unsigned long score;
+    int           lives;
+    unsigned long high_score;
+    unsigned char live_adds_awarded;
+};
+static PlayerState player = {0, LIVES_INIT, 0, 0};
 
 /* The replay harness's own state. None of this affects the game: every
  * field is driven by a BATTY_* environment variable and read back through
@@ -1791,7 +1792,7 @@ static void render_lives(unsigned char cycle, unsigned char attr) {
      * draw (lives - 1) indicator bats. lives=3 → 2 sprites,
      * lives=2 → 1, lives=1 → 0 (on the player's last life the
      * meter is empty). Earlier port used (lives - 2) — off by one. */
-    int show = lives - 1;
+    int show = player.lives - 1;
     int i;
     (void)cycle;
     (void)attr;
@@ -2890,7 +2891,7 @@ static void bonus_apply(unsigned char type) {
         objects[OBJ_BAT_2].bonus_applied = orig_code;
     }
     switch (type) {
-        case BONUS_TYPE_LIFE:     lives++; life_dropped_this_round = 1; break;
+        case BONUS_TYPE_LIFE:     player.lives++; life_dropped_this_round = 1; break;
         case BONUS_TYPE_SLOW:
             /* Original at line 3108 (SLOW path): `LD (IY+\$14),\$FF` —
              * overwrites bat.bonus_applied to \$FF (= no bat-side state)
@@ -2930,7 +2931,7 @@ static void bonus_apply(unsigned char type) {
                     e->sprite_set = 0x0A;
                     e->sprite_num = 0;
                     e->misc_12 = 0x50;   /* kill_enemy $A4C4 seed */
-                    score += 350;
+                    player.score += 350;
                     sound_queue(SND_ALIEN_BLAST);
                 }
             }
@@ -2993,7 +2994,7 @@ static void bonus_apply(unsigned char type) {
             break;
         case BONUS_TYPE_SCORE_5K:
             /* Pure score bonus. 5000 in BCD-equivalent decimal. */
-            score += 5000;
+            player.score += 5000;
             break;
         case BONUS_TYPE_LASER:
             /* bat.bonus_applied = \$01 has already been set above —
@@ -3156,7 +3157,7 @@ static void step_bonus(void) {
         unsigned char caught_type = bonus.type;
         bonus_apply(bonus.type);                  /* applies effect + pushes catch sound */
         bonus.active = 0;
-        score += 400;                         /* matches LD BC,$0400 / add_points_to_score at $A67D */
+        player.score += 400;                         /* matches LD BC,$0400 / add_points_to_score at $A67D */
         /* Spawn the floating reward marker. Original LA67B_3 at \$A6FC
          * sets sprite_num = \$00 (= +400) for EVERY catch including
          * SCORE_5K, before the type dispatch — so the +5000 sprite is
@@ -3342,7 +3343,7 @@ static int brick_hit_resolve(int col, int row, int axis) {
         unsigned int idx = (unsigned int)((row < 12) ? row : 11);
         unsigned int pts = points_table[idx];
         if ((cell_val & 0x0F) >= 6) pts *= 2;     /* metal -> double */
-        score += pts;
+        player.score += pts;
     }
     *cell |= 0x80;
     mark_brick_row_dirty(row);
@@ -3816,7 +3817,7 @@ static void write_replay_probe(void) {
     fprintf(f, "round_number=%02X\n", (unsigned)round_number);
     fprintf(f, "current_level=%02X\n", (unsigned)current_level_idx_var);
     fprintf(f, "bricks_quantity=%02X\n", (unsigned)live_bricks_remaining());
-    fprintf(f, "score=%06lu\n", score);
+    fprintf(f, "score=%06lu\n", player.score);
     fprintf(f, "random_number=%04X\n", (unsigned)rng_current());
     fprintf(f, "random_seed=%04X\n", (unsigned)rng_seed_addr());
     fprintf(f, "enemy_repicks=arrival%u_margin%u_turns%u\n",
@@ -3880,7 +3881,7 @@ static void write_replay_probe(void) {
             (unsigned)ball.extra2_active, (unsigned)ball.extra3_active,
             (unsigned)(bat.extra_target & 0xFF),
             (unsigned)(ball.big_ticks != 0),
-            (unsigned)(lives & 0xFF));
+            (unsigned)(player.lives & 0xFF));
     fprintf(f, "\nnormal_launch_state=%02X%02X%02X%02X%02X",
             (unsigned)last_primary_launch_valid,
             (unsigned)last_primary_launch_x,
@@ -4015,7 +4016,7 @@ static void kill_enemy_by_bat(void) {
     e->sprite_set = 0x0A;
     e->sprite_num = 0;
     e->misc_12 = 0x50;          /* kill_enemy $A4C4: LD (IY+$12),$50 */
-    score += 350;                                   /* $0350 BCD */
+    player.score += 350;                                   /* $0350 BCD */
     sound_queue(SND_ALIEN_BLAST);                    /* port of $C1A8 */
 }
 
@@ -4047,7 +4048,7 @@ static void kill_enemy_by_ball_rect(int bx_l, int by_t, int bw, int bh) {
     e->sprite_set = 0x0A;
     e->sprite_num = 0;
     e->misc_12 = 0x50;          /* kill_enemy $A4C4 seed */
-    score += 350;
+    player.score += 350;
     sound_queue(SND_ALIEN_BLAST);
 }
 
@@ -4101,8 +4102,8 @@ static void step_bomb(void) {
         ball.extra3_active = 0;
         objects[OBJ_BALL_3].sprite_set = 0x82;
         play_bat_explosion(current_level_idx_var);
-        if (lives > 0) lives--;
-        if (lives > 0) respawn_primary_ball();    /* else game-over fires next frame */
+        if (player.lives > 0) player.lives--;
+        if (player.lives > 0) respawn_primary_ball();    /* else game-over fires next frame */
         return;
     }
     if (bomb.y > PLAYFIELD_H) bomb.active = 0;
@@ -4129,7 +4130,7 @@ static void step_bullet_one(int b) {
         enemy->sprite_set = 0x0A;
         enemy->sprite_num = 0;
         enemy->misc_12    = 0x50;
-        score += 350;
+        player.score += 350;
         sound_queue(SND_ALIEN_BLAST);
         return;
     }
@@ -4148,7 +4149,7 @@ static void step_bullet_one(int b) {
             unsigned int idx = (unsigned int)((hit.row < 12) ? hit.row : 11);
             unsigned int pts = points_table[idx];
             if ((*cell & 0x0F) >= 6) pts *= 2;    /* metal scores double */
-            score += pts;
+            player.score += pts;
             *cell |= 0x80;
             mark_brick_row_dirty(hit.row);
             brick_flash_spawn(hit.col, hit.row);
@@ -4579,8 +4580,8 @@ static void step_ball(void) {
             return;
         }
         play_bat_explosion(current_level_idx_var);
-        if (lives > 0) lives--;
-        if (lives > 0) respawn_primary_ball();
+        if (player.lives > 0) player.lives--;
+        if (player.lives > 0) respawn_primary_ball();
         return;
     }
     /* Brick collision: side-aware. brick_collision tells us which axis
@@ -4816,8 +4817,8 @@ static void redraw_full_with_ball(unsigned char level_idx) {
 
     prof_start();
 
-    score_dirty = (score != prev_score || high_score != prev_high_score);
-    lives_dirty = (lives != prev_lives);
+    score_dirty = (player.score != prev_score || player.high_score != prev_high_score);
+    lives_dirty = (player.lives != prev_lives);
     can_local_hud = (magnets_per_level[level_idx][0] == 0);
     bat_full_dirty = (BAT_X != BAT_PREV_X)
                   || (BAT_Y != bat.drawn_y)
@@ -4834,9 +4835,9 @@ static void redraw_full_with_ball(unsigned char level_idx) {
     if (static_bg_dirty) {
         build_static_background(level_idx);
         static_bg_dirty = 0;
-        prev_score = score;
-        prev_high_score = high_score;
-        prev_lives = lives;
+        prev_score = player.score;
+        prev_high_score = player.high_score;
+        prev_lives = player.lives;
         force_full_flush = 1;
     } else if (static_bg_cache_dirty) {
         build_static_brick_band_cache(level_idx);
@@ -4846,8 +4847,8 @@ static void redraw_full_with_ball(unsigned char level_idx) {
     }
     if (!static_bg_dirty && score_dirty && can_local_hud) {
         update_static_hud_top(level_idx);
-        prev_score = score;
-        prev_high_score = high_score;
+        prev_score = player.score;
+        prev_high_score = player.high_score;
         mark_dirty_bytes(0, FRAME_TOP_H_PX, 0, 31);
     }
     /* A magnet toggled this frame: redraw its circle now, while scr_buff
@@ -5044,7 +5045,7 @@ static unsigned int ball_dirty_blockers(int bat_moved) {
      * MAGNET-hold + pre-launch states). */
     if (!BALL_VISIBLE) blockers |= BALL_DIRTY_BLOCK_BALLS;
     if (static_bg_dirty || static_bg_cache_dirty || force_full_flush) blockers |= BALL_DIRTY_BLOCK_STATIC;
-    if (score != prev_score || high_score != prev_high_score || lives != prev_lives) blockers |= BALL_DIRTY_BLOCK_HUD;
+    if (player.score != prev_score || player.high_score != prev_high_score || player.lives != prev_lives) blockers |= BALL_DIRTY_BLOCK_HUD;
     if (bonus.active || pts_marker.active || bomb.active || rocket.active) blockers |= BALL_DIRTY_BLOCK_OBJECTS;
     if (objects[OBJ_ENEMY].sprite_set != 0) blockers |= BALL_DIRTY_BLOCK_OBJECTS;
     if (any_bullet_active() || any_bullet_blast()) blockers |= BALL_DIRTY_BLOCK_OBJECTS;
@@ -5289,8 +5290,8 @@ static void render_hud_to_buff(void) {
     blit_masked_to_scr_buff(hud_sprites + HUD_SPR_1UP, 0x1C, 0x0C);
     blit_masked_to_scr_buff(hud_sprites + HUD_SPR_2UP, 0xCC, 0x0C);
     blit_masked_to_scr_buff(hud_sprites + HUD_SPR_HI,  0x78, 0x0C);
-    draw_score_digits_original(0x10, 0x15, score);
-    draw_score_digits_original(0x68, 0x15, high_score);
+    draw_score_digits_original(0x10, 0x15, player.score);
+    draw_score_digits_original(0x68, 0x15, player.high_score);
     draw_score_digits_original(0xC0, 0x15, 0);
 }
 #else
@@ -5310,10 +5311,10 @@ static void render_game_over(void) {
     unsigned char digits[6];
     fill(0, 0, SCREEN_W, SCREEN_H, 0);
     draw_text(BORDER_X + 4 * 8 + 4, BORDER_Y + 70, 15, go, (int)sizeof(go));
-    score_to_digits(score, digits);
+    score_to_digits(player.score, digits);
     draw_text(BORDER_X + 3 * 8,        BORDER_Y +  95, 15, sc_lbl, (int)sizeof(sc_lbl));
     draw_text(BORDER_X + 3 * 8 + 6*8,  BORDER_Y +  95, 15, digits, 6);
-    score_to_digits(high_score, digits);
+    score_to_digits(player.high_score, digits);
     draw_text(BORDER_X + 3 * 8,        BORDER_Y + 110, 15, hi_lbl, (int)sizeof(hi_lbl));
     draw_text(BORDER_X + 3 * 8 + 6*8,  BORDER_Y + 110, 15, digits, 6);
     /* Saved initials, painted to the right of the HI score line.
@@ -5743,7 +5744,7 @@ static void play_rocket_award_tally(unsigned char level_idx) {
             idx = (unsigned int)((row < 12) ? row : 11);
             pts = points_table[idx];
             if ((*cell & 0x0F) >= 6) pts *= 2;
-            score += pts;
+            player.score += pts;
             sound_queue(SND_NORMAL_BRIK);          /* per-brick tick */
             /* Pace one brick per PIT tick (sound playing meanwhile). */
             do { sound_tick(); } while (pit_ticks() == last);
@@ -6165,9 +6166,9 @@ static state_t run_level(void) {
     /* New game: reset score + lives + bonus state. Score/lives carry
      * across levels within one game; they reset only when re-entering
      * run_level from ST_HISCORE. */
-    score = 0;
-    lives = LIVES_INIT;
-    live_adds_awarded = 0;
+    player.score = 0;
+    player.lives = LIVES_INIT;
+    player.live_adds_awarded = 0;
     bonus.active = 0;
     ball.speed_ramp = 0;
     bat.big_ticks = 0;
@@ -6376,8 +6377,8 @@ static state_t run_level(void) {
                     && !ball.extra2_active
                     && !ball.extra3_active) {
                     play_bat_explosion(current_level_idx_var);
-                    if (lives > 0) lives--;
-                    if (lives > 0) respawn_primary_ball();
+                    if (player.lives > 0) player.lives--;
+                    if (player.lives > 0) respawn_primary_ball();
                 }
                 /* Mirror of LB9E8_2..LB9E8_3 ($BA83..$BAD9):
                  *   enemy_prepare    -- maybe spawn alien
@@ -6410,17 +6411,17 @@ static state_t run_level(void) {
                 /* Score-milestone extra life — port of score_update_3
                  * at $0395. Each crossed threshold in live_add_thresholds
                  * awards one extra life and pushes the live-add sound. */
-                for (int earned = lives_earned(score, live_adds_awarded);
+                for (int earned = lives_earned(player.score, player.live_adds_awarded);
                      earned > 0; earned--) {
-                    lives++;
+                    player.lives++;
                     sound_queue(SND_LIVE_ADD);
-                    live_adds_awarded++;
+                    player.live_adds_awarded++;
                 }
                 /* Roll the displayed HI score forward the moment it's
                  * passed, instead of waiting for game-over. The disk
                  * save still happens at game-over via save_high_score. */
-                if (score > high_score) {
-                    high_score = score;
+                if (player.score > player.high_score) {
+                    player.high_score = player.score;
                     high_score_beaten_this_game = 1;
                 }
                 if (bonus.active) ball_moved = 1;
@@ -6497,9 +6498,9 @@ static state_t run_level(void) {
             }
 
             /* End-of-life conditions. */
-            if (lives == 0) {
-                if (score > high_score) {
-                    high_score = score;
+            if (player.lives == 0) {
+                if (player.score > player.high_score) {
+                    player.high_score = player.score;
                     high_score_beaten_this_game = 1;
                     /* Save deferred until after the name-entry screen
                      * so the file holds the new high + the player's
@@ -6524,7 +6525,7 @@ static state_t run_level(void) {
                 }
                 if (high_score_beaten_this_game) {
                     input_new_record_name();
-                    high_score_save(high_score, high_score_name);
+                    high_score_save(player.high_score, high_score_name);
                 }
                 sound_silence();
                 return ST_TITLE;
@@ -6639,7 +6640,7 @@ int main(void) {
     set_rocket_bonus_sprite_height(ROCKET_BONUS_H_PX);
 
     high_score_name[0] = high_score_name[1] = high_score_name[2] = 0x0A;
-    high_score_load(&high_score, high_score_name);
+    high_score_load(&player.high_score, high_score_name);
     timer_install();
     kbd_install();
 
