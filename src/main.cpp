@@ -6156,6 +6156,22 @@ static InputAction handle_input(int &ball_moved, int &bat_moved,
     return INPUT_NONE;
 }
 
+/* Everything drawn over the playfield besides the primary ball. While
+ * any of it is live the frame cannot take the ball-only redraw path. */
+static bool entities_need_redraw(void) {
+    return bonus.active
+        || pts_marker.active
+        || objects[OBJ_ENEMY].sprite_set != 0
+        || bomb.active
+        || any_bullet_active()
+        || any_bullet_blast()
+        || rocket.active
+        || brick_flash.ticks
+        || any_brick_hit_anim()
+        || ball.extra2_active
+        || ball.extra3_active;
+}
+
 static void kill_enemy_by_ball_slot(unsigned char slot) {
     kill_enemy_by_ball_rect((int)objects[slot].x_coord,
                             (int)objects[slot].y_coord,
@@ -6437,18 +6453,8 @@ static state_t run_level(void) {
                     player.high_score = player.score;
                     high_score_beaten_this_game = 1;
                 }
-                if (bonus.active) ball_moved = 1;
-                if (pts_marker.active) ball_moved = 1;
+                if (entities_need_redraw()) ball_moved = 1;
                 if (bat.extra_px != bat.extra_target) bat_moved = 1;
-                if (objects[OBJ_ENEMY].sprite_set != 0) ball_moved = 1;
-                if (bomb.active) ball_moved = 1;
-                if (any_bullet_active()) ball_moved = 1;
-                if (any_bullet_blast()) ball_moved = 1;
-                if (rocket.active) ball_moved = 1;
-                if (brick_flash.ticks) ball_moved = 1;
-                if (any_brick_hit_anim()) ball_moved = 1;
-                if (ball.extra2_active) ball_moved = 1;
-                if (ball.extra3_active) ball_moved = 1;
             }
 
             if (BAT_X != BAT_PREV_X) {

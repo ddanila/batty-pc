@@ -189,6 +189,9 @@ the two timer decays — everything that moves independently of the
 primary ball. `kill_enemies_by_balls` followed: three near-identical
 blocks differing only in which ball slot and which liveness flag, now
 one call per ball over a shared `kill_enemy_by_ball_slot`.
+`entities_need_redraw` replaced twelve consecutive `if (x) ball_moved =
+1;` lines with the question they were collectively asking: is anything
+besides the primary ball drawn over the playfield this frame.
 
 Order from here:
 
