@@ -236,6 +236,10 @@ def run_port_state_probe(spec: ReplaySpec, out_dir: Path) -> None:
     probe_file = spec.port.get("probe_file")
     if probe_file:
         extracted = out_dir / str(probe_file)
+        # Clear it first: mcopy runs with check=False, so a failed
+        # extraction would otherwise leave the PREVIOUS run's file in
+        # place and the gate would silently assert on stale state.
+        extracted.unlink(missing_ok=True)
         subprocess.run([
             "mcopy", "-i", str(spec.port.get("floppy", test_floppy())),
             f"::{probe_file}", str(extracted),

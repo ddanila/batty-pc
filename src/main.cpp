@@ -3835,7 +3835,11 @@ static void write_replay_probe(void) {
             (unsigned)probe.frame_frames,
             (unsigned)probe.frame_countdown,
             (unsigned)probe.frame_active);
-    fprintf(f, "\nbonus_state=%02X%02X%02X%02X%02X%04X",
+    /* Distinct from the `bonus_state=active..` line above: this is the
+     * raw bonus + marker bytes the replay harness diffs. Both were once
+     * called bonus_state, which "worked" only because the regex gates
+     * anchor on `=active` and the harness's dict kept the last. */
+    fprintf(f, "\nbonus_pts_raw=%02X%02X%02X%02X%02X%04X",
             (unsigned)bonus.active,
             (unsigned)bonus.type,
             (unsigned)(bonus.x & 0xFF),

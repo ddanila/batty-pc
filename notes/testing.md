@@ -595,3 +595,28 @@ plain name is counted as **position-scoped** and reported separately:
 
 A tool that silently under-reports is worse than one that admits its
 limit, because the whole point of it is to be trusted in a second.
+
+### Two probe keys with the same name
+
+PROBE.TXT emitted `bonus_state=` twice: once as
+`active%02X_type%02X_x%02X_y%02X_bomb%02X` and once as a raw
+`%02X%02X%02X%02X%02X%04X` blob carrying the +400 marker too.
+
+Both were consumed, and it worked only by accident. The regex gates
+(`test-bonus-fall`, `-drop`, `-typepick`) anchor on `bonus_state=active`,
+so they matched the first. `replay_harness.py` copies every `k=v` line
+into a LIST, `state_probe.txt` therefore had two `bonus_state:` lines,
+and `test_midgame_brick_replay`'s dict kept the last — the raw one,
+which it then asserts is exactly 14 characters long.
+
+Swap the two `fprintf`s and that gate fails with "malformed bonus_state
+probe", pointing at the format rather than at the duplicate name. The
+second key is now `bonus_pts_raw`.
+
+### The replay harness reused a stale extraction
+
+`run_port_state_probe` mcopies PROBE.TXT off the floppy with
+`check=False`, then reads the file if it exists. A failed extraction
+left the PREVIOUS run's file in place, so the gate asserted on stale
+state — which is how renaming a probe key produced `''` for a key that
+was present on the floppy. It now unlinks the target first.
