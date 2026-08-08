@@ -261,6 +261,45 @@ consecutive frames, and whether that alternation continues across frames
 with no bullet in flight. A still frame cannot answer it — the phase is
 only visible as a difference between two consecutive frames.
 
+**The snapshot answers it without a capture** (2026-08-09). Searching
+`build/snapshots/20260513T202101Z.sna` for references to the two sprite
+addresses finds each exactly once, at `$77E6` and `$77E8` — consecutive,
+i.e. a table. That table is itself entry 4 of the animation-table
+pointer array at `$7780`, the same array whose other entries are the
+bird and UFO frame lists:
+
+    $7780: $7796    $7786: $77D0    $778C: $77F8
+    $7782: $77BE    $7788: $77E6  <- bullet
+    $7784: $782E    $778A: $77F2
+
+And the list at `$77E6` is not two entries but three:
+
+    $77E6: $7DD2   bullet frame 0
+    $77E8: $7DE4   bullet frame 1
+    $77EA: $7DF6   SPR_BULLET_BLAST_1
+
+So the bullet's shimmer and its impact blast are ONE animation sequence,
+indexed the way every other animated object is indexed: by that object's
+own `sprite_num`. Not by a global per-frame counter.
+
+That reframes the bug. Both repairs considered above are wrong — the
+question "should the tick advance on bulletless frames?" only arises
+because the port made the frame a shared static. The port models bullets
+as parallel arrays (`bullet_x[]`, `bullet_y[]`, `bullet_active[]`) with
+no per-bullet animation index, which is why it needed one.
+
+Still not fixed: giving each bullet its own frame index is a change to
+the bullet model, not a one-liner, and it touches the blast handoff.
+What is settled is the direction — per-bullet, continuing into the
+blast — so the fix no longer needs an oracle capture to choose between
+two guesses.
+
+Inferred rather than measured: that the indexing uses `sprite_num`. The
+table's position and contents are read directly from the snapshot; the
+indexing mechanism is the one the port already documents for
+bird/UFO (`spr_bird_frames[sprite_num & 7]`,
+`spr_ufo_frames[sprite_num % 10]`).
+
 No gate covers it. `test-bullet-fly`, `test-laser-cadence` and
 `test-bullet-dirty-redraw` all fire bullets promptly, so no run
 accumulates the bulletless full-redraw frames that would separate the
