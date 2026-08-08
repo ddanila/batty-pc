@@ -60,7 +60,7 @@ happened, and `make test-video` caught it.
 | 10 | state owners — structs at file scope | 113 vars | **done** — 11 clusters, see below |
 | 1 | replay / probe scaffolding | 480 | **last** — see below |
 
-`main.cpp`: 7,746 → 6,704. 100 host tests + source gates, all via `make test-fast` in seconds.
+`main.cpp`: 7,746 → 6,718. 100 host tests + source gates, all via `make test-fast` in seconds.
 
 ### Stage 5b: one destroyed-cell reset, not two
 
@@ -247,6 +247,16 @@ rebuild; returning early "because the HUD is already current" silently
 dropped that call. It is very likely redundant — the rebuild repaints
 the HUD and sets `full_flush` — but likely is not proven, so the call
 stays and the comment says why.
+
+`compose_bat_full` and `bat_needs_full_redraw` followed. The predicate
+is the interesting half: the bat needs its whole body redrawn not only
+when it moves, but when it resizes, when a caught bonus changes the body
+sprite, or when a laser fire-animation frame is playing. Five clauses
+that only read as one idea once named.
+
+`redraw_full_with_ball` is 123 -> ~75 lines, and what is left is the
+compose order the original fixes ($9AD0 slot table) rather than
+bookkeeping.
 
 `PlayerState` needed a different tool from the rest. `score` and `lives`
 are English words that occur in comments and — the trap —

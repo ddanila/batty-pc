@@ -4808,6 +4808,46 @@ static void render_falling_objects_to_buff(unsigned char bg_attr) {
 
 static void render_enemy_to_buff_and_mark(unsigned char bg_attr);
 
+/* Anything about the bat that changes its pixels, not just its position:
+ * a resize, a caught bonus (the body sprite carries it) or a laser
+ * fire-animation frame all need the whole body redrawn. */
+static int bat_needs_full_redraw(void) {
+    return (BAT_X != BAT_PREV_X)
+        || (BAT_Y != bat.drawn_y)
+        || (bat.extra_px != bat.drawn_extra_px)
+        || (objects[OBJ_BAT_1].bonus_applied != bat.drawn_bonus)
+        || (bat.fire_anim_ticks != bat.drawn_fire_ticks);
+}
+
+/* Draw the bat on the full path and mark what it dirtied. When the body
+ * changed, its previous footprint is restored from the static cache
+ * first and the union of both positions is marked; otherwise only the
+ * running-dot row needs flushing. */
+static void compose_bat_full(unsigned char cycle, unsigned char bg_attr,
+                             int bat_full_dirty) {
+    int bat_x0, bat_x1, old_x0, old_x1;
+
+    if (bat_full_dirty) {
+        bat_sprite_bounds(BAT_PREV_X, bat.drawn_extra_px, &old_x0, &old_x1);
+        restore_static_cache_rect_bytes(bat.drawn_y, 13,
+                                        old_x0 >> 3, (old_x1 - 1) >> 3);
+        mark_dirty_rect_px(old_x0, bat.drawn_y, old_x1 - old_x0, 13);
+    }
+
+    render_bat(cycle, bg_attr);
+    render_running_dot();
+
+    bat_sprite_bounds(BAT_X, bat.extra_px, &bat_x0, &bat_x1);
+    if (bat_full_dirty) {
+        bat_sprite_bounds(BAT_PREV_X, bat.drawn_extra_px, &old_x0, &old_x1);
+        if (old_x0 < bat_x0) bat_x0 = old_x0;
+        if (old_x1 > bat_x1) bat_x1 = old_x1;
+        mark_dirty_rect_px(bat_x0, BAT_Y, bat_x1 - bat_x0, 13);
+    } else {
+        mark_dirty_rect_px(bat_x0, BAT_Y + 6, bat_x1 - bat_x0, 1);
+    }
+}
+
 /* Bring the static cache up to date for this frame: rebuild it whole,
  * rebuild just the brick band, or restore from it unchanged.
  *
@@ -4861,11 +4901,7 @@ static void redraw_full_with_ball(unsigned char level_idx) {
 
     prof_start();
 
-    bat_full_dirty = (BAT_X != BAT_PREV_X)
-                  || (BAT_Y != bat.drawn_y)
-                  || (bat.extra_px != bat.drawn_extra_px)
-                  || (objects[OBJ_BAT_1].bonus_applied != bat.drawn_bonus)
-                  || (bat.fire_anim_ticks != bat.drawn_fire_ticks);
+    bat_full_dirty = bat_needs_full_redraw();
     refresh_static_background(level_idx);
     /* A magnet toggled this frame: redraw its circle now, while scr_buff
      * holds clean background in the window (objects not yet drawn), and
@@ -4890,29 +4926,7 @@ static void redraw_full_with_ball(unsigned char level_idx) {
         render_ball_to_buff(BALL_X, BALL_Y, bg_attr);
         mark_dirty_rect_px(BALL_X, BALL_Y, 16, 12);
     }
-    if (bat_full_dirty) {
-        int old_x0, old_x1;
-        int byte_lo, byte_hi;
-        bat_sprite_bounds(BAT_PREV_X, bat.drawn_extra_px, &old_x0, &old_x1);
-        byte_lo = old_x0 >> 3;
-        byte_hi = (old_x1 - 1) >> 3;
-        restore_static_cache_rect_bytes(bat.drawn_y, 13, byte_lo, byte_hi);
-        mark_dirty_rect_px(old_x0, bat.drawn_y, old_x1 - old_x0, 13);
-    }
-    render_bat(cycle, bg_attr);
-    render_running_dot();
-    {
-        int bat_x0, bat_x1, old_x0, old_x1;
-        bat_sprite_bounds(BAT_X, bat.extra_px, &bat_x0, &bat_x1);
-        if (bat_full_dirty) {
-            bat_sprite_bounds(BAT_PREV_X, bat.drawn_extra_px, &old_x0, &old_x1);
-            if (old_x0 < bat_x0) bat_x0 = old_x0;
-            if (old_x1 > bat_x1) bat_x1 = old_x1;
-            mark_dirty_rect_px(bat_x0, BAT_Y, bat_x1 - bat_x0, 13);
-        } else {
-            mark_dirty_rect_px(bat_x0, BAT_Y + 6, bat_x1 - bat_x0, 1);
-        }
-    }
+    compose_bat_full(cycle, bg_attr, bat_full_dirty);
     remember_bat_draw_state();
 
     /* Lives and HUD are static in the cached background and are rebuilt
