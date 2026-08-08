@@ -5169,7 +5169,11 @@ static void redraw_bat_dirty(unsigned char cycle, unsigned char bg_attr) {
     }
 }
 
-static void redraw_ball_only(unsigned char level_idx) {
+/* The dirty redraw: restore what last frame dirtied, repaint the ball
+ * and bat, flush. `with_objects` adds the simple-object tier — the two
+ * variants differ only by that call and which profile bucket they
+ * count in. */
+static void redraw_ball_dirty(unsigned char level_idx, bool with_objects) {
     unsigned char bg_attr = bg_attr_per_cycle[level_idx & 3];
     unsigned char cycle = (unsigned char)(level_idx & 3);
 
@@ -5181,6 +5185,7 @@ static void redraw_ball_only(unsigned char level_idx) {
     render_ball_to_buff(BALL_X, BALL_Y, bg_attr);
     mark_dirty_rect_px(BALL_X, BALL_Y, 16, 12);
     redraw_bat_dirty(cycle, bg_attr);
+    if (with_objects) render_simple_objects_to_buff_and_mark(bg_attr);
     prof.bricks_pit += prof_elapsed();
 
     carry_dirty_with_previous();
@@ -5188,30 +5193,16 @@ static void redraw_ball_only(unsigned char level_idx) {
     prof.vga_pit += prof_elapsed();
 
     prof.frames++;
-    prof.ball_only_frames++;
+    if (with_objects) prof.ball_object_frames++;
+    else              prof.ball_only_frames++;
+}
+
+static void redraw_ball_only(unsigned char level_idx) {
+    redraw_ball_dirty(level_idx, false);
 }
 
 static void redraw_ball_with_simple_objects(unsigned char level_idx) {
-    unsigned char bg_attr = bg_attr_per_cycle[level_idx & 3];
-    unsigned char cycle = (unsigned char)(level_idx & 3);
-
-    prof_start();
-    restore_prev_dirty_from_static_cache();
-    clear_dirty_ranges(dirty_min_byte, dirty_max_byte);
-    prof.bg_pit += prof_elapsed();
-
-    render_ball_to_buff(BALL_X, BALL_Y, bg_attr);
-    mark_dirty_rect_px(BALL_X, BALL_Y, 16, 12);
-    redraw_bat_dirty(cycle, bg_attr);
-    render_simple_objects_to_buff_and_mark(bg_attr);
-    prof.bricks_pit += prof_elapsed();
-
-    carry_dirty_with_previous();
-    flush_dirty_to_vga();
-    prof.vga_pit += prof_elapsed();
-
-    prof.frames++;
-    prof.ball_object_frames++;
+    redraw_ball_dirty(level_idx, true);
 }
 
 /* Render a short string of N character codes via draw_glyph, anchored

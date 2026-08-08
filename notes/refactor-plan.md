@@ -60,7 +60,7 @@ happened, and `make test-video` caught it.
 | 10 | state owners — structs at file scope | 113 vars | **done** — 11 clusters, see below |
 | 1 | replay / probe scaffolding | 480 | **last** — see below |
 
-`main.cpp`: 7,746 → 6,761. 100 host tests + source gates, all via `make test-fast` in seconds.
+`main.cpp`: 7,746 → 6,738. 100 host tests + source gates, all via `make test-fast` in seconds.
 
 ### Stage 5, done
 
@@ -229,6 +229,12 @@ The sweep found one more identical block — the multi-ball extras, now
 `render_extra_balls_to_buff` — and one genuine divergence: the two paths
 mark different rect heights for a bullet blast — resolved since, by
 measuring the sprite instead of guessing: known-bugs #9.
+
+`redraw_ball_only` and `redraw_ball_with_simple_objects` were eighteen
+identical lines apart from one call and one profile counter; both are
+now thin wrappers over `redraw_ball_dirty(level_idx, with_objects)`.
+The two names stay, so the call site still reads as a choice between
+two paths rather than a bare boolean.
 
 The enemy was the largest copy: 29 lines inline in the full path
 duplicating `render_enemy_to_buff_and_mark`, including the whole
