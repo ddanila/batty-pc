@@ -2171,17 +2171,32 @@ static void apply_magnet_toggle_visual(void) {
 
 static void render_hud_to_buff(void);
 
-static void render_level_screen_static(unsigned char level_idx) {
+/* The level scene, in the original's paint order at $BE8B.
+ *
+ * Score labels/digits go down immediately before the magnets, and the
+ * magnets before the bricks (`CALL print_magnets; CALL print_briks`).
+ * Both orderings matter on levels where the magnets overlap HUD rows:
+ * magnets may overwrite the score area but not the reverse, and the
+ * brick top row must overwrite the magnets' lower shadow rows — invert
+ * it and those shadow rows punch through the brick tops. */
+static void compose_level_scene(unsigned char level_idx, bool with_bat) {
     unsigned char bg_attr = bg_attr_per_cycle[level_idx & 3];
     unsigned char cycle   = (unsigned char)(level_idx & 3);
+
     paint_bg_to_buff(bg_attr, cycle);
     paint_frame_to_buff(cycle, level_idx);
+    if (with_bat) render_bat(cycle, bg_attr);
     render_lives(cycle, bg_attr);
+    if (with_bat) remember_bat_draw_state();
     render_hud_to_buff();
     render_magnets(level_idx);
     inner_border_line_c();
     render_brick_band(level_idx);
     restore_top_frame_center(cycle, level_idx);
+}
+
+static void render_level_screen_static(unsigned char level_idx) {
+    compose_level_scene(level_idx, false);
 }
 
 static void build_static_background(unsigned char level_idx) {
@@ -2381,25 +2396,7 @@ static void render_level_screen(unsigned char level_idx) {
 
     fill(0, 0, SCREEN_W, SCREEN_H, COL_BORDER);
     draw_frame(10);              /* bright red — placeholder */
-    paint_bg_to_buff(bg_attr, cycle);
-    paint_frame_to_buff(cycle, level_idx);
-    render_bat(cycle, bg_attr);
-    render_lives(cycle, bg_attr);
-    remember_bat_draw_state();
-    render_hud_to_buff();
-    /* Original LBE8B_11 draws score labels/digits immediately before
-     * magnets and bricks. This matters on levels whose magnets overlap
-     * HUD rows: magnets can overwrite the score area, not vice versa.
-     *
-     * Magnets blit BEFORE bricks (original at $BE8B does
-     * CALL print_magnets; CALL print_briks). The brick top row
-     * overwrites the magnet's lower shadow rows where they overlap;
-     * inverting the order leaves the shadow rows punching through
-     * the brick top. */
-    render_magnets(level_idx);
-    inner_border_line_c();
-    render_brick_band(level_idx);
-    restore_top_frame_center(cycle, level_idx);
+    compose_level_scene(level_idx, true);
     render_brick_flash_to_buff();
     render_brick_hit_anim_to_buff();
     buff_to_vga();
