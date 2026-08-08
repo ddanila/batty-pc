@@ -6156,16 +6156,9 @@ static InputAction handle_input(int &ball_moved, int &bat_moved,
     return INPUT_NONE;
 }
 
-static state_t run_level(void) {
-    unsigned char i;
-    unsigned long start;
-    unsigned long last_tick;
-    unsigned char cycle;
-    unsigned char bg_attr;
-
-    /* New game: reset score + lives + bonus state. Score/lives carry
-     * across levels within one game; they reset only when re-entering
-     * run_level from ST_HISCORE. */
+/* Score and lives carry across levels within one game; they reset only
+ * on re-entry from ST_HISCORE. */
+static void new_game_reset(void) {
     player.score = 0;
     player.lives = LIVES_INIT;
     player.live_adds_awarded = 0;
@@ -6177,55 +6170,66 @@ static state_t run_level(void) {
     bat.extra_target = 0;
     paused = 0;
     high_score_beaten_this_game = 0;
-    {
-        const char *p = getenv("BATTY_LAUNCH_FRAMES");
-        probe.launch_frames = (p && *p) ? (unsigned int)atoi(p) : 0;
-        probe.launch_countdown = 0;
-        probe.launch_active = 0;
-        p = getenv("BATTY_FRAME_PROBE");
-        probe.frame_frames = (p && *p) ? (unsigned int)atoi(p) : 0;
-        probe.frame_countdown = probe.frame_frames;
-        probe.frame_active = (probe.frame_frames != 0) ? 1 : 0;
-        p = getenv("BATTY_VISUAL_PROBE_FRAMES");
-        probe.visual_count = 0;
-        probe.visual_index = 0;
-        if (p && *p) {
-            /* Comma-separated ascending absolute frame indices. Values
-             * not strictly greater than the previous one are dropped so
-             * the per-checkpoint countdown deltas stay positive. */
-            unsigned int prev = 0;
-            while (*p && probe.visual_count < VISUAL_PROBE_MAX) {
-                unsigned int v;
-                while (*p == ',' || *p == ' ') p++;
-                if (*p == '\0') break;
-                v = (unsigned int)atoi(p);
-                if (v > prev) {
-                    probe.visual_list[probe.visual_count++] = v;
-                    prev = v;
-                }
-                while (*p && *p != ',') p++;
+}
+
+static void probe_init_from_env(void) {
+    const char *p = getenv("BATTY_LAUNCH_FRAMES");
+    probe.launch_frames = (p && *p) ? (unsigned int)atoi(p) : 0;
+    probe.launch_countdown = 0;
+    probe.launch_active = 0;
+    p = getenv("BATTY_FRAME_PROBE");
+    probe.frame_frames = (p && *p) ? (unsigned int)atoi(p) : 0;
+    probe.frame_countdown = probe.frame_frames;
+    probe.frame_active = (probe.frame_frames != 0) ? 1 : 0;
+    p = getenv("BATTY_VISUAL_PROBE_FRAMES");
+    probe.visual_count = 0;
+    probe.visual_index = 0;
+    if (p && *p) {
+        /* Comma-separated ascending absolute frame indices. Values
+         * not strictly greater than the previous one are dropped so
+         * the per-checkpoint countdown deltas stay positive. */
+        unsigned int prev = 0;
+        while (*p && probe.visual_count < VISUAL_PROBE_MAX) {
+            unsigned int v;
+            while (*p == ',' || *p == ' ') p++;
+            if (*p == '\0') break;
+            v = (unsigned int)atoi(p);
+            if (v > prev) {
+                probe.visual_list[probe.visual_count++] = v;
+                prev = v;
             }
+            while (*p && *p != ',') p++;
         }
-        probe.visual_active = (probe.visual_count != 0) ? 1 : 0;
-        probe.visual_countdown = probe.visual_active ? probe.visual_list[0] : 0;
     }
+    probe.visual_active = (probe.visual_count != 0) ? 1 : 0;
+    probe.visual_countdown = probe.visual_active ? probe.visual_list[0] : 0;
+}
+
+/* BATTY_LEVEL=N (1..15) starts at level N, so the visual suite can
+ * capture any cycle's level entry without playing through. */
+static unsigned char initial_round_number(void) {
+    const char *p = getenv("BATTY_LEVEL");
+    if (p && *p) {
+        int n = atoi(p);
+        if (n >= 1 && n <= N_LEVELS) return (unsigned char)(n - 1);
+    }
+    return 0;
+}
+
+static state_t run_level(void) {
+    unsigned char i;
+    unsigned long start;
+    unsigned long last_tick;
+    unsigned char cycle;
+    unsigned char bg_attr;
+
+    new_game_reset();
+    probe_init_from_env();
 
     /* The original loops levels forever (increment_round_number at
      * $BBE0 wraps current_level_number_1up at 15 → 0 while
      * round_number_1up keeps bumping). Game only ends on lives == 0. */
-    /* Test/debug override: BATTY_LEVEL=N (1..15) starts at level N
-     * instead of level 1. Lets the visual regression suite (or a
-     * person investigating a per-level rendering bug) capture each
-     * cycle's level entry without playing through. round_number is
-     * 0-based internally, so subtract 1 from the env value. */
-    {
-        const char *p = getenv("BATTY_LEVEL");
-        round_number = 0;
-        if (p && *p) {
-            int n = atoi(p);
-            if (n >= 1 && n <= N_LEVELS) round_number = (unsigned char)(n - 1);
-        }
-    }
+    round_number = initial_round_number();
     /* BAT_X resets to BAT_X_INIT at NEW GAME. Original also resets it
      * at every life/level entry via all_var_init's LDIR from
      * objects_buff_2 — handled inline at the inner loop's level-init

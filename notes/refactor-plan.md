@@ -56,10 +56,11 @@ happened, and `make test-video` caught it.
 | 6b-iv | bonus effects, rocket, sparks | ~500 | needs the game-state step below |
 | 7 | `hud` — glyphs, markup, score | 175 | **done** — 6 tests |
 | 8 | `sound` — queue + envelopes | 366 | **done** — 7 tests; had NO coverage before |
-| 9 | `run_level` decomposition | 684 -> 400 | **in progress** — prologue, input, bat steering, scoring extracted |
+| 9 | `run_level` decomposition | 684 -> 370 | **in progress** — prologue, input, bat steering, scoring extracted |
+| 10 | state owners — structs at file scope | 113 vars | **done** — 11 clusters, see below |
 | 1 | replay / probe scaffolding | 480 | **last** — see below |
 
-`main.cpp`: 7,746 → 6,678 so far. 100 host tests + 3 source gates, all via `make test-fast` in seconds.
+`main.cpp`: 7,746 → 6,761. 100 host tests + source gates, all via `make test-fast` in seconds.
 
 ### Stage 5, done
 
@@ -173,10 +174,13 @@ modules take by reference, instead of ~100 file-scope variables. That is
 also what finally unblocks replay: `write_replay_probe`'s 50 loose reads
 become a handful of queries on a struct.
 
+`run_level`'s prologue is now three named steps — `new_game_reset`,
+`probe_init_from_env`, `initial_round_number` — leaving the per-frame
+loop as what is actually left to decompose.
+
 Order from here:
 
-1. `run_level`'s level-entry slice — safe today
-2. the frame loop, into named phases
+1. the frame loop, into named phases
 3. game-state consolidation — the real prize
 4. replay, which falls out of 3
 
