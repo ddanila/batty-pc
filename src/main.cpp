@@ -840,18 +840,19 @@ static int big_bat_active(void);     /* forward — defined below */
  * sprite_set $0B transition at $A6BA + handling_400pts at $A58D).
  * The original puts the marker in the same slot the bonus occupied;
  * we use side state for now since the bonus state is also side. */
-static int           pts_400_x = 0;
-static int           pts_400_y = 0;
-static unsigned char pts_400_active = 0;
-static motion_acc_t  pts_400_motion = {0, 0};
-/* X drift per frame, mirror of the SMC at \$A590 in handling_400pts.
- * Original chooses from {-2, -1, +1, +2} based on random_number bits at
- * spawn (LA67B_3 area at \$3030-\$3038). Picked once per +400 spawn. */
-static int           pts_400_dx = 0;
-/* Sprite for the floating points marker. Defaults to the universal
- * "+400" reward; SCORE_5K bonus catches override to the larger
- * "+5000" sprite so the unusual reward has its own visible cue. */
-static unsigned int  pts_marker_spr = 0;  /* set on catch */
+struct PtsMarkerState {
+    int           x;
+    int           y;
+    unsigned char active;
+    motion_acc_t  motion;
+    /* Per-frame X drift, one of {-2, -1, +1, +2} chosen from
+     * random_number at spawn. orig: SMC at $A590 in handling_400pts */
+    int           dx;
+    /* "+400" by default; a SCORE_5K catch overrides to "+5000" so the
+     * unusual reward has its own cue. */
+    unsigned int  sprite;
+};
+static PtsMarkerState pts_marker = {0, 0, 0, {0, 0}, 0, 0};
 
 
 /* Position of the leftmost dynamic life indicator; we paint
@@ -2953,7 +2954,7 @@ static void bonus_apply(unsigned char type) {
                 bullet_active[1] = 0;
                 bullet_blast_ticks[0] = 0;
                 bullet_blast_ticks[1] = 0;
-                pts_400_active = 0;
+                pts_marker.active = 0;
                 objects[OBJ_ENEMY].sprite_set = 0;
                 /* Original get_rocket at $AA9D:
                  *   rocket_x = bat_x + 4 (normal) or +12 (big)
@@ -3151,12 +3152,12 @@ static void step_bonus(void) {
          * only ever used as a falling-bonus glyph, not a marker. Match
          * by always using +400 here. */
         (void)caught_type;
-        pts_marker_spr = SPR_400_POINTS;
-        pts_400_x = bonus_x;
-        pts_400_y = bonus_y;
-        pts_400_active = 1;
-        pts_400_motion.acc = (unsigned int)(((pit_ticks() & 1UL) ? 0xFEu : 0xFFu) << 8);
-        pts_400_motion.frac = 0;
+        pts_marker.sprite = SPR_400_POINTS;
+        pts_marker.x = bonus_x;
+        pts_marker.y = bonus_y;
+        pts_marker.active = 1;
+        pts_marker.motion.acc = (unsigned int)(((pit_ticks() & 1UL) ? 0xFEu : 0xFFu) << 8);
+        pts_marker.motion.frac = 0;
         /* Pick X drift in {-2, -1, +1, +2} — port of \$3030's
          * `AND \$01 / INC A / RL B / JR C / NEG` sequence:
          *   bit 0 of random → +1 or +2 magnitude
@@ -3166,7 +3167,7 @@ static void step_bonus(void) {
              * (low byte) here without advancing. */
             unsigned int r = rng_sample();
             int mag = (int)((r & 1) + 1);
-            pts_400_dx = (r & 0x80) ? mag : -mag;
+            pts_marker.dx = (r & 0x80) ? mag : -mag;
         }
         return;
     }
@@ -3181,14 +3182,14 @@ static void step_bonus(void) {
  * Earlier port had it floating UP — counterintuitive but seemed nicer.
  * Switched back to match the disasm: marker falls off the bottom. */
 static void step_pts_400(void) {
-    if (!pts_400_active) return;
-    pts_400_y += motion_accel_step(&pts_400_motion, 0x0028, 0x80);
+    if (!pts_marker.active) return;
+    pts_marker.y += motion_accel_step(&pts_marker.motion, 0x0028, 0x80);
     /* Apply the X drift each frame (port of LA590's ADD A,SMC). Clamp
      * to playfield via the original's check_left/right_margin pattern. */
-    pts_400_x += pts_400_dx;
-    if (pts_400_x < 8) pts_400_x = 8;
-    if (pts_400_x > PLAYFIELD_W - 16) pts_400_x = PLAYFIELD_W - 16;
-    if (pts_400_y >= PLAYFIELD_H) pts_400_active = 0;
+    pts_marker.x += pts_marker.dx;
+    if (pts_marker.x < 8) pts_marker.x = 8;
+    if (pts_marker.x > PLAYFIELD_W - 16) pts_marker.x = PLAYFIELD_W - 16;
+    if (pts_marker.y >= PLAYFIELD_H) pts_marker.active = 0;
 }
 
 /* Brick band geometry: 12 rows * 8 px starting at y=32, 15 cols * 16 px
@@ -3562,7 +3563,7 @@ static void apply_replay_bomb_override(void) {
 }
 
 /* Bake a rising/falling +400 score popup for the pts-400-fall gate.
- * BATTY_REPLAY_PTS400 = "x,y". Uses motion_accel_step(&pts_400_motion,
+ * BATTY_REPLAY_PTS400 = "x,y". Uses motion_accel_step(&pts_marker.motion,
  * 0x0028, 0x80) — a DIFFERENT accel constant pair than bonus/bomb, so this
  * exercises a faster-grow path. dx is zeroed so the y progression is pure. */
 static void apply_replay_pts400_override(void) {
@@ -3574,12 +3575,12 @@ static void apply_replay_pts400_override(void) {
     if (endp == spec || *endp != ',') return;
     y = strtol(endp + 1, &endp2, 0);
     if (endp2 == endp + 1) return;
-    pts_400_active = 1;
-    pts_400_x = (int)x;
-    pts_400_y = (int)y;
-    pts_400_dx = 0;
-    pts_400_motion.acc = 0;
-    pts_400_motion.frac = 0;
+    pts_marker.active = 1;
+    pts_marker.x = (int)x;
+    pts_marker.y = (int)y;
+    pts_marker.dx = 0;
+    pts_marker.motion.acc = 0;
+    pts_marker.motion.frac = 0;
 }
 
 /* Bake an in-flight laser bullet for the bullet-motion gate.
@@ -3850,8 +3851,8 @@ static void write_replay_probe(void) {
             (unsigned)bomb.active, (unsigned)(bomb.x & 0xFF),
             (unsigned)(bomb.y & 0xFF));
     fprintf(f, "\npts400_state=active%02X_x%02X_y%02X",
-            (unsigned)pts_400_active, (unsigned)(pts_400_x & 0xFF),
-            (unsigned)(pts_400_y & 0xFF));
+            (unsigned)pts_marker.active, (unsigned)(pts_marker.x & 0xFF),
+            (unsigned)(pts_marker.y & 0xFF));
     fprintf(f, "\nbullet_state=active%02X_x%02X_y%02X",
             (unsigned)bullet_active[0], (unsigned)(bullet_x[0] & 0xFF),
             (unsigned)(bullet_y[0] & 0xFF));
@@ -3888,8 +3889,8 @@ static void write_replay_probe(void) {
             (unsigned)bonus_type,
             (unsigned)(bonus_x & 0xFF),
             (unsigned)(bonus_y & 0xFF),
-            (unsigned)pts_400_active,
-            (unsigned)(pts_marker_spr & 0xFFFFu));
+            (unsigned)pts_marker.active,
+            (unsigned)(pts_marker.sprite & 0xFFFFu));
     write_replay_briks_data(f);
     fprintf(f, "\ncurrent_level_copy=");
     for (i = 0; i < LVL_CELLS; i++) fprintf(f, "%02X", live_level[i]);
@@ -4944,9 +4945,9 @@ static void redraw_full_with_ball(unsigned char level_idx) {
         blit_masked_to_scr_buff(spr_bomb_data, bomb.x, bomb.y);
         mark_dirty_rect_px(bomb.x, bomb.y, 16, 16);
     }
-    if (pts_400_active) {
-        blit_masked_to_scr_buff(pts_marker_spr, pts_400_x, pts_400_y);
-        mark_dirty_sprite_rect(pts_marker_spr, pts_400_x, pts_400_y);
+    if (pts_marker.active) {
+        blit_masked_to_scr_buff(pts_marker.sprite, pts_marker.x, pts_marker.y);
+        mark_dirty_sprite_rect(pts_marker.sprite, pts_marker.x, pts_marker.y);
     }
     if (bonus_active) {
         unsigned int spr = spr_for_bonus(bonus_type);
@@ -5033,7 +5034,7 @@ static unsigned int ball_dirty_blockers(int bat_moved) {
     if (!BALL_VISIBLE) blockers |= BALL_DIRTY_BLOCK_BALLS;
     if (static_bg_dirty || static_bg_cache_dirty || force_full_flush) blockers |= BALL_DIRTY_BLOCK_STATIC;
     if (score != prev_score || high_score != prev_high_score || lives != prev_lives) blockers |= BALL_DIRTY_BLOCK_HUD;
-    if (bonus_active || pts_400_active || bomb.active || rocket_active) blockers |= BALL_DIRTY_BLOCK_OBJECTS;
+    if (bonus_active || pts_marker.active || bomb.active || rocket_active) blockers |= BALL_DIRTY_BLOCK_OBJECTS;
     if (objects[OBJ_ENEMY].sprite_set != 0) blockers |= BALL_DIRTY_BLOCK_OBJECTS;
     if (any_bullet_active() || any_bullet_blast()) blockers |= BALL_DIRTY_BLOCK_OBJECTS;
     if (brick_flash_ticks || any_brick_hit_anim()) blockers |= BALL_DIRTY_BLOCK_BRICKS;
@@ -5070,7 +5071,7 @@ static void prof_note_ball_dirty_blockers(unsigned int blockers) {
 
 static int can_redraw_ball_with_simple_objects(unsigned int blockers) {
     if ((blockers & ~BALL_DIRTY_BLOCK_OBJECTS) != 0) return 0;
-    if (!bonus_active && !pts_400_active && objects[OBJ_ENEMY].sprite_set == 0
+    if (!bonus_active && !pts_marker.active && objects[OBJ_ENEMY].sprite_set == 0
         && !any_bullet_active() && !any_bullet_blast() && !bomb.active
         && !ball.extra2_active && !ball.extra3_active) return 0;
     if (rocket_active) return 0;
@@ -5080,7 +5081,7 @@ static int can_redraw_ball_with_simple_objects(unsigned int blockers) {
      * frames to the full path. This also keeps the multi-ball CATCH frames
      * (which spawn the popup) on the full path; steady-state multi-ball
      * (after the popup falls off) still tiers. */
-    if (pts_400_active) return 0;
+    if (pts_marker.active) return 0;
     return 1;
 }
 
@@ -5159,9 +5160,9 @@ static void render_simple_objects_to_buff_and_mark(unsigned char bg_attr) {
         blit_masked_to_scr_buff(spr_bomb_data, bomb.x, bomb.y);
         mark_dirty_rect_px(bomb.x, bomb.y, 16, 16);
     }
-    if (pts_400_active) {
-        blit_masked_to_scr_buff(pts_marker_spr, pts_400_x, pts_400_y);
-        mark_dirty_sprite_rect(pts_marker_spr, pts_400_x, pts_400_y);
+    if (pts_marker.active) {
+        blit_masked_to_scr_buff(pts_marker.sprite, pts_marker.x, pts_marker.y);
+        mark_dirty_sprite_rect(pts_marker.sprite, pts_marker.x, pts_marker.y);
     }
     if (bonus_active) {
         unsigned int spr = spr_for_bonus(bonus_type);
@@ -5819,7 +5820,7 @@ static void play_bat_explosion(unsigned char level_idx) {
     rocket_active = 0;
     rocket_clear_completed = 0;
     set_rocket_bonus_sprite_height(ROCKET_BONUS_H_PX);
-    pts_400_active = 0;
+    pts_marker.active = 0;
     bullet_active[0] = 0;
     bullet_active[1] = 0;
     bullet_blast_ticks[0] = 0;
@@ -5955,7 +5956,7 @@ static void reset_level_state(unsigned char lvl_idx) {
     objects[OBJ_BALL_2].sprite_set = 0x82;
     ball.extra3_active   = 0;
     objects[OBJ_BALL_3].sprite_set = 0x82;
-    pts_400_active = 0;
+    pts_marker.active = 0;
     ball.speed_ramp = 0;
     bat.big_ticks  = 0;
     ball.big_ticks = 0;
@@ -6412,7 +6413,7 @@ static state_t run_level(void) {
                     high_score_beaten_this_game = 1;
                 }
                 if (bonus_active) ball_moved = 1;
-                if (pts_400_active) ball_moved = 1;
+                if (pts_marker.active) ball_moved = 1;
                 if (bat.extra_px != bat.extra_target) bat_moved = 1;
                 if (objects[OBJ_ENEMY].sprite_set != 0) ball_moved = 1;
                 if (bomb.active) ball_moved = 1;

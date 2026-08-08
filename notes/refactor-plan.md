@@ -145,8 +145,8 @@ consolidation into one addressable state comes later, once the clusters
 exist to consolidate.
 
 Done: `ProbeState`, `RenderProfile`, `BallState`, `BatState`,
-`BombState`, `MagnetState`. Remaining clusters: bonus (7), rocket (7),
-brick-fx (8), score (6).
+`BombState`, `MagnetState`, `PtsMarkerState`. Remaining clusters: bonus
+(7), rocket (7), brick-fx (8), score/lives (4).
 
 Each rename must be checked against the source-grepping gates first —
 `make test-gate-greps` names the ones that would break, in a second.
