@@ -204,3 +204,35 @@ checked by mutation: marking `16 x 2` fails it with an 18 px diff.
 By construction it catches under-marking (stale pixels) and not
 over-marking (wasted flush bandwidth) — the two screens agree either
 way when the rect is too large.
+
+
+## 10. The bullet animation phase depends on which redraw path ran
+
+`render_bullet_to_buff` increments a function-static `bullet_anim_tick`
+on every call and picks `SPR_BULLET_1` / `SPR_BULLET_2` from its low
+bit. The full redraw path calls it unconditionally; the dirty path
+calls it only inside `if (any_bullet_active())`.
+
+So on a frame with no bullets live, the full path advances the phase and
+the dirty path does not. Which sprite the *next* bullet shows first
+therefore depends on how many bulletless frames took the full path — a
+render function carrying hidden per-frame state that only one of its two
+callers ticks.
+
+Not unified, because both directions change behaviour and neither is
+anchored:
+
+- Guarding the full path too makes the phase depend only on frames with
+  bullets, which is probably what was intended.
+- Ticking unconditionally on both paths makes it a free-running 25 Hz
+  flicker independent of bullets.
+
+The original's bullet flicker would settle it. Until then the safe part
+was done: the two paths' *marking* loops are now one
+`mark_live_bullets_dirty`, which is where the copy-paste risk was. The
+guard difference is left visible rather than quietly resolved.
+
+No gate covers it. `test-bullet-fly`, `test-laser-cadence` and
+`test-bullet-dirty-redraw` all fire bullets promptly, so no run
+accumulates the bulletless full-redraw frames that would separate the
+two phases.

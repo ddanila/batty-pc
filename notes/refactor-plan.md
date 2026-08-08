@@ -230,9 +230,16 @@ The sweep found one more identical block — the multi-ball extras, now
 mark different rect heights for a bullet blast — resolved since, by
 measuring the sprite instead of guessing: known-bugs #9.
 
-What is left differing between the paths is deliberate: the full path
-paints the brick flash and hit animations, the dirty path relies on the
-carry.
+What is left differing between the paths: the full path paints the brick
+flash and hit animations where the dirty path relies on the carry (that
+one is deliberate), and the bullet render's guard, which is not —
+known-bugs #10.
+
+The pattern across #9 and #10 is worth naming. Two copies of a render
+block look like duplication to delete, but each divergence has to be
+*resolved* before merging, not averaged. #9 was answerable by measuring
+the sprite; #10 needs the original. Merging blind would have picked a
+winner silently in both cases.
 
 Order from here:
 

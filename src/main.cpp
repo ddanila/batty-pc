@@ -4805,6 +4805,14 @@ static void carry_dirty_with_previous(void) {
  *   - paint ball, bomb, 400pts, alien into scr_buff (each picks up
  *     its surrounding char cell's bg attr at buff_to_vga time)
  *   - HUD labels/scores join scr_buff before the same buff_to_vga pass. */
+static void mark_live_bullets_dirty(void) {
+    int i;
+    for (i = 0; i < N_BULLETS; i++)
+        if (bullet_active[i])
+            mark_dirty_rect_px(bullet_x[i], bullet_y[i],
+                               BULLET_W_PX, BULLET_H_PX);
+}
+
 /* Blast sprites are 8px wide and at most 8 rows tall (sprites_blob
  * headers: frames are 6/7/8/8). mark_dirty_rect_px rounds X out to byte
  * boundaries but takes Y exactly, and a blast writes no attrs, so 8
@@ -4980,11 +4988,7 @@ static void redraw_full_with_ball(unsigned char level_idx) {
      * bomb/bonus; the rocket paints over everything. */
     render_extra_balls_to_buff(bg_attr);
     render_bullet_to_buff();
-    for (i = 0; i < N_BULLETS; i++) {
-        if (bullet_active[i]) {
-            mark_dirty_rect_px(bullet_x[i], bullet_y[i], 8, 8);
-        }
-    }
+    mark_live_bullets_dirty();
     render_bullet_blasts_to_buff_and_mark();
     render_falling_objects_to_buff(bg_attr);
     if ((enemy->sprite_set & 0x7F) != 0 && !(enemy->sprite_set & 0x80)) {
@@ -5158,13 +5162,8 @@ static void render_simple_objects_to_buff_and_mark(unsigned char bg_attr) {
      * each live slot's rect (the carry restores last frame's position, so
      * the bullet's fast upward travel leaves no trail). */
     if (any_bullet_active()) {
-        int i;
         render_bullet_to_buff();
-        for (i = 0; i < N_BULLETS; i++) {
-            if (bullet_active[i])
-                mark_dirty_rect_px(bullet_x[i], bullet_y[i],
-                                   BULLET_W_PX, BULLET_H_PX);
-        }
+        mark_live_bullets_dirty();
     }
     render_bullet_blasts_to_buff_and_mark();
     render_falling_objects_to_buff(bg_attr);
