@@ -492,7 +492,6 @@ static unsigned char bullet_cooldown = 0;
 /* Test hook: when set (BATTY_AUTO_FIRE), the laser fires every frame the
  * cooldown permits, simulating held SPACE so the cadence is gate-checkable
  * without driving keyboard input through the capture harness. */
-static unsigned char auto_fire = 0;
 
 /* Second ball for the MULTI_BALL ($02 = triple_ball) bonus. We only
  * spawn TWO extras for a total of three balls — port of the LA67B_8
@@ -1023,9 +1022,6 @@ static unsigned char frame_l1[FRAME_CYCLES * FRAME_SIZE];
 /* Brick-band cache rebuilds (build_static_brick_band_cache): count, total
  * char-rows re-composited, and PIT ticks spent. rows/rebuilds shows the
  * incremental win directly (full = 14, scoped ~= 3). */
-/* Force the whole-band rebuild path (A/B baseline for the incremental
- * scoping). Set by BATTY_FULL_BAND_REBUILD. */
-static unsigned char force_full_band_rebuild = 0;
 /* Where the render profile accumulates. Written only when
  * BATTY_RENDER_PROFILE is set, and dumped to PROFILE.TXT at exit.
  *
@@ -1055,20 +1051,23 @@ struct RenderProfile {
 
 static RenderProfile prof;
 
-static unsigned long profile_auto_frames = 0;
-/* While set the frame body does no physics; only P (toggle), ESC
- * (quit) and ENTER (advance) are acted on. */
-static unsigned char paused = 0;
-static unsigned char force_bat_full_redraw = 0;
-static unsigned char force_ball_full_redraw = 0;
-static unsigned char force_full_flush_each_frame = 0;
+/* BATTY_* switches that change how the port behaves, for A/B baselines
+ * and for putting the game into a state a gate can reach. Unlike
+ * ProbeState these DO affect play — that is what they are for.
+ *
+ * use_laffc and rng_perframe default ON: they select the accurate
+ * model, and the switch exists to get the old one back for an A/B. */
+
+/* Force the whole-band rebuild path (A/B baseline for the incremental
+ * scoping). Set by BATTY_FULL_BAND_REBUILD. */
+
 /* LAFFC brick collision is now the DEFAULT for the primary ball: it is
  * byte-exact vs the Spectrum over L3's full 150-frame trajectory (dozens
  * of bounces / cell configs, gated by test-laffc-ball-frame1) and falls
  * back to brick_collision when it reports no hit, so it can never pass a
  * brick through. BATTY_LEGACY_COLLISION=1 reverts to the old
  * brick_collision path. (Multi-ball secondaries still use brick_collision.) */
-static unsigned char use_laffc = 1;
+
 /* RNG-model alignment (see notes/rng-model.md). OFF by default: the port
  * advances the RNG on demand at each consumer. ON (BATTY_RNG_PERFRAME=1):
  * tick the RNG once per frame at the play-loop top (mirroring the
@@ -1089,9 +1088,22 @@ static unsigned char use_laffc = 1;
  * original. `BATTY_RNG_PERFRAME=0` reverts to the old behaviour (the
  * BATTY_LAFFC fallback pattern); the RNG-independent gates (ball, bat,
  * enemy-descend, visual states) stay green either way. */
-static unsigned char rng_perframe = 1;
-static unsigned char suppress_no_ball_death = 0;
+struct DebugSwitches {
+    unsigned char auto_fire;              /* BATTY_AUTO_FIRE: hold SPACE */
+    unsigned char full_band_rebuild;      /* BATTY_FULL_BAND_REBUILD */
+    unsigned char bat_full_redraw;        /* BATTY_FORCE_BAT_FULL_REDRAW */
+    unsigned char ball_full_redraw;       /* BATTY_FORCE_BALL_FULL_REDRAW */
+    unsigned char full_flush_each_frame;  /* BATTY_FORCE_FULL_FLUSH_EACH_FRAME */
+    unsigned char suppress_no_ball_death; /* BATTY_SUPPRESS_NO_BALL_DEATH */
+    unsigned char use_laffc;              /* BATTY_LEGACY_COLLISION clears it */
+    unsigned char rng_perframe;           /* BATTY_RNG_PERFRAME */
+    unsigned long profile_auto_frames;    /* BATTY_PROFILE_AUTO_FRAMES */
+};
+static DebugSwitches dbg = { 0, 0, 0, 0, 0, 0, 1, 1, 0 };
 
+/* While set the frame body does no physics; only P (toggle), ESC
+ * (quit) and ENTER (advance) are acted on. */
+static unsigned char paused = 0;
 static unsigned short last_prof_tick = 0;
 
 static unsigned short pit_current_ticks(void) {
@@ -2225,7 +2237,7 @@ static void build_static_brick_band_cache(unsigned char level_idx) {
     unsigned short t0 = pit_current_ticks();
     unsigned short t1;
 
-    if (force_full_band_rebuild || (lo <= 0 && hi >= LVL_ROWS - 1)) {
+    if (dbg.full_band_rebuild || (lo <= 0 && hi >= LVL_ROWS - 1)) {
         /* Whole band dirty: the proven full path. */
         paint_bg_window_to_buff(bg_attr, cycle,
                                 BRICK_BAND_Y_TOP,
@@ -3413,7 +3425,7 @@ static u8 enemy_random_current(void) { return rng_low(rng_current()); }
 static u8 enemy_random_sample(void)  { return rng_low(u16(rng_sample())); }
 
 static unsigned int rng_sample(void) {
-    return rng_perframe ? rng_current() : next_random();
+    return dbg.rng_perframe ? rng_current() : next_random();
 }
 
 static void apply_replay_random_override(void) {
@@ -4561,7 +4573,7 @@ static void step_ball(void) {
      * the ball entered through; we reverse + unwind that axis. */
     {
         int hit;
-        if (use_laffc) {
+        if (dbg.use_laffc) {
             /* LAFFC-exact bounce where it fires (returns 3 = handled, or 0
              * = no hit). Fall back to the proven brick_collision when LAFFC
              * reports no hit, so the byte-exact path can never pass through
@@ -5005,7 +5017,7 @@ static void redraw_full_with_ball(unsigned char level_idx) {
 
 static unsigned int ball_dirty_blockers(int bat_moved) {
     unsigned int blockers = 0;
-    if (force_ball_full_redraw || force_bat_full_redraw) blockers |= BALL_DIRTY_BLOCK_FORCED;
+    if (dbg.ball_full_redraw || dbg.bat_full_redraw) blockers |= BALL_DIRTY_BLOCK_FORCED;
     if (bat_moved) blockers |= BALL_DIRTY_BLOCK_BAT;
     /* A hidden primary can't be redrawn (nothing to draw) -> full path. A
      * STUCK ball, though, is visible and rides the bat at a known position
@@ -6108,7 +6120,7 @@ static void ride_stuck_ball_on_bat(void) {
 static void handle_no_ball_death(void) {
     if (!rocket.active
         && !rocket.clear_completed
-        && !suppress_no_ball_death
+        && !dbg.suppress_no_ball_death
         && !BALL_VISIBLE
         && !ball.extra2_active
         && !ball.extra3_active) {
@@ -6341,7 +6353,7 @@ static state_t run_level(void) {
                 /* Per-frame RNG tick (original LB9E8_2: one `CALL
                  * random_generate` per main-loop pass). Gated so the
                  * default on-demand model is byte-unchanged. */
-                if (rng_perframe) next_random();
+                if (dbg.rng_perframe) next_random();
                 /* Steering. The arrows are polled from key_state[] rather
                  * than read from the BIOS buffer, so holding one steers
                  * continuously at 4 px per 50 Hz tick = 200 px/s, as the
@@ -6369,7 +6381,7 @@ static state_t run_level(void) {
                         return ST_QUIT;
                     }
                 }
-                if (auto_fire) try_fire_laser();   /* held-SPACE sim (test) */
+                if (dbg.auto_fire) try_fire_laser();   /* held-SPACE sim (test) */
                 step_active_entities();
                 handle_no_ball_death();
                 /* Mirror of LB9E8_2..LB9E8_3 ($BA83..$BAD9):
@@ -6396,10 +6408,10 @@ static state_t run_level(void) {
             if (BAT_X != BAT_PREV_X) {
                 bat_moved = 1;
             }
-            if (force_bat_full_redraw && bat_moved) {
+            if (dbg.bat_full_redraw && bat_moved) {
                 ball_moved = 1;
             }
-            if (force_full_flush_each_frame && ball_moved) {
+            if (dbg.full_flush_each_frame && ball_moved) {
                 cache.full_flush = 1;
             }
 
@@ -6446,8 +6458,8 @@ static state_t run_level(void) {
                 }
             }
 
-            if (profile_auto_frames != 0
-                && prof.frames >= profile_auto_frames) {
+            if (dbg.profile_auto_frames != 0
+                && prof.frames >= dbg.profile_auto_frames) {
                 write_replay_probe();
                 return ST_QUIT;
             }
@@ -6532,26 +6544,26 @@ int main(void) {
      * against snap2. Plain `make run` floppy leaves it off and the
      * user sees the natural ~4.5 Hz menu blink. */
     if (getenv("BATTYALL") != NULL) test_mode_pin_blink = 1;
-    if (getenv("BATTY_FORCE_BAT_FULL_REDRAW") != NULL) force_bat_full_redraw = 1;
-    if (getenv("BATTY_FORCE_BALL_FULL_REDRAW") != NULL) force_ball_full_redraw = 1;
-    if (getenv("BATTY_LAFFC") != NULL) use_laffc = 1;
-    if (getenv("BATTY_LEGACY_COLLISION") != NULL) use_laffc = 0;
+    if (getenv("BATTY_FORCE_BAT_FULL_REDRAW") != NULL) dbg.bat_full_redraw = 1;
+    if (getenv("BATTY_FORCE_BALL_FULL_REDRAW") != NULL) dbg.ball_full_redraw = 1;
+    if (getenv("BATTY_LAFFC") != NULL) dbg.use_laffc = 1;
+    if (getenv("BATTY_LEGACY_COLLISION") != NULL) dbg.use_laffc = 0;
     {   /* Default ON (per-frame tick = the original's model). The env can
          * force either state: BATTY_RNG_PERFRAME=0 reverts to advance-on-
          * read (the old default); any other value keeps it on. */
         const char *e = getenv("BATTY_RNG_PERFRAME");
-        if (e != NULL) rng_perframe = (e[0] == '0' && e[1] == '\0') ? 0 : 1;
+        if (e != NULL) dbg.rng_perframe = (e[0] == '0' && e[1] == '\0') ? 0 : 1;
     }
-    if (getenv("BATTY_FORCE_FULL_FLUSH_EACH_FRAME") != NULL) force_full_flush_each_frame = 1;
-    if (getenv("BATTY_SUPPRESS_NO_BALL_DEATH") != NULL) suppress_no_ball_death = 1;
+    if (getenv("BATTY_FORCE_FULL_FLUSH_EACH_FRAME") != NULL) dbg.full_flush_each_frame = 1;
+    if (getenv("BATTY_SUPPRESS_NO_BALL_DEATH") != NULL) dbg.suppress_no_ball_death = 1;
     if (getenv("BATTY_SERIAL_PROBE") != NULL) probe.serial_enabled = 1;
-    if (getenv("BATTY_AUTO_FIRE") != NULL) auto_fire = 1;
-    if (getenv("BATTY_FULL_BAND_REBUILD") != NULL) force_full_band_rebuild = 1;
+    if (getenv("BATTY_AUTO_FIRE") != NULL) dbg.auto_fire = 1;
+    if (getenv("BATTY_FULL_BAND_REBUILD") != NULL) dbg.full_band_rebuild = 1;
     {
         const char *p = getenv("BATTY_PROFILE_AUTO_FRAMES");
         if (p != NULL && *p != '\0') {
-            profile_auto_frames = strtoul(p, NULL, 10);
-            if (profile_auto_frames != 0) state = ST_LEVEL;
+            dbg.profile_auto_frames = strtoul(p, NULL, 10);
+            if (dbg.profile_auto_frames != 0) state = ST_LEVEL;
         }
     }
     if (getenv("BATTY_START_LEVEL") != NULL) state = ST_LEVEL;

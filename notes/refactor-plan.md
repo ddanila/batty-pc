@@ -60,7 +60,7 @@ happened, and `make test-video` caught it.
 | 10 | state owners — structs at file scope | 113 vars | **done** — 11 clusters, see below |
 | 1 | replay / probe scaffolding | 480 | **last** — see below |
 
-`main.cpp`: 7,746 → 6,712. 100 host tests + source gates, all via `make test-fast` in seconds.
+`main.cpp`: 7,746 → 6,724. 100 host tests + source gates, all via `make test-fast` in seconds.
 
 ### Stage 5b: one destroyed-cell reset, not two
 
@@ -193,6 +193,19 @@ as a nested `last_launch`. They were never game state — only
 `record_primary_launch` writes them and only `write_replay_probe` reads
 them — so they were harness state sitting in the middle of the ball
 declarations. Five fewer loose names for stage 1 to account for.
+
+`DebugSwitches dbg` then took the nine `BATTY_*` switches that change how
+the port behaves — `auto_fire`, `use_laffc`, `rng_perframe`,
+`suppress_no_ball_death`, the three `force_*_redraw` flags,
+`full_band_rebuild` and `profile_auto_frames`. Unlike `ProbeState` these
+DO affect play, which is what they are for, so they are a separate
+struct rather than more of `probe`.
+
+Moving them stranded the three long rationale blocks that had sat above
+their declarations (the LAFFC default, the RNG per-frame model, the
+band-rebuild A/B). Those moved with the switches. Writing "see the git
+history" instead would have been the same mistake this file already
+records twice.
 
 `PlayerState` needed a different tool from the rest. `score` and `lives`
 are English words that occur in comments and — the trap —

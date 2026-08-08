@@ -21,7 +21,7 @@ def main() -> int:
     compact = "".join(src.split())
     # The extra-ball flags moved into BallState; the guard itself is
     # unchanged, and that is what this checks.
-    guard = ("if(!rocket.active&&!rocket.clear_completed&&!suppress_no_ball_death"
+    guard = ("if(!rocket.active&&!rocket.clear_completed&&!dbg.suppress_no_ball_death"
              "&&!BALL_VISIBLE&&!ball.extra2_active&&!ball.extra3_active)")
     if guard not in compact:
         raise SystemExit(f"FAIL: missing rocket-safe no-ball death guard: {guard}")
