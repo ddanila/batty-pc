@@ -60,7 +60,7 @@ happened, and `make test-video` caught it.
 | 10 | state owners — structs at file scope | 113 vars | **done** — 11 clusters, see below |
 | 1 | replay / probe scaffolding | 480 | **last** — see below |
 
-`main.cpp`: 7,746 → 6,733. 100 host tests + source gates, all via `make test-fast` in seconds.
+`main.cpp`: 7,746 → 6,729. 100 host tests + source gates, all via `make test-fast` in seconds.
 
 ### Stage 5b: one destroyed-cell reset, not two
 
@@ -213,6 +213,13 @@ plain presence checks read as a table; the two that parse a value
 (`BATTY_RNG_PERFRAME`, which alone can force either state, and
 `BATTY_PROFILE_AUTO_FRAMES`) now stand out instead of hiding among
 them.
+
+`write_replay_probe`'s five object dumps became `probe_write_object`.
+The catch was that PROBE.TXT's newlines are written as a *prefix* of the
+next key, not a suffix of the current one, so a helper that appends `\n`
+also has to strip the leading one from the key that follows — otherwise
+every gate parsing the file sees a blank line. Checked by diffing a real
+PROBE.TXT against the pre-change one: byte-identical.
 
 `PlayerState` needed a different tool from the rest. `score` and `lives`
 are English words that occur in comments and — the trap —

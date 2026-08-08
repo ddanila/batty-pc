@@ -3792,6 +3792,17 @@ static void serial_probe_signal(void) {
     }
 }
 
+/* `object_<name>=` and the descriptor's raw bytes. The gates decode
+ * fields out of the same 22 bytes the game uses, so nothing here
+ * interprets them. */
+static void probe_write_object(FILE *f, const char *name, unsigned char slot) {
+    const unsigned char *bytes = (const unsigned char *)&objects[slot];
+    int i;
+    fprintf(f, "object_%s=", name);
+    for (i = 0; i < (int)sizeof(Object); i++) fprintf(f, "%02X", bytes[i]);
+    fputc('\n', f);
+}
+
 static void write_replay_probe(void) {
     FILE *f;
     int i;
@@ -3815,32 +3826,17 @@ static void write_replay_probe(void) {
             (unsigned)magnets.on_state[2], (unsigned)magnets.on_state[3],
             (unsigned)ball.mag_cool[0], (unsigned)ball.mag_delta[0],
             (unsigned)ball.mag_exit[0], (unsigned)ball.mag_idx[0]);
-    fprintf(f, "object_ball_1=");
-    for (i = 0; i < (int)sizeof(Object); i++) {
-        fprintf(f, "%02X", ((unsigned char *)&objects[OBJ_BALL_1])[i]);
-    }
-    fprintf(f, "\nobject_bat_1=");
-    for (i = 0; i < (int)sizeof(Object); i++) {
-        fprintf(f, "%02X", ((unsigned char *)&objects[OBJ_BAT_1])[i]);
-    }
-    fprintf(f, "\nobject_enemy=");
-    for (i = 0; i < (int)sizeof(Object); i++) {
-        fprintf(f, "%02X", ((unsigned char *)&objects[OBJ_ENEMY])[i]);
-    }
+    probe_write_object(f, "ball_1", OBJ_BALL_1);
+    probe_write_object(f, "bat_1", OBJ_BAT_1);
+    probe_write_object(f, "enemy", OBJ_ENEMY);
     /* Extra balls (multiball) — so the collision-invariant sweep can probe
      * step_extra_ball's path (no-tunnel) the same way it probes the primary. */
-    fprintf(f, "\nobject_ball_2=");
-    for (i = 0; i < (int)sizeof(Object); i++) {
-        fprintf(f, "%02X", ((unsigned char *)&objects[OBJ_BALL_2])[i]);
-    }
-    fprintf(f, "\nobject_ball_3=");
-    for (i = 0; i < (int)sizeof(Object); i++) {
-        fprintf(f, "%02X", ((unsigned char *)&objects[OBJ_BALL_3])[i]);
-    }
+    probe_write_object(f, "ball_2", OBJ_BALL_2);
+    probe_write_object(f, "ball_3", OBJ_BALL_3);
     /* Bonus/bomb state (the original shares object_bonus $9B80 for both).
      * Used to verify RNG-dependent drops match the original (e.g. that the
      * RNG-perframe flip + seed do not spawn a spurious bonus). */
-    fprintf(f, "\nbonus_state=active%02X_type%02X_x%02X_y%02X_bomb%02X",
+    fprintf(f, "bonus_state=active%02X_type%02X_x%02X_y%02X_bomb%02X",
             (unsigned)bonus.active, (unsigned)bonus.type,
             (unsigned)(bonus.x & 0xFF), (unsigned)(bonus.y & 0xFF),
             (unsigned)bomb.active);
