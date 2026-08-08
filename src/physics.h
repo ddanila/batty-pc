@@ -115,4 +115,13 @@ BallBounce laffc_bounce(const LaffcHit &hit, u8 dir,
 /* orig: change_direction $ACEE. $1F flips horizontal, $3F vertical. */
 u8 laffc_change_dir(u8 dir, u8 mask);
 
+/* Triple ball: the two extras take directions derived from the
+ * primary's low nibble, keeping its quadrant. See known-bugs #8 — the
+ * extras' dir bytes are read back through dir_to_delta, whose quadrant
+ * convention is mirrored from the primary's in two of four quadrants.
+ * orig: LA67B_8 $A67B */
+struct ExtraBallDirs { u8 second, third; };
+
+ExtraBallDirs extra_ball_dirs(u8 base_dir);
+
 #endif /* BATTY_PHYSICS_H */

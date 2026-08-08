@@ -44,7 +44,7 @@ happened, and `make test-video` caught it.
 |---|--------|------:|-------|
 | — | `zxvga` — video engine | 593 | **done** — 11 tests; own TU since stage 4b |
 | 2 | `rng` | 68 | **done** — 4 tests, byte-exact vs the original's walk |
-| 3a | `physics` — direction + bat deflection | 217 | **done** — 10 tests vs captured hardware tables |
+| 3a | `physics` — direction + bat deflection | 231 | **done** — 12 tests vs captured hardware tables |
 | 3b | collision geometry/effects split | 166 | **done** — 7 more tests |
 | 4 | `assets` | 167 | **done** — 6 tests |
 | 5 | `bricks` — the compositor | 278 | **done** — 5 tests, byte-exact vs 15 captured screens |
@@ -60,7 +60,7 @@ happened, and `make test-video` caught it.
 | 10 | state owners — structs at file scope | 113 vars | **done** — 11 clusters, see below |
 | 1 | replay / probe scaffolding | 480 | **last** — see below |
 
-`main.cpp`: 7,746 → 6,744. 100 host tests + source gates, all via `make test-fast` in seconds.
+`main.cpp`: 7,746 → 6,731. 100 host tests + source gates, all via `make test-fast` in seconds.
 
 ### Stage 5, done
 
@@ -250,7 +250,18 @@ known-bugs #10.
 `bonus_apply`'s KILL_ALIENS arm became `blast_active_alien`, and the
 ROCKET arm's object-hiding became `hide_objects_for_rocket_clear` —
 that one moved a needle in `test_rocket_completion_no_ball.py`, which
-greps the block with its exact indentation. Note the
+greps the block with its exact indentation.
+
+The MULTI_BALL arm split three ways. The direction derivation was pure,
+so it moved to `physics.cpp` as `extra_ball_dirs` and picked up two host
+tests — quadrant preservation across all 64 inputs, and the three-way
+low-nibble split with a check that the two extras never share a
+direction. The two eight-line spawn blocks became one
+`spawn_extra_ball`.
+
+That is the first new coverage on known-bugs #8's territory: the extras'
+*derivation* is now pinned, even though which quadrant convention is
+right still needs an oracle. Note the
 coverage limit: `test-bonus-effects` checks only that the catch sets
 `bat.bonus_applied = $09`, so the blast body — alien to sprite_set $0A,
 +350, SND_ALIEN_BLAST — is not gated by anything. That arm rests on

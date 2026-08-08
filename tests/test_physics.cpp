@@ -474,6 +474,53 @@ static void test_bat_step_is_four_pixels() {
     report("bat_step_is_four_pixels", before, "160 positions        ok");
 }
 
+/* The extras' directions are derived, not chosen: the primary's quadrant
+ * is preserved and only the low nibble is remapped. If a refactor ever
+ * lets the quadrant leak, every multi-ball trajectory mirrors. */
+static void test_extra_balls_keep_the_quadrant() {
+    const int before = failures;
+    int wrong = 0;
+    for (int q = 0x00; q <= 0x30; q += 0x10) {
+        for (int low = 0; low <= 0x0F; low++) {
+            const u8 base = (u8)(q | low);
+            const ExtraBallDirs d = extra_ball_dirs(base);
+            if ((d.second & 0x30) != q || (d.third & 0x30) != q) wrong++;
+            if ((d.second & 0xC0) || (d.third & 0xC0)) wrong++;
+        }
+    }
+    check(wrong == 0, "%d derived directions left the primary's quadrant\n", wrong);
+    report("extra_balls_keep_the_quadrant", before, "4 quadrants x 16   ok");
+}
+
+/* The three-way split on the low nibble, from LA67B_8. The two extras
+ * must never share a direction, or the multi-ball is a double-ball. */
+static void test_extra_ball_dirs_split_three_ways() {
+    const int before = failures;
+    for (int q = 0x00; q <= 0x30; q += 0x10) {
+        const ExtraBallDirs from4 = extra_ball_dirs((u8)(q | 0x04));
+        check(from4.second == (u8)(q | 0x0C) && from4.third == (u8)(q | 0x08),
+              "low $04 in quadrant $%02X gave $%02X/$%02X\n",
+              q, from4.second, from4.third);
+
+        const ExtraBallDirs from8 = extra_ball_dirs((u8)(q | 0x08));
+        check(from8.second == (u8)(q | 0x0C) && from8.third == (u8)(q | 0x04),
+              "low $08 in quadrant $%02X gave $%02X/$%02X\n",
+              q, from8.second, from8.third);
+
+        const ExtraBallDirs other = extra_ball_dirs((u8)(q | 0x0C));
+        check(other.second == (u8)(q | 0x08) && other.third == (u8)(q | 0x04),
+              "low $0C in quadrant $%02X gave $%02X/$%02X\n",
+              q, other.second, other.third);
+    }
+    int same = 0;
+    for (int base = 0; base < 0x40; base++) {
+        const ExtraBallDirs d = extra_ball_dirs((u8)base);
+        if (d.second == d.third) same++;
+    }
+    check(same == 0, "%d inputs gave both extras the same direction\n", same);
+    report("extra_ball_dirs_split_three_ways", before, "4 quadrants + 64   ok");
+}
+
 int main() {
     printf("physics tests\n");
     test_deflection_matches_hardware();
@@ -498,6 +545,8 @@ int main() {
     test_bat_settles_on_the_margin();
     test_bat_opposing_keys_cancel();
     test_bat_step_is_four_pixels();
+    test_extra_balls_keep_the_quadrant();
+    test_extra_ball_dirs_split_three_ways();
     printf("\n%s\n", failures ? "FAILED" : "22 tests, 0 failed");
     return failures ? 1 : 0;
 }

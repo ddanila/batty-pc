@@ -2868,11 +2868,22 @@ static void set_rocket_bonus_sprite_height(unsigned char height) {
     sprites_blob[SPR_BONUS_ROCKET_1 + 1] = height;
 }
 
-/* Map our BONUS_TYPE_* back to the original $00..$09 code used by
- * bat.bonus_applied. Inverse of map_orig_to_our_bonus. */
+/* Put an extra ball on top of the primary, travelling in `dir` at the
+ * primary's speed. The extras read dir/speed/q8.8 from their object;
+ * the original copies ball_1's speed and a derived direction. */
+static void spawn_extra_ball(unsigned char slot, unsigned char dir,
+                             int *dx, int *dy) {
+    Object *o = &objects[slot];
+    o->sprite_set = 0x02;
+    o->x_coord    = BALL_X;
+    o->y_coord    = BALL_Y;
+    o->dir        = dir;
+    o->speed      = objects[OBJ_BALL_1].speed;
+    o->x_coord_hi = 0;
+    o->y_coord_hi = 0;
+    dir_to_delta(dir, dx, dy);
+}
 
-/* Apply the effect that comes with `type`. Catching the same type
- * while already active extends the duration. */
 /* The rocket clear runs with only the caught bat and the rocket alive —
  * everything else vanishes rather than carrying on underneath it.
  * orig: LBAED_6 */
@@ -2913,6 +2924,8 @@ static void blast_active_alien(void) {
     sound_queue(SND_ALIEN_BLAST);
 }
 
+/* Apply the effect that comes with `type`. Catching the same type
+ * while already active extends the duration. */
 static void bonus_apply(unsigned char type) {
     /* Original get_bonus at $A67B: every catch awards 400 points and
      * plays a sound — sound_live_add ($07) for the LIFE bonus, the
@@ -3020,40 +3033,14 @@ static void bonus_apply(unsigned char type) {
             objects[OBJ_BAT_1].bonus_applied = 0xFF;
             objects[OBJ_BAT_2].bonus_applied = 0xFF;
             if (!ball.extra2_active && !ball.extra3_active) {
-                unsigned char base_dir = delta_to_dir(ball.dx, ball.dy);
-                unsigned char q = (unsigned char)(base_dir & 0x30);
-                unsigned char d = (unsigned char)(base_dir & 0x0F);
-                unsigned char ball2_dir, ball3_dir;
-                if (d == 0x04) {
-                    ball2_dir = (unsigned char)(q | 0x0C);
-                    ball3_dir = (unsigned char)(q | 0x08);
-                } else if (d == 0x08) {
-                    ball2_dir = (unsigned char)(q | 0x0C);
-                    ball3_dir = (unsigned char)(q | 0x04);
-                } else {
-                    ball2_dir = (unsigned char)(q | 0x08);
-                    ball3_dir = (unsigned char)(q | 0x04);
-                }
+                const ExtraBallDirs dirs =
+                    extra_ball_dirs(delta_to_dir(ball.dx, ball.dy));
+                spawn_extra_ball(OBJ_BALL_2, dirs.second,
+                                 &ball.extra2_dx, &ball.extra2_dy);
+                spawn_extra_ball(OBJ_BALL_3, dirs.third,
+                                 &ball.extra3_dx, &ball.extra3_dy);
                 ball.extra2_active = 1;
-                objects[OBJ_BALL_2].sprite_set = 0x02;
-                objects[OBJ_BALL_2].x_coord = BALL_X;
-                objects[OBJ_BALL_2].y_coord = BALL_Y;
-                /* Unified extras read dir/speed/q8.8 from the object (the
-                 * original copies ball_1's speed + a derived dir). */
-                objects[OBJ_BALL_2].dir = ball2_dir;
-                objects[OBJ_BALL_2].speed = objects[OBJ_BALL_1].speed;
-                objects[OBJ_BALL_2].x_coord_hi = 0;
-                objects[OBJ_BALL_2].y_coord_hi = 0;
-                dir_to_delta(ball2_dir, &ball.extra2_dx, &ball.extra2_dy);
                 ball.extra3_active = 1;
-                objects[OBJ_BALL_3].sprite_set = 0x02;
-                objects[OBJ_BALL_3].x_coord = BALL_X;
-                objects[OBJ_BALL_3].y_coord = BALL_Y;
-                objects[OBJ_BALL_3].dir = ball3_dir;
-                objects[OBJ_BALL_3].speed = objects[OBJ_BALL_1].speed;
-                objects[OBJ_BALL_3].x_coord_hi = 0;
-                objects[OBJ_BALL_3].y_coord_hi = 0;
-                dir_to_delta(ball3_dir, &ball.extra3_dx, &ball.extra3_dy);
                 sound_queue(SND_TRIPLE_BALL);
             }
             break;

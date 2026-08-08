@@ -299,3 +299,20 @@ int bat_step_x(int bat_x, int extra_px, bool move_left, bool move_right) {
     if (bat_x > max_x) bat_x = max_x;
     return bat_x;
 }
+
+ExtraBallDirs extra_ball_dirs(u8 base_dir) {
+    const u8 quadrant = (u8)(base_dir & 0x30);
+    const u8 low      = (u8)(base_dir & 0x0F);
+    ExtraBallDirs out;
+    if (low == 0x04) {
+        out.second = (u8)(quadrant | 0x0C);
+        out.third  = (u8)(quadrant | 0x08);
+    } else if (low == 0x08) {
+        out.second = (u8)(quadrant | 0x0C);
+        out.third  = (u8)(quadrant | 0x04);
+    } else {
+        out.second = (u8)(quadrant | 0x08);
+        out.third  = (u8)(quadrant | 0x04);
+    }
+    return out;
+}

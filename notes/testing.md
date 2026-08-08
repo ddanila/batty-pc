@@ -511,3 +511,15 @@ So the gate is left as it was for now. It cannot be both deterministic
 and green until #11 is fixed, and a gate that passes because its subject
 drifted out of frame is worse than a flaky one. The reproduction is
 recorded above; the work is now a render fix, not a test fix.
+
+### Mutation-testing a host test needs the binary removed first
+
+`make test-physics` correctly lists `src/physics.cpp` as a prerequisite,
+but a mutate / `make` / restore / `make` cycle runs inside one second,
+and make's timestamp comparison cannot see a change that fast. The
+second and third builds silently reran the first binary — so a mutation
+appeared "caught" when it had never been compiled.
+
+`rm -f build/test_physics` before each run. The failure mode is quiet
+and it flatters the test: it reports the result of whichever mutation
+last triggered a real rebuild.
