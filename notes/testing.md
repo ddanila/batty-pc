@@ -543,3 +543,20 @@ still wrong. Run it alone a minute later and it passes.
 The `exercise_*.py` and `sweep_levels.py` scripts still hardcode the
 path. They are manual tools, never run by the suite, so they are left
 alone.
+
+### Full-suite baseline after the refactor
+
+`--full`, 51 gates, 341.5s: **50 pass, 1 fail** — `test-bat-redraw-window`,
+the known-flaky one (known-bugs #11).
+
+Its two failures in that run are worth recording because they confirm
+the diagnosis without any extra work: **234 px in parallel, 178 px on
+the serial retry.** A real redraw defect gives the same count every
+time; a magnitude that moves between runs is the bat landing at a
+different X, which is exactly what the flakiness was traced to.
+
+It also shows the runner's retry heuristic has a limit. "Failed alone
+too" is meant to separate contention from real failures, and it does —
+but a gate that fails ~60% of the time on its own fails the retry
+often enough to be reported as believed. The heuristic distinguishes
+*contention* from *not-contention*, not flaky from real.
