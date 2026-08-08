@@ -4864,10 +4864,11 @@ static void render_falling_objects_to_buff(unsigned char bg_attr) {
     }
 }
 
+static void render_enemy_to_buff_and_mark(unsigned char bg_attr);
+
 static void redraw_full_with_ball(unsigned char level_idx) {
     unsigned char bg_attr = bg_attr_per_cycle[level_idx & 3];
     unsigned char cycle   = (unsigned char)(level_idx & 3);
-    Object *enemy = &objects[OBJ_ENEMY];
     int y, i;
     int score_dirty;
     int lives_dirty;
@@ -4991,34 +4992,7 @@ static void redraw_full_with_ball(unsigned char level_idx) {
     mark_live_bullets_dirty();
     render_bullet_blasts_to_buff_and_mark();
     render_falling_objects_to_buff(bg_attr);
-    if ((enemy->sprite_set & 0x7F) != 0 && !(enemy->sprite_set & 0x80)) {
-        unsigned int spr;
-        int spr_w_px, spr_h_px;
-        if ((enemy->sprite_set & 0x7F) == 0x0A) {
-            unsigned char frame = enemy->sprite_num;
-            if (frame >= BLAST_FRAMES) frame = BLAST_FRAMES - 1;
-            spr = spr_blast_frames[frame];
-        } else {
-            spr = (enemy->sprite_set == 0x09)
-                ? spr_bird_frames[enemy->sprite_num & 7]    /* anim_bird 0..7 */
-                : spr_ufo_frames[enemy->sprite_num % 10];  /* anim_ufo 0..9 */
-        }
-        spr_w_px = sprites_blob[spr]     * 8;
-        spr_h_px = sprites_blob[spr + 1];
-        /* The original draws the enemy with print_obj_to_buff ($B82C):
-         * sprite PIXELS only, never print_sprite_attrib. So the bird/UFO
-         * keeps each cell's underlying attr (bg over open texture, the
-         * BRICK's attr over bricks) and renders in ZX colour-clash — the
-         * bird over a red brick shows red, not the playfield background.
-         * Recolouring to bg_attr here (known-bugs #7) wrongly repainted the
-         * brick cells the bird flew over; verified vs the ZEsarUX oracle
-         * (build/orig_flyover: bird cells == static GT). Gate:
-         * test-enemy-attr-parity. (void) keeps the slot-order bg_attr arg. */
-        (void)bg_attr;
-        blit_masked_to_scr_buff(spr, enemy->x_coord, enemy->y_coord);
-        mark_dirty_cell_rect_px(enemy->x_coord, enemy->y_coord,
-                                spr_w_px, spr_h_px);
-    }
+    render_enemy_to_buff_and_mark(bg_attr);
     if (rocket.active) {
         unsigned int spr = current_rocket_spr();
         render_rocket_to_buff();

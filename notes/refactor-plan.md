@@ -230,6 +230,10 @@ The sweep found one more identical block — the multi-ball extras, now
 mark different rect heights for a bullet blast — resolved since, by
 measuring the sprite instead of guessing: known-bugs #9.
 
+The enemy was the largest copy: 29 lines inline in the full path
+duplicating `render_enemy_to_buff_and_mark`, including the whole
+known-bugs #7 rationale twice. The full path now calls the helper.
+
 What is left differing between the paths: the full path paints the brick
 flash and hit animations where the dirty path relies on the carry (that
 one is deliberate), and the bullet render's guard, which is not —
