@@ -60,7 +60,7 @@ happened, and `make test-video` caught it.
 | 10 | state owners — structs at file scope | 113 vars | **done** — 11 clusters, see below |
 | 1 | replay / probe scaffolding | 480 | **last** — see below |
 
-`main.cpp`: 7,746 → 6,795. 100 host tests + source gates, all via `make test-fast` in seconds.
+`main.cpp`: 7,746 → 6,797. 100 host tests + source gates, all via `make test-fast` in seconds.
 
 ### Stage 5b: one destroyed-cell reset, not two
 
@@ -600,6 +600,18 @@ The ROCKET catch's `INC (IY+$14)` is left as two increments rather than
 routed through the setter: converting it would assume the two are always
 equal, which is exactly the assumption the defensive read declines to
 make.
+
+`hide_extra_balls` is the same shape: an extra ball's liveness is
+recorded twice — the flag the step loop reads, and bit 7 of the object's
+`sprite_set` that the compositor reads. Clear one without the other and
+the ball is drawn but never stepped, or stepped but never drawn. Three
+sites cleared the four fields by hand, in two different orders.
+
+`step_extra_ball`'s own per-slot deactivation was checked first and does
+clear both — no bug, just the pattern.
+
+Both of these are worth more than the line count says: a step extracted
+is easier to read, an invariant extracted is harder to violate.
 
 ## What this has already found
 

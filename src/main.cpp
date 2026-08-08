@@ -2883,6 +2883,17 @@ static void spawn_extra_ball(unsigned char slot,
     o->y_coord_hi = 0;
 }
 
+/* An extra ball's liveness is recorded twice: the flag the step loop
+ * reads, and bit 7 of the object's sprite_set, which is what the
+ * compositor reads. Clear one without the other and you get a ball that
+ * is drawn but never stepped, or stepped but never drawn. */
+static void hide_extra_balls(void) {
+    ball.extra2_active = 0;
+    ball.extra3_active = 0;
+    objects[OBJ_BALL_2].sprite_set = 0x82;
+    objects[OBJ_BALL_3].sprite_set = 0x82;
+}
+
 /* The rocket clear runs with only the caught bat and the rocket alive —
  * everything else vanishes rather than carrying on underneath it.
  * orig: LBAED_6 */
@@ -2890,10 +2901,7 @@ static void hide_objects_for_rocket_clear(void) {
     int i;
     BALL_HIDE();
     ball.stuck = 0;
-    ball.extra2_active = 0;
-    ball.extra3_active = 0;
-    objects[OBJ_BALL_2].sprite_set = 0x82;
-    objects[OBJ_BALL_3].sprite_set = 0x82;
+    hide_extra_balls();
     objects[OBJ_ENEMY].sprite_set = 0;
     bomb.active = 0;
     pts_marker.active = 0;
@@ -4060,10 +4068,7 @@ static void step_bomb(void) {
          * the next frame — i.e. ALL balls die, not just the primary.
          * Mirror that here so multi-ball play can't soak bomb hits. */
         bomb.active = 0;
-        ball.extra2_active = 0;
-        objects[OBJ_BALL_2].sprite_set = 0x82;
-        ball.extra3_active = 0;
-        objects[OBJ_BALL_3].sprite_set = 0x82;
+        hide_extra_balls();
         play_bat_explosion(current_level_idx_var);
         if (player.lives > 0) player.lives--;
         if (player.lives > 0) respawn_primary_ball();    /* else game-over fires next frame */
@@ -5802,10 +5807,7 @@ static void clear_objects_for_death(void) {
     }
     /* The extras are normally already inactive; cleared defensively in
      * case a new call site forgets to do it upstream. */
-    ball.extra2_active = 0;
-    objects[OBJ_BALL_2].sprite_set = 0x82;
-    ball.extra3_active = 0;
-    objects[OBJ_BALL_3].sprite_set = 0x82;
+    hide_extra_balls();
 }
 
 /* Ten sparks abreast of the bat centre, fanning out 5/64 of a turn

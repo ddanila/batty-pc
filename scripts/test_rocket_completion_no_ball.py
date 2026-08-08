@@ -21,7 +21,14 @@ BALL_AREA_ROI = (80, 140, 180, 188)
 def source_guard() -> None:
     src = Path("src/main.cpp").read_text()
     required = [
-        "BALL_HIDE();\n    ball.stuck = 0;\n    ball.extra2_active = 0;",
+        # The rocket clear must hide the primary AND the extras before
+        # the hold frame. The extras go through hide_extra_balls, so
+        # check that helper still clears both halves of their liveness —
+        # otherwise this assertion could be satisfied by a helper that
+        # stopped doing it.
+        "BALL_HIDE();\n    ball.stuck = 0;\n    hide_extra_balls();",
+        "ball.extra2_active = 0;\n    ball.extra3_active = 0;",
+        "objects[OBJ_BALL_2].sprite_set = 0x82;",
         "cache.full_flush = 1;\n                redraw_full_with_ball(lvl_idx);",
         "BATTY_HOLD_ROCKET_CLEAR",
     ]
