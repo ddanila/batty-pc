@@ -5602,12 +5602,6 @@ static int show_round_banner(unsigned int round_num_display) {
  * ball-lost sites (bomb-on-bat, ball-past-bat). */
 
 
-/* Port of hl_bc_calc_direction at $AD22 + the LAD13 speed multiply.
- * LAD13 treats the direction-table byte as a magnitude, multiplies by
- * speed, then two's-complement negates the product when the component's
- * sign byte is $FF. Negative components are therefore `-magnitude`, not
- * `magnitude - 256`. Returns signed 8.8 fixed-point displacement. */
-
 #define DEATH_SPARK_COUNT 10
 #define DEATH_SPARK_BODY_W 0x08
 typedef struct {
@@ -5755,49 +5749,59 @@ static void respawn_primary_ball(void) {
     life_dropped_this_round = 0;
 }
 
-static void play_bat_explosion(unsigned char level_idx) {
-    int bat_center = BAT_X + (int)objects[OBJ_BAT_1].w_body_px / 2;
-    int x_start = bat_center - 12;
-    unsigned char dir = 0x1B;
-    unsigned long last;
-    unsigned long death_pause_start;
-    int alive;
+/* Mirror LBC10's `SET 7,(IX+$00)` sweep over all 11 object slots. Without
+ * it a bomb in flight or an alien on screen survives the explosion and
+ * reappears when the player respawns. */
+static void clear_objects_for_death(void) {
     int i;
-    /* Mirror LBC10's `SET 7,(IX+\$00)` sweep over all 11 object slots —
-     * deactivates bomb, bonus, rocket, enemy, bullets, etc. before the
-     * spark animation. Without this, a bomb in flight or alien on
-     * screen would persist through the explosion and reappear when
-     * the player respawns. */
     bomb.active = 0;
     bonus.active = 0;
+    pts_marker.active = 0;
     rocket.active = 0;
     rocket.clear_completed = 0;
     set_rocket_bonus_sprite_height(ROCKET_BONUS_H_PX);
-    pts_marker.active = 0;
-    bullet_active[0] = 0;
-    bullet_active[1] = 0;
-    bullet_blast_ticks[0] = 0;
-    bullet_blast_ticks[1] = 0;
+    objects[OBJ_ENEMY].sprite_set = 0;
     brick_flash.ticks = 0;
     reset_brick_hit_anim();
-    objects[OBJ_ENEMY].sprite_set = 0;
-    /* Extras may still be inactive but defensive-clear in case a new
-     * call site is added that forgets to deactivate them upstream. */
+    for (i = 0; i < N_BULLETS; i++) {
+        bullet_active[i] = 0;
+        bullet_blast_ticks[i] = 0;
+    }
+    /* The extras are normally already inactive; cleared defensively in
+     * case a new call site forgets to do it upstream. */
     ball.extra2_active = 0;
     objects[OBJ_BALL_2].sprite_set = 0x82;
     ball.extra3_active = 0;
     objects[OBJ_BALL_3].sprite_set = 0x82;
+}
+
+/* Ten sparks abreast of the bat centre, fanning out 5/64 of a turn
+ * apart. orig: LBC10 $BC10 */
+static void spawn_death_sparks(void) {
+    int bat_center = BAT_X + (int)objects[OBJ_BAT_1].w_body_px / 2;
+    int x_start = bat_center - 12;
+    unsigned char dir = 0x1B;
+    int i;
     for (i = 0; i < DEATH_SPARK_COUNT; i++) {
         death_sparks[i].active        = 1;
         death_sparks[i].x_q88         = (long)(x_start + i * 3) << 8;
         death_sparks[i].y_q88         = (long)0xAE << 8;
         death_sparks[i].dir           = dir;
-        death_sparks[i].speed         = 2;        /* matches (IX+\$07) at spawn */
+        death_sparks[i].speed         = 2;        /* matches (IX+$07) at spawn */
         death_sparks[i].sprite_num    = 0;
-        death_sparks[i].frame_ticks   = 0x18;     /* (IX+\$15) at spawn */
-        death_sparks[i].duration_base = 0x18;     /* (IX+\$14) at spawn */
+        death_sparks[i].frame_ticks   = 0x18;     /* (IX+$15) at spawn */
+        death_sparks[i].duration_base = 0x18;     /* (IX+$14) at spawn */
         dir = (unsigned char)((dir + 5) & 0x3F);
     }
+}
+
+static void play_bat_explosion(unsigned char level_idx) {
+    unsigned long last;
+    unsigned long death_pause_start;
+    int alive;
+    int i;
+    clear_objects_for_death();
+    spawn_death_sparks();
     /* Push sound $08 — LBC10 seeds sounds_queue with id=$08,state=$3D
      * before the spark fanout loop. */
     sound_queue(SND_SPARK_FANOUT);

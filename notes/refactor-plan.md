@@ -60,7 +60,7 @@ happened, and `make test-video` caught it.
 | 10 | state owners — structs at file scope | 113 vars | **done** — 11 clusters, see below |
 | 1 | replay / probe scaffolding | 480 | **last** — see below |
 
-`main.cpp`: 7,746 → 6,728. 100 host tests + source gates, all via `make test-fast` in seconds.
+`main.cpp`: 7,746 → 6,732. 100 host tests + source gates, all via `make test-fast` in seconds.
 
 ### Stage 5, done
 
@@ -270,7 +270,19 @@ quirk that makes the ROCKET catch cancel any prior bat-side bonus, which
 is the reason `bonus_apply`'s universal assignment skips ROCKET.
 
 `bonus_apply` is now 180 -> ~85 lines: a sound, one assignment, and a
-switch whose arms are named calls or two-liners. Note the
+switch whose arms are named calls or two-liners.
+
+`play_bat_explosion` then gave up its two setup blocks —
+`clear_objects_for_death` (the LBC10 slot sweep) and
+`spawn_death_sparks` — leaving the function as the PIT-driven sub-loop
+it actually is. A third orphaned comment went with them: the
+`hl_bc_calc_direction` note, stranded since stage 3a moved that maths to
+`physics.h`.
+
+Coverage note: `test-death-sparks` is source-grep only, 0.1s, no boot.
+Its seven needles are content-based so they survived the move, but
+nothing renders the death animation in an emulator — this rests on code
+motion. Note the
 coverage limit: `test-bonus-effects` checks only that the catch sets
 `bat.bonus_applied = $09`, so the blast body — alien to sprite_set $0A,
 +350, SND_ALIEN_BLAST — is not gated by anything. That arm rests on
