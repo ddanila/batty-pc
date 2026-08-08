@@ -19,7 +19,10 @@ SRC = Path("src/main.cpp")
 def main() -> int:
     src = SRC.read_text()
     compact = "".join(src.split())
-    guard = "if(!rocket_active&&!rocket_clear_completed&&!suppress_no_ball_death&&!BALL_VISIBLE&&!ball2_active&&!ball3_active)"
+    # The extra-ball flags moved into BallState; the guard itself is
+    # unchanged, and that is what this checks.
+    guard = ("if(!rocket_active&&!rocket_clear_completed&&!suppress_no_ball_death"
+             "&&!BALL_VISIBLE&&!ball.extra2_active&&!ball.extra3_active)")
     if guard not in compact:
         raise SystemExit(f"FAIL: missing rocket-safe no-ball death guard: {guard}")
     idx = compact.find(guard)

@@ -33,10 +33,10 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from test_visual import PALETTE_RGB, make_diff_png, ppm_inner_to_indices, run_qemu
+from test_visual import PALETTE_RGB, make_diff_png, ppm_inner_to_indices, run_qemu, test_floppy
 
 
-TEST_FLOPPY = Path("build/batty-test.img")
+TEST_FLOPPY = Path(test_floppy())
 OUT = Path("build/test_enemy_flyover_redraw")
 # Fresh-spawn UFO, exactly the enemy_prepare ($9EAA) state: sprite_set=08,
 # x=0x40 (the drifting levels' spawn slot), y=1, dir=$10 (down), speed 1,

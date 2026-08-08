@@ -10,10 +10,10 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from test_visual import PALETTE_RGB, make_diff_png, ppm_inner_to_indices, run_qemu
+from test_visual import PALETTE_RGB, make_diff_png, ppm_inner_to_indices, run_qemu, test_floppy
 
 
-TEST_FLOPPY = Path("build/batty-test.img")
+TEST_FLOPPY = Path(test_floppy())
 OUT = Path("build/test_rocket_flight_redraw")
 PLAYFIELD_ROI = (72, 96, 176, 192)
 

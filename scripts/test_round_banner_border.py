@@ -10,10 +10,10 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from test_visual import ppm_inner_to_indices, run_qemu
+from test_visual import ppm_inner_to_indices, run_qemu, test_floppy
 
 
-TEST_FLOPPY = Path("build/batty-test.img")
+TEST_FLOPPY = Path(test_floppy())
 OUT = Path("build/test_round_banner_border")
 WINDOW_X, WINDOW_Y, WINDOW_W = 88, 133, 80
 # The window is 32px tall (y=133..164); the "PLAYER 1" ink starts at

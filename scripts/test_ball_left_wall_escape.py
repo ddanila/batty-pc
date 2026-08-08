@@ -28,10 +28,10 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from test_visual import run_qemu
+from test_visual import run_qemu, test_floppy
 
 
-FLOPPY = Path("build/batty-test.img")
+FLOPPY = Path(test_floppy())
 OUT = Path("build/test_ball_left_wall_escape")
 
 

@@ -18,10 +18,10 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from test_visual import PALETTE_RGB, make_diff_png, ppm_inner_to_indices, run_qemu
+from test_visual import PALETTE_RGB, make_diff_png, ppm_inner_to_indices, run_qemu, test_floppy
 
 
-TEST_FLOPPY = Path("build/batty-test.img")
+TEST_FLOPPY = Path(test_floppy())
 OUT = Path("build/test_bat_fire_dirty_redraw")
 BAT_LASER = "01017400AD000000040DEFAE1C0A74AD040DF0000180"
 BALL_OBJECT = "02008000A0001802020C000008070000000000000080"

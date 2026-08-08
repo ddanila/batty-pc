@@ -15,10 +15,10 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from test_visual import PALETTE_RGB, make_diff_png, ppm_inner_to_indices, run_qemu
+from test_visual import PALETTE_RGB, make_diff_png, ppm_inner_to_indices, run_qemu, test_floppy
 
 
-TEST_FLOPPY = Path("build/batty-test.img")
+TEST_FLOPPY = Path(test_floppy())
 OUT = Path("build/test_enemy_brick_residue")
 BAT_OBJECT = "01017400AD000000040DEFAE1C0A74AD040DF0008380"
 BALL_OBJECT = "02006C004E001F03020CEEF008076C4E020C0000008C"

@@ -108,6 +108,24 @@ The level-entry prologue is a safe slice: linear code whose two
 its own pass, and unlike every extraction so far it has no fast test
 guarding it, only 10-second boots.
 
+### Three verification failures, and what they have in common
+
+Worth writing down because they repeated:
+
+1. `test-death-sparks` greps source for code stage 3a moved to another
+   module. Red for six commits. I was running `parity-check-parallel`,
+   which excludes the source gates CI runs.
+2. `parity-check-parallel` without `--full` is **8 of 49 gates**. Every
+   "all gates green" in this refactor meant the fast core only.
+3. `test-rocket-bonus` greps for `!ball2_active`, which the BallState
+   grouping renamed. I reported that commit as "test-fast green" having
+   piped test-fast's output past myself without reading it.
+
+The common thread is not which suite — it is claiming a check's result
+without looking at it. `make test-fast` is the answer to (1) and (3);
+`--full` is the answer to (2); reading the output is the answer to all
+three.
+
 ### Verify with `make test-fast`, not just the QEMU suite
 
 `test-death-sparks` greps SOURCE for code that stage 3a moved to another

@@ -16,10 +16,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 from test_visual import (PALETTE_RGB, PLAYFIELD_W, expected_from_scr,
-                         ppm_inner_to_indices, run_qemu)
+                         ppm_inner_to_indices, run_qemu, test_floppy)
 
 OUT = Path("build/test_brick_flash")
-FLOPPY = Path("build/batty-test.img")
+FLOPPY = Path(test_floppy())
 ROWS, COLS = 12, 15
 BRICK_X0, BRICK_Y0 = 8, 32
 BRICK_W, BRICK_H = 16, 8

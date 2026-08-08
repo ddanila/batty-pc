@@ -307,6 +307,22 @@ from ~15 min to a few). ZEsarUX gates (`test-frame-step`, `replay-l3-entry`,
 drive a single ZRCP port (10000) and a shared snapshot, so run those via the
 serial `make parity-check-full`.
 
+**Two things that made the full run untrustworthy**, both fixed 2026-08-07:
+
+1. **17 gates hardcoded `build/batty-test.img`** and ignored
+   `BATTY_TEST_FLOPPY`, despite the claim below that they all read it.
+   Under the parallel runner that variable points at a per-gate image, so
+   `make build/batty-test.img` had no rule and the gate died in 0.1 s —
+   which reads exactly like a regression. They now go through
+   `test_visual.test_floppy()`.
+2. **A gate is not one boot.** `test-ball-no-tunnel` boots dozens of
+   times, `test-levels-sweep` fifteen. `--full` at J=8 starved QEMU below
+   real time and produced "NO … in PROBE.TXT" failures that were pure
+   contention. `--full` now defaults to a quarter of the core count, and
+   **any failure is retried once alone** — only a gate that fails twice is
+   reported, and gates that needed the retry are named, so a growing list
+   means J is too high for that machine.
+
 Reliability net: a wait-key gate that reads a probe written at level init
 (`probe_phase=init`, i.e. a missed `BATTY_REPLAY_WAIT_KEY` wake on a slow
 boot) re-boots until it sees a real checkpoint write (`probe_phase=play`).
