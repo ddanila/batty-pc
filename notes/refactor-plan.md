@@ -303,6 +303,16 @@ helper *and* that the helper still explodes the bat, so the assertion is
 no weaker. `check_gate_greps` reported PASS throughout — see
 notes/testing.md for why.
 
+`step_bonus` did four unrelated things behind one name: the BIG_BAT
+timer, the bat width ramp, the BIG_BALL timer, and the falling bonus
+itself. It is now `tick_bat_resize` (timer and ramp together, since the
+timer sets the target the ramp chases), `tick_big_ball_timer`,
+`spawn_pts_marker`, and a `step_bonus` that steps the bonus.
+
+A third dead `(void)`-silenced local turned up there — `caught_type`,
+whose comment explained that every catch uses the +400 marker including
+SCORE_5K. The fact was worth keeping; the variable was not.
+
 `PlayerState` needed a different tool from the rest. `score` and `lives`
 are English words that occur in comments and — the trap —
 in `fprintf(f, "score=%06lu\n", score)`, whose *literal* is the

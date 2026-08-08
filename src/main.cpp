@@ -3085,51 +3085,74 @@ static int big_bat_active(void) {
  * making it artificially easier to catch / hit during SMASH. */
 static int eff_ball_size(void) { return BALL_W_PX; }
 
+/* BIG_BAT expiry and the width ramp toward it. The timer can also be
+ * cut short by another catch replacing bat.bonus_applied; either way the
+ * target goes to zero. The original's bat_decrease_size ($9DE0) is
+ * silent — the resize cue comes from the replacing catch, not the
+ * shrink.
+ *
+ * The ramp is gated every other tick: one step of bat.extra_px changes
+ * the centred body by 2 px, so every-2-ticks gives the original's
+ * 1 px/frame and its ~16-frame full grow. Ungated it grew twice as fast
+ * as the disassembly prescribes. */
+static void tick_bat_resize(void) {
+    static unsigned char resize_gate = 0;
+
+    if (bat.big_ticks > 0) {
+        bat.big_ticks--;
+        if (bat.big_ticks == 0 || !big_bat_active()) {
+            bat.extra_target = 0;
+            bat.big_ticks = 0;            /* keep the two in sync */
+        }
+    }
+
+    resize_gate++;
+    if ((resize_gate & 1) != 0) return;
+    if (bat.extra_px < bat.extra_target) bat.extra_px++;
+    else if (bat.extra_px > bat.extra_target) bat.extra_px--;
+}
+
+/* BIG_BALL expiry, on every other PIT tick. orig: smash_counter $F8 at
+ * $03B0 — it clears bat.bonus_applied so a later BIG_BALL drop is not
+ * blocked by the duplicate-exclusion check. */
+static void tick_big_ball_timer(void) {
+    if (ball.big_ticks == 0 || (pit_ticks() & 1UL) != 0) return;
+    ball.big_ticks--;
+    if (ball.big_ticks == 0 && objects[OBJ_BAT_1].bonus_applied == 0x07) {
+        objects[OBJ_BAT_1].bonus_applied = 0xFF;
+        objects[OBJ_BAT_2].bonus_applied = 0xFF;
+    }
+}
+
+/* The floating reward marker left behind by a catch. Always the +400
+ * glyph, even for SCORE_5K: LA67B_3 at $A6FC sets sprite_num = $00 for
+ * every catch before the type dispatch, so the +5000 sprite is only ever
+ * a falling-bonus glyph.
+ *
+ * X drift is {-2, -1, +1, +2}, from $3030's `AND $01 / INC A / RL B /
+ * JR C / NEG`: bit 0 of random picks the magnitude, bit 7 the sign. The
+ * read does not advance the RNG. */
+static void spawn_pts_marker(int x, int y) {
+    unsigned int r;
+    int mag;
+    pts_marker.sprite = SPR_400_POINTS;
+    pts_marker.x = x;
+    pts_marker.y = y;
+    pts_marker.active = 1;
+    pts_marker.motion.acc = (unsigned int)(((pit_ticks() & 1UL) ? 0xFEu : 0xFFu) << 8);
+    pts_marker.motion.frac = 0;
+    r = rng_sample();
+    mag = (int)((r & 1) + 1);
+    pts_marker.dx = (r & 0x80) ? mag : -mag;
+}
+
 /* Advance the falling bonus, check for catch on the bat, and tick down
  * any active effect timers. */
 static void step_bonus(void) {
     int bat_left, bat_right;
-    if (bat.big_ticks > 0) {
-        bat.big_ticks--;
-        if (bat.big_ticks == 0 || !big_bat_active()) {
-            /* Timer expired OR bat.bonus_applied was changed by
-             * another catch — either way, target the shrink. The
-             * original's bat_decrease_size at \$9DE0 runs silently;
-             * the SND_BAT_RESIZE_2 cue plays from push_resize_sound
-             * at the bonus catch that replaced BIG_BAT, not from
-             * the shrink animation itself. */
-            bat.extra_target = 0;
-            bat.big_ticks = 0;                        /* keep the two in sync */
-        }
-    }
-    if (ball.big_ticks > 0 && ((pit_ticks() & 1UL) == 0)) {
-        ball.big_ticks--;
-        if (ball.big_ticks == 0
-            && objects[OBJ_BAT_1].bonus_applied == 0x07) {
-            /* Port of the smash_counter \$F8 expire at \$03B0: clear
-             * bat.bonus_applied to \$FF so future BIG_BALL bonus drops
-             * aren't blocked by the duplicate-exclusion check. */
-            objects[OBJ_BAT_1].bonus_applied = 0xFF;
-            objects[OBJ_BAT_2].bonus_applied = 0xFF;
-        }
-    }
-    /* Animate bat width toward target — gated every other tick.
-     * Original bat_resize at \$9DE0 combines counter_misc bit 0 +
-     * bit 1 over a 4-frame cycle to grow body 1 px / frame. Each
-     * step of bat.extra_px in our centred BIG_BAT changes body
-     * width by 2 px, so we ramp every 2 ticks → 1 px / frame body
-     * change = matches original's ~16-frame full grow.
-     *
-     * Was 1 px / tick (= 2 px / tick body), making BIG_BAT grow
-     * twice as fast as the disasm prescribes. */
-    {
-        static unsigned char resize_gate = 0;
-        resize_gate++;
-        if ((resize_gate & 1) == 0) {
-            if (bat.extra_px < bat.extra_target) bat.extra_px++;
-            else if (bat.extra_px > bat.extra_target) bat.extra_px--;
-        }
-    }
+
+    tick_bat_resize();
+    tick_big_ball_timer();
     if (!bonus.active) return;
     bonus.y += motion_accel_step(&bonus.motion, 0x0008, 0x02);
     bat_left  = eff_bat_left();
@@ -3142,33 +3165,10 @@ static void step_bonus(void) {
         && bonus.y < BAT_Y + 10
         && bonus.x + BONUS_W_PX > bat_left
         && bonus.x < bat_right) {
-        unsigned char caught_type = bonus.type;
-        bonus_apply(bonus.type);                  /* applies effect + pushes catch sound */
+        bonus_apply(bonus.type);          /* effect + catch sound */
         bonus.active = 0;
-        player.score += 400;                         /* matches LD BC,$0400 / add_points_to_score at $A67D */
-        /* Spawn the floating reward marker. Original LA67B_3 at \$A6FC
-         * sets sprite_num = \$00 (= +400) for EVERY catch including
-         * SCORE_5K, before the type dispatch — so the +5000 sprite is
-         * only ever used as a falling-bonus glyph, not a marker. Match
-         * by always using +400 here. */
-        (void)caught_type;
-        pts_marker.sprite = SPR_400_POINTS;
-        pts_marker.x = bonus.x;
-        pts_marker.y = bonus.y;
-        pts_marker.active = 1;
-        pts_marker.motion.acc = (unsigned int)(((pit_ticks() & 1UL) ? 0xFEu : 0xFFu) << 8);
-        pts_marker.motion.frac = 0;
-        /* Pick X drift in {-2, -1, +1, +2} — port of \$3030's
-         * `AND \$01 / INC A / RL B / JR C / NEG` sequence:
-         *   bit 0 of random → +1 or +2 magnitude
-         *   bit 7 of random → keep positive or negate */
-        {
-            /* Read-current (rng_sample): the original reads random_number
-             * (low byte) here without advancing. */
-            unsigned int r = rng_sample();
-            int mag = (int)((r & 1) + 1);
-            pts_marker.dx = (r & 0x80) ? mag : -mag;
-        }
+        player.score += 400;              /* LD BC,$0400 at $A67D */
+        spawn_pts_marker(bonus.x, bonus.y);
         return;
     }
     if (bonus.y > PLAYFIELD_H) bonus.active = 0;
