@@ -248,46 +248,43 @@ accumulates the bulletless full-redraw frames that would separate the
 two phases.
 
 
-## 11. The narrow bat redraw disagrees with the full redraw at both wall clamps
+## 11. The narrow bat redraw loses the inner border line
 
-Found by making `test-bat-redraw-window` deterministic (see
-notes/testing.md). Once the two boots land the bat at the *same* X, the
-remaining difference is reproducible — 5/5 runs, identical pixel counts.
+Found by making `test-bat-redraw-window` deterministic (notes/testing.md).
+Once both boots land the bat at the same X, the remaining difference is
+reproducible: **6 px at the left clamp (x=8), 2 px at the right clamp
+(x=247)**, 5/5 runs.
 
-**Left clamp (bat at 8..36): 6 px.** Differing pixels: x=8, rows
-173, 174, 181, 182, 183, 185.
+**One cause, both clamps.** `inner_border_line_c` blacks out exactly two
+pixel columns, over three 28-row bands starting at y=50, 106 and 162:
 
-*Cause unidentified.* An earlier version of this note blamed the lives
-indicators — `redraw_bat` repaints them via `render_lives` and
-`redraw_bat_dirty` does not — but the numbers do not support it.
-`SPR_LIVES` is 16x6 drawn at (8, 185), so it covers rows 185..190. Only
-ONE of the six differing rows is inside it, and rows 186..190 were in
-the compared region and did NOT differ. If the narrow path were losing
-the indicators, more of those rows would disagree.
+    scr_buff[y * 32 + 1]  &= 0x7F;   /* x=8   */
+    scr_buff[y * 32 + 30] &= 0xFE;   /* x=247 */
 
-What is known: x=8 is the first playfield column (the frame's side strip
-is byte 0, x 0..7), the difference is deterministic at 6 px over 5 runs,
-and it appears only with the bat clamped left. Diagnosing it needs the
-deterministic left-clamp harness rebuilt — see notes/testing.md for how
-that was driven.
+The bat band (rows 173..185) sits inside the third band, so both columns
+are blacked there. `redraw_bat_dirty` repaints its window with
+`paint_bg_window_to_buff` — the plain background tile — and never
+re-applies those clears, so the column comes back as tile pixels. The
+full path does not lose them because it restores from the static cache,
+which was composed with `inner_border_line_c` already applied.
 
-**Right clamp (bat at 220..248): 2 px.** x=247 — the bat's rightmost
-pixel column — on rows 181 and 183 only. `redraw_bat_dirty`'s
-non-firing branch reflushes a single row (`BAT_Y + 6`, the running-dot
-row); rows 181 and 183 sit either side of it and keep whatever the last
-full bat draw left. So the final movement frame's edge handling is what
-is at fault, not the parked frame.
+It only shows when the bat is clamped against a wall, because only then
+does the bat's repaint window include byte 1 or byte 30. The rows that
+differ are exactly those where the bat sprite's own pixels do not happen
+to cover the column: at the left clamp rows 173, 174, 181, 182, 183, 185
+lose it while 175..180 and 184 are masked by the bat.
 
-Not fixed. The obvious repairs both give back what the narrow path is
-for: calling `paint_frame_to_buff`/`render_lives` from the dirty path
-repaints the whole frame every frame, and widening the reflush to
-`BAT_H_PX` rows makes it no longer narrow. The fix wants a targeted
-restore of just the overlapped region, which is a design decision on the
-hot path and not a rename.
+Two earlier explanations in this file were wrong and are recorded here
+so the reasoning is not repeated: the lives indicators (refuted — the
+sprite covers rows 185..190 and rows 186..190 matched), and the
+running-dot row reflush (refuted — that would not produce a difference
+confined to a single column).
 
-Whether either is visible in play: both need the bat held against a wall,
-which is reachable.
-
+Not yet fixed. The repair is to re-apply the border-line clears inside
+the repainted window, or to restore that window from the static cache
+instead of repainting the tile. It should land with a gate, since a
+pixel gate can reach it: park the bat at a clamp, compare narrow against
+full over the whole bat band.
 
 ## 12. A CATCH-held ball snapped to the default offset on a bat-only redraw — fixed
 
