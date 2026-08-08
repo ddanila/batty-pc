@@ -242,6 +242,25 @@ was done: the two paths' *marking* loops are now one
 `mark_live_bullets_dirty`, which is where the copy-paste risk was. The
 guard difference is left visible rather than quietly resolved.
 
+**What the two frames actually are** (2026-08-09), so an oracle capture
+knows what to look for. Both records are 18 bytes at `$7DD2` and
+`$7DE4`, 8 px wide by 8 rows:
+
+    BULLET_1: 01 08 | 60 00 F0 40 F0 40 F0 40 | 60 00 F0 A0 F0 A0 F0 A0
+    BULLET_2: 01 08 | 60 00 F0 40 F0 40 F0 40 | 60 00 F0 50 F0 50 F0 50
+                     ^ data (identical)        ^ mask (differs)
+
+The PIXELS are identical. Only the mask differs, and only in the low
+nibble of three rows — `A0` = 1010, `50` = 0101. So the animation is a
+one-pixel transparency shimmer: alternating which background pixels show
+through the bullet, not a change of shape.
+
+That matters for the capture. Do not look for the bullet moving or
+changing outline; look at which background pixels show through it on
+consecutive frames, and whether that alternation continues across frames
+with no bullet in flight. A still frame cannot answer it — the phase is
+only visible as a difference between two consecutive frames.
+
 No gate covers it. `test-bullet-fly`, `test-laser-cadence` and
 `test-bullet-dirty-redraw` all fire bullets promptly, so no run
 accumulates the bulletless full-redraw frames that would separate the
