@@ -60,7 +60,7 @@ happened, and `make test-video` caught it.
 | 10 | state owners — structs at file scope | 113 vars | **done** — 11 clusters, see below |
 | 1 | replay / probe scaffolding | 480 | **last** — see below |
 
-`main.cpp`: 7,746 → 6,734. 100 host tests + source gates, all via `make test-fast` in seconds.
+`main.cpp`: 7,746 → 6,747. 100 host tests + source gates, all via `make test-fast` in seconds.
 
 ### Stage 5b: one destroyed-cell reset, not two
 
@@ -290,6 +290,18 @@ use them. Both deleted.
 That is a third comment failure mode, after orphaning and drift: a
 comment that stayed attached to its code while the code beneath it
 changed meaning. Nothing catches these either.
+
+`lose_a_life` and `lose_primary_ball` closed out `step_ball`. The
+life-loss rule — explode, decrement, respawn — existed in both
+`step_ball` and `handle_no_ball_death`; the two `if (player.lives > 0)`
+checks are separate on purpose, since with the last life gone there is
+nothing to respawn onto.
+
+Sharing it broke `test_rocket_bonus.py`, which asserts the rocket-safe
+guard is followed by the explosion. The gate now asserts through the
+helper *and* that the helper still explodes the bat, so the assertion is
+no weaker. `check_gate_greps` reported PASS throughout — see
+notes/testing.md for why.
 
 `PlayerState` needed a different tool from the rest. `score` and `lives`
 are English words that occur in comments and — the trap —

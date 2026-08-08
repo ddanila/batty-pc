@@ -26,8 +26,14 @@ def main() -> int:
     if guard not in compact:
         raise SystemExit(f"FAIL: missing rocket-safe no-ball death guard: {guard}")
     idx = compact.find(guard)
-    if "play_bat_explosion(current_level_idx_var);" not in compact[idx:idx + 220]:
-        raise SystemExit("FAIL: rocket-safe no-ball guard does not protect bat-explosion path")
+    if "lose_a_life();" not in compact[idx:idx + 220]:
+        raise SystemExit("FAIL: rocket-safe no-ball guard does not protect the life-loss path")
+    # The guard protects lose_a_life, so check that is still what explodes
+    # the bat — otherwise this assertion could be satisfied by a helper
+    # that no longer does.
+    body = compact[compact.find("voidlose_a_life(void){"):]
+    if "play_bat_explosion(current_level_idx_var);" not in body[:200]:
+        raise SystemExit("FAIL: lose_a_life no longer plays the bat explosion")
     if "Mirror LBAED's ordering" not in src or "before balls_quantity" not in src:
         raise SystemExit("FAIL: rocket-safe no-ball guard lacks original-code breadcrumb")
     if "rocket.clear_completed = 1" not in src:

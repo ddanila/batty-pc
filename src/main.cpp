@@ -4411,6 +4411,28 @@ static void catch_ball_on_bat(int contact_x) {
     sound_queue(SND_BAT_BEAT);
 }
 
+/* Blow up the bat, take a life, and put a new ball on it. The two
+ * checks are separate: with the last life gone there is nothing to
+ * respawn onto, and game-over fires on the next frame. */
+static void lose_a_life(void) {
+    play_bat_explosion(current_level_idx_var);
+    if (player.lives > 0) player.lives--;
+    if (player.lives > 0) respawn_primary_ball();
+}
+
+/* The primary ball has fallen past the bat. The original deactivates it
+ * and decrements balls_quantity; only when that hits 0 does LBC10 fire
+ * the explosion — so an extra ball still in flight lets the player
+ * survive this fall. orig: LA27E_25 */
+static void lose_primary_ball(void) {
+    magnet_ball_state_clear(0);          /* LA27E_25 zeroes the LA270 pair */
+    if (ball.extra2_active || ball.extra3_active) {
+        BALL_HIDE();
+        return;
+    }
+    lose_a_life();
+}
+
 /* Park the ball on the bat at its catch offset. The bottom row touches
  * the bat top: $A6 = 166, the original's launch rest at LA27E_15. A ball
  * HELD by the MAGNET bonus rests 1 px lower at $A7 = 167 (LAB1F_3), and
@@ -4529,14 +4551,7 @@ static void step_ball(void) {
      * keep playing. Otherwise run the death animation, decrement
      * lives, and respawn primary stuck on the bat. */
     if (next_y >= PLAYFIELD_H) {
-        magnet_ball_state_clear(0);          /* LA27E_25 zeroes the LA270 pair */
-        if (ball.extra2_active || ball.extra3_active) {
-            BALL_HIDE();
-            return;
-        }
-        play_bat_explosion(current_level_idx_var);
-        if (player.lives > 0) player.lives--;
-        if (player.lives > 0) respawn_primary_ball();
+        lose_primary_ball();
         return;
     }
     /* Brick collision: side-aware. brick_collision tells us which axis
@@ -6125,9 +6140,7 @@ static void handle_no_ball_death(void) {
         && !BALL_VISIBLE
         && !ball.extra2_active
         && !ball.extra3_active) {
-        play_bat_explosion(current_level_idx_var);
-        if (player.lives > 0) player.lives--;
-        if (player.lives > 0) respawn_primary_ball();
+        lose_a_life();
     }
 }
 

@@ -560,3 +560,21 @@ too" is meant to separate contention from real failures, and it does —
 but a gate that fails ~60% of the time on its own fails the retry
 often enough to be reported as believed. The heuristic distinguishes
 *contention* from *not-contention*, not flaky from real.
+
+### check_gate_greps does not see slice-scoped needles
+
+`test_rocket_bonus.py` asserts that the no-ball guard is followed within
+220 characters by the bat-explosion call:
+
+    idx = compact.find(guard)
+    if "play_bat_explosion(...)" not in compact[idx:idx + 220]:
+
+`scripts/check_gate_greps.py` models top-level `X not in src` needles.
+It does not model a needle scoped to a slice, so when the explosion call
+moved behind a `lose_a_life()` helper it reported **PASS** while the gate
+itself failed.
+
+So a green `test-gate-greps` narrows where a rename can hurt; it does not
+prove the source gates still pass. `make test-fast` runs the gates
+themselves and is what actually answers that — the grep check is a
+one-second early warning, not a substitute.
