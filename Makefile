@@ -42,7 +42,7 @@ WLINKFMT = format os2 le option stub=$(WSTUB)
 # Modules compile to their own object and expose a header; main.cpp is
 # the state machine and wiring. (zxvga.cpp is still #included -- it has no
 # separate object yet.)
-MODULES = src/rng.cpp src/physics.cpp src/assets.cpp src/zxvga.cpp src/bricks.cpp src/sound.cpp src/hud.cpp src/objects.cpp src/weapons.cpp src/enemies.cpp src/bonus_codes.cpp src/scoring.cpp
+MODULES = src/rng.cpp src/physics.cpp src/assets.cpp src/zxvga.cpp src/bricks.cpp src/sound.cpp src/hud.cpp src/objects.cpp src/weapons.cpp src/replay_parse.cpp src/enemies.cpp src/bonus_codes.cpp src/scoring.cpp
 SRC     = src/main.cpp $(MODULES)
 OBJ      = $(patsubst src/%.cpp,build/%.obj,$(SRC))
 TEST_OBJ = $(patsubst src/%.cpp,build/%-test.obj,$(SRC))
@@ -115,7 +115,7 @@ PROFILE_BAT_LASER   ?= 01017400AD000000040DEFAE1C0A74AD040DF0000180
 # whole-band rebuild baseline. `make profile-bricks` vs `... FULL_BAND=1`.
 FULL_BAND           ?=
 
-.PHONY: test-fast test-source-gates test-gate-greps test-video test-rng test-physics test-assets test-bricks test-sound test-hud-unit test-objects test-weapons test-enemies test-bonus-codes test-scoring all clean run run-86box profile-auto profile-bricks profile-ballbricks profile-multiball profile-86box read-profile floppy assets help run-original run-original-cheat snapshot candidates regions test test-hud test-bat-redraw-window test-ball-dirty-redraw test-ball-object-dirty-redraw test-bullet-dirty-redraw test-bomb-dirty-redraw test-blast-dirty-redraw test-visual-checkpoints test-bat-fire-dirty-redraw test-multiball-dirty-redraw test-bigball-dirty-redraw test-stuck-ball-dirty-redraw test-enemy-brick-residue test-rocket-flight-redraw test-rocket-completion-no-ball test-round-banner-border test-brick-flash test-rocket-bonus test-death-sparks test-game-over test-stuck-ball-offset test-normal-ball-launch test-ball-left-wall-escape test-l3-replay-seed test-midgame-brick-replay replay-l3-brick-flash replay-l3-brick-flash-both test-laffc-ball-frame1 test-bat-deflection test-enemy-descend test-rng-walk test-enemy-steer test-bonus-fall test-bomb-fall test-pts400-fall test-bullet-fly test-laser-cadence test-enemy-anim test-bonus-drop test-bonus-effects test-bonus-effects2 test-bonus-typepick test-bullet-blast test-brick-scoring test-ball-speed-ramp test-levels-sweep test-enemy-flyover-redraw parity-check parity-check-full
+.PHONY: test-fast test-source-gates test-gate-greps test-video test-rng test-physics test-assets test-bricks test-sound test-hud-unit test-objects test-weapons test-enemies test-bonus-codes test-scoring test-replay-parse all clean run run-86box profile-auto profile-bricks profile-ballbricks profile-multiball profile-86box read-profile floppy assets help run-original run-original-cheat snapshot candidates regions test test-hud test-bat-redraw-window test-ball-dirty-redraw test-ball-object-dirty-redraw test-bullet-dirty-redraw test-bomb-dirty-redraw test-blast-dirty-redraw test-visual-checkpoints test-bat-fire-dirty-redraw test-multiball-dirty-redraw test-bigball-dirty-redraw test-stuck-ball-dirty-redraw test-enemy-brick-residue test-rocket-flight-redraw test-rocket-completion-no-ball test-round-banner-border test-brick-flash test-rocket-bonus test-death-sparks test-game-over test-stuck-ball-offset test-normal-ball-launch test-ball-left-wall-escape test-l3-replay-seed test-midgame-brick-replay replay-l3-brick-flash replay-l3-brick-flash-both test-laffc-ball-frame1 test-bat-deflection test-enemy-descend test-rng-walk test-enemy-steer test-bonus-fall test-bomb-fall test-pts400-fall test-bullet-fly test-laser-cadence test-enemy-anim test-bonus-drop test-bonus-effects test-bonus-effects2 test-bonus-typepick test-bullet-blast test-brick-scoring test-ball-speed-ramp test-levels-sweep test-enemy-flyover-redraw parity-check parity-check-full
 
 all: $(EXE) $(ASSETS)
 
@@ -629,6 +629,7 @@ parity-check:
 	$(MAKE) test-enemies
 	$(MAKE) test-bonus-codes
 	$(MAKE) test-scoring
+	$(MAKE) test-replay-parse
 	$(MAKE) test-source-gates
 	$(MAKE) test
 	$(MAKE) test-laffc-ball-frame1
@@ -965,6 +966,14 @@ $(PHYSICS_TEST): tests/test_physics.cpp src/physics.cpp src/physics.h src/types.
 
 test-physics: $(PHYSICS_TEST)
 	./$(PHYSICS_TEST)
+
+REPLAY_PARSE_TEST = build/test_replay_parse
+
+$(REPLAY_PARSE_TEST): tests/test_replay_parse.cpp src/replay_parse.cpp src/replay_parse.h src/types.h | build
+	$(HOSTCXX) $(HOSTCXXFLAGS) -o $@ tests/test_replay_parse.cpp
+
+test-replay-parse: $(REPLAY_PARSE_TEST)
+	./$(REPLAY_PARSE_TEST)
 
 SCORING_TEST = build/test_scoring
 

@@ -58,9 +58,10 @@ happened, and `make test-video` caught it.
 | 8 | `sound` — queue + envelopes | 366 | **done** — 7 tests; had NO coverage before |
 | 9 | `run_level` decomposition | 684 -> 370 | **in progress** — prologue, input, bat steering, scoring extracted |
 | 10 | state owners — structs at file scope | 113 vars | **done** — 11 clusters, see below |
-| 1 | replay / probe scaffolding | 480 | **last** — see below |
+| 1a | `replay_parse` — the BATTY_REPLAY_* value formats | 45 | **done** — 4 tests |
+| 1 | replay / probe scaffolding | ~430 | **last** — see below |
 
-`main.cpp`: 7,746 → 6,817. 100 host tests + source gates, all via `make test-fast` in seconds.
+`main.cpp`: 7,746 → 6,824. 100 host tests + source gates, all via `make test-fast` in seconds.
 
 ### Stage 5b: one destroyed-cell reset, not two
 
@@ -481,6 +482,24 @@ Order from here:
 1. the frame loop, into named phases
 3. game-state consolidation — the real prize
 4. replay, which falls out of 3
+
+### Stage 1a: the parsers came out first
+
+The replay scaffolding is still blocked on game-state ownership, but its
+*parsers* never were. `replay_parse_ints` and `replay_parse_hex_bytes`
+take the value, not the variable — `main.cpp` keeps the `getenv` — so
+they moved to `src/replay_parse.cpp` with four host tests.
+
+Writing the tests found the contract was false. `replay_parse_ints`
+assigned each field into the caller's array as it went, so a value that
+failed on its third field had already overwritten the first two. The
+"all-or-nothing" claim I made when consolidating those five hand-rolled
+parsers was wrong at the time. It now parses into a scratch buffer and
+copies out only on success.
+
+That is worth more than the line count: a half-seeded replay value puts
+the game in a state nobody asked for, and the gate then reports a game
+bug.
 
 ### Why replay is last, not first
 

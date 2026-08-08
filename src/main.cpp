@@ -30,6 +30,7 @@
 #include "bonus_codes.h"
 #include "enemies.h"
 #include "weapons.h"
+#include "replay_parse.h"
 #include "sound.h"
 #include "physics.h"
 #include "rng.h"
@@ -3501,33 +3502,13 @@ static void apply_replay_random_override(void) {
     }
 }
 
-static int replay_hex_nibble(char c) {
-    if (c >= '0' && c <= '9') return c - '0';
-    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
-    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
-    return -1;
-}
-
-static int replay_parse_hex_bytes(const char *p, unsigned char *out, int n) {
-    int i;
-    if (p == NULL) return -1;
-    for (i = 0; i < n; i++) {
-        int hi = replay_hex_nibble(p[i * 2]);
-        int lo = replay_hex_nibble(p[i * 2 + 1]);
-        if (hi < 0 || lo < 0) return -1;
-        out[i] = (unsigned char)((hi << 4) | lo);
-    }
-    if (p[n * 2] != '\0') return -1;
-    return 0;
-}
-
 
 
 /* Seed a whole object descriptor from a hex blob, so a gate can put the
  * bat, ball or alien anywhere without playing the game into that state. */
 static void apply_replay_object_override(const char *name, unsigned char slot) {
     unsigned char bytes[sizeof(Object)];
-    if (replay_parse_hex_bytes(getenv(name), bytes, (int)sizeof(bytes)) != 0) return;
+    if (!replay_parse_hex_bytes(getenv(name), bytes, (int)sizeof(bytes))) return;
     memcpy(&objects[slot], bytes, sizeof(bytes));
 }
 
@@ -3560,18 +3541,7 @@ static void apply_replay_ball_motion_override(void) {
  * half-parsed, so a typo in a gate's env leaves the game untouched
  * instead of seeding a state nobody intended. */
 static bool parse_replay_ints(const char *name, long *out, int count) {
-    const char *spec = getenv(name);
-    char *end;
-    int i;
-    if (spec == NULL) return false;
-    for (i = 0; i < count; i++) {
-        const char *start = (i == 0) ? spec : spec + 1;   /* step past ',' */
-        out[i] = strtol(start, &end, 0);
-        if (end == start) return false;
-        if (i + 1 < count && *end != ',') return false;
-        spec = end;
-    }
-    return true;
+    return replay_parse_ints(getenv(name), out, count);
 }
 
 /* Bake a falling bonus for the falling-object regression gate.
