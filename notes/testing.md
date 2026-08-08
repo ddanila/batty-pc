@@ -664,4 +664,13 @@ which is a tool, not a gate.
     python3 scripts/capture_frame_timeline.py --floppy build/batty-test.img \
         --frames 20,40,60 --wait-key --out build/tl_check
 
-That is the check to run by hand after touching the checkpoint code.
+`test-visual-checkpoints` now gates the *resume* half of that path —
+three checkpoints must each produce a capture, so a run that stops early
+fails. Mutation-checked by stopping after the second.
+
+It does **not** gate the delta arithmetic. `capture_frame_timeline.py`
+names each file after the requested frame, not the one that fired, so a
+delta treated as an absolute (20, 60, 120 instead of 20, 40, 60) still
+writes all three files. Catching that needs motion in the scene plus an
+expected image per checkpoint — a golden-capture gate. Until then the
+hand-run above is still the check after touching the delta.

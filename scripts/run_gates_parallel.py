@@ -74,7 +74,7 @@ FULL_EXTRA_GATES = [
     "test-rocket-completion-no-ball", "test-rocket-flight-redraw",
     "test-ball-dirty-redraw", "test-ball-object-dirty-redraw",
     "test-bullet-dirty-redraw", "test-bomb-dirty-redraw",
-    "test-blast-dirty-redraw",
+    "test-blast-dirty-redraw", "test-visual-checkpoints",
     "test-bat-fire-dirty-redraw", "test-multiball-dirty-redraw",
     "test-bigball-dirty-redraw", "test-stuck-ball-dirty-redraw",
     "test-enemy-brick-residue", "test-bat-redraw-window",

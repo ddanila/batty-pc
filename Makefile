@@ -115,7 +115,7 @@ PROFILE_BAT_LASER   ?= 01017400AD000000040DEFAE1C0A74AD040DF0000180
 # whole-band rebuild baseline. `make profile-bricks` vs `... FULL_BAND=1`.
 FULL_BAND           ?=
 
-.PHONY: test-fast test-source-gates test-gate-greps test-video test-rng test-physics test-assets test-bricks test-sound test-hud-unit test-objects test-weapons test-enemies test-bonus-codes test-scoring all clean run run-86box profile-auto profile-bricks profile-ballbricks profile-multiball profile-86box read-profile floppy assets help run-original run-original-cheat snapshot candidates regions test test-hud test-bat-redraw-window test-ball-dirty-redraw test-ball-object-dirty-redraw test-bullet-dirty-redraw test-bomb-dirty-redraw test-blast-dirty-redraw test-bat-fire-dirty-redraw test-multiball-dirty-redraw test-bigball-dirty-redraw test-stuck-ball-dirty-redraw test-enemy-brick-residue test-rocket-flight-redraw test-rocket-completion-no-ball test-round-banner-border test-brick-flash test-rocket-bonus test-death-sparks test-game-over test-normal-ball-launch test-ball-left-wall-escape test-l3-replay-seed test-midgame-brick-replay replay-l3-brick-flash replay-l3-brick-flash-both test-laffc-ball-frame1 test-bat-deflection test-enemy-descend test-rng-walk test-enemy-steer test-bonus-fall test-bomb-fall test-pts400-fall test-bullet-fly test-laser-cadence test-enemy-anim test-bonus-drop test-bonus-effects test-bonus-effects2 test-bonus-typepick test-bullet-blast test-brick-scoring test-ball-speed-ramp test-levels-sweep test-enemy-flyover-redraw parity-check parity-check-full
+.PHONY: test-fast test-source-gates test-gate-greps test-video test-rng test-physics test-assets test-bricks test-sound test-hud-unit test-objects test-weapons test-enemies test-bonus-codes test-scoring all clean run run-86box profile-auto profile-bricks profile-ballbricks profile-multiball profile-86box read-profile floppy assets help run-original run-original-cheat snapshot candidates regions test test-hud test-bat-redraw-window test-ball-dirty-redraw test-ball-object-dirty-redraw test-bullet-dirty-redraw test-bomb-dirty-redraw test-blast-dirty-redraw test-visual-checkpoints test-bat-fire-dirty-redraw test-multiball-dirty-redraw test-bigball-dirty-redraw test-stuck-ball-dirty-redraw test-enemy-brick-residue test-rocket-flight-redraw test-rocket-completion-no-ball test-round-banner-border test-brick-flash test-rocket-bonus test-death-sparks test-game-over test-normal-ball-launch test-ball-left-wall-escape test-l3-replay-seed test-midgame-brick-replay replay-l3-brick-flash replay-l3-brick-flash-both test-laffc-ball-frame1 test-bat-deflection test-enemy-descend test-rng-walk test-enemy-steer test-bonus-fall test-bomb-fall test-pts400-fall test-bullet-fly test-laser-cadence test-enemy-anim test-bonus-drop test-bonus-effects test-bonus-effects2 test-bonus-typepick test-bullet-blast test-brick-scoring test-ball-speed-ramp test-levels-sweep test-enemy-flyover-redraw parity-check parity-check-full
 
 all: $(EXE) $(ASSETS)
 
@@ -699,6 +699,7 @@ parity-check-full:
 	$(MAKE) test-bullet-dirty-redraw
 	$(MAKE) test-bomb-dirty-redraw
 	$(MAKE) test-blast-dirty-redraw
+	$(MAKE) test-visual-checkpoints
 	$(MAKE) test-bat-fire-dirty-redraw
 	$(MAKE) test-multiball-dirty-redraw
 	$(MAKE) test-bigball-dirty-redraw
@@ -1089,6 +1090,10 @@ test-bomb-dirty-redraw:
 # Blast dirty/full comparison — the missing half of known-bugs.md #9.
 test-blast-dirty-redraw:
 	python3 scripts/test_blast_dirty_redraw.py
+
+# The only gate on the multi-checkpoint visual probe path.
+test-visual-checkpoints:
+	python3 scripts/test_visual_checkpoints.py
 
 test-bat-fire-dirty-redraw:
 	python3 scripts/test_bat_fire_dirty_redraw.py
