@@ -4808,32 +4808,28 @@ static void render_falling_objects_to_buff(unsigned char bg_attr) {
 
 static void render_enemy_to_buff_and_mark(unsigned char bg_attr);
 
-static void redraw_full_with_ball(unsigned char level_idx) {
-    unsigned char bg_attr = bg_attr_per_cycle[level_idx & 3];
-    unsigned char cycle   = (unsigned char)(level_idx & 3);
-    int y, i;
-    int score_dirty;
-    int lives_dirty;
-    int can_local_hud;
-    int bat_full_dirty;
+/* Bring the static cache up to date for this frame: rebuild it whole,
+ * rebuild just the brick band, or restore from it unchanged.
+ *
+ * A score change alone does not force a full rebuild — the HUD top can
+ * be patched in place instead, but only on levels with no magnets,
+ * since a magnet may overlap the HUD rows and would be repainted over.
+ * A lives change always forces one, because the indicators sit in the
+ * bat band rather than the patchable strip. */
+static void refresh_static_background(unsigned char level_idx) {
+    const int score_dirty = (player.score != cache.drawn_score
+                          || player.high_score != cache.drawn_high_score);
+    const int lives_dirty = (player.lives != cache.drawn_lives);
+    const int can_patch_hud = (magnets_per_level[level_idx][0] == 0);
 
-    prof_start();
-
-    score_dirty = (player.score != cache.drawn_score || player.high_score != cache.drawn_high_score);
-    lives_dirty = (player.lives != cache.drawn_lives);
-    can_local_hud = (magnets_per_level[level_idx][0] == 0);
-    bat_full_dirty = (BAT_X != BAT_PREV_X)
-                  || (BAT_Y != bat.drawn_y)
-                  || (bat.extra_px != bat.drawn_extra_px)
-                  || (objects[OBJ_BAT_1].bonus_applied != bat.drawn_bonus)
-                  || (bat.fire_anim_ticks != bat.drawn_fire_ticks);
-    if (cache.full_flush || lives_dirty || (score_dirty && !can_local_hud)) {
+    if (cache.full_flush || lives_dirty || (score_dirty && !can_patch_hud)) {
         cache.bg_dirty = 1;
     }
 
-    /* Clear BEFORE the static branch so build_static_brick_band_cache's
-     * window mark survives into this frame's flush. */
+    /* Clear BEFORE the branch, so build_static_brick_band_cache's window
+     * mark survives into this frame's flush. */
     clear_dirty_ranges(dirty_min_byte, dirty_max_byte);
+
     if (cache.bg_dirty) {
         build_static_background(level_idx);
         cache.bg_dirty = 0;
@@ -4841,18 +4837,36 @@ static void redraw_full_with_ball(unsigned char level_idx) {
         cache.drawn_high_score = player.high_score;
         cache.drawn_lives = player.lives;
         cache.full_flush = 1;
-    } else if (cache.band_dirty) {
-        build_static_brick_band_cache(level_idx);
-        restore_prev_dirty_from_static_cache();
     } else {
+        if (cache.band_dirty) build_static_brick_band_cache(level_idx);
         restore_prev_dirty_from_static_cache();
     }
-    if (!cache.bg_dirty && score_dirty && can_local_hud) {
+
+    /* Runs after a full rebuild too — redundant there, since the rebuild
+     * repainted the HUD and set full_flush, but kept because that is what
+     * the original code did and nothing proves the redundancy. */
+    if (score_dirty && can_patch_hud) {
         update_static_hud_top(level_idx);
         cache.drawn_score = player.score;
         cache.drawn_high_score = player.high_score;
         mark_dirty_bytes(0, FRAME_TOP_H_PX, 0, 31);
     }
+}
+
+static void redraw_full_with_ball(unsigned char level_idx) {
+    unsigned char bg_attr = bg_attr_per_cycle[level_idx & 3];
+    unsigned char cycle   = (unsigned char)(level_idx & 3);
+    int y, i;
+    int bat_full_dirty;
+
+    prof_start();
+
+    bat_full_dirty = (BAT_X != BAT_PREV_X)
+                  || (BAT_Y != bat.drawn_y)
+                  || (bat.extra_px != bat.drawn_extra_px)
+                  || (objects[OBJ_BAT_1].bonus_applied != bat.drawn_bonus)
+                  || (bat.fire_anim_ticks != bat.drawn_fire_ticks);
+    refresh_static_background(level_idx);
     /* A magnet toggled this frame: redraw its circle now, while scr_buff
      * holds clean background in the window (objects not yet drawn), and
      * bake it into the static bg cache. After a full static rebuild the

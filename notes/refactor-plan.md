@@ -60,7 +60,7 @@ happened, and `make test-video` caught it.
 | 10 | state owners — structs at file scope | 113 vars | **done** — 11 clusters, see below |
 | 1 | replay / probe scaffolding | 480 | **last** — see below |
 
-`main.cpp`: 7,746 → 6,706. 100 host tests + source gates, all via `make test-fast` in seconds.
+`main.cpp`: 7,746 → 6,704. 100 host tests + source gates, all via `make test-fast` in seconds.
 
 ### Stage 5b: one destroyed-cell reset, not two
 
@@ -231,6 +231,22 @@ The three object-blob overrides went the same way: already sharing
 `replay_parse_hex_bytes`, their wrappers differed only by env name and
 slot, so `apply_replay_object_override(name, slot)` replaces all three
 and the dispatcher names which object each line seeds.
+
+`redraw_full_with_ball`'s opening became `refresh_static_background`:
+rebuild the cache whole, rebuild just the brick band, or restore from it.
+The rule it encodes is worth stating once — a score change alone does
+not force a full rebuild (the HUD top can be patched in place) but only
+where no magnet overlaps the HUD rows, and a lives change always does,
+because the indicators sit in the bat band rather than the patchable
+strip.
+
+The tidy version of that function was wrong in a way worth recording.
+The original sets `bg_dirty = 0` inside the rebuild branch, so its later
+`if (!cache.bg_dirty && score_dirty ...)` still fires after a full
+rebuild; returning early "because the HUD is already current" silently
+dropped that call. It is very likely redundant — the rebuild repaints
+the HUD and sets `full_flush` — but likely is not proven, so the call
+stays and the comment says why.
 
 `PlayerState` needed a different tool from the rest. `score` and `lives`
 are English words that occur in comments and — the trap —
