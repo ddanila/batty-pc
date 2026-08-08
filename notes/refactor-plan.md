@@ -192,6 +192,13 @@ one call per ball over a shared `kill_enemy_by_ball_slot`.
 `entities_need_redraw` replaced twelve consecutive `if (x) ball_moved =
 1;` lines with the question they were collectively asking: is anything
 besides the primary ball drawn over the playfield this frame.
+`award_score_milestones` and `roll_high_score` then split two unrelated
+ideas that were sharing a stretch of the redraw bookkeeping.
+
+The milestone loop and the HI roll-forward have **no dedicated QEMU
+gate** — `test_scoring.cpp` covers the pure `lives_earned`, and nothing
+plays long enough to cross a threshold in an emulator. Changes there
+rest on being pure code motion, not on a gate.
 
 Order from here:
 

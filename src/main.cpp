@@ -6156,6 +6156,26 @@ static InputAction handle_input(int &ball_moved, int &bat_moved,
     return INPUT_NONE;
 }
 
+/* Each threshold in live_add_thresholds crossed since the last check
+ * awards one extra life. orig: $0395 score_update_3 */
+static void award_score_milestones(void) {
+    for (int earned = lives_earned(player.score, player.live_adds_awarded);
+         earned > 0; earned--) {
+        player.lives++;
+        sound_queue(SND_LIVE_ADD);
+        player.live_adds_awarded++;
+    }
+}
+
+/* The displayed HI rolls forward the moment it is passed; writing it to
+ * disk still waits for game-over in save_high_score. */
+static void roll_high_score(void) {
+    if (player.score > player.high_score) {
+        player.high_score = player.score;
+        high_score_beaten_this_game = 1;
+    }
+}
+
 /* Everything drawn over the playfield besides the primary ball. While
  * any of it is live the frame cannot take the ball-only redraw path. */
 static bool entities_need_redraw(void) {
@@ -6437,22 +6457,8 @@ static state_t run_level(void) {
                 call_for_all_obj(refresh_buffer_offset);
                 sound_frame();
                 sound_tick();
-                /* Score-milestone extra life — port of score_update_3
-                 * at $0395. Each crossed threshold in live_add_thresholds
-                 * awards one extra life and pushes the live-add sound. */
-                for (int earned = lives_earned(player.score, player.live_adds_awarded);
-                     earned > 0; earned--) {
-                    player.lives++;
-                    sound_queue(SND_LIVE_ADD);
-                    player.live_adds_awarded++;
-                }
-                /* Roll the displayed HI score forward the moment it's
-                 * passed, instead of waiting for game-over. The disk
-                 * save still happens at game-over via save_high_score. */
-                if (player.score > player.high_score) {
-                    player.high_score = player.score;
-                    high_score_beaten_this_game = 1;
-                }
+                award_score_milestones();
+                roll_high_score();
                 if (entities_need_redraw()) ball_moved = 1;
                 if (bat.extra_px != bat.extra_target) bat_moved = 1;
             }
