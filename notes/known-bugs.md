@@ -179,26 +179,28 @@ extra balls never tunnel through bricks or escape the walls, both of
 which hold regardless of which quadrant convention is used.
 
 
-## 9. The two redraw paths mark different rects for a bullet blast
+## 9. The two redraw paths marked different rects for a bullet blast — resolved
 
-`redraw_full_with_ball` marks each live blast slot as `16 x 8`; the
-dirty path's `render_simple_objects_to_buff_and_mark` marks the same
-slot as `16 x 12`. Everything else about the two blocks is identical.
+`redraw_full_with_ball` marked each live blast slot as `16 x 8`; the
+dirty path marked the same slot as `16 x 12`. Everything else about the
+two blocks was identical.
 
-Found while sweeping the two paths for shared code after
-`render_falling_objects_to_buff` and `render_extra_balls_to_buff` were
-unified. Those two were byte-identical and could be merged; this one
-cannot, because the paths genuinely disagree and it is not yet known
-which height is right.
+**8 is correct.** The blast sprites are 8 px wide and at most 8 rows
+tall — `sprites_blob` headers give frame heights 6/7/8/8, read straight
+out of `assets/sprites.bin` at the `SPR_BULLET_BLAST_*` offsets.
+`mark_dirty_rect_px` rounds X out to byte boundaries but takes Y
+exactly (only `mark_dirty_cell_rect_px` rounds Y to cells), and a blast
+writes no attrs — so the sprite's own 8 rows are the whole of what needs
+flushing. The dirty path's 12 was over-marking by 4 rows.
 
-The blast sprite's real height would settle it — `spr_blast_frames`
-indexes into `sprites_blob`, whose per-sprite header carries the height,
-so it is readable without an oracle capture. Until then neither number
-is provably correct: 12 over-marks and costs a little flush bandwidth,
-8 under-marks and would leave stale pixels if the sprite is taller than
-8 rows.
+Both paths now go through `render_bullet_blasts_to_buff_and_mark`, so
+they cannot drift apart again.
 
-No gate covers it. The blast is drawn on both paths, but no gate
-compares a blast frame across the dirty/full boundary the way
-`test-*-dirty-redraw` does for balls, bombs and bonuses. That comparison
-is the test worth writing before touching either number.
+`test-blast-dirty-redraw` is the gate that was missing. It compares a
+blast frame across the dirty/full boundary the way the other
+`test-*-dirty-redraw` gates do for balls, bombs and bonuses. Sensitivity
+checked by mutation: marking `16 x 2` fails it with an 18 px diff.
+
+By construction it catches under-marking (stale pixels) and not
+over-marking (wasted flush bandwidth) — the two screens agree either
+way when the rect is too large.

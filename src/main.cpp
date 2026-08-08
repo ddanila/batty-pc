@@ -4805,6 +4805,21 @@ static void carry_dirty_with_previous(void) {
  *   - paint ball, bomb, 400pts, alien into scr_buff (each picks up
  *     its surrounding char cell's bg attr at buff_to_vga time)
  *   - HUD labels/scores join scr_buff before the same buff_to_vga pass. */
+/* Blast sprites are 8px wide and at most 8 rows tall (sprites_blob
+ * headers: frames are 6/7/8/8). mark_dirty_rect_px rounds X out to byte
+ * boundaries but takes Y exactly, and a blast writes no attrs, so 8
+ * rows is the whole sprite. See known-bugs.md #9 for why the two paths
+ * once disagreed here. */
+static void render_bullet_blasts_to_buff_and_mark(void) {
+    int i;
+    if (!any_bullet_blast()) return;
+    render_bullet_blast_to_buff();
+    for (i = 0; i < N_BULLETS; i++) {
+        if (bullet_blast_ticks[i])
+            mark_dirty_rect_px(bullet_blast_x[i], bullet_blast_y[i], 16, 8);
+    }
+}
+
 /* Multi-ball extras: full 16x12 moving balls, same dirty treatment as
  * the primary (the carry erases last frame's position). */
 static void render_extra_balls_to_buff(unsigned char bg_attr) {
@@ -4970,14 +4985,7 @@ static void redraw_full_with_ball(unsigned char level_idx) {
             mark_dirty_rect_px(bullet_x[i], bullet_y[i], 8, 8);
         }
     }
-    if (any_bullet_blast()) {
-        render_bullet_blast_to_buff();
-        for (i = 0; i < N_BULLETS; i++) {
-            if (bullet_blast_ticks[i]) {
-                mark_dirty_rect_px(bullet_blast_x[i], bullet_blast_y[i], 16, 8);
-            }
-        }
-    }
+    render_bullet_blasts_to_buff_and_mark();
     render_falling_objects_to_buff(bg_attr);
     if ((enemy->sprite_set & 0x7F) != 0 && !(enemy->sprite_set & 0x80)) {
         unsigned int spr;
@@ -5158,14 +5166,7 @@ static void render_simple_objects_to_buff_and_mark(unsigned char bg_attr) {
                                    BULLET_W_PX, BULLET_H_PX);
         }
     }
-    if (any_bullet_blast()) {
-        int i;
-        render_bullet_blast_to_buff();
-        for (i = 0; i < N_BULLETS; i++) {
-            if (bullet_blast_ticks[i])
-                mark_dirty_rect_px(bullet_blast_x[i], bullet_blast_y[i], 16, 12);
-        }
-    }
+    render_bullet_blasts_to_buff_and_mark();
     render_falling_objects_to_buff(bg_attr);
     render_enemy_to_buff_and_mark(bg_attr);
 }

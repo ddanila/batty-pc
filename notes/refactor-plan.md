@@ -227,8 +227,8 @@ makes it one.
 
 The sweep found one more identical block — the multi-ball extras, now
 `render_extra_balls_to_buff` — and one genuine divergence: the two paths
-mark different rect heights for a bullet blast. That one is
-known-bugs #9, not a merge.
+mark different rect heights for a bullet blast — resolved since, by
+measuring the sprite instead of guessing: known-bugs #9.
 
 What is left differing between the paths is deliberate: the full path
 paints the brick flash and hit animations, the dirty path relies on the
