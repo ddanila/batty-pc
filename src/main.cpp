@@ -356,20 +356,24 @@ static const unsigned char magnets_per_level[N_LEVELS][1 + 2*MAGNETS_MAX_PER_LEV
 };
 
 /* Runtime magnet state — port of magnets_quantity + magnet_properties
- * ($8DB7/$8DB8). magnet_px/py keep the PAINT origin (x0,y0 from the
+ * ($8DB7/$8DB8). magnets.px/py keep the PAINT origin (x0,y0 from the
  * level table); the original's slot stores (x0+5, y0+5) — the circle's
  * physics box origin — with body size 15x14 px (slot +$0C/+$0D).
- * magnet_on_state mirrors slot +$01: 1 = sprite $06 (ON, bit0 clear),
+ * magnets.on_state mirrors slot +$01: 1 = sprite $06 (ON, bit0 clear),
  * 0 = sprite $07 (OFF). Set once per level entry by magnet_level_init
  * (the print_magnets coin), flipped at random by magnet_random_toggle
  * (print_one_magnet $8E72). */
-static unsigned char magnet_count = 0;
-static unsigned char magnet_px[MAGNETS_MAX_PER_LEVEL];
-static unsigned char magnet_py[MAGNETS_MAX_PER_LEVEL];
-static unsigned char magnet_on_state[MAGNETS_MAX_PER_LEVEL];
-/* Index of a magnet whose ON/OFF flip still needs its incremental
- * circle redraw applied at the next frame compose (0xFF = none). */
-static unsigned char magnet_toggle_pending = 0xFF;
+struct MagnetState {
+    unsigned char count;
+    unsigned char px[MAGNETS_MAX_PER_LEVEL];
+    unsigned char py[MAGNETS_MAX_PER_LEVEL];
+    unsigned char on_state[MAGNETS_MAX_PER_LEVEL];
+    /* Magnet whose ON/OFF flip still needs its incremental circle
+     * redraw applied at the next frame compose. */
+    unsigned char toggle_pending;
+};
+#define MAGNET_TOGGLE_NONE  0xFF
+static MagnetState magnets = {0, {0}, {0}, {0}, MAGNET_TOGGLE_NONE};
 #define MAGNET_BODY_W  15        /* slot +$0C */
 #define MAGNET_BODY_H  14        /* slot +$0D */
 
@@ -2043,22 +2047,22 @@ static int prev_lives = -1;
 static void magnet_level_init(unsigned char level_idx) {
     const unsigned char *rec;
     int i;
-    magnet_count = 0;
-    magnet_toggle_pending = 0xFF;
+    magnets.count = 0;
+    magnets.toggle_pending = MAGNET_TOGGLE_NONE;
     for (i = 0; i < 3; i++) {
         ball.mag_cool[i] = 0;
         ball.mag_delta[i] = 0;
         ball.mag_exit[i] = 0;
         ball.mag_idx[i] = 0;
     }
-    for (i = 0; i < MAGNETS_MAX_PER_LEVEL; i++) magnet_on_state[i] = 0;
+    for (i = 0; i < MAGNETS_MAX_PER_LEVEL; i++) magnets.on_state[i] = 0;
     if (level_idx >= N_LEVELS) return;
     rec = magnets_per_level[level_idx];
-    magnet_count = rec[0];
-    for (i = 0; i < magnet_count; i++) {
-        magnet_px[i] = rec[1 + 2*i];
-        magnet_py[i] = rec[1 + 2*i + 1];
-        magnet_on_state[i] = test_mode_pin_blink
+    magnets.count = rec[0];
+    for (i = 0; i < magnets.count; i++) {
+        magnets.px[i] = rec[1 + 2*i];
+        magnets.py[i] = rec[1 + 2*i + 1];
+        magnets.on_state[i] = test_mode_pin_blink
             ? (unsigned char)(i < 2)
             : (unsigned char)(random_lo(next_random()) & 1);
     }
@@ -2070,8 +2074,8 @@ static void magnet_level_init(unsigned char level_idx) {
             char *endp;
             unsigned long v = strtoul(p, &endp, 16);
             if (*endp == '\0') {
-                for (i = 0; i < magnet_count; i++)
-                    magnet_on_state[i] = (unsigned char)((v >> i) & 1);
+                for (i = 0; i < magnets.count; i++)
+                    magnets.on_state[i] = (unsigned char)((v >> i) & 1);
             }
         }
     }
@@ -2083,9 +2087,9 @@ static void magnet_level_init(unsigned char level_idx) {
 static void render_magnets(unsigned char level_idx) {
     int i;
     (void)level_idx;
-    for (i = 0; i < magnet_count; i++) {
-        int x = magnet_px[i];
-        int y = magnet_py[i];
+    for (i = 0; i < magnets.count; i++) {
+        int x = magnets.px[i];
+        int y = magnets.py[i];
         /* Draw order matches the original's print_magnets ($8D4C):
          *   sprite_num $06 = spr_magnet_circle_ON (lightning, w=4, h=30
          *                    with SMC) — drawn UNCONDITIONALLY first.
@@ -2102,7 +2106,7 @@ static void render_magnets(unsigned char level_idx) {
          * regardless of later toggles, exactly like the original (the
          * toggle redraw is 23 rows tall — circle only). */
         blit_masked_to_scr_buff(spr_magnet_on, x, y);
-        if (!magnet_on_state[i]) {
+        if (!magnets.on_state[i]) {
             blit_masked_to_scr_buff(spr_magnet_off, x, y);
         }
     }
@@ -2118,13 +2122,13 @@ static void render_magnets(unsigned char level_idx) {
 
 static void magnet_random_toggle(void) {
     unsigned char a, b;
-    if (magnet_count == 0) return;
-    b = (unsigned char)(magnet_count - 1);
+    if (magnets.count == 0) return;
+    b = (unsigned char)(magnets.count - 1);
     do {
         a = (unsigned char)(random_lo(next_random()) & 0x03);
     } while (a > b);
-    magnet_on_state[a] ^= 1;
-    magnet_toggle_pending = a;
+    magnets.on_state[a] ^= 1;
+    magnets.toggle_pending = a;
     sound_queue(SND_MAGNET);
 }
 
@@ -2140,15 +2144,15 @@ static void magnet_random_toggle(void) {
  * drawn) because the result is baked into the static bg cache. */
 static void apply_magnet_toggle_visual(void) {
     static unsigned char spr_magnet_on_h23[242];
-    unsigned char i = magnet_toggle_pending;
+    unsigned char i = magnets.toggle_pending;
     int x, y, yy;
     int byte_lo, byte_hi;
-    if (i == 0xFF) return;
-    magnet_toggle_pending = 0xFF;
-    if (i >= magnet_count) return;
-    x = magnet_px[i];
-    y = magnet_py[i];
-    if (magnet_on_state[i]) {
+    if (i == MAGNET_TOGGLE_NONE) return;
+    magnets.toggle_pending = MAGNET_TOGGLE_NONE;
+    if (i >= magnets.count) return;
+    x = magnets.px[i];
+    y = magnets.py[i];
+    if (magnets.on_state[i]) {
         if (spr_magnet_on_h23[0] == 0) {
             memcpy(spr_magnet_on_h23, spr_magnet_on,
                         sizeof(spr_magnet_on_h23));
@@ -3808,9 +3812,9 @@ static void write_replay_probe(void) {
             enemy_turn_calls);
     fprintf(f, "brik_anim_ticks=%lu\n", probe.brik_anim_ticks);
     fprintf(f, "magnet_state=count%02X_on%02X%02X%02X%02X_ball0_c%02X_d%02X_e%02X_i%02X\n",
-            (unsigned)magnet_count,
-            (unsigned)magnet_on_state[0], (unsigned)magnet_on_state[1],
-            (unsigned)magnet_on_state[2], (unsigned)magnet_on_state[3],
+            (unsigned)magnets.count,
+            (unsigned)magnets.on_state[0], (unsigned)magnets.on_state[1],
+            (unsigned)magnets.on_state[2], (unsigned)magnets.on_state[3],
             (unsigned)ball.mag_cool[0], (unsigned)ball.mag_delta[0],
             (unsigned)ball.mag_exit[0], (unsigned)ball.mag_idx[0]);
     fprintf(f, "object_ball_1=");
@@ -4300,8 +4304,8 @@ static void ball_speed_ramp_tick(void) {
  * asymmetry: strict `<` against the ball's body when the magnet is to
  * the right/below, `<=` against the magnet's body otherwise. */
 static int magnet_ball_overlap(const Object *o, unsigned char i) {
-    unsigned char mx = (unsigned char)(magnet_px[i] + 5);
-    unsigned char my = (unsigned char)(magnet_py[i] + 5);
+    unsigned char mx = (unsigned char)(magnets.px[i] + 5);
+    unsigned char my = (unsigned char)(magnets.py[i] + 5);
     if (mx >= o->x_coord) {
         if ((unsigned char)(mx - o->x_coord) >= o->w_body_px) return 0;
     } else {
@@ -4387,7 +4391,7 @@ static int magnet_ball_frame(Object *o, unsigned char si) {
             else            ex = (unsigned char)((ex + 4) & 0x3F);
         }
         ball.mag_exit[si] = ex;
-        if (!magnet_on_state[mi] || !magnet_ball_overlap(o, mi)) {
+        if (!magnets.on_state[mi] || !magnet_ball_overlap(o, mi)) {
             /* LA27E_5: release — exit dir, 2-frame cooldown, then the
              * NORMAL move/collision path runs this frame (LA27E_23). */
             ball.mag_cool[si]  = 2;
@@ -4403,12 +4407,12 @@ static int magnet_ball_frame(Object *o, unsigned char si) {
      * test ((IY+$04)+4 vs ball y). */
     {
         unsigned char i;
-        for (i = 0; i < magnet_count; i++) {
+        for (i = 0; i < magnets.count; i++) {
             unsigned char b = 0;
-            if (!magnet_on_state[i]) continue;       /* BIT 0,(IY+$01) */
+            if (!magnets.on_state[i]) continue;       /* BIT 0,(IY+$01) */
             if (!magnet_ball_overlap(o, i)) continue;
             if (((o->dir + 0x10) & 0x3F) >= 0x20) b = 0xFE;
-            if ((unsigned char)(magnet_py[i] + 5 + 4) >= o->y_coord) b ^= 0xFE;
+            if ((unsigned char)(magnets.py[i] + 5 + 4) >= o->y_coord) b ^= 0xFE;
             ball.mag_delta[si] = (unsigned char)(0xFF ^ b);  /* $FF or $01 */
             ball.mag_idx[si]   = i;
             break;
