@@ -217,6 +217,16 @@ Named so far, in frame order: `handle_input`, `ride_stuck_ball_on_bat`,
 the RNG/magnet sampling that must stay ordered against it, and the
 redraw path selection.
 
+### The two redraw paths were drifting apart
+
+`redraw_full_with_ball` and the dirty path each carried their own copy
+of the bomb / +400 / bonus blit-and-mark blocks — thirteen identical
+lines, twice. That is the shape known-bugs #1 and #2 had: two paints of
+the same thing, one of them updated. `render_falling_objects_to_buff`
+makes it one.
+
+Worth sweeping the rest of the two paths for the same pattern.
+
 Order from here:
 
 1. the frame loop, into named phases
