@@ -4475,6 +4475,28 @@ static void rest_ball_on_bat(void) {
              (objects[OBJ_BAT_1].bonus_applied == 0x03 ? 1 : 0);
 }
 
+/* Side walls. The ball is snapped flush to the wall rather than left
+ * where the step put it, and the sub-pixel fraction is dropped with it —
+ * carrying a fraction past a snap would drift the ball off the wall.
+ * The right limit depends on the ball's size: 244 normally, 240 while
+ * BIG_BALL is active. orig: change_direction's masks */
+static void bounce_ball_off_side_walls(int *x, long *x_q8, int ball_sz) {
+    const int x_max = PLAYFIELD_W - 8 - ball_sz;
+    if (*x >= BALL_X_MIN && *x <= x_max) return;
+    *x = (*x < BALL_X_MIN) ? BALL_X_MIN : x_max;
+    *x_q8 = (long)*x << 8;
+    ball_reflect_descriptor(1, 0);
+}
+
+/* The ceiling, same treatment. There is no floor here: a ball past the
+ * bottom is a lost ball, handled by lose_primary_ball. */
+static void bounce_ball_off_ceiling(int *y, long *y_q8) {
+    if (*y >= BALL_Y_TOP) return;
+    *y = BALL_Y_TOP;
+    *y_q8 = (long)*y << 8;
+    ball_reflect_descriptor(0, 1);
+}
+
 /* Which axis, if any, the primary ball entered a brick through:
  *   0 = no hit
  *   1 = vertical   (caller flips dy)
@@ -4525,24 +4547,8 @@ static void step_ball(void) {
     next_y = (int)(next_y_q8 >> 8);
     ball.dx = (dx_q8 < 0) ? -1 : (dx_q8 > 0 ? 1 : 0);
     ball.dy = (dy_q8 < 0) ? -1 : (dy_q8 > 0 ? 1 : 0);
-    /* Side walls: port the original change_direction masks. */
-    {
-        int x_max = PLAYFIELD_W - 8 - ball_sz;   /* 244 normal, 240 big */
-        if (next_x < BALL_X_MIN) {
-            next_x = BALL_X_MIN;
-            next_x_q8 = (long)next_x << 8;
-            ball_reflect_descriptor(1, 0);
-        } else if (next_x > x_max) {
-            next_x = x_max;
-            next_x_q8 = (long)next_x << 8;
-            ball_reflect_descriptor(1, 0);
-        }
-    }
-    if (next_y < BALL_Y_TOP) {
-        next_y = BALL_Y_TOP;
-        next_y_q8 = (long)next_y << 8;
-        ball_reflect_descriptor(0, 1);
-    }
+    bounce_ball_off_side_walls(&next_x, &next_x_q8, ball_sz);
+    bounce_ball_off_ceiling(&next_y, &next_y_q8);
     /* Bat top: the ball is descending and overlaps the bat in X. */
     if (ball.dy > 0
         && next_y + BALL_H_PX > bat_top

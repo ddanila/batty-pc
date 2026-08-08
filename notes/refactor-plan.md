@@ -61,7 +61,7 @@ happened, and `make test-video` caught it.
 | 1a | `replay_parse` — the BATTY_REPLAY_* value formats | 75 | **done** — 7 tests |
 | 1 | replay / probe scaffolding | ~430 | **last** — see below |
 
-`main.cpp`: 7,746 → 6,816. 100 host tests + source gates, all via `make test-fast` in seconds.
+`main.cpp`: 7,746 → 6,822. 100 host tests + source gates, all via `make test-fast` in seconds.
 
 ### Stage 5b: one destroyed-cell reset, not two
 
@@ -511,6 +511,14 @@ to protect, violated three commits after naming it. Inert today, because
 the port's ball object handler is a stub, but `call_for_all_obj`
 dispatches on `sprite_set` and the probe dumps those objects. It uses
 the helper now.
+
+`bounce_ball_off_side_walls` and `bounce_ball_off_ceiling` then took
+`step_ball`'s wall handling — two near-identical branches that differed
+only in which limit they snapped to. Naming them made room to state the
+part that is not obvious: the sub-pixel fraction is dropped along with
+the snap, because carrying a fraction past a clamp would drift the ball
+back off the wall. And the right-hand limit moves with the ball's size,
+244 normally against 240 under BIG_BALL.
 
 `replay_parse_frame_list` followed — `BATTY_VISUAL_PROBE_FRAMES`. Its
 rule is the one `visual_checkpoint_tick` depends on: values not strictly
