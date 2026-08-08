@@ -6537,39 +6537,48 @@ static state_t run_level(void) {
     }
 }
 
-int main(void) {
+/* Read the BATTY_* environment switches and return the state to start
+ * in — the profile and start-level knobs skip the title screen. */
+static state_t apply_env_switches(void) {
     state_t state = ST_TITLE;
-    /* BATTYALL=1 (test floppy AUTOEXEC) pins the menu blink phase to
-     * 0 (BLACK half) so the state2_menu screendump is deterministic
-     * against snap2. Plain `make run` floppy leaves it off and the
-     * user sees the natural ~4.5 Hz menu blink. */
+    const char *e;
+
+    /* BATTYALL=1 (test floppy AUTOEXEC) pins the menu blink phase to 0
+     * (the BLACK half) so the state2_menu screendump is deterministic
+     * against snap2. A plain `make run` floppy leaves it off and the
+     * player sees the natural ~4.5 Hz blink. */
     if (getenv("BATTYALL") != NULL) test_mode_pin_blink = 1;
-    if (getenv("BATTY_FORCE_BAT_FULL_REDRAW") != NULL) dbg.bat_full_redraw = 1;
-    if (getenv("BATTY_FORCE_BALL_FULL_REDRAW") != NULL) dbg.ball_full_redraw = 1;
-    if (getenv("BATTY_LAFFC") != NULL) dbg.use_laffc = 1;
-    if (getenv("BATTY_LEGACY_COLLISION") != NULL) dbg.use_laffc = 0;
-    {   /* Default ON (per-frame tick = the original's model). The env can
-         * force either state: BATTY_RNG_PERFRAME=0 reverts to advance-on-
-         * read (the old default); any other value keeps it on. */
-        const char *e = getenv("BATTY_RNG_PERFRAME");
-        if (e != NULL) dbg.rng_perframe = (e[0] == '0' && e[1] == '\0') ? 0 : 1;
-    }
-    if (getenv("BATTY_FORCE_FULL_FLUSH_EACH_FRAME") != NULL) dbg.full_flush_each_frame = 1;
-    if (getenv("BATTY_SUPPRESS_NO_BALL_DEATH") != NULL) dbg.suppress_no_ball_death = 1;
     if (getenv("BATTY_SERIAL_PROBE") != NULL) probe.serial_enabled = 1;
-    if (getenv("BATTY_AUTO_FIRE") != NULL) dbg.auto_fire = 1;
-    if (getenv("BATTY_FULL_BAND_REBUILD") != NULL) dbg.full_band_rebuild = 1;
-    {
-        const char *p = getenv("BATTY_PROFILE_AUTO_FRAMES");
-        if (p != NULL && *p != '\0') {
-            dbg.profile_auto_frames = strtoul(p, NULL, 10);
-            if (dbg.profile_auto_frames != 0) state = ST_LEVEL;
-        }
+
+    if (getenv("BATTY_FORCE_BAT_FULL_REDRAW") != NULL)      dbg.bat_full_redraw = 1;
+    if (getenv("BATTY_FORCE_BALL_FULL_REDRAW") != NULL)     dbg.ball_full_redraw = 1;
+    if (getenv("BATTY_FORCE_FULL_FLUSH_EACH_FRAME") != NULL) dbg.full_flush_each_frame = 1;
+    if (getenv("BATTY_FULL_BAND_REBUILD") != NULL)          dbg.full_band_rebuild = 1;
+    if (getenv("BATTY_SUPPRESS_NO_BALL_DEATH") != NULL)     dbg.suppress_no_ball_death = 1;
+    if (getenv("BATTY_AUTO_FIRE") != NULL)                  dbg.auto_fire = 1;
+    if (getenv("BATTY_LAFFC") != NULL)                      dbg.use_laffc = 1;
+    if (getenv("BATTY_LEGACY_COLLISION") != NULL)           dbg.use_laffc = 0;
+
+    /* Unlike the rest, this one can force EITHER state: it defaults on,
+     * and only the exact string "0" reverts to advance-on-read. */
+    e = getenv("BATTY_RNG_PERFRAME");
+    if (e != NULL) dbg.rng_perframe = (e[0] == '0' && e[1] == '\0') ? 0 : 1;
+
+    e = getenv("BATTY_PROFILE_AUTO_FRAMES");
+    if (e != NULL && *e != '\0') {
+        dbg.profile_auto_frames = strtoul(e, NULL, 10);
+        if (dbg.profile_auto_frames != 0) state = ST_LEVEL;
     }
     if (getenv("BATTY_START_LEVEL") != NULL) state = ST_LEVEL;
+
     if (getenv("BATTY_NOSOUND") != NULL || getenv("BATTY_SOUND_OFF") != NULL
         || getenv("BATTY_RENDER_PROFILE") != NULL)
         sound_set_enabled(false);
+    return state;
+}
+
+int main(void) {
+    state_t state = apply_env_switches();
     /* Mode 13h + the ZX palette until main() returns. */
     ZxDisplay display;
 

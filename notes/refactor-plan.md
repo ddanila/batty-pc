@@ -60,7 +60,7 @@ happened, and `make test-video` caught it.
 | 10 | state owners — structs at file scope | 113 vars | **done** — 11 clusters, see below |
 | 1 | replay / probe scaffolding | 480 | **last** — see below |
 
-`main.cpp`: 7,746 → 6,724. 100 host tests + source gates, all via `make test-fast` in seconds.
+`main.cpp`: 7,746 → 6,733. 100 host tests + source gates, all via `make test-fast` in seconds.
 
 ### Stage 5b: one destroyed-cell reset, not two
 
@@ -206,6 +206,13 @@ their declarations (the LAFFC default, the RNG per-frame model, the
 band-rebuild A/B). Those moved with the switches. Writing "see the git
 history" instead would have been the same mistake this file already
 records twice.
+
+`main` then gave its 30-line env preamble to `apply_env_switches`, which
+returns the state to start in. Grouped by struct and aligned, the eight
+plain presence checks read as a table; the two that parse a value
+(`BATTY_RNG_PERFRAME`, which alone can force either state, and
+`BATTY_PROFILE_AUTO_FRAMES`) now stand out instead of hiding among
+them.
 
 `PlayerState` needed a different tool from the rest. `score` and `lives`
 are English words that occur in comments and — the trap —
