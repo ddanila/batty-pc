@@ -61,7 +61,7 @@ happened, and `make test-video` caught it.
 | 1a | `replay_parse` — the BATTY_REPLAY_* value formats | 75 | **done** — 7 tests |
 | 1 | replay / probe scaffolding | ~430 | **last** — see below |
 
-`main.cpp`: 7,746 → 6,808. 100 host tests + source gates, all via `make test-fast` in seconds.
+`main.cpp`: 7,746 → 6,816. 100 host tests + source gates, all via `make test-fast` in seconds.
 
 ### Stage 5b: one destroyed-cell reset, not two
 
@@ -500,6 +500,17 @@ copies out only on success.
 That is worth more than the line count: a half-seeded replay value puts
 the game in a state nobody asked for, and the gate then reports a game
 bug.
+
+`finish_cleared_level` took the level-clear tail, and the new-game bat
+reset folded into `new_game_reset` where the rest of the new-game state
+already lives.
+
+That block cleared `extra2_active` and `extra3_active` WITHOUT the
+`sprite_set` halves — the exact invariant `hide_extra_balls` was named
+to protect, violated three commits after naming it. Inert today, because
+the port's ball object handler is a stub, but `call_for_all_obj`
+dispatches on `sprite_set` and the probe dumps those objects. It uses
+the helper now.
 
 `replay_parse_frame_list` followed — `BATTY_VISUAL_PROBE_FRAMES`. Its
 rule is the one `visual_checkpoint_tick` depends on: values not strictly

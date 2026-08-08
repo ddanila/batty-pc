@@ -6282,6 +6282,14 @@ static void new_game_reset(void) {
     bat.extra_target = 0;
     paused = 0;
     high_score_beaten_this_game = 0;
+
+    /* The bat's own new-game reset. The original also resets it at every
+     * life and level entry, via all_var_init's LDIR from objects_buff_2;
+     * that is handled at level entry and in respawn_primary_ball. */
+    BAT_X      = BAT_X_INIT;
+    BAT_Y      = BAT_Y_PX;
+    objects[OBJ_BAT_2].y_coord = BAT_Y_PX;
+    BAT_PREV_X = BAT_X_INIT;
 }
 
 static void probe_init_from_env(void) {
@@ -6310,6 +6318,40 @@ static unsigned char initial_round_number(void) {
         if (n >= 1 && n <= N_LEVELS) return (unsigned char)(n - 1);
     }
     return 0;
+}
+
+/* The level is clear: hide every ball, show the emptied brick zone for
+ * a moment, then let the caller advance. False means the player pressed
+ * ESC during the hold.
+ *
+ * The pause is LBBFB_0's `pause_long B=2`, about 0.6 s. It plays no
+ * level-clear sound — the original only drains the queue, so the last
+ * brick's click is what the player hears. An earlier port added a
+ * 700 Hz beep that drowned it. */
+static bool finish_cleared_level(unsigned char lvl_idx) {
+    unsigned long t;
+
+    rocket.clear_completed = 0;
+    BALL_HIDE();
+    hide_extra_balls();
+    cache.full_flush = 1;
+    redraw_full_with_ball(lvl_idx);
+
+    if (getenv("BATTY_HOLD_ROCKET_CLEAR") != NULL) {
+        while (!kbhit()) sound_tick();
+        if (getch() == KEY_ESC) return false;
+    }
+
+    t = pit_ticks();
+    while (pit_ticks() - t < 30UL) {
+        sound_tick();
+        if (kbhit()) {
+            if (getch() == KEY_ESC) return false;
+            break;
+        }
+    }
+    sound_silence();
+    return true;
 }
 
 /* The end of a game: the GAME OVER hold, then the name-entry screen if
@@ -6463,14 +6505,6 @@ static state_t run_level(void) {
      * $BBE0 wraps current_level_number_1up at 15 → 0 while
      * round_number_1up keeps bumping). Game only ends on lives == 0. */
     round_number = initial_round_number();
-    /* BAT_X resets to BAT_X_INIT at NEW GAME. Original also resets it
-     * at every life/level entry via all_var_init's LDIR from
-     * objects_buff_2 — handled inline at the inner loop's level-init
-     * block and in respawn_primary_ball below. */
-    BAT_X      = BAT_X_INIT;
-    BAT_Y      = BAT_Y_PX;
-    objects[OBJ_BAT_2].y_coord = BAT_Y_PX;
-    BAT_PREV_X = BAT_X_INIT;
     for (;;) {
         unsigned char lvl_idx = (unsigned char)(round_number % N_LEVELS);
 
@@ -6578,33 +6612,7 @@ static state_t run_level(void) {
              * No timeout, no key-driven skip — the level holds the
              * player until the bricks are gone. */
             if (live_bricks_remaining() == 0) {
-                rocket.clear_completed = 0;
-                BALL_HIDE();
-                ball.extra2_active = 0;
-                ball.extra3_active = 0;
-                cache.full_flush = 1;
-                redraw_full_with_ball(lvl_idx);
-                if (getenv("BATTY_HOLD_ROCKET_CLEAR") != NULL) {
-                    while (!kbhit()) sound_tick();
-                    if (getch() == KEY_ESC) return ST_QUIT;
-                }
-                /* Original's LBBFB_0 pauses ~0.6 s (pause_long B=2)
-                 * before the next level's setup — let the player see
-                 * the cleared brick zone briefly. Just `CALL Z,
-                 * play_sounds_queue` to drain any queued sounds (e.g.
-                 * the SND_NORMAL_BRIK click from the last brick) —
-                 * no dedicated level-clear sound. Earlier port added
-                 * a 700 Hz beep that overrode the brick click. */
-                unsigned long t = pit_ticks();
-                while (pit_ticks() - t < 30UL) {
-                    sound_tick();
-                    if (kbhit()) {
-                        int k = getch();
-                        if (k == KEY_ESC) return ST_QUIT;
-                        break;
-                    }
-                }
-                sound_silence();
+                if (!finish_cleared_level(lvl_idx)) return ST_QUIT;
                 break;
             }
         }

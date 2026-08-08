@@ -29,7 +29,12 @@ def source_guard() -> None:
         "BALL_HIDE();\n    ball.stuck = 0;\n    hide_extra_balls();",
         "ball.extra2_active = 0;\n    ball.extra3_active = 0;",
         "objects[OBJ_BALL_2].sprite_set = 0x82;",
-        "cache.full_flush = 1;\n                redraw_full_with_ball(lvl_idx);",
+        # The level-clear path hides every ball and repaints before the
+        # hold. Both the rocket clear and a normal clear go through
+        # hide_extra_balls, so the flags and the sprite_set bits can no
+        # longer drift apart.
+        "BALL_HIDE();\n    hide_extra_balls();\n    cache.full_flush = 1;\n"
+        "    redraw_full_with_ball(lvl_idx);",
         "BATTY_HOLD_ROCKET_CLEAR",
     ]
     missing = [needle for needle in required if needle not in src]

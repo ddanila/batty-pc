@@ -644,6 +644,13 @@ The replay itself is not fully deterministic either — `random_number`
 differs run to run (DAA5, F6E6). The gate does not assert on it, but
 that is worth knowing before writing one that does.
 
+It has two failure faces under load, both from the same cause. Either
+the capture lands in text mode (`720x400`, above), or the run reaches
+the probe without having destroyed anything and the gate reports
+`bricks_quantity=FF` — FF being the gate's own default for a key it
+could not read. Neither says "the replay was too slow", which is what
+happened.
+
 `ppm_inner_to_indices` now names this case instead of reporting it as an
 unexpected image size. It cost twenty minutes to identify twice, because
 `unexpected PPM size 720x400` reads like a rendering difference when it
