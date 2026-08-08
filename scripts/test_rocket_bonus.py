@@ -21,7 +21,7 @@ def main() -> int:
     compact = "".join(src.split())
     # The extra-ball flags moved into BallState; the guard itself is
     # unchanged, and that is what this checks.
-    guard = ("if(!rocket_active&&!rocket_clear_completed&&!suppress_no_ball_death"
+    guard = ("if(!rocket.active&&!rocket.clear_completed&&!suppress_no_ball_death"
              "&&!BALL_VISIBLE&&!ball.extra2_active&&!ball.extra3_active)")
     if guard not in compact:
         raise SystemExit(f"FAIL: missing rocket-safe no-ball death guard: {guard}")
@@ -30,7 +30,7 @@ def main() -> int:
         raise SystemExit("FAIL: rocket-safe no-ball guard does not protect bat-explosion path")
     if "Mirror LBAED's ordering" not in src or "before balls_quantity" not in src:
         raise SystemExit("FAIL: rocket-safe no-ball guard lacks original-code breadcrumb")
-    if "rocket_clear_completed = 1" not in src:
+    if "rocket.clear_completed = 1" not in src:
         raise SystemExit("FAIL: rocket exit does not bypass no-ball death until level clear")
     print("PASS rocket_bonus_no_bat_death: no-ball death guard excludes rocket_active")
 
@@ -44,7 +44,7 @@ def main() -> int:
         raise SystemExit("FAIL: rocket height patch does not target spr_bonus_rocket_1+1")
     print("PASS rocket_bonus_sprite_height: falling/caught heights mirror original")
 
-    if "BAT_Y = (unsigned char)(rocket_y - 6)" not in src:
+    if "BAT_Y = (unsigned char)(rocket.y - 6)" not in src:
         raise SystemExit("FAIL: handling_rocket does not attach bat Y to rocket_y - 6")
     if "objects[OBJ_BAT_2].y_coord = BAT_Y" not in src:
         raise SystemExit("FAIL: rocket flight does not update the second bat object Y")

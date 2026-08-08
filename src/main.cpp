@@ -558,13 +558,18 @@ static void render_brick_hit_anim_to_buff(void);
 #define ROCKET_W_PX     24
 #define ROCKET_H_PX     27
 #define ROCKET_BONUS_H_PX 0x0C
-static unsigned char rocket_active = 0;
-static int           rocket_x      = 0;
-static int           rocket_y      = 0;
-static unsigned int  rocket_acc    = 0;
-static unsigned char rocket_frac   = 0;
-static unsigned char rocket_counter = 0;
-static unsigned char rocket_clear_completed = 0;
+struct RocketState {
+    unsigned char active;
+    int           x;
+    int           y;
+    unsigned int  acc;
+    unsigned char frac;
+    unsigned char counter;
+    /* Set when the rocket flies the bat off the top; suppresses the
+     * no-ball death until the level-clear sequence takes over. */
+    unsigned char clear_completed;
+};
+static RocketState rocket = {0, 0, 0, 0, 0, 0, 0};
 /* Stuck-on-bat dwell counter. While ball.stuck, the ball rides the
  * bat; SPACE detaches immediately; after STUCK_TIMEOUT ticks the ball
  * auto-launches. ~5 sec at 50 Hz. */
@@ -2806,17 +2811,17 @@ static void render_bullet_to_buff(void) {
  * "monochrome except blocks" rule as bullets / bonus. */
 static void render_rocket_to_buff(void) {
     unsigned int spr;
-    if (!rocket_active) return;
+    if (!rocket.active) return;
     /* Original handling_rocket at \$A89A toggles sprite each frame:
      *   LD A,(counter_misc); AND \$01; LD (IX+\$01),A
      * Was masking \& 2 which only flipped every 2 ticks — half the
      * original's flame flicker rate. */
-    spr = (rocket_counter & 1) ? SPR_BONUS_ROCKET_2 : SPR_BONUS_ROCKET_1;
-    blit_masked_to_scr_buff(spr, rocket_x, rocket_y);
+    spr = (rocket.counter & 1) ? SPR_BONUS_ROCKET_2 : SPR_BONUS_ROCKET_1;
+    blit_masked_to_scr_buff(spr, rocket.x, rocket.y);
 }
 
 static unsigned int current_rocket_spr(void) {
-    return (rocket_counter & 1) ? SPR_BONUS_ROCKET_2 : SPR_BONUS_ROCKET_1;
+    return (rocket.counter & 1) ? SPR_BONUS_ROCKET_2 : SPR_BONUS_ROCKET_1;
 }
 
 /* Direct-VGA fallback kept for the bat-only-move path (redraw_bat
@@ -2940,9 +2945,9 @@ static void bonus_apply(unsigned char type) {
              * destroys every destructible cell it passes through,
              * giving the player a visible "rocket cleared the level"
              * moment instead of the level just dissolving. */
-            if (!rocket_active) {
-                rocket_active = 1;
-                rocket_clear_completed = 0;
+            if (!rocket.active) {
+                rocket.active = 1;
+                rocket.clear_completed = 0;
                 set_rocket_bonus_sprite_height(ROCKET_H_PX);
                 /* Original LBAED_6 hides every object while the rocket
                  * clear loop runs, then keeps the caught bat + rocket
@@ -2963,17 +2968,17 @@ static void bonus_apply(unsigned char type) {
                 pts_marker.active = 0;
                 objects[OBJ_ENEMY].sprite_set = 0;
                 /* Original get_rocket at $AA9D:
-                 *   rocket_x = bat_x + 4 (normal) or +12 (big)
-                 *   rocket_y = bat_y + 6 (inside the bat body)
+                 *   rocket.x = bat_x + 4 (normal) or +12 (big)
+                 *   rocket.y = bat_y + 6 (inside the bat body)
                  * Both put the rocket on the bat's left half emerging
                  * up from inside it. Our sprite is masked so the bat
                  * pixels stay visible through the transparent regions. */
-                rocket_x = BAT_X + 4;
-                if (bat.extra_px >= BAT_BIG_EXTRA_PX) rocket_x += 8;
-                rocket_y = BAT_Y + 6;
-                rocket_acc = 0;
-                rocket_frac = 0;
-                rocket_counter = 0;
+                rocket.x = BAT_X + 4;
+                if (bat.extra_px >= BAT_BIG_EXTRA_PX) rocket.x += 8;
+                rocket.y = BAT_Y + 6;
+                rocket.acc = 0;
+                rocket.frac = 0;
+                rocket.counter = 0;
                 /* No catch sound — get_rocket at $AA9D pushes none. */
                 /* INC (IY+\$14) at $AA9D:\$AA72: ROCKET catch bumps
                  * bat.bonus_applied by 1, which silently cancels any
@@ -3262,7 +3267,7 @@ static void try_spawn_bonus(int col, int row) {
          * With the speed-ramp model, that's `primary ball speed <= base`. */
         if (code == 0x04 && objects[OBJ_BALL_1].speed <= BALL_SPEED) continue;
         if (code == 0x05 && life_dropped_this_round) continue;
-        if (code == 0x06 && rocket_active) continue;
+        if (code == 0x06 && rocket.active) continue;
         if (code == 0x06 && round_number >= 6
             && (random_lo(rnd) & 0xC0) != 0) continue;
         mapped = bonus_from_original(code);
@@ -3714,15 +3719,15 @@ static void apply_replay_blast_override(void) {
 
 static void apply_replay_rocket_override(void) {
     if (getenv("BATTY_REPLAY_ROCKET_ACTIVE") == NULL) return;
-    rocket_active = 1;
-    rocket_clear_completed = 0;
+    rocket.active = 1;
+    rocket.clear_completed = 0;
     set_rocket_bonus_sprite_height(ROCKET_H_PX);
-    rocket_x = BAT_X + 4;
-    if (bat.extra_px >= BAT_BIG_EXTRA_PX) rocket_x += 8;
-    rocket_y = BAT_Y + 6;
-    rocket_acc = 0;
-    rocket_frac = 0;
-    rocket_counter = 0;
+    rocket.x = BAT_X + 4;
+    if (bat.extra_px >= BAT_BIG_EXTRA_PX) rocket.x += 8;
+    rocket.y = BAT_Y + 6;
+    rocket.acc = 0;
+    rocket.frac = 0;
+    rocket.counter = 0;
     BALL_HIDE();
     ball.stuck = 0;
 }
@@ -4166,7 +4171,7 @@ static void step_bullet(void) {
 static void try_fire_laser(void) {
     int free_slot = -1;
     int j;
-    if (rocket_active
+    if (rocket.active
         || objects[OBJ_BAT_1].bonus_applied != 0x01
         || bullet_cooldown != 0) return;
     for (j = 0; j < N_BULLETS; j++) {
@@ -4225,7 +4230,7 @@ static void render_bullet_blast_to_buff(void) {
 static void play_rocket_award_tally(unsigned char level_idx);
 
 static void step_rocket(void) {
-    if (!rocket_active) return;
+    if (!rocket.active) return;
     /* Port of handling_rocket at $A89A:
      *   HL = LA8CF - $20
      *   if counter_misc >= $38, persist HL back to LA8CF
@@ -4235,20 +4240,20 @@ static void step_rocket(void) {
     {
         unsigned int hl;
         unsigned int sum;
-        rocket_counter++;
-        hl = (unsigned int)(rocket_acc - 0x0020u);
-        if (rocket_counter >= 0x38) rocket_acc = hl;
-        sum = (unsigned int)(hl + (((unsigned int)(unsigned char)rocket_y) << 8) + rocket_frac);
-        rocket_frac = (unsigned char)sum;
-        rocket_y = (int)(unsigned char)(sum >> 8);
-        /* handling_rocket writes rocket_y - 6 into both bat objects,
+        rocket.counter++;
+        hl = (unsigned int)(rocket.acc - 0x0020u);
+        if (rocket.counter >= 0x38) rocket.acc = hl;
+        sum = (unsigned int)(hl + (((unsigned int)(unsigned char)rocket.y) << 8) + rocket.frac);
+        rocket.frac = (unsigned char)sum;
+        rocket.y = (int)(unsigned char)(sum >> 8);
+        /* handling_rocket writes rocket.y - 6 into both bat objects,
          * so the rocket pack stays attached and lifts the bat. */
-        BAT_Y = (unsigned char)(rocket_y - 6);
+        BAT_Y = (unsigned char)(rocket.y - 6);
         objects[OBJ_BAT_2].y_coord = BAT_Y;
     }
-    if (rocket_y >= PLAYFIELD_H || rocket_y + ROCKET_H_PX < 0) {
-        rocket_active = 0;
-        rocket_clear_completed = 1;
+    if (rocket.y >= PLAYFIELD_H || rocket.y + ROCKET_H_PX < 0) {
+        rocket.active = 0;
+        rocket.clear_completed = 1;
         /* Mirror LBB97 → LBBFB → add_points_for_left_briks: tick up the
          * points for every remaining brick (bricks stay on screen), then
          * clear them to end the level. */
@@ -4988,10 +4993,10 @@ static void redraw_full_with_ball(unsigned char level_idx) {
         mark_dirty_cell_rect_px(enemy->x_coord, enemy->y_coord,
                                 spr_w_px, spr_h_px);
     }
-    if (rocket_active) {
+    if (rocket.active) {
         unsigned int spr = current_rocket_spr();
         render_rocket_to_buff();
-        mark_dirty_sprite_rect(spr, rocket_x, rocket_y);
+        mark_dirty_sprite_rect(spr, rocket.x, rocket.y);
     }
     /* (restore_top_frame_center used to run here — moved BEFORE the
      * object compose so it can't erase sprites overlapping the frame
@@ -5040,7 +5045,7 @@ static unsigned int ball_dirty_blockers(int bat_moved) {
     if (!BALL_VISIBLE) blockers |= BALL_DIRTY_BLOCK_BALLS;
     if (static_bg_dirty || static_bg_cache_dirty || force_full_flush) blockers |= BALL_DIRTY_BLOCK_STATIC;
     if (score != prev_score || high_score != prev_high_score || lives != prev_lives) blockers |= BALL_DIRTY_BLOCK_HUD;
-    if (bonus.active || pts_marker.active || bomb.active || rocket_active) blockers |= BALL_DIRTY_BLOCK_OBJECTS;
+    if (bonus.active || pts_marker.active || bomb.active || rocket.active) blockers |= BALL_DIRTY_BLOCK_OBJECTS;
     if (objects[OBJ_ENEMY].sprite_set != 0) blockers |= BALL_DIRTY_BLOCK_OBJECTS;
     if (any_bullet_active() || any_bullet_blast()) blockers |= BALL_DIRTY_BLOCK_OBJECTS;
     if (brick_flash.ticks || any_brick_hit_anim()) blockers |= BALL_DIRTY_BLOCK_BRICKS;
@@ -5080,7 +5085,7 @@ static int can_redraw_ball_with_simple_objects(unsigned int blockers) {
     if (!bonus.active && !pts_marker.active && objects[OBJ_ENEMY].sprite_set == 0
         && !any_bullet_active() && !any_bullet_blast() && !bomb.active
         && !ball.extra2_active && !ball.extra3_active) return 0;
-    if (rocket_active) return 0;
+    if (rocket.active) return 0;
     /* The +400 catch popup renders correctly only via the full path; in the
      * simple tier it leaves a trail (drift + catch-frame transition — a
      * pre-existing latent issue). It is brief + low-frequency, so route its
@@ -5823,8 +5828,8 @@ static void play_bat_explosion(unsigned char level_idx) {
      * the player respawns. */
     bomb.active = 0;
     bonus.active = 0;
-    rocket_active = 0;
-    rocket_clear_completed = 0;
+    rocket.active = 0;
+    rocket.clear_completed = 0;
     set_rocket_bonus_sprite_height(ROCKET_BONUS_H_PX);
     pts_marker.active = 0;
     bullet_active[0] = 0;
@@ -5953,8 +5958,8 @@ static void reset_level_state(unsigned char lvl_idx) {
     bullet_blast_ticks[1] = 0;
     bullet_cooldown       = 0;
     probe.shots_fired       = 0;
-    rocket_active      = 0;
-    rocket_clear_completed = 0;
+    rocket.active      = 0;
+    rocket.clear_completed = 0;
     set_rocket_bonus_sprite_height(ROCKET_BONUS_H_PX);
     brick_flash.ticks  = 0;
     reset_brick_hit_anim();
@@ -6293,8 +6298,8 @@ static state_t run_level(void) {
                  * flight carries the bat, so the player cannot steer. */
                 BAT_X = (unsigned char)bat_step_x(
                     BAT_X, bat.extra_px,
-                    !rocket_active && key_state[SC_LEFT],
-                    !rocket_active && key_state[SC_RIGHT]);
+                    !rocket.active && key_state[SC_LEFT],
+                    !rocket.active && key_state[SC_RIGHT]);
                 if (ball.stuck) {
                     /* Ball rides the bat at the catch offset (= where it
                      * hit, when the CATCH bonus stuck it; otherwise the
@@ -6364,8 +6369,8 @@ static state_t run_level(void) {
                  * path. The rocket catch hides all balls while the
                  * level-clear sequence runs, so that temporary no-ball
                  * state must not cost a life. */
-                if (!rocket_active
-                    && !rocket_clear_completed
+                if (!rocket.active
+                    && !rocket.clear_completed
                     && !suppress_no_ball_death
                     && !BALL_VISIBLE
                     && !ball.extra2_active
@@ -6425,7 +6430,7 @@ static state_t run_level(void) {
                 if (bomb.active) ball_moved = 1;
                 if (any_bullet_active()) ball_moved = 1;
                 if (any_bullet_blast()) ball_moved = 1;
-                if (rocket_active) ball_moved = 1;
+                if (rocket.active) ball_moved = 1;
                 if (brick_flash.ticks) ball_moved = 1;
                 if (any_brick_hit_anim()) ball_moved = 1;
                 if (ball.extra2_active) ball_moved = 1;
@@ -6530,7 +6535,7 @@ static state_t run_level(void) {
              * No timeout, no key-driven skip — the level holds the
              * player until the bricks are gone. */
             if (live_bricks_remaining() == 0) {
-                rocket_clear_completed = 0;
+                rocket.clear_completed = 0;
                 BALL_HIDE();
                 ball.extra2_active = 0;
                 ball.extra3_active = 0;

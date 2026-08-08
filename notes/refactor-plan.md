@@ -146,7 +146,7 @@ exist to consolidate.
 
 Done: `ProbeState`, `RenderProfile`, `BallState`, `BatState`,
 `BombState`, `MagnetState`, `PtsMarkerState`, `BrickFlashState`,
-`BonusState`. Remaining clusters: rocket (7), score/lives (4).
+`BonusState`, `RocketState`. Remaining cluster: score/lives (4).
 
 Each rename must be checked against the source-grepping gates first —
 `make test-gate-greps` names the ones that would break, in a second.
