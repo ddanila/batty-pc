@@ -15,7 +15,6 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from test_visual import test_floppy
 from test_visual import (PALETTE_RGB, PLAYFIELD_W, expected_from_scr,
                          ppm_inner_to_indices, run_qemu, test_floppy)
 
@@ -49,10 +48,16 @@ def rebuild_clean_floppy():
     BATTY_REPLAY_*/BATTY_LEVEL=3 build) would boot into a replay state and
     the menu navigation below would never reach L3 graphics (the capture
     then lands in 720x400 text mode). Rebuild with a stripped env so the
-    AUTOEXEC is the plain 4-state test cycle."""
+    AUTOEXEC is the plain 4-state test cycle.
+
+    BATTY_TEST_FLOPPY survives the strip: it names which image to build,
+    not what to bake into it. Dropping it deletes this job's image and
+    rebuilds the shared default one, and QEMU then fails to open a file
+    that is no longer there."""
     import os
     import subprocess
-    env = {k: v for k, v in os.environ.items() if not k.startswith("BATTY_")}
+    env = {k: v for k, v in os.environ.items()
+           if not k.startswith("BATTY_") or k == "BATTY_TEST_FLOPPY"}
     FLOPPY.unlink(missing_ok=True)
     subprocess.run(["make", str(FLOPPY)], env=env,
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)

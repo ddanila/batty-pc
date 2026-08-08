@@ -184,6 +184,10 @@ now one `probe_checkpoint_due` predicate called twice.
 checkpoint to fire returns, so the second never ticks its countdown —
 which is exactly what the separate inline blocks did.
 
+`step_active_entities` then took the twelve-call run of `step_*` plus
+the two timer decays — everything that moves independently of the
+primary ball.
+
 Order from here:
 
 1. the frame loop, into named phases

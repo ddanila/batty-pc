@@ -431,3 +431,21 @@ The reusable replay harness is in `scripts/replay_harness.py`; see
 ZEsarUX-original runs plus INFO comparisons; replays become fail-gated
 once their spec marks the original and port start states aligned. Ad-hoc
 smoke scripts under `scripts/exercise_*.py` cover individual scenarios.
+
+### A gate that strips its own floppy out of the environment
+
+`test_brick_flash.py` rebuilds the image with `BATTY_*` filtered out of
+the environment, because the AUTOEXEC bakes in whatever replay knobs
+were set at build time and a leftover seeded image never reaches L3.
+That filter also removed `BATTY_TEST_FLOPPY` — which is not a knob but
+the *name of the image to build*. Under the parallel runner the gate
+therefore deleted its own per-job image, rebuilt the shared default, and
+QEMU failed to open a file that no longer existed.
+
+It reads as a game regression: `BrokenPipeError` out of `run_qemu`, no
+mention of the floppy, and the gate passes standalone because there the
+per-job path and the default path are the same file. The real message is
+one line down in `build/test_brick_flash/qemu.log`:
+`Could not open 'build/batty-test-9.img': No such file or directory`.
+
+Read the qemu.log before reading the traceback.

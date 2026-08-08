@@ -6156,6 +6156,29 @@ static InputAction handle_input(int &ball_moved, int &bat_moved,
     return INPUT_NONE;
 }
 
+/* One frame of every entity that moves independently of the primary
+ * ball, plus the per-frame timer decays. */
+static void step_active_entities(void) {
+    step_bonus();
+    step_pts_400();
+    step_bomb();
+    step_bullet();
+    bullet_blasts_tick();
+    step_rocket();
+    step_brick_flash();
+    step_brick_hit_anim();
+
+    if (bat.fire_anim_ticks) bat.fire_anim_ticks--;
+    if (bullet_cooldown >= 2) bullet_cooldown -= 2;     /* SUB \$02 / frame */
+    else bullet_cooldown = 0;
+
+    /* SLOW sets the ball_1/2/3 speed bytes to $02 together in the
+     * original; here it lives in the speed byte, so the extras step
+     * every frame and their magnitude carries the effect. */
+    step_ball2();
+    step_ball3();
+}
+
 /* A replay checkpoint counts down one frame at a time; reaching zero
  * means write PROBE.TXT and end the run. Short-circuiting the two
  * callers is deliberate: the first to fire returns, so the second never
@@ -6351,23 +6374,7 @@ static state_t run_level(void) {
                     }
                 }
                 if (auto_fire) try_fire_laser();   /* held-SPACE sim (test) */
-                step_bonus();
-                step_pts_400();
-                step_bomb();
-                step_bullet();
-                bullet_blasts_tick();
-                step_rocket();
-                step_brick_flash();
-                step_brick_hit_anim();
-                if (bat.fire_anim_ticks) bat.fire_anim_ticks--;
-                if (bullet_cooldown >= 2) bullet_cooldown -= 2;     /* SUB \$02 / frame */
-                else bullet_cooldown = 0;
-                /* SLOW affects ALL balls in the original (sets the
-                 * ball_1/2/3 speed bytes to $02 simultaneously); now
-                 * modeled via the speed byte, so the extras simply step
-                 * every frame too (their speed magnitude reflects SLOW). */
-                step_ball2();
-                step_ball3();
+                step_active_entities();
                 /* Mirror LBAED's ordering: object_rocket is checked
                  * before balls_quantity, and an active rocket jumps to
                  * the rocket loop instead of LBC10's bat-explosion
