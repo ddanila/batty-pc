@@ -1461,11 +1461,6 @@ static void handling_blast_obj(Object *o) {
 }
 static void handling_400pts_obj(Object *o){ (void)o; }
 
-/* (Removed enemy_dir_delta_q8 + direction_table_q8: the enemy now moves
- * with the exact dir_to_dxdy / hl_bc_calc_direction, like the ball and the
- * original's LAD69. The old routine had the X/Y components swapped per
- * quadrant, flying the bird on the wrong axis.) */
-
 
 /* Wall reflect for ANY ball object: flip the 6-bit dir about the X and/or
  * Y axis (the original's wall-bounce dir mapping). Shared by the primary
@@ -3194,15 +3189,6 @@ static void step_pts_400(void) {
     if (pts_marker.y >= PLAYFIELD_H) pts_marker.active = 0;
 }
 
-/* Brick band geometry: 12 rows * 8 px starting at y=32, 15 cols * 16 px
- * starting at x=8. Determines whether the ball's new center overlaps a
- * live brick and, if so, marks the brick destroyed and returns which
- * axis to reverse:
- *   0 = no hit
- *   1 = vertical hit (entered from top or bottom)  -> caller flips dy
- *   2 = horizontal hit (entered from a side)       -> caller flips dx
- * The previous ball position is needed to disambiguate corner cases. */
-
 /* Try to drop a bonus at (col, row). Called from every brick-
  * destruction site (ball collision, laser bullet, rocket sweep)
  * so the cadence is the same regardless of who destroyed it.
@@ -3347,6 +3333,13 @@ static int brick_hit_resolve(int col, int row, int axis) {
     return axis;
 }
 
+/* Does the ball's new centre overlap a live brick? If so the brick is
+ * marked destroyed and the axis to reverse is returned:
+ *   0 = no hit
+ *   1 = vertical   (entered top or bottom) -> caller flips dy
+ *   2 = horizontal (entered from a side)   -> caller flips dx
+ * The previous position disambiguates the corner cases. Field geometry
+ * is in level.h. */
 static int brick_collision(int prev_x, int prev_y, int new_x, int new_y) {
     const BrickHit hit = brick_sweep(BrickField(live_level),
                                      eff_ball_size(), BALL_H_PX,
@@ -4988,9 +4981,6 @@ static void redraw_full_with_ball(unsigned char level_idx) {
         render_rocket_to_buff();
         mark_dirty_sprite_rect(spr, rocket.x, rocket.y);
     }
-    /* (restore_top_frame_center used to run here — moved BEFORE the
-     * object compose so it can't erase sprites overlapping the frame
-     * centre; see the comment at the new call site above.) */
     prof.bricks_pit += prof_elapsed();
 
     if (force_full_flush) {

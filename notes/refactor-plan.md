@@ -60,7 +60,7 @@ happened, and `make test-video` caught it.
 | 10 | state owners — structs at file scope | 113 vars | **done** — 11 clusters, see below |
 | 1 | replay / probe scaffolding | 480 | **last** — see below |
 
-`main.cpp`: 7,746 → 6,732. 100 host tests + source gates, all via `make test-fast` in seconds.
+`main.cpp`: 7,746 → 6,722. 100 host tests + source gates, all via `make test-fast` in seconds.
 
 ### Stage 5, done
 
@@ -282,7 +282,28 @@ it actually is. A third orphaned comment went with them: the
 Coverage note: `test-death-sparks` is source-grep only, 0.1s, no boot.
 Its seven needles are content-based so they survived the move, but
 nothing renders the death animation in an emulator — this rests on code
-motion. Note the
+motion.
+
+### Comments drift away from what they document
+
+Four have turned up now. Three were orphans — prose left behind when
+stage 3a/6b-iii moved the code to another module
+(`hl_bc_calc_direction`, `bonus_to_original`, and the
+`bonus_apply` header my own extractions pushed off its function). The
+fourth was different: `brick_collision`'s documentation had drifted 150
+lines above the function as other code was inserted between them, so it
+read as a header for `try_spawn_bonus`.
+
+Both failure modes are invisible to every gate — the compiler does not
+care and no test reads prose. Two heuristics for finding them
+automatically produced only noise (a comment ending before a blank line
+matches every section banner; matching identifiers against other modules
+matches English words like "pixel" and "queue"). They were found by
+reading. If a cheap check exists it has not been found yet.
+
+Deleting historical narrative wholesale is *not* safe: most "Earlier port
+used X" notes record a fixed bug and stop it coming back. Only the two
+that documented removed code were dropped. Note the
 coverage limit: `test-bonus-effects` checks only that the catch sets
 `bat.bonus_applied = $09`, so the blast body — alien to sprite_set $0A,
 +350, SND_ALIEN_BLAST — is not gated by anything. That arm rests on
