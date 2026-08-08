@@ -4382,6 +4382,35 @@ static void magnet_ball_state_clear(unsigned char si) {
     ball.mag_delta[si] = 0;
 }
 
+/* MAGNET/CATCH: the ball sticks on contact and waits for FIRE. Only a
+ * NORMAL-width bat catches — the original gates on width $1C, so a big
+ * bat falls through to the ordinary deflection.
+ *
+ * The offset is QUANTIZED: ball_x - bat_x, clamped >= 0, then & 0xFC (a
+ * multiple of 4) and capped at 0x18. That is what makes the rest x and
+ * the launch direction derived from it match the Spectrum — probed,
+ * ball_x 133 gives offset 0x10 and rest x 132.
+ * orig: LAB1F_1..3 */
+static void catch_ball_on_bat(int contact_x) {
+    int off = contact_x - BAT_X;
+    if (off < 0) off = 0;
+    off &= 0xFC;
+    if (off >= 0x19) off = 0x18;
+
+    ball.stuck_offset_x = off;
+    ball.stuck          = 1;
+    ball.stuck_ticks    = 0;
+    ball.dy             = -BALL_SPEED;
+    objects[OBJ_BALL_1].dir = 0x20;
+    BALL_X = BAT_X + off;
+    /* A caught ball rests 1 px lower than the launch rest: LAB1F_3 sets
+     * $A7 = 167, against $A6 = 166 for level start and launch. */
+    BALL_Y = BAT_Y - BALL_H_PX + 1;
+    objects[OBJ_BALL_1].x_coord_hi = 0;
+    objects[OBJ_BALL_1].y_coord_hi = 0;
+    sound_queue(SND_BAT_BEAT);
+}
+
 /* Park the ball on the bat at its catch offset. The bottom row touches
  * the bat top: $A6 = 166, the original's launch rest at LA27E_15. A ball
  * HELD by the MAGNET bonus rests 1 px lower at $A7 = 167 (LAB1F_3), and
@@ -4445,16 +4474,12 @@ static void step_ball(void) {
         next_y_q8 = (long)next_y << 8;
         ball_reflect_descriptor(0, 1);
     }
-    /* Bat top: ball moving down, ball overlaps bat in X. Use a 5-zone
-     * deflection so the ball gains horizontal control from where the
-     * player intercepts it - the classic brick-breaker mechanic. */
+    /* Bat top: the ball is descending and overlaps the bat in X. */
     if (ball.dy > 0
         && next_y + BALL_H_PX > bat_top
         && next_y < bat_top
         && next_x + ball_sz > bat_left
         && next_x < bat_right) {
-        int hit_x = (next_x + ball_sz / 2) - bat_left;
-        int span  = bat_right - bat_left;
         /* Y-dimension uses the ball HEIGHT (7), not the width (eff_ball_size
          * = 8), and a STRICT `>`: the original fires LAB1F when obj_compare
          * reports Y overlap, which (LAC22: 166 - ball_y borrows) is exactly
@@ -4476,32 +4501,14 @@ static void step_ball(void) {
          * match the Spectrum (probed: ball_x 133 -> offset 0x10 -> rest
          * x 132). The original then snaps the ball to y=$A7=167. */
         if (objects[OBJ_BAT_1].bonus_applied == 0x03 && bat.extra_px == 0) {
-            int off = next_x - BAT_X;
-            if (off < 0) off = 0;
-            off &= 0xFC;
-            if (off >= 0x19) off = 0x18;
-            ball.stuck_offset_x  = off;
-            ball.stuck      = 1;
-            ball.stuck_ticks     = 0;
-            ball.dy         = -BALL_SPEED;
-            objects[OBJ_BALL_1].dir = 0x20;
-            BALL_X          = BAT_X + off;
-            /* A MAGNET-caught ball rests 1px lower than the launch rest:
-             * LAB1F_3 sets y = $A7 = 167 (= bat_top - BALL_H_PX + 1),
-             * vs $A6 = 166 for the level-start / launch rest. */
-            BALL_Y          = bat_top - BALL_H_PX + 1;
-            objects[OBJ_BALL_1].x_coord_hi = 0;
-            objects[OBJ_BALL_1].y_coord_hi = 0;
-            sound_queue(SND_BAT_BEAT);
+            catch_ball_on_bat(next_x);
             return;
         }
         ball.dy = -BALL_SPEED;
-        /* Exact LAB1F deflection (replaces the 5-zone approximation).
-         * offset = ball_x + 3 - bat_x (the bat object's left edge BAT_X,
-         * = original IY+$02); an enlarged bat selects the LABFC table.
-         * See notes/bat-deflection.md (validated vs captured ground
-         * truth). hit_x/span retained only for the catch branch above. */
-        (void)hit_x; (void)span;
+        /* Exact LAB1F deflection: offset = ball_x + 3 - bat_x (the bat
+         * object's left edge, the original's IY+$02); an enlarged bat
+         * selects the LABFC table. Validated against captured ground
+         * truth — see notes/bat-deflection.md. */
         objects[OBJ_BALL_1].dir =
             bat_deflect_dir(objects[OBJ_BALL_1].dir,
                             next_x + 3 - BAT_X, bat.extra_px != 0);

@@ -60,7 +60,7 @@ happened, and `make test-video` caught it.
 | 10 | state owners — structs at file scope | 113 vars | **done** — 11 clusters, see below |
 | 1 | replay / probe scaffolding | 480 | **last** — see below |
 
-`main.cpp`: 7,746 → 6,727. 100 host tests + source gates, all via `make test-fast` in seconds.
+`main.cpp`: 7,746 → 6,734. 100 host tests + source gates, all via `make test-fast` in seconds.
 
 ### Stage 5b: one destroyed-cell reset, not two
 
@@ -279,6 +279,17 @@ MAGNET offset — the shape that lets two copies drift. Both anti-
 regression notes survive in the one place: the 1 px MAGNET drop, and
 that `BALL_H_PX` is deliberate where the effective ball size would put
 the ball at 165 and clobber `respawn_primary_ball`.
+
+`catch_ball_on_bat` followed, and the surrounding block had two comments
+that had stopped being true. Its header still described "a 5-zone
+deflection" that `bat_deflect_dir`'s exact LAB1F port replaced, and
+`hit_x`/`span` were computed, silenced with `(void)` casts, and
+annotated "retained only for the catch branch above" — which does not
+use them. Both deleted.
+
+That is a third comment failure mode, after orphaning and drift: a
+comment that stayed attached to its code while the code beneath it
+changed meaning. Nothing catches these either.
 
 `PlayerState` needed a different tool from the rest. `score` and `lives`
 are English words that occur in comments and — the trap —
