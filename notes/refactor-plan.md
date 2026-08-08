@@ -53,14 +53,14 @@ happened, and `make test-video` caught it.
 | 6b-i | `weapons` — bullets + blasts | 95 | **done** — 6 tests |
 | 6b-ii | `enemies` — steering | 145 | **done** — 5 tests |
 | 6b-iii | `bonus_codes` — original <-> port numbering | 40 | **done** — 4 tests |
-| 6b-iv | bonus effects, rocket, sparks | ~500 | needs the game-state step below |
+| 6b-iv | bonus effects, rocket, sparks | ~500 | **started** — `blast_active_alien` split out; rest needs the game-state step below |
 | 7 | `hud` — glyphs, markup, score | 175 | **done** — 6 tests |
 | 8 | `sound` — queue + envelopes | 366 | **done** — 7 tests; had NO coverage before |
 | 9 | `run_level` decomposition | 684 -> 370 | **in progress** — prologue, input, bat steering, scoring extracted |
 | 10 | state owners — structs at file scope | 113 vars | **done** — 11 clusters, see below |
 | 1 | replay / probe scaffolding | 480 | **last** — see below |
 
-`main.cpp`: 7,746 → 6,738. 100 host tests + source gates, all via `make test-fast` in seconds.
+`main.cpp`: 7,746 → 6,741. 100 host tests + source gates, all via `make test-fast` in seconds.
 
 ### Stage 5, done
 
@@ -246,6 +246,12 @@ What is left differing between the paths: the full path paints the brick
 flash and hit animations where the dirty path relies on the carry (that
 one is deliberate), and the bullet render's guard, which is not —
 known-bugs #10.
+
+`bonus_apply`'s KILL_ALIENS arm became `blast_active_alien`. Note the
+coverage limit: `test-bonus-effects` checks only that the catch sets
+`bat.bonus_applied = $09`, so the blast body — alien to sprite_set $0A,
++350, SND_ALIEN_BLAST — is not gated by anything. That arm rests on
+being pure code motion.
 
 The pattern across #9 and #10 is worth naming. Two copies of a render
 block look like duplication to delete, but each divergence has to be

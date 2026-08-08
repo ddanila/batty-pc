@@ -2873,6 +2873,26 @@ static void set_rocket_bonus_sprite_height(unsigned char height) {
 
 /* Apply the effect that comes with `type`. Catching the same type
  * while already active extends the duration. */
+/* Turn the alien currently on screen into its death blast. A blast
+ * (sprite_set $0A) is already dying, so it is left alone.
+ * orig: $A4D2 centres the 16x13 blast over the alien */
+static void blast_active_alien(void) {
+    Object *e = &objects[OBJ_ENEMY];
+    if ((e->sprite_set & 0x7F) == 0) return;
+    if (e->sprite_set & 0x80) return;
+    if ((e->sprite_set & 0x7F) == 0x0A) return;
+
+    e->x_coord   = (unsigned char)(e->x_coord + (int)e->w_body_px / 2 - 8);
+    e->y_coord   = (unsigned char)(e->y_coord + 4);
+    e->w_body_px = 16;
+    e->h_body_px = 13;
+    e->sprite_set = 0x0A;
+    e->sprite_num = 0;
+    e->misc_12    = 0x50;   /* kill_enemy $A4C4 seed */
+    player.score += 350;
+    sound_queue(SND_ALIEN_BLAST);
+}
+
 static void bonus_apply(unsigned char type) {
     /* Original get_bonus at $A67B: every catch awards 400 points and
      * plays a sound — sound_live_add ($07) for the LIFE bonus, the
@@ -2914,27 +2934,10 @@ static void bonus_apply(unsigned char type) {
                                   break;
         case BONUS_TYPE_BIG_BALL: ball.big_ticks = BIG_BALL_DURATION; break;
         case BONUS_TYPE_KILL_ALIENS:
-            /* bat.bonus_applied = \$09 has already been set above —
-             * enemy_prepare reads that to skip further alien spawns.
-             * Also clear any currently active alien for immediate
-             * visible effect. */
-            {
-                Object *e = &objects[OBJ_ENEMY];
-                if ((e->sprite_set & 0x7F) != 0
-                    && !(e->sprite_set & 0x80)
-                    && (e->sprite_set & 0x7F) != 0x0A) {
-                    /* Centre 16x13 blast over alien (mirror of \$A4D2). */
-                    e->x_coord = (unsigned char)(e->x_coord + (int)e->w_body_px / 2 - 8);
-                    e->y_coord = (unsigned char)(e->y_coord + 4);
-                    e->w_body_px = 16;
-                    e->h_body_px = 13;
-                    e->sprite_set = 0x0A;
-                    e->sprite_num = 0;
-                    e->misc_12 = 0x50;   /* kill_enemy $A4C4 seed */
-                    player.score += 350;
-                    sound_queue(SND_ALIEN_BLAST);
-                }
-            }
+            /* bat.bonus_applied = \$09 is already set above; enemy_prepare
+             * reads it to stop spawning. This only clears the alien
+             * already on screen, for immediate visible effect. */
+            blast_active_alien();
             break;
         case BONUS_TYPE_CATCH:
             /* bat.bonus_applied = \$03 has already been set above —
