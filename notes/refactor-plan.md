@@ -136,6 +136,21 @@ emulator-free source gates. Those were reachable only through CI.
 `make test-fast` now runs every host test AND those source gates, in
 seconds, matching exactly what CI checks. Run it before pushing.
 
+### Stage 10: giving the state owners
+
+~113 file-scope variables, grouped one cluster at a time into a struct at
+file scope. Access stays direct (`bomb.y`, not a threaded `GameState&`),
+so each cluster is a mechanical rename with no call-site churn — the
+consolidation into one addressable state comes later, once the clusters
+exist to consolidate.
+
+Done: `ProbeState`, `RenderProfile`, `BallState`, `BatState`, `BombState`.
+Remaining clusters: bonus (7), rocket (7), brick-fx (8), score (6),
+magnet (5).
+
+Each rename must be checked against the source-grepping gates first —
+`make test-gate-greps` names the ones that would break, in a second.
+
 ### The step that unblocks the rest
 
 What remains after stage 9 is not extractable by lifting. `bonus_apply`

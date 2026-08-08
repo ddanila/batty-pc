@@ -586,15 +586,24 @@ static int motion_accel_step(motion_acc_t *m, unsigned int de,
     return (int)((signed char)(sum >> 8));
 }
 
-/* Bomb state - port of bomb_appear at $A977. UFOs (and birds) drop a
- * single bomb that falls toward the bat. Mutually exclusive with a
- * regular bonus in the original since they share object_bonus; here
- * we keep separate side state. Bat collision = lose life like a
- * ball drop. */
-static unsigned char bomb_active = 0;
-static int           bomb_x = 0;
-static int           bomb_y = 0;
-static motion_acc_t  bomb_motion = {0, 0};
+/* The original shares object_bonus between the bomb and a regular
+ * bonus, making them mutually exclusive; the port keeps them separate.
+ * orig: $A977 bomb_appear */
+struct BombState {
+    unsigned char active;
+    int           x;
+    int           y;
+    motion_acc_t  motion;
+};
+static BombState bomb = {0, 0, 0, {0, 0}};
+
+static void bomb_launch(int x, int y) {
+    bomb.active = 1;
+    bomb.x = x;
+    bomb.y = y;
+    bomb.motion.acc = 0;
+    bomb.motion.frac = 0;
+}
 #define BOMB_W_PX       8
 #define BOMB_H_PX       12
 /* ball_visible is encoded in objects[OBJ_BALL_1].sprite_set bit 7:
@@ -2935,7 +2944,7 @@ static void bonus_apply(unsigned char type) {
                 ball.extra3_active = 0;
                 objects[OBJ_BALL_2].sprite_set = 0x82;
                 objects[OBJ_BALL_3].sprite_set = 0x82;
-                bomb_active = 0;
+                bomb.active = 0;
                 bullet_active[0] = 0;
                 bullet_active[1] = 0;
                 bullet_blast_ticks[0] = 0;
@@ -3202,7 +3211,7 @@ static void try_spawn_bonus(int col, int row) {
     /* The original shares object_bonus between falling bonus and bomb,
      * so a bomb in flight blocks new bonus spawns. We keep separate
      * state but mirror the mutual exclusion here. */
-    if (bomb_active) return;
+    if (bomb.active) return;
     /* Mirror the test at $A2CC: drop a bonus iff (random & 0x0F) < 5,
      * i.e. 5/16 ≈ 31% per destroyed brick. (Earlier port used a
      * deterministic every-Nth counter — close in average rate but
@@ -3534,7 +3543,7 @@ static void apply_replay_bonus_override(void) {
 
 /* Bake a falling enemy bomb for the bomb-fall regression gate.
  * BATTY_REPLAY_BOMB = "x,y". Same accel family as the bonus
- * (motion_accel_step(&bomb_motion, 0x0008, 0x02)); put x clear of the bat
+ * (motion_accel_step(&bomb.motion, 0x0008, 0x02)); put x clear of the bat
  * to test pure fall (no bat-kill). */
 static void apply_replay_bomb_override(void) {
     const char *spec = getenv("BATTY_REPLAY_BOMB");
@@ -3545,11 +3554,7 @@ static void apply_replay_bomb_override(void) {
     if (endp == spec || *endp != ',') return;
     y = strtol(endp + 1, &endp2, 0);
     if (endp2 == endp + 1) return;
-    bomb_active = 1;
-    bomb_x = (int)x;
-    bomb_y = (int)y;
-    bomb_motion.acc = 0;
-    bomb_motion.frac = 0;
+    bomb_launch((int)x, (int)y);
 }
 
 /* Bake a rising/falling +400 score popup for the pts-400-fall gate.
@@ -3836,10 +3841,10 @@ static void write_replay_probe(void) {
     fprintf(f, "\nbonus_state=active%02X_type%02X_x%02X_y%02X_bomb%02X",
             (unsigned)bonus_active, (unsigned)bonus_type,
             (unsigned)(bonus_x & 0xFF), (unsigned)(bonus_y & 0xFF),
-            (unsigned)bomb_active);
+            (unsigned)bomb.active);
     fprintf(f, "\nbomb_state=active%02X_x%02X_y%02X",
-            (unsigned)bomb_active, (unsigned)(bomb_x & 0xFF),
-            (unsigned)(bomb_y & 0xFF));
+            (unsigned)bomb.active, (unsigned)(bomb.x & 0xFF),
+            (unsigned)(bomb.y & 0xFF));
     fprintf(f, "\npts400_state=active%02X_x%02X_y%02X",
             (unsigned)pts_400_active, (unsigned)(pts_400_x & 0xFF),
             (unsigned)(pts_400_y & 0xFF));
@@ -4035,7 +4040,7 @@ static void kill_enemy_by_ball_rect(int bx_l, int by_t, int bw, int bh) {
  * shares the bonus slot in the original; we keep separate state. */
 static void bomb_appear(Object *o) {
     unsigned int r;
-    if (bomb_active) return;
+    if (bomb.active) return;
     if (bonus_active) return;
     /* Read-current (rng_sample): $A989 reads both random_number bytes
      * without advancing. bomb_appear runs every alien frame, so leaving it
@@ -4049,27 +4054,23 @@ static void bomb_appear(Object *o) {
     if ((unsigned char)((random_hi(r) + random_lo(r)) & 0x3F) != 0) return;
     /* Only spawn while alien still in upper half (y < $C0 = 192). */
     if (o->y_coord + 8 >= 0xC0) return;
-    bomb_active = 1;
-    bomb_x = (int)o->x_coord + 8;
-    bomb_y = (int)o->y_coord + 8;
-    bomb_motion.acc = 0;
-    bomb_motion.frac = 0;
+    bomb_launch((int)o->x_coord + 8, (int)o->y_coord + 8);
 }
 
 /* Step the bomb each frame: fall, check bat collision, deactivate
  * past the bottom. Bat hit costs a life and respawns the ball. */
 static void step_bomb(void) {
     int bx_l, bx_r, by_t, by_b;
-    if (!bomb_active) return;
-    bomb_y += motion_accel_step(&bomb_motion, 0x0008, 0x02);
+    if (!bomb.active) return;
+    bomb.y += motion_accel_step(&bomb.motion, 0x0008, 0x02);
     /* Original bomb_appear at $A977 sets (object_bonus+$0C, +$0D) =
-     * $08, $08 — bomb body is 8x8 starting at (bomb_x, bomb_y), not
+     * $08, $08 — bomb body is 8x8 starting at (bomb.x, bomb.y), not
      * the full 8x12 sprite extent. Earlier port used only the last
      * 4 px of the sprite for collision, which triggered slightly
      * earlier (when bomb-bottom reached bat-top) than the original
      * (when bomb-body overlapped bat-body). */
-    bx_l = bomb_x; bx_r = bomb_x + BOMB_W_PX;
-    by_t = bomb_y;            by_b = bomb_y + 8;
+    bx_l = bomb.x; bx_r = bomb.x + BOMB_W_PX;
+    by_t = bomb.y;            by_b = bomb.y + 8;
     if (by_b >= BAT_Y && by_t < BAT_Y + 10
         && bx_r > eff_bat_left() && bx_l < eff_bat_right()) {
         /* h = 10 matches object_bat_1.h_body_px = \$0A — same as
@@ -4078,7 +4079,7 @@ static void step_bomb(void) {
          * which triggers LBC10's bat-explosion + lives-- branch on
          * the next frame — i.e. ALL balls die, not just the primary.
          * Mirror that here so multi-ball play can't soak bomb hits. */
-        bomb_active = 0;
+        bomb.active = 0;
         ball.extra2_active = 0;
         objects[OBJ_BALL_2].sprite_set = 0x82;
         ball.extra3_active = 0;
@@ -4088,7 +4089,7 @@ static void step_bomb(void) {
         if (lives > 0) respawn_primary_ball();    /* else game-over fires next frame */
         return;
     }
-    if (bomb_y > PLAYFIELD_H) bomb_active = 0;
+    if (bomb.y > PLAYFIELD_H) bomb.active = 0;
 }
 
 /* Step one laser bullet slot (slot index in `b`). Move up; on first
@@ -4935,9 +4936,9 @@ static void redraw_full_with_ball(unsigned char level_idx) {
             }
         }
     }
-    if (bomb_active) {
-        blit_masked_to_scr_buff(spr_bomb_data, bomb_x, bomb_y);
-        mark_dirty_rect_px(bomb_x, bomb_y, 16, 16);
+    if (bomb.active) {
+        blit_masked_to_scr_buff(spr_bomb_data, bomb.x, bomb.y);
+        mark_dirty_rect_px(bomb.x, bomb.y, 16, 16);
     }
     if (pts_400_active) {
         blit_masked_to_scr_buff(pts_marker_spr, pts_400_x, pts_400_y);
@@ -5028,7 +5029,7 @@ static unsigned int ball_dirty_blockers(int bat_moved) {
     if (!BALL_VISIBLE) blockers |= BALL_DIRTY_BLOCK_BALLS;
     if (static_bg_dirty || static_bg_cache_dirty || force_full_flush) blockers |= BALL_DIRTY_BLOCK_STATIC;
     if (score != prev_score || high_score != prev_high_score || lives != prev_lives) blockers |= BALL_DIRTY_BLOCK_HUD;
-    if (bonus_active || pts_400_active || bomb_active || rocket_active) blockers |= BALL_DIRTY_BLOCK_OBJECTS;
+    if (bonus_active || pts_400_active || bomb.active || rocket_active) blockers |= BALL_DIRTY_BLOCK_OBJECTS;
     if (objects[OBJ_ENEMY].sprite_set != 0) blockers |= BALL_DIRTY_BLOCK_OBJECTS;
     if (any_bullet_active() || any_bullet_blast()) blockers |= BALL_DIRTY_BLOCK_OBJECTS;
     if (brick_flash_ticks || any_brick_hit_anim()) blockers |= BALL_DIRTY_BLOCK_BRICKS;
@@ -5066,7 +5067,7 @@ static void prof_note_ball_dirty_blockers(unsigned int blockers) {
 static int can_redraw_ball_with_simple_objects(unsigned int blockers) {
     if ((blockers & ~BALL_DIRTY_BLOCK_OBJECTS) != 0) return 0;
     if (!bonus_active && !pts_400_active && objects[OBJ_ENEMY].sprite_set == 0
-        && !any_bullet_active() && !any_bullet_blast() && !bomb_active
+        && !any_bullet_active() && !any_bullet_blast() && !bomb.active
         && !ball.extra2_active && !ball.extra3_active) return 0;
     if (rocket_active) return 0;
     /* The +400 catch popup renders correctly only via the full path; in the
@@ -5150,9 +5151,9 @@ static void render_simple_objects_to_buff_and_mark(unsigned char bg_attr) {
     }
     /* Enemy bomb: a single falling sprite, same dirty treatment as a bonus
      * (the bat-collision kill is handled in step_bomb, not here). */
-    if (bomb_active) {
-        blit_masked_to_scr_buff(spr_bomb_data, bomb_x, bomb_y);
-        mark_dirty_rect_px(bomb_x, bomb_y, 16, 16);
+    if (bomb.active) {
+        blit_masked_to_scr_buff(spr_bomb_data, bomb.x, bomb.y);
+        mark_dirty_rect_px(bomb.x, bomb.y, 16, 16);
     }
     if (pts_400_active) {
         blit_masked_to_scr_buff(pts_marker_spr, pts_400_x, pts_400_y);
@@ -5809,7 +5810,7 @@ static void play_bat_explosion(unsigned char level_idx) {
      * spark animation. Without this, a bomb in flight or alien on
      * screen would persist through the explosion and reappear when
      * the player respawns. */
-    bomb_active = 0;
+    bomb.active = 0;
     bonus_active = 0;
     rocket_active = 0;
     rocket_clear_completed = 0;
@@ -5934,7 +5935,7 @@ static void reset_level_state(unsigned char lvl_idx) {
     ball.stuck_ticks   = 0;                /* counts up while waiting for launch */
     primary_ball_set_velocity(+1, -BALL_SPEED);
     bonus_active   = 0;
-    bomb_active        = 0;
+    bomb.active        = 0;
     bullet_active[0]      = 0;
     bullet_active[1]      = 0;
     bullet_blast_ticks[0] = 0;
@@ -6410,7 +6411,7 @@ static state_t run_level(void) {
                 if (pts_400_active) ball_moved = 1;
                 if (bat.extra_px != bat.extra_target) bat_moved = 1;
                 if (objects[OBJ_ENEMY].sprite_set != 0) ball_moved = 1;
-                if (bomb_active) ball_moved = 1;
+                if (bomb.active) ball_moved = 1;
                 if (any_bullet_active()) ball_moved = 1;
                 if (any_bullet_blast()) ball_moved = 1;
                 if (rocket_active) ball_moved = 1;
