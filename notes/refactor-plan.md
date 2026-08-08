@@ -60,7 +60,7 @@ happened, and `make test-video` caught it.
 | 10 | state owners — structs at file scope | 113 vars | **done** — 11 clusters, see below |
 | 1 | replay / probe scaffolding | 480 | **last** — see below |
 
-`main.cpp`: 7,746 → 6,731. 100 host tests + source gates, all via `make test-fast` in seconds.
+`main.cpp`: 7,746 → 6,728. 100 host tests + source gates, all via `make test-fast` in seconds.
 
 ### Stage 5, done
 
@@ -261,7 +261,16 @@ direction. The two eight-line spawn blocks became one
 
 That is the first new coverage on known-bugs #8's territory: the extras'
 *derivation* is now pinned, even though which quadrant convention is
-right still needs an oracle. Note the
+right still needs an oracle.
+
+The ROCKET arm's remaining body became `attach_rocket_to_bat`. Its two
+long comment blocks collapsed into one header — the placement rule
+(`bat_x + 4`, `+ 12` when big, `bat_y + 6`) and the `INC (IY+$14)`
+quirk that makes the ROCKET catch cancel any prior bat-side bonus, which
+is the reason `bonus_apply`'s universal assignment skips ROCKET.
+
+`bonus_apply` is now 180 -> ~85 lines: a sound, one assignment, and a
+switch whose arms are named calls or two-liners. Note the
 coverage limit: `test-bonus-effects` checks only that the catch sets
 `bat.bonus_applied = $09`, so the blast body — alien to sprite_set $0A,
 +350, SND_ALIEN_BLAST — is not gated by anything. That arm rests on

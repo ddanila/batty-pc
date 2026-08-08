@@ -2904,6 +2904,34 @@ static void hide_objects_for_rocket_clear(void) {
     }
 }
 
+/* Start the level-clear flight: the rocket emerges from inside the bat
+ * and step_rocket destroys every destructible cell it passes through,
+ * so the level is visibly cleared rather than just dissolving.
+ *
+ * orig: get_rocket $AA9D. x = bat_x + 4, or + 12 when the bat is big;
+ * y = bat_y + 6, inside the body. The sprite is masked, so the bat
+ * shows through. No catch sound — get_rocket pushes none. */
+static void attach_rocket_to_bat(void) {
+    rocket.active = 1;
+    rocket.clear_completed = 0;
+    set_rocket_bonus_sprite_height(ROCKET_H_PX);
+    hide_objects_for_rocket_clear();
+
+    rocket.x = BAT_X + 4;
+    if (bat.extra_px >= BAT_BIG_EXTRA_PX) rocket.x += 8;
+    rocket.y = BAT_Y + 6;
+    rocket.acc = 0;
+    rocket.frac = 0;
+    rocket.counter = 0;
+
+    /* INC (IY+$14) at $AA72: the ROCKET catch bumps bat.bonus_applied
+     * by one, which silently cancels whatever bat-side bonus was
+     * active (CATCH $03 -> $04, LASER $01 -> $02, both inert). This is
+     * why bonus_apply's universal assignment skips ROCKET. */
+    objects[OBJ_BAT_1].bonus_applied++;
+    objects[OBJ_BAT_2].bonus_applied++;
+}
+
 /* Turn the alien currently on screen into its death blast. A blast
  * (sprite_set $0A) is already dying, so it is left alone.
  * orig: $A4D2 centres the 16x13 blast over the alien */
@@ -2978,38 +3006,7 @@ static void bonus_apply(unsigned char type) {
              * stick the ball. */
             break;
         case BONUS_TYPE_ROCKET:
-            /* Spawn a rocket flying up from the bat. step_rocket
-             * destroys every destructible cell it passes through,
-             * giving the player a visible "rocket cleared the level"
-             * moment instead of the level just dissolving. */
-            if (!rocket.active) {
-                rocket.active = 1;
-                rocket.clear_completed = 0;
-                set_rocket_bonus_sprite_height(ROCKET_H_PX);
-                hide_objects_for_rocket_clear();
-                /* Original get_rocket at $AA9D:
-                 *   rocket.x = bat_x + 4 (normal) or +12 (big)
-                 *   rocket.y = bat_y + 6 (inside the bat body)
-                 * Both put the rocket on the bat's left half emerging
-                 * up from inside it. Our sprite is masked so the bat
-                 * pixels stay visible through the transparent regions. */
-                rocket.x = BAT_X + 4;
-                if (bat.extra_px >= BAT_BIG_EXTRA_PX) rocket.x += 8;
-                rocket.y = BAT_Y + 6;
-                rocket.acc = 0;
-                rocket.frac = 0;
-                rocket.counter = 0;
-                /* No catch sound — get_rocket at $AA9D pushes none. */
-                /* INC (IY+\$14) at $AA9D:\$AA72: ROCKET catch bumps
-                 * bat.bonus_applied by 1, which silently cancels any
-                 * prior bat-side bonus (e.g. CATCH \$03 → \$04 = no
-                 * effect; LASER \$01 → \$02 = no effect). The
-                 * universal bonus_apply set we did at the top of this
-                 * function intentionally skips ROCKET, so we apply
-                 * the INC here instead. */
-                objects[OBJ_BAT_1].bonus_applied++;
-                objects[OBJ_BAT_2].bonus_applied++;
-            }
+            if (!rocket.active) attach_rocket_to_bat();
             break;
         case BONUS_TYPE_SCORE_5K:
             /* Pure score bonus. 5000 in BCD-equivalent decimal. */
