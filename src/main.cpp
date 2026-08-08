@@ -5805,6 +5805,54 @@ static void spawn_death_sparks(void) {
     }
 }
 
+/* Advance one death spark. False once it has expired — off the bottom,
+ * or out of animation frames. The sides only CLAMP: a spark keeps
+ * ticking against a wall until its frame counter runs out.
+ * orig: handling_spark $A8BD */
+static bool step_death_spark(int i) {
+    int dx_q88, dy_q88;
+    int xp, yp;
+    int right_x;
+    if (!death_sparks[i].active) return false;
+    dir_to_dxdy(death_sparks[i].dir, death_sparks[i].speed,
+                 &dx_q88, &dy_q88);
+    death_sparks[i].x_q88 += dx_q88;
+    death_sparks[i].y_q88 += dy_q88;
+    xp = (int)(death_sparks[i].x_q88 >> 8);
+    yp = (int)(death_sparks[i].y_q88 >> 8);
+    /* Off the bottom = dead. Sides clamp the position so the
+     * spark can keep ticking until its frame counter expires. */
+    if (yp >= PLAYFIELD_H) { death_sparks[i].active = 0; return false; }
+    right_x = 0xF8 - DEATH_SPARK_BODY_W;
+    if (xp < 8) {
+        death_sparks[i].x_q88 = 8L << 8;
+        death_sparks[i].dir = (unsigned char)(((death_sparks[i].dir ^ 0x1F) + 1) & 0x3F);
+    } else if (xp > right_x) {
+        death_sparks[i].x_q88 = (long)right_x << 8;
+        death_sparks[i].dir = (unsigned char)(((death_sparks[i].dir ^ 0x1F) + 1) & 0x3F);
+    }
+    if (yp < 8) {
+        death_sparks[i].y_q88 = 8L << 8;
+        death_sparks[i].dir = (unsigned char)(((death_sparks[i].dir ^ 0x3F) + 1) & 0x3F);
+    }
+    if (--death_sparks[i].frame_ticks == 0) {
+        if (death_sparks[i].sprite_num >= SPARK_FRAMES - 1) {
+            death_sparks[i].active = 0;
+            return false;
+        }
+        death_sparks[i].sprite_num++;
+        /* Original handling_spark at $A8BD: SRL (IX+$14);
+         * INC A; LD (IX+$15),A. Halve the duration base, set
+         * tick counter to base+1. (IX+$07) = speed stays
+         * constant for the spark's whole life. */
+        death_sparks[i].duration_base =
+            (unsigned char)(death_sparks[i].duration_base >> 1);
+        death_sparks[i].frame_ticks =
+            (unsigned char)(death_sparks[i].duration_base + 1);
+    }
+    return true;
+}
+
 static void play_bat_explosion(unsigned char level_idx) {
     unsigned long last;
     unsigned long death_pause_start;
@@ -5826,47 +5874,7 @@ static void play_bat_explosion(unsigned char level_idx) {
         sound_frame();
         alive = 0;
         for (i = 0; i < DEATH_SPARK_COUNT; i++) {
-            int dx_q88, dy_q88;
-            int xp, yp;
-            int right_x;
-            if (!death_sparks[i].active) continue;
-            dir_to_dxdy(death_sparks[i].dir, death_sparks[i].speed,
-                         &dx_q88, &dy_q88);
-            death_sparks[i].x_q88 += dx_q88;
-            death_sparks[i].y_q88 += dy_q88;
-            xp = (int)(death_sparks[i].x_q88 >> 8);
-            yp = (int)(death_sparks[i].y_q88 >> 8);
-            /* Off the bottom = dead. Sides clamp the position so the
-             * spark can keep ticking until its frame counter expires. */
-            if (yp >= PLAYFIELD_H) { death_sparks[i].active = 0; continue; }
-            right_x = 0xF8 - DEATH_SPARK_BODY_W;
-            if (xp < 8) {
-                death_sparks[i].x_q88 = 8L << 8;
-                death_sparks[i].dir = (unsigned char)(((death_sparks[i].dir ^ 0x1F) + 1) & 0x3F);
-            } else if (xp > right_x) {
-                death_sparks[i].x_q88 = (long)right_x << 8;
-                death_sparks[i].dir = (unsigned char)(((death_sparks[i].dir ^ 0x1F) + 1) & 0x3F);
-            }
-            if (yp < 8) {
-                death_sparks[i].y_q88 = 8L << 8;
-                death_sparks[i].dir = (unsigned char)(((death_sparks[i].dir ^ 0x3F) + 1) & 0x3F);
-            }
-            if (--death_sparks[i].frame_ticks == 0) {
-                if (death_sparks[i].sprite_num >= SPARK_FRAMES - 1) {
-                    death_sparks[i].active = 0;
-                    continue;
-                }
-                death_sparks[i].sprite_num++;
-                /* Original handling_spark at $A8BD: SRL (IX+$14);
-                 * INC A; LD (IX+$15),A. Halve the duration base, set
-                 * tick counter to base+1. (IX+$07) = speed stays
-                 * constant for the spark's whole life. */
-                death_sparks[i].duration_base =
-                    (unsigned char)(death_sparks[i].duration_base >> 1);
-                death_sparks[i].frame_ticks =
-                    (unsigned char)(death_sparks[i].duration_base + 1);
-            }
-            alive = 1;
+            if (step_death_spark(i)) alive = 1;
         }
         redraw_with_death_sparks(level_idx);
     } while (alive);

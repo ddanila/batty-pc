@@ -60,7 +60,7 @@ happened, and `make test-video` caught it.
 | 10 | state owners — structs at file scope | 113 vars | **done** — 11 clusters, see below |
 | 1 | replay / probe scaffolding | 480 | **last** — see below |
 
-`main.cpp`: 7,746 → 6,753. 100 host tests + source gates, all via `make test-fast` in seconds.
+`main.cpp`: 7,746 → 6,761. 100 host tests + source gates, all via `make test-fast` in seconds.
 
 ### Stage 5b: one destroyed-cell reset, not two
 
@@ -556,6 +556,13 @@ So it checks the four LBC10_6 ordering facts a screendump could not
 distinguish anyway: capture the high score before drawing, save after
 name entry, hold ~65 BIOS ticks with any key cutting it short, and queue
 no sound. A visual gate is still worth adding on top.
+
+`step_death_spark` then reduced `play_bat_explosion`'s inner loop to
+`if (step_death_spark(i)) alive = 1;`, leaving the function as the
+PIT-paced pump it is. The helper keeps `death_sparks[i]` indexing rather
+than taking a pointer — `test-death-sparks` greps four compacted
+fragments containing `death_sparks[i].dir`, and a pointer rewrite would
+have broken all four for no gain.
 
 ## What this has already found
 
