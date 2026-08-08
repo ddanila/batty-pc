@@ -38,7 +38,7 @@ def source_guard():
     ]
     if any(needle in src for needle in forbidden):
         raise SystemExit("FAIL: brick destruction must not paint the invented bright-white flash")
-    if "mark_dirty_rect_px(brick_flash_x - 1, brick_flash_y - 1, 18, 10)" not in src:
+    if "mark_dirty_rect_px(brick_flash.x - 1, brick_flash.y - 1, 18, 10)" not in src:
         raise SystemExit("FAIL: destroyed brick dirty rect must include print_one_brik_buf's 18x10 footprint")
 
 

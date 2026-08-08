@@ -529,9 +529,12 @@ static unsigned char random_rom[RANDOM_ROM_SIZE];
  * frames are required to match the original's destroy render. See
  * notes/metal-shimmer.md (BRICK_FLASH_TICKS regression). */
 #define BRICK_FLASH_TICKS 2
-static unsigned char brick_flash_ticks = 0;
-static int           brick_flash_x     = 0;
-static int           brick_flash_y     = 0;
+struct BrickFlashState {
+    unsigned char ticks;
+    int           x;
+    int           y;
+};
+static BrickFlashState brick_flash = {0, 0, 0};
 static void render_brick_flash_to_buff(void);    /* forward decl — defined alongside brick_collision */
 
 /* Original briks_data: up to five simultaneous hard-brick shimmer
@@ -3276,21 +3279,21 @@ static void try_spawn_bonus(int col, int row) {
  * blit footprint. print_one_brik_buf writes one row above, one row below,
  * and one pixel into neighbouring byte columns. */
 static void brick_flash_spawn(int col, int row) {
-    brick_flash_x = 8 + col * 16;
-    brick_flash_y = 32 + row * 8;
-    brick_flash_ticks = BRICK_FLASH_TICKS;
+    brick_flash.x = 8 + col * 16;
+    brick_flash.y = 32 + row * 8;
+    brick_flash.ticks = BRICK_FLASH_TICKS;
 }
 
 static void step_brick_flash(void) {
-    if (brick_flash_ticks) brick_flash_ticks--;
+    if (brick_flash.ticks) brick_flash.ticks--;
 }
 
 /* No visual flash here. The original destruction path leaves the brick
  * absent after background recovery; this marker exists only for dirty
  * rectangle scheduling. */
 static void render_brick_flash_to_buff(void) {
-    (void)brick_flash_x;
-    (void)brick_flash_y;
+    (void)brick_flash.x;
+    (void)brick_flash.y;
 }
 
 static int brick_hit_resolve(int col, int row, int axis);
@@ -4892,8 +4895,8 @@ static void redraw_full_with_ball(unsigned char level_idx) {
     prof.hud_pit += prof_elapsed();
 
     render_brick_flash_to_buff();
-    if (brick_flash_ticks) {
-        mark_dirty_rect_px(brick_flash_x - 1, brick_flash_y - 1, 18, 10);
+    if (brick_flash.ticks) {
+        mark_dirty_rect_px(brick_flash.x - 1, brick_flash.y - 1, 18, 10);
     }
     render_brick_hit_anim_to_buff();
     if (any_brick_hit_anim()) {
@@ -5037,7 +5040,7 @@ static unsigned int ball_dirty_blockers(int bat_moved) {
     if (bonus_active || pts_marker.active || bomb.active || rocket_active) blockers |= BALL_DIRTY_BLOCK_OBJECTS;
     if (objects[OBJ_ENEMY].sprite_set != 0) blockers |= BALL_DIRTY_BLOCK_OBJECTS;
     if (any_bullet_active() || any_bullet_blast()) blockers |= BALL_DIRTY_BLOCK_OBJECTS;
-    if (brick_flash_ticks || any_brick_hit_anim()) blockers |= BALL_DIRTY_BLOCK_BRICKS;
+    if (brick_flash.ticks || any_brick_hit_anim()) blockers |= BALL_DIRTY_BLOCK_BRICKS;
     /* Extra balls (multi-ball) are full moving sprites like the primary —
      * route them to the simple-object dirty tier (OBJECTS), not a full
      * recompose. big-ball is the PRIMARY ball with a different sprite of the
@@ -5825,7 +5828,7 @@ static void play_bat_explosion(unsigned char level_idx) {
     bullet_active[1] = 0;
     bullet_blast_ticks[0] = 0;
     bullet_blast_ticks[1] = 0;
-    brick_flash_ticks = 0;
+    brick_flash.ticks = 0;
     reset_brick_hit_anim();
     objects[OBJ_ENEMY].sprite_set = 0;
     /* Extras may still be inactive but defensive-clear in case a new
@@ -5950,7 +5953,7 @@ static void reset_level_state(unsigned char lvl_idx) {
     rocket_active      = 0;
     rocket_clear_completed = 0;
     set_rocket_bonus_sprite_height(ROCKET_BONUS_H_PX);
-    brick_flash_ticks  = 0;
+    brick_flash.ticks  = 0;
     reset_brick_hit_anim();
     ball.extra2_active   = 0;
     objects[OBJ_BALL_2].sprite_set = 0x82;
@@ -6420,7 +6423,7 @@ static state_t run_level(void) {
                 if (any_bullet_active()) ball_moved = 1;
                 if (any_bullet_blast()) ball_moved = 1;
                 if (rocket_active) ball_moved = 1;
-                if (brick_flash_ticks) ball_moved = 1;
+                if (brick_flash.ticks) ball_moved = 1;
                 if (any_brick_hit_anim()) ball_moved = 1;
                 if (ball.extra2_active) ball_moved = 1;
                 if (ball.extra3_active) ball_moved = 1;
