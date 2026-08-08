@@ -110,6 +110,11 @@ def needles(path: Path):
         left = node.left
         rhs = node.comparators[0] if node.comparators else None
         scoped = not isinstance(rhs, ast.Name)
+        # Which haystack: a gate comparing against a whitespace-stripped
+        # copy writes its needles pre-compacted on purpose. One comparing
+        # against the raw text needs the indentation to match.
+        rhs_name = rhs.id if isinstance(rhs, ast.Name) else ""
+        raw = rhs_name not in ("compact", "compact_direction", "physics_compact")
         if isinstance(left, ast.Constant) and isinstance(left.value, str):
             text, line = left.value, node.lineno
         elif isinstance(left, ast.Name) and left.id in bound:
@@ -122,12 +127,12 @@ def needles(path: Path):
                    or _iterates(tree, left.id, src_name):
                     for t, ln in items:
                         if len(t) >= MIN_LEN:
-                            yield t, ln, scoped
+                            yield t, ln, scoped, raw
             continue
         else:
             continue
         if len(text) >= MIN_LEN:
-            yield text, line, scoped
+            yield text, line, scoped, raw
 
 
 def main() -> int:
@@ -138,14 +143,25 @@ def main() -> int:
     compact = "".join(src.split())
 
     stale = []
+    loose = []
     checked = 0
     scoped_count = 0
     for gate in gates:
-        for text, line, scoped in needles(gate):
+        for text, line, scoped, raw in needles(gate):
             checked += 1
             if scoped:
                 scoped_count += 1
-            if text in src or "".join(text.split()) in compact:
+            if text in src:
+                continue
+            # It only matches once whitespace is normalised. Gates that
+            # compare against `compact` are fine; gates that compare
+            # against the raw source are NOT, and will fail. This
+            # checker cannot tell which, so it says so rather than
+            # counting the needle as verified.
+            if "".join(text.split()) in compact:
+                # Only a problem when the gate wanted the raw text.
+                if raw:
+                    loose.append((gate.name, line, text))
                 continue
             stale.append((gate.name, line, text))
 
@@ -158,6 +174,16 @@ def main() -> int:
         print("\nThe code moved or was renamed. Update the gate, or the next")
         print("person to run it will debug the wrong thing.")
         return 1
+
+    if loose:
+        print(f"WARN: {len(loose)} needle(s) match only after whitespace "
+              f"normalisation — indentation moved under them.\n")
+        for name, line, text in loose:
+            shown = text if len(text) <= 88 else text[:85] + "..."
+            print(f"  {name}:{line}")
+            print(f"    {shown!r}")
+        print("\nA gate comparing against the raw source will FAIL on these.")
+        print("Run it: make test-fast.\n")
 
     print(f"PASS gate_greps: {checked} source needles across {len(gates)} gates still match")
     if scoped_count:

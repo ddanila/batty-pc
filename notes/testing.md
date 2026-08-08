@@ -596,6 +596,25 @@ plain name is counted as **position-scoped** and reported separately:
 A tool that silently under-reports is worse than one that admits its
 limit, because the whole point of it is to be trusted in a second.
 
+**Second blind spot, same shape.** The checker accepted a needle that
+matched only after whitespace normalisation. Most gates want that —
+`test_death_sparks` writes its needles pre-compacted and compares
+against a stripped copy of the source. But
+`test_rocket_completion_no_ball` compares against the RAW text, so when
+an extraction dedented a block, the checker passed and the gate failed.
+
+It now looks at which haystack the gate compares against (`compact` and
+friends versus anything else) and warns only for the raw-text ones:
+
+    WARN: 1 needle(s) match only after whitespace normalisation —
+    indentation moved under them.
+      test_rocket_completion_no_ball.py:23
+    A gate comparing against the raw source will FAIL on these.
+
+Both blind spots had the same cause: the checker modelled the needle but
+not the comparison. It now models enough of the comparison to know when
+it cannot judge.
+
 ### Two probe keys with the same name
 
 PROBE.TXT emitted `bonus_state=` twice: once as
