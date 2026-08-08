@@ -254,11 +254,22 @@ Found by making `test-bat-redraw-window` deterministic (see
 notes/testing.md). Once the two boots land the bat at the *same* X, the
 remaining difference is reproducible — 5/5 runs, identical pixel counts.
 
-**Left clamp (bat at 8..36): 6 px.** The bat's background window covers
-the lives indicators, and `redraw_bat` repaints them via `render_lives`
-while `redraw_bat_dirty` does not. The indicator pixels the bat sprite
-does not itself cover are lost. Differing pixels: x=8, rows
-173/174/181/182/183/185.
+**Left clamp (bat at 8..36): 6 px.** Differing pixels: x=8, rows
+173, 174, 181, 182, 183, 185.
+
+*Cause unidentified.* An earlier version of this note blamed the lives
+indicators — `redraw_bat` repaints them via `render_lives` and
+`redraw_bat_dirty` does not — but the numbers do not support it.
+`SPR_LIVES` is 16x6 drawn at (8, 185), so it covers rows 185..190. Only
+ONE of the six differing rows is inside it, and rows 186..190 were in
+the compared region and did NOT differ. If the narrow path were losing
+the indicators, more of those rows would disagree.
+
+What is known: x=8 is the first playfield column (the frame's side strip
+is byte 0, x 0..7), the difference is deterministic at 6 px over 5 runs,
+and it appears only with the bat clamped left. Diagnosing it needs the
+deterministic left-clamp harness rebuilt — see notes/testing.md for how
+that was driven.
 
 **Right clamp (bat at 220..248): 2 px.** x=247 — the bat's rightmost
 pixel column — on rows 181 and 183 only. `redraw_bat_dirty`'s
