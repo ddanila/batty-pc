@@ -48,7 +48,7 @@ happened, and `make test-video` caught it.
 | 3b | collision geometry/effects split | 166 | **done** — 7 more tests |
 | 4 | `assets` | 167 | **done** — 6 tests |
 | 5 | `bricks` — the compositor | 278 | **done** — 5 tests, byte-exact vs 15 captured screens |
-| 5b | level paint / band orchestration | ~350 | remains in main.cpp |
+| 5b | level paint / band orchestration | ~330 | **started** — destroyed-cell reset unified |
 | 6a | `objects` — the 22-byte descriptor + slots | 60 | **done** — 5 tests |
 | 6b-i | `weapons` — bullets + blasts | 95 | **done** — 6 tests |
 | 6b-ii | `enemies` — steering | 145 | **done** — 5 tests |
@@ -60,7 +60,21 @@ happened, and `make test-video` caught it.
 | 10 | state owners — structs at file scope | 113 vars | **done** — 11 clusters, see below |
 | 1 | replay / probe scaffolding | 480 | **last** — see below |
 
-`main.cpp`: 7,746 → 6,722. 100 host tests + source gates, all via `make test-fast` in seconds.
+`main.cpp`: 7,746 → 6,707. 100 host tests + source gates, all via `make test-fast` in seconds.
+
+### Stage 5b: one destroyed-cell reset, not two
+
+`render_brick_band` and `render_brick_band_rows` each carried the loop
+that resets destroyed cells' attrs to the band background — the full
+one writing unconditionally, the row-scoped one clipping each write to
+the rebased char rows. The full paint is just the row-scoped case over
+`[0, LVL_ROWS-1]` clipped to `[3, 16]`, so there is now one
+`reset_destroyed_cell_attrs`.
+
+Worth having one copy: this is the code known-bugs #1/#2 came from. The
+one-row overscan on each side is load-bearing — `cr0` doubles as row
+`r0-1`'s shadow row and `cr1` as row `r1+1`'s cell row — and it was
+previously stated in only one of the two copies.
 
 ### Stage 5, done
 

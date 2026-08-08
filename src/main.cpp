@@ -1807,13 +1807,62 @@ static void render_lives(unsigned char cycle, unsigned char attr) {
 
 
 
+/* level_attrs.bin was captured with every brick alive, so it still
+ * carries brick colour in cells whose brick is now destroyed. Reset
+ * those to the band background, plus the shadow row beneath — a live
+ * brick below repaints its own body attr afterwards, and where there is
+ * none the stale dimmed shadow goes with the brick.
+ *
+ * Only RUNTIME-destroyed cells reset: bit 7 set, bit 6 clear. The
+ * empty-cell sentinel $C0 has both bits and must keep its level_attrs
+ * value, which carries per-side-strip cell colours.
+ *
+ * A destroyed cell shows a non-bright LEFT char only when its left
+ * neighbour is still live, because the original casts an inter-brick
+ * shadow rightwards (GT: destroyed col 6 beside live col 5 gives left
+ * char $05; with col 5 also gone it keeps the bright $45). The right
+ * char is always bg_attr.
+ *
+ * Writes are clipped to [cr0, cr1], the char rows the caller just
+ * re-based from level_attrs; rows outside it are already correct. The
+ * row scan runs one brick row beyond [r0, r1] on each side because
+ * cr0 doubles as row r0-1's shadow row and cr1 as row r1+1's cell row —
+ * that overlap is what known-bugs #1/#2 were. */
+static void reset_destroyed_cell_attrs(const unsigned char *cells,
+                                       unsigned char bg_attr,
+                                       int r0, int r1, int cr0, int cr1) {
+    int row, col;
+    for (row = r0 - 1; row <= r1 + 1; row++) {
+        if (row < 0 || row >= LVL_ROWS) continue;
+        for (col = 0; col < LVL_COLS; col++) {
+            int cr, cc1, cc2, left_live;
+            unsigned char latt;
+            if ((cells[row * LVL_COLS + col] & 0xC0) != 0x80) continue;
+
+            cr  = 4 + row;
+            cc1 = 1 + 2 * col;
+            cc2 = cc1 + 1;
+            left_live = (col > 0) && !(cells[row * LVL_COLS + col - 1] & 0x80);
+            latt = left_live ? (unsigned char)(bg_attr & 0xBF) : bg_attr;
+
+            if (cr >= cr0 && cr <= cr1) {
+                attr_buff[cr * 32 + cc1] = latt;
+                attr_buff[cr * 32 + cc2] = bg_attr;
+            }
+            if (cr + 1 >= cr0 && cr + 1 <= cr1) {
+                attr_buff[(cr + 1) * 32 + cc1] = latt;
+                attr_buff[(cr + 1) * 32 + cc2] = bg_attr;
+            }
+        }
+    }
+}
+
 /* Brick compositor stage. Writes brick bricks/edges into scr_buff and
  * per-cell attrs (brick + shadow) into attr_buff for char rows 3..16.
  * Does NOT touch VGA — buff_to_vga handles the final pass. Assumes
  * paint_bg_to_buff already pre-filled the rest of the buffers. */
 static void print_border_shadow_c(void);
 static void render_brick_band(unsigned char level_idx) {
-    int lvl_row, lvl_col;
     const unsigned char *cells = live_level;
     const unsigned char *lattr = &level_attrs[(int)level_idx * ATTR_BAND_SIZE];
     unsigned char bg_attr = bg_attr_per_cycle[level_idx & 3];
@@ -1824,48 +1873,7 @@ static void render_brick_band(unsigned char level_idx) {
      * including frame side strips and pre-dimmed shadow rows). */
     memcpy(&attr_buff[3 * 32], &lattr[3 * ATTR_COLS], 14 * 32);
 
-    /* level_attrs.bin was captured with all bricks alive, so it carries
-     * the brick colour in every brick cell. For cells whose brick is
-     * destroyed (bit 7), reset the body attr to bg_attr — otherwise
-     * destroyed bricks keep showing brick colour even though
-     * print_briks_c skips the body pixels. Also clear the shadow row
-     * (the char row below): if a live brick is below, print_briks_c will
-     * repaint its body attr after this cleanup; if not, the stale dimmed
-     * shadow attr disappears with the destroyed brick. */
-    {
-        for (lvl_row = 0; lvl_row < LVL_ROWS; lvl_row++) {
-            for (lvl_col = 0; lvl_col < LVL_COLS; lvl_col++) {
-                unsigned char cell = cells[lvl_row * LVL_COLS + lvl_col];
-                /* Only RUNTIME-destroyed cells reset to bg_attr — those
-                 * have bit 7 set and bit 6 clear. The empty-cell sentinel
-                 * $C0 has BOTH bits 7+6 set and must keep its level_attrs
-                 * value (the captured per-level attrs include per-side-
-                 * strip cell colours we want to preserve). */
-                if ((cell & 0xC0) != 0x80) continue;
-                {
-                    int cr  = 4 + lvl_row;
-                    int cc1 = 1 + 2 * lvl_col;
-                    int cc2 = cc1 + 1;
-                    /* A destroyed cell reveals the brick-band bg. The
-                     * original casts an inter-brick shadow from a live
-                     * brick onto the LEFT char of the cell to its right, so
-                     * a destroyed cell shows a non-bright left char ONLY
-                     * when its LEFT NEIGHBOUR is still a live brick (GT:
-                     * destroyed col 6 with live col 5 -> left char $05; a
-                     * destroyed cell whose left neighbour is also gone
-                     * keeps the bright $45). Right char is always bg_attr. */
-                    int left_live = (lvl_col > 0) &&
-                        !(cells[lvl_row * LVL_COLS + lvl_col - 1] & 0x80);
-                    unsigned char latt = left_live
-                        ? (unsigned char)(bg_attr & 0xBF) : bg_attr;
-                    attr_buff[cr * 32 + cc1] = latt;
-                    attr_buff[cr * 32 + cc2] = bg_attr;
-                    attr_buff[(cr + 1) * 32 + cc1] = latt;
-                    attr_buff[(cr + 1) * 32 + cc2] = bg_attr;
-                }
-            }
-        }
-    }
+    reset_destroyed_cell_attrs(cells, bg_attr, 0, LVL_ROWS - 1, 3, 16);
 
     paint_bricks(cells);
     print_border_shadow_c();
@@ -1887,7 +1895,7 @@ static void render_brick_band(unsigned char level_idx) {
  * fix-ups below keep those rows canonical. */
 static void render_brick_band_rows(unsigned char level_idx,
                                    int r0, int r1, int cr0, int cr1) {
-    int lvl_row, lvl_col, cr;
+    int lvl_col, cr;
     const unsigned char *cells = live_level;
     const unsigned char *lattr = &level_attrs[(int)level_idx * ATTR_BAND_SIZE];
     unsigned char bg_attr = bg_attr_per_cycle[level_idx & 3];
@@ -1898,30 +1906,7 @@ static void render_brick_band_rows(unsigned char level_idx,
     memcpy(&attr_buff[cr0 * 32], &lattr[cr0 * ATTR_COLS],
                 (unsigned int)((cr1 - cr0 + 1) * 32));
 
-    for (lvl_row = r0 - 1; lvl_row <= r1 + 1; lvl_row++) {
-        if (lvl_row < 0 || lvl_row >= LVL_ROWS) continue;
-        for (lvl_col = 0; lvl_col < LVL_COLS; lvl_col++) {
-            unsigned char cell = cells[lvl_row * LVL_COLS + lvl_col];
-            if ((cell & 0xC0) != 0x80) continue;
-            {
-                int cc1 = 1 + 2 * lvl_col;
-                int cc2 = cc1 + 1;
-                int crr = 4 + lvl_row;
-                int left_live = (lvl_col > 0) &&
-                    !(cells[lvl_row * LVL_COLS + lvl_col - 1] & 0x80);
-                unsigned char latt = left_live
-                    ? (unsigned char)(bg_attr & 0xBF) : bg_attr;
-                if (crr >= cr0 && crr <= cr1) {
-                    attr_buff[crr * 32 + cc1] = latt;
-                    attr_buff[crr * 32 + cc2] = bg_attr;
-                }
-                if (crr + 1 >= cr0 && crr + 1 <= cr1) {
-                    attr_buff[(crr + 1) * 32 + cc1] = latt;
-                    attr_buff[(crr + 1) * 32 + cc2] = bg_attr;
-                }
-            }
-        }
-    }
+    reset_destroyed_cell_attrs(cells, bg_attr, r0, r1, cr0, cr1);
 
     paint_brick_rows(cells, r0, r1);
 
