@@ -6342,6 +6342,33 @@ static void play_game_over(void) {
     sound_silence();
 }
 
+/* The main loop's RNG work, in the original's order at LB9E8_2.
+ *
+ * The magnet toggle samples the CURRENT value — it is reading LAST
+ * frame's, since the per-frame tick below has not run yet. Swap the two
+ * and a different set of frames toggles a magnet.
+ *
+ * The toggle is pinned off in test mode (BATTYALL) so level-entry
+ * captures stay deterministic, the same trick as the menu blink and the
+ * running dot. The tick itself is gated so the older on-demand RNG
+ * model stays byte-unchanged. */
+static void tick_frame_rng(void) {
+    if (!test_mode_pin_blink && rng_high(rng_current()) == 0x99)
+        magnet_random_toggle();
+    if (dbg.rng_perframe) next_random();
+}
+
+/* Arrows are polled from key_state[] rather than read from the BIOS
+ * buffer, so holding one steers continuously at 4 px per 50 Hz tick =
+ * 200 px/s, as the original's get_left_player_ctrl_state does. A rocket
+ * in flight carries the bat, so the player cannot steer. */
+static void steer_bat_from_keys(void) {
+    BAT_X = (unsigned char)bat_step_x(
+        BAT_X, bat.extra_px,
+        !rocket.active && key_state[SC_LEFT],
+        !rocket.active && key_state[SC_RIGHT]);
+}
+
 /* Set up a level and show its intro. False means the player quit during
  * the intro. */
 static bool enter_level(unsigned char lvl_idx) {
@@ -6414,28 +6441,8 @@ static state_t run_level(void) {
             if (now != last_tick) {
                 last_tick = now;
                 frame_ticked = 1;
-                /* Magnet random toggle (LB9E8_2 top: read-current
-                 * `random_number+$01 == $99` -> print_one_magnet). Must
-                 * sample BEFORE this frame's per-frame RNG tick, like
-                 * the original (the check reads last frame's value).
-                 * Pinned off in test mode (BATTYALL) so the level-entry
-                 * visual captures stay deterministic — same trick as
-                 * the menu blink / running-dot pins. */
-                if (!test_mode_pin_blink && rng_high(rng_current()) == 0x99)
-                    magnet_random_toggle();
-                /* Per-frame RNG tick (original LB9E8_2: one `CALL
-                 * random_generate` per main-loop pass). Gated so the
-                 * default on-demand model is byte-unchanged. */
-                if (dbg.rng_perframe) next_random();
-                /* Steering. The arrows are polled from key_state[] rather
-                 * than read from the BIOS buffer, so holding one steers
-                 * continuously at 4 px per 50 Hz tick = 200 px/s, as the
-                 * original's get_left_player_ctrl_state does. A rocket in
-                 * flight carries the bat, so the player cannot steer. */
-                BAT_X = (unsigned char)bat_step_x(
-                    BAT_X, bat.extra_px,
-                    !rocket.active && key_state[SC_LEFT],
-                    !rocket.active && key_state[SC_RIGHT]);
+                tick_frame_rng();
+                steer_bat_from_keys();
                 if (ball.stuck) {
                     ride_stuck_ball_on_bat();
                     ball_moved = 1;

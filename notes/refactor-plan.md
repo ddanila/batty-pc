@@ -60,7 +60,7 @@ happened, and `make test-video` caught it.
 | 10 | state owners — structs at file scope | 113 vars | **done** — 11 clusters, see below |
 | 1 | replay / probe scaffolding | 480 | **last** — see below |
 
-`main.cpp`: 7,746 → 6,778. 100 host tests + source gates, all via `make test-fast` in seconds.
+`main.cpp`: 7,746 → 6,785. 100 host tests + source gates, all via `make test-fast` in seconds.
 
 ### Stage 5b: one destroyed-cell reset, not two
 
@@ -570,6 +570,13 @@ knobs seeded and the checkpoints counted), leaving the header and the
 bulk level dumps inline. PROBE.TXT's newline-as-prefix convention makes
 any such split a byte-stream risk, so it was checked the same way as
 last time: captured before, captured after, diffed — identical.
+
+`tick_frame_rng` and `steer_bat_from_keys` then took the top of the
+frame tick. The first is the one with a real constraint: the magnet
+toggle samples the CURRENT RNG value, which is last frame's, because the
+per-frame tick has not run yet. Swapping the two lines changes which
+frames toggle a magnet, and nothing but a comment said so. Now the
+comment sits on a function whose two statements are the whole of it.
 
 ## What this has already found
 
