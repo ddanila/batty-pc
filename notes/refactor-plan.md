@@ -60,7 +60,7 @@ happened, and `make test-video` caught it.
 | 10 | state owners — structs at file scope | 113 vars | **done** — 11 clusters, see below |
 | 1 | replay / probe scaffolding | 480 | **last** — see below |
 
-`main.cpp`: 7,746 → 6,716. 100 host tests + source gates, all via `make test-fast` in seconds.
+`main.cpp`: 7,746 → 6,706. 100 host tests + source gates, all via `make test-fast` in seconds.
 
 ### Stage 5b: one destroyed-cell reset, not two
 
@@ -226,6 +226,11 @@ Five `apply_replay_*_override` functions then lost their hand-rolled
 `"x,y"` and the bonus's `"type,x,y"`, which was the same shape with a
 third field. It is all-or-nothing by design: a typo in a gate's env
 leaves the game untouched rather than seeding a half-parsed state.
+
+The three object-blob overrides went the same way: already sharing
+`replay_parse_hex_bytes`, their wrappers differed only by env name and
+slot, so `apply_replay_object_override(name, slot)` replaces all three
+and the dispatcher names which object each line seeds.
 
 `PlayerState` needed a different tool from the rest. `score` and `lives`
 are English words that occur in comments and — the trap —

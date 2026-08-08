@@ -3475,18 +3475,14 @@ static int replay_parse_hex_bytes(const char *p, unsigned char *out, int n) {
     return 0;
 }
 
-static void apply_replay_bat_object_override(void) {
-    unsigned char bytes[sizeof(Object)];
-    if (replay_parse_hex_bytes(getenv("BATTY_REPLAY_BAT_OBJECT"),
-                               bytes, (int)sizeof(bytes)) != 0) return;
-    memcpy(&objects[OBJ_BAT_1], bytes, sizeof(bytes));
-}
 
-static void apply_replay_ball_object_override(void) {
+
+/* Seed a whole object descriptor from a hex blob, so a gate can put the
+ * bat, ball or alien anywhere without playing the game into that state. */
+static void apply_replay_object_override(const char *name, unsigned char slot) {
     unsigned char bytes[sizeof(Object)];
-    if (replay_parse_hex_bytes(getenv("BATTY_REPLAY_BALL_OBJECT"),
-                               bytes, (int)sizeof(bytes)) != 0) return;
-    memcpy(&objects[OBJ_BALL_1], bytes, sizeof(bytes));
+    if (replay_parse_hex_bytes(getenv(name), bytes, (int)sizeof(bytes)) != 0) return;
+    memcpy(&objects[slot], bytes, sizeof(bytes));
 }
 
 static void apply_replay_ball_motion_override(void) {
@@ -3512,12 +3508,6 @@ static void apply_replay_ball_motion_override(void) {
     }
 }
 
-static void apply_replay_enemy_object_override(void) {
-    unsigned char bytes[sizeof(Object)];
-    if (replay_parse_hex_bytes(getenv("BATTY_REPLAY_ENEMY_OBJECT"),
-                               bytes, (int)sizeof(bytes)) != 0) return;
-    memcpy(&objects[OBJ_ENEMY], bytes, sizeof(bytes));
-}
 
 /* Read `count` comma-separated integers from a BATTY_REPLAY_* value.
  * All-or-nothing: a malformed override is ignored rather than applied
@@ -5914,10 +5904,10 @@ static void reset_level_state(unsigned char lvl_idx) {
  * the original start from the same state. */
 static void apply_replay_overrides(void) {
     apply_replay_random_override();
-    apply_replay_bat_object_override();
-    apply_replay_ball_object_override();
+    apply_replay_object_override("BATTY_REPLAY_BAT_OBJECT",  OBJ_BAT_1);
+    apply_replay_object_override("BATTY_REPLAY_BALL_OBJECT", OBJ_BALL_1);
     apply_replay_ball_motion_override();
-    apply_replay_enemy_object_override();
+    apply_replay_object_override("BATTY_REPLAY_ENEMY_OBJECT", OBJ_ENEMY);
     apply_replay_bonus_override();
     apply_replay_bomb_override();
     apply_replay_pts400_override();
