@@ -1956,17 +1956,47 @@ static void render_brick_band_rows(unsigned char level_idx,
  * it draws the top border, so those top-frame pixels are restored later.
  * Since paint_frame_to_buff() already includes the top border, the net
  * visible effect here starts at the lower three bands only. */
+#define INNER_BORDER_BANDS   3
+#define INNER_BORDER_BAND_H  28
+static const int inner_border_band_y0[INNER_BORDER_BANDS] = { 50, 106, 162 };
+
+static bool in_inner_border_band(int y) {
+    int i;
+    if (y < 0 || y >= PLAYFIELD_H) return false;
+    for (i = 0; i < INNER_BORDER_BANDS; i++) {
+        const int y0 = inner_border_band_y0[i];
+        if (y >= y0 && y < y0 + INNER_BORDER_BAND_H) return true;
+    }
+    return false;
+}
+
+/* The two pixel columns the border line blacks out: x=8 and x=247, the
+ * inner edges of the frame's side strips. */
+static void black_inner_border_pixels(int y) {
+    scr_buff[y * 32 + 1]  &= 0x7F;   /* leftmost bit of byte 1  -> x=8   */
+    scr_buff[y * 32 + 30] &= 0xFE;   /* rightmost bit of byte 30 -> x=247 */
+}
+
 static void inner_border_line_c(void) {
-    int pass;
     int y;
-    static const int starts[3] = { 50, 106, 162 };
-    for (pass = 0; pass < 3; pass++) {
-        int start = starts[pass];
-        for (y = start; y < start + 28; y++) {
-            if (y < 0 || y >= PLAYFIELD_H) continue;
-            scr_buff[y * 32 + 1]  &= 0x7F;   /* clear leftmost bit  -> x=8   black */
-            scr_buff[y * 32 + 30] &= 0xFE;   /* clear rightmost bit -> x=247 black */
-        }
+    for (y = 0; y < PLAYFIELD_H; y++) {
+        if (in_inner_border_band(y)) black_inner_border_pixels(y);
+    }
+}
+
+/* Re-apply the border line inside a window that was just repainted from
+ * the background tile. paint_bg_window_to_buff lays down the plain tile,
+ * which does not carry these two columns, so any repaint whose byte
+ * range reaches byte 1 or byte 30 must put them back — otherwise the
+ * line disappears wherever the sprite above it happens to be
+ * transparent. See known-bugs.md #11. */
+static void restore_inner_border_line(int y0, int h, int byte_lo, int byte_hi) {
+    int y;
+    if (byte_lo > 1 && byte_hi < 30) return;      /* window misses both */
+    for (y = y0; y < y0 + h; y++) {
+        if (!in_inner_border_band(y)) continue;
+        if (byte_lo <= 1  && byte_hi >= 1)  scr_buff[y * 32 + 1]  &= 0x7F;
+        if (byte_lo <= 30 && byte_hi >= 30) scr_buff[y * 32 + 30] &= 0xFE;
     }
 }
 
@@ -4745,6 +4775,7 @@ static void redraw_bat(unsigned char cycle, unsigned char bg_attr) {
 
     paint_bg_window_to_buff(bg_attr, cycle, BAT_Y, BAT_H_PX,
                             byte_lo, byte_hi - 1);
+    restore_inner_border_line(BAT_Y, BAT_H_PX, byte_lo, byte_hi - 1);
     paint_frame_to_buff(cycle, current_level_idx_var);
     render_bat(cycle, bg_attr);
     render_running_dot();
@@ -5192,12 +5223,16 @@ static void redraw_bat_dirty(unsigned char cycle, unsigned char bg_attr) {
     if (bat.fire_anim_ticks) {
         paint_bg_window_to_buff(bg_attr, cycle, BAT_Y, BAT_H_PX,
                                 bat_x0 >> 3, (bat_x1 - 1) >> 3);
+        restore_inner_border_line(BAT_Y, BAT_H_PX,
+                                  bat_x0 >> 3, (bat_x1 - 1) >> 3);
         render_bat(cycle, bg_attr);
         render_running_dot();
         mark_dirty_rect_px(bat_x0, BAT_Y, bat_x1 - bat_x0, BAT_H_PX);
     } else {
         paint_bg_window_to_buff(bg_attr, cycle, BAT_Y + 6, 1,
                                 bat_x0 >> 3, (bat_x1 - 1) >> 3);
+        restore_inner_border_line(BAT_Y + 6, 1,
+                                  bat_x0 >> 3, (bat_x1 - 1) >> 3);
         render_bat(cycle, bg_attr);
         render_running_dot();
         mark_dirty_rect_px(bat_x0, BAT_Y + 6, bat_x1 - bat_x0, 1);

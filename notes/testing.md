@@ -674,3 +674,18 @@ delta treated as an absolute (20, 60, 120 instead of 20, 40, 60) still
 writes all three files. Catching that needs motion in the scene plus an
 expected image per checkpoint — a golden-capture gate. Until then the
 hand-run above is still the check after touching the delta.
+
+### test-bat-redraw-window: fixed, both halves
+
+The flakiness and the defect it was hiding are both resolved
+(known-bugs #11). The gate now parks the bat against the left clamp with
+`sendkey left 800` rather than counting presses, so the two boots land
+it at the same X, and compares the whole bat band rather than a window
+around a position that used to wander.
+
+Before: 5 failures in 8 runs, diff 143..232 px. After: 5/5 green, and
+removing the fix fails it at exactly 6 px.
+
+The earlier conclusion here — that it could not be both deterministic
+and green — was right at the time and is now obsolete: it could not be,
+until the defect underneath was fixed.

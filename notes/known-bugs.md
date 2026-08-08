@@ -248,7 +248,7 @@ accumulates the bulletless full-redraw frames that would separate the
 two phases.
 
 
-## 11. The narrow bat redraw loses the inner border line
+## 11. The narrow bat redraw lost the inner border line — fixed
 
 Found by making `test-bat-redraw-window` deterministic (notes/testing.md).
 Once both boots land the bat at the same X, the remaining difference is
@@ -280,11 +280,22 @@ sprite covers rows 185..190 and rows 186..190 matched), and the
 running-dot row reflush (refuted — that would not produce a difference
 confined to a single column).
 
-Not yet fixed. The repair is to re-apply the border-line clears inside
-the repainted window, or to restore that window from the static cache
-instead of repainting the tile. It should land with a gate, since a
-pixel gate can reach it: park the bat at a clamp, compare narrow against
-full over the whole bat band.
+**Fixed 2026-08-09.** `restore_inner_border_line(y0, h, byte_lo,
+byte_hi)` re-applies the two columns inside any window that was just
+repainted from the tile, and returns immediately when the window reaches
+neither byte 1 nor byte 30 — which is every frame away from a wall.
+
+BOTH narrow paths needed it, not one. The first fix went into
+`redraw_bat_dirty` only and the gate still failed at 6 px: with the ball
+hidden the scenario takes `redraw_bat`, the bat-only path, which
+repaints the same window with the same tile. An incomplete fix that
+looked complete.
+
+`test-bat-redraw-window` is the gate, rewritten to park the bat against
+the left clamp — deterministic (5/5 green) where it used to fail 5 runs
+in 8, and it reaches the columns because only a clamped bat's window
+includes byte 1 or byte 30. Mutation-checked: removing the call from
+`redraw_bat` fails it at exactly 6 px.
 
 ## 12. A CATCH-held ball snapped to the default offset on a bat-only redraw — fixed
 
