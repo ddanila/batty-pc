@@ -3519,26 +3519,37 @@ static void apply_replay_enemy_object_override(void) {
     memcpy(&objects[OBJ_ENEMY], bytes, sizeof(bytes));
 }
 
+/* Read `count` comma-separated integers from a BATTY_REPLAY_* value.
+ * All-or-nothing: a malformed override is ignored rather than applied
+ * half-parsed, so a typo in a gate's env leaves the game untouched
+ * instead of seeding a state nobody intended. */
+static bool parse_replay_ints(const char *name, long *out, int count) {
+    const char *spec = getenv(name);
+    char *end;
+    int i;
+    if (spec == NULL) return false;
+    for (i = 0; i < count; i++) {
+        const char *start = (i == 0) ? spec : spec + 1;   /* step past ',' */
+        out[i] = strtol(start, &end, 0);
+        if (end == start) return false;
+        if (i + 1 < count && *end != ',') return false;
+        spec = end;
+    }
+    return true;
+}
+
 /* Bake a falling bonus for the falling-object regression gate.
  * BATTY_REPLAY_BONUS = "type,x,y" (decimal or 0x-hex per field). Starts a
  * fresh fall (bonus.motion zeroed) so the accel progression
  * motion_accel_step(&bonus.motion, 0x0008, 0x02) is deterministic from y.
  * Put x clear of the bat to test pure fall (no catch). */
 static void apply_replay_bonus_override(void) {
-    const char *spec = getenv("BATTY_REPLAY_BONUS");
-    char *endp, *endp2, *endp3;
-    long type, x, y;
-    if (spec == NULL) return;
-    type = strtol(spec, &endp, 0);
-    if (endp == spec || *endp != ',') return;
-    x = strtol(endp + 1, &endp2, 0);
-    if (endp2 == endp + 1 || *endp2 != ',') return;
-    y = strtol(endp2 + 1, &endp3, 0);
-    if (endp3 == endp2 + 1) return;
+    long v[3];
+    if (!parse_replay_ints("BATTY_REPLAY_BONUS", v, 3)) return;
     bonus.active = 1;
-    bonus.type = (unsigned char)type;
-    bonus.x = (int)x;
-    bonus.y = (int)y;
+    bonus.type = (unsigned char)v[0];
+    bonus.x = (int)v[1];
+    bonus.y = (int)v[2];
     bonus.motion.acc = 0;
     bonus.motion.frac = 0;
 }
@@ -3548,15 +3559,9 @@ static void apply_replay_bonus_override(void) {
  * (motion_accel_step(&bomb.motion, 0x0008, 0x02)); put x clear of the bat
  * to test pure fall (no bat-kill). */
 static void apply_replay_bomb_override(void) {
-    const char *spec = getenv("BATTY_REPLAY_BOMB");
-    char *endp, *endp2;
-    long x, y;
-    if (spec == NULL) return;
-    x = strtol(spec, &endp, 0);
-    if (endp == spec || *endp != ',') return;
-    y = strtol(endp + 1, &endp2, 0);
-    if (endp2 == endp + 1) return;
-    bomb_launch((int)x, (int)y);
+    long v[2];
+    if (!parse_replay_ints("BATTY_REPLAY_BOMB", v, 2)) return;
+    bomb_launch((int)v[0], (int)v[1]);
 }
 
 /* Bake a rising/falling +400 score popup for the pts-400-fall gate.
@@ -3564,17 +3569,11 @@ static void apply_replay_bomb_override(void) {
  * 0x0028, 0x80) — a DIFFERENT accel constant pair than bonus/bomb, so this
  * exercises a faster-grow path. dx is zeroed so the y progression is pure. */
 static void apply_replay_pts400_override(void) {
-    const char *spec = getenv("BATTY_REPLAY_PTS400");
-    char *endp, *endp2;
-    long x, y;
-    if (spec == NULL) return;
-    x = strtol(spec, &endp, 0);
-    if (endp == spec || *endp != ',') return;
-    y = strtol(endp + 1, &endp2, 0);
-    if (endp2 == endp + 1) return;
+    long v[2];
+    if (!parse_replay_ints("BATTY_REPLAY_PTS400", v, 2)) return;
     pts_marker.active = 1;
-    pts_marker.x = (int)x;
-    pts_marker.y = (int)y;
+    pts_marker.x = (int)v[0];
+    pts_marker.y = (int)v[1];
     pts_marker.dx = 0;
     pts_marker.motion.acc = 0;
     pts_marker.motion.frac = 0;
@@ -3585,17 +3584,11 @@ static void apply_replay_pts400_override(void) {
  * BULLET_SPEED (6 px/frame) in step_bullet_one; probe it in the window
  * below the brick field (y > 128) so it travels without blasting. */
 static void apply_replay_bullet_override(void) {
-    const char *spec = getenv("BATTY_REPLAY_BULLET");
-    char *endp, *endp2;
-    long x, y;
-    if (spec == NULL) return;
-    x = strtol(spec, &endp, 0);
-    if (endp == spec || *endp != ',') return;
-    y = strtol(endp + 1, &endp2, 0);
-    if (endp2 == endp + 1) return;
+    long v[2];
+    if (!parse_replay_ints("BATTY_REPLAY_BULLET", v, 2)) return;
     bullet_active[0] = 1;
-    bullet_x[0] = (int)x;
-    bullet_y[0] = (int)y;
+    bullet_x[0] = (int)v[0];
+    bullet_y[0] = (int)v[1];
 }
 
 /* Activate big-ball (SMASH) for the deterministic big-ball dirty-tier gate.
@@ -3690,17 +3683,11 @@ static void apply_replay_force_brick(void) {
  * decrements bullet_blast_ticks 1/frame (8 -> 0 over 8 frames = 4 frames x
  * BULLET_BLAST_TICKS_PER_FRAME), render frame = (ticks-1)/2. */
 static void apply_replay_blast_override(void) {
-    const char *spec = getenv("BATTY_REPLAY_BLAST");
-    char *endp, *endp2;
-    long x, y;
-    if (spec == NULL) return;
-    x = strtol(spec, &endp, 0);
-    if (endp == spec || *endp != ',') return;
-    y = strtol(endp + 1, &endp2, 0);
-    if (endp2 == endp + 1) return;
+    long v[2];
+    if (!parse_replay_ints("BATTY_REPLAY_BLAST", v, 2)) return;
     bullet_blast_ticks[0] = BULLET_BLAST_FRAMES * BULLET_BLAST_TICKS_PER_FRAME;
-    bullet_blast_x[0] = (int)x;
-    bullet_blast_y[0] = (int)y;
+    bullet_blast_x[0] = (int)v[0];
+    bullet_blast_y[0] = (int)v[1];
 }
 
 static void apply_replay_rocket_override(void) {
