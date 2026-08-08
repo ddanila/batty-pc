@@ -2823,15 +2823,15 @@ static void render_ball_to_buff(int x, int y, unsigned char bg) {
  * already has (= bg attr in the empty playfield). User's spec: the
  * game field is monochrome except blocks. Two slots = up to two
  * bullets in flight. */
+/* Each bullet draws its OWN animation frame. It used to share a static
+ * counter bumped once per call, which made the phase depend on how many
+ * frames had taken the full redraw path — see known-bugs.md #10. */
 static void render_bullet_to_buff(void) {
-    static unsigned char bullet_anim_tick = 0;
-    unsigned int spr;
     int i;
-    bullet_anim_tick++;
-    spr = (bullet_anim_tick & 1) ? SPR_BULLET_2 : SPR_BULLET_1;
     for (i = 0; i < N_BULLETS; i++) {
         if (!bullet_active[i]) continue;
-        blit_masked_to_scr_buff(spr, bullet_x[i], bullet_y[i]);
+        blit_masked_to_scr_buff((bullet_frame[i] & 1) ? SPR_BULLET_2 : SPR_BULLET_1,
+                                bullet_x[i], bullet_y[i]);
     }
 }
 
@@ -3623,6 +3623,7 @@ static void apply_replay_bullet_override(void) {
     long v[2];
     if (!parse_replay_ints("BATTY_REPLAY_BULLET", v, 2)) return;
     bullet_active[0] = 1;
+    bullet_frame[0] = 0;
     bullet_x[0] = (int)v[0];
     bullet_y[0] = (int)v[1];
 }
@@ -4178,6 +4179,7 @@ static void try_fire_laser(void) {
     }
     if (free_slot < 0) return;
     bullet_active[free_slot] = 1;
+    bullet_frame[free_slot] = 0;
     bullet_x[free_slot] = BAT_X + 12;
     bullet_y[free_slot] = BAT_Y - 1;
     bat.fire_anim_ticks = 8;

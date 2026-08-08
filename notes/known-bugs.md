@@ -216,7 +216,7 @@ over-marking (wasted flush bandwidth) — the two screens agree either
 way when the rect is too large.
 
 
-## 10. The bullet animation phase depends on which redraw path ran
+## 10. The bullet animation phase depended on which redraw path ran — fixed
 
 `render_bullet_to_buff` increments a function-static `bullet_anim_tick`
 on every call and picks `SPR_BULLET_1` / `SPR_BULLET_2` from its low
@@ -288,11 +288,27 @@ because the port made the frame a shared static. The port models bullets
 as parallel arrays (`bullet_x[]`, `bullet_y[]`, `bullet_active[]`) with
 no per-bullet animation index, which is why it needed one.
 
-Still not fixed: giving each bullet its own frame index is a change to
-the bullet model, not a one-liner, and it touches the blast handoff.
-What is settled is the direction — per-bullet, continuing into the
-blast — so the fix no longer needs an oracle capture to choose between
-two guesses.
+**Fixed 2026-08-09.** `bullet_frame[N_BULLETS]` in `src/weapons.cpp`
+gives each bullet its own index, advanced once per step inside
+`bullet_advance` — the stepper, not the renderer — so the phase cannot
+depend on how a frame was drawn. `bullets_clear` resets it, and firing
+starts a bullet at frame 0.
+
+Covered by two host tests in `tests/test_weapons.cpp`, not a QEMU gate:
+the indices are independent (stepping one bullet does not move the
+other's), and an inactive slot does not drift. Mutation-checked both
+ways — advancing all slots on any step, and advancing before the
+active check — each fails.
+
+Writing the second test found a second thing: `bullets_clear` left the
+old animation index behind, so a new bullet in a reused slot could start
+mid-shimmer. It clears it now.
+
+STILL DIVERGENT from the original, deliberately: `$77E6` runs the two
+bullet frames and the blast frames as ONE sequence, so in the original a
+bullet animates continuously into its impact. The port keeps blasts in
+separate state (`bullet_blast_ticks`) with their own frame maths. That
+is a bigger change and no evidence yet says the seam is visible.
 
 Inferred rather than measured: that the indexing uses `sprite_num`. The
 table's position and contents are read directly from the snapshot; the

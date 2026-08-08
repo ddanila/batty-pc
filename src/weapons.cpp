@@ -3,6 +3,7 @@
 #include "weapons.h"
 
 u8  bullet_active[N_BULLETS]     = {0, 0};
+u8  bullet_frame[N_BULLETS]      = {0, 0};
 int bullet_x[N_BULLETS]          = {0, 0};
 int bullet_y[N_BULLETS]          = {0, 0};
 
@@ -53,6 +54,7 @@ BulletHit bullet_advance(int i, const Object &enemy, const BrickField &field) {
     BulletHit miss = { BulletHit::NOTHING, -1, -1 };
     if (!bullet_active[i]) return miss;
 
+    bullet_frame[i]++;
     bullet_y[i] -= BULLET_SPEED;
     if (bullet_y[i] < 0) {
         bullet_active[i] = 0;             /* left the screen — no blast */
@@ -90,6 +92,7 @@ void bullet_blasts_tick() {
 void bullets_clear() {
     for (int i = 0; i < N_BULLETS; i++) {
         bullet_active[i] = 0;
+        bullet_frame[i]  = 0;
         bullet_blast_ticks[i] = 0;
     }
 }

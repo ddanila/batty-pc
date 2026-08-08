@@ -45,6 +45,7 @@ static Object no_enemy() {
 
 static void fire(int i, int x, int y) {
     bullet_active[i] = 1;
+    bullet_frame[i] = 0;
     bullet_x[i] = x;
     bullet_y[i] = y;
 }
@@ -192,6 +193,56 @@ static void test_blasts_expire() {
     report("blasts_expire", before, "8 ticks + clear      ok");
 }
 
+/* Each bullet animates on ITS OWN index, advanced once per step. The
+ * frame used to come from a static bumped inside the RENDERER, so it
+ * depended on how many frames had taken the full redraw path and both
+ * bullets always drew the same one (known-bugs #10). The original
+ * indexes the $77E6 frame table by each object's own sprite_num. */
+static void test_bullet_frame_is_per_bullet() {
+    const int before = failures;
+    Object no_enemy = {};
+    no_enemy.sprite_set = 0;
+    for (int i = 0; i < FIELD_ROWS * FIELD_COLS; i++) cells[i] = 0x80;
+    const BrickField empty(cells);
+
+    bullets_clear();
+    fire(0, 40, 180);
+    for (int n = 0; n < 3; n++) bullet_advance(0, no_enemy, empty);
+    fire(1, 80, 180);
+
+    check(bullet_frame[0] == 3, "bullet 0 advanced to frame %u, expected 3\n",
+          unsigned(bullet_frame[0]));
+    check(bullet_frame[1] == 0, "a freshly fired bullet started at frame %u, "
+          "expected 0\n", unsigned(bullet_frame[1]));
+
+    bullet_advance(1, no_enemy, empty);
+    check(bullet_frame[0] == 3, "stepping bullet 1 moved bullet 0's frame to "
+          "%u\n", unsigned(bullet_frame[0]));
+    check(bullet_frame[1] == 1, "bullet 1 advanced to frame %u, expected 1\n",
+          unsigned(bullet_frame[1]));
+    report("bullet_frame_is_per_bullet", before, "independent indices  ok");
+}
+
+/* An inactive slot must not animate — otherwise the phase drifts while
+ * nothing is in flight, which is the shape of the original bug. */
+static void test_inactive_bullet_does_not_animate() {
+    const int before = failures;
+    Object no_enemy = {};
+    no_enemy.sprite_set = 0;
+    for (int i = 0; i < FIELD_ROWS * FIELD_COLS; i++) cells[i] = 0x80;
+    const BrickField empty(cells);
+
+    bullets_clear();
+    check(bullet_frame[0] == 0,
+          "bullets_clear left frame %u behind\n", unsigned(bullet_frame[0]));
+    const u8 idle = bullet_frame[0];
+    for (int n = 0; n < 5; n++) bullet_advance(0, no_enemy, empty);
+    check(bullet_frame[0] == idle,
+          "an inactive slot drifted from frame %u to %u\n",
+          unsigned(idle), unsigned(bullet_frame[0]));
+    report("inactive_bullet_does_not_animate", before, "clear + 5 steps     ok");
+}
+
 int main() {
     printf("weapons tests\n");
     test_bullet_cannot_tunnel();
@@ -200,6 +251,8 @@ int main() {
     test_blast_snaps_to_column();
     test_exploding_alien_is_not_a_target();
     test_blasts_expire();
+    test_bullet_frame_is_per_bullet();
+    test_inactive_bullet_does_not_animate();
     printf("\n%s\n", failures ? "FAILED" : "6 tests, 0 failed");
     return failures ? 1 : 0;
 }

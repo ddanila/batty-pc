@@ -34,6 +34,12 @@ const int BULLET_BLAST_TICKS_PER_FRAME = 2;
 /* --- State ------------------------------------------------------------ */
 
 extern u8  bullet_active[N_BULLETS];
+/* Each bullet's own animation index, advanced once per step. The two
+ * bullet sprites share their pixels and differ only in mask, so this
+ * selects a one-pixel transparency shimmer. Per-bullet, not shared:
+ * the original indexes the frame table at $77E6 by the object's own
+ * sprite_num, the same way the bird and UFO animate (known-bugs #10). */
+extern u8  bullet_frame[N_BULLETS];
 extern int bullet_x[N_BULLETS];
 extern int bullet_y[N_BULLETS];
 
