@@ -824,11 +824,14 @@ extern unsigned char round_number;
  * other counter_misc value while the big-ball sprite is being printed. */
 #define BIG_BALL_DURATION 0xF8u
 #define BAT_BIG_EXTRA_PX    8     /* width added on each side in big mode */
-static int           bonus_x = 0;
-static int           bonus_y = 0;
-static unsigned char bonus_type   = 0;
-static unsigned char bonus_active = 0;
-static motion_acc_t  bonus_motion = {0, 0};
+struct BonusState {
+    int           x;
+    int           y;
+    unsigned char type;
+    unsigned char active;
+    motion_acc_t  motion;
+};
+static BonusState bonus = {0, 0, 0, 0, {0, 0}};
 /* Shared ball speed-up ramp counter (= the original's per-ball
  * object+$13). Bumps every active ball's speed at $94; see the model
  * comment above and ball_speed_ramp_tick(). */
@@ -2846,9 +2849,9 @@ static unsigned int spr_for_bonus(unsigned char t) {
  * it does not call print_sprite_attrib for falling bonuses. Colours must
  * therefore come from the existing attr_buff cells underneath. */
 static void render_bonus_to_buff(unsigned char bg) {
-    unsigned int spr = spr_for_bonus(bonus_type);
+    unsigned int spr = spr_for_bonus(bonus.type);
     (void)bg;
-    blit_masked_to_scr_buff(spr, bonus_x, bonus_y);
+    blit_masked_to_scr_buff(spr, bonus.x, bonus.y);
 }
 
 static void set_rocket_bonus_sprite_height(unsigned char height) {
@@ -3133,21 +3136,21 @@ static void step_bonus(void) {
             else if (bat.extra_px > bat.extra_target) bat.extra_px--;
         }
     }
-    if (!bonus_active) return;
-    bonus_y += motion_accel_step(&bonus_motion, 0x0008, 0x02);
+    if (!bonus.active) return;
+    bonus.y += motion_accel_step(&bonus.motion, 0x0008, 0x02);
     bat_left  = eff_bat_left();
     bat_right = eff_bat_right();
     /* Catch test uses bat body (10 px) not full sprite (13 px =
      * body + shadow). obj_compare_2pix at \$94BC reads (IY+\$0C, IY+\$0D)
      * which are body dimensions on object_bat_1. Shadow rows aren't
      * a catch surface. */
-    if (bonus_y + BONUS_H_PX >= BAT_Y
-        && bonus_y < BAT_Y + 10
-        && bonus_x + BONUS_W_PX > bat_left
-        && bonus_x < bat_right) {
-        unsigned char caught_type = bonus_type;
-        bonus_apply(bonus_type);                  /* applies effect + pushes catch sound */
-        bonus_active = 0;
+    if (bonus.y + BONUS_H_PX >= BAT_Y
+        && bonus.y < BAT_Y + 10
+        && bonus.x + BONUS_W_PX > bat_left
+        && bonus.x < bat_right) {
+        unsigned char caught_type = bonus.type;
+        bonus_apply(bonus.type);                  /* applies effect + pushes catch sound */
+        bonus.active = 0;
         score += 400;                         /* matches LD BC,$0400 / add_points_to_score at $A67D */
         /* Spawn the floating reward marker. Original LA67B_3 at \$A6FC
          * sets sprite_num = \$00 (= +400) for EVERY catch including
@@ -3156,8 +3159,8 @@ static void step_bonus(void) {
          * by always using +400 here. */
         (void)caught_type;
         pts_marker.sprite = SPR_400_POINTS;
-        pts_marker.x = bonus_x;
-        pts_marker.y = bonus_y;
+        pts_marker.x = bonus.x;
+        pts_marker.y = bonus.y;
         pts_marker.active = 1;
         pts_marker.motion.acc = (unsigned int)(((pit_ticks() & 1UL) ? 0xFEu : 0xFFu) << 8);
         pts_marker.motion.frac = 0;
@@ -3174,7 +3177,7 @@ static void step_bonus(void) {
         }
         return;
     }
-    if (bonus_y > PLAYFIELD_H) bonus_active = 0;
+    if (bonus.y > PLAYFIELD_H) bonus.active = 0;
 }
 
 /* Advance the +400 floating marker each tick. Port of handling_400pts
@@ -3215,7 +3218,7 @@ static void step_pts_400(void) {
 static void try_spawn_bonus(int col, int row) {
     int tries;
     const unsigned char *tbl;
-    if (bonus_active) return;
+    if (bonus.active) return;
     /* The original shares object_bonus between falling bonus and bomb,
      * so a bomb in flight blocks new bonus spawns. We keep separate
      * state but mirror the mutual exclusion here. */
@@ -3264,12 +3267,12 @@ static void try_spawn_bonus(int col, int row) {
             && (random_lo(rnd) & 0xC0) != 0) continue;
         mapped = bonus_from_original(code);
         if (mapped != BONUS_TYPE_UNSUPPORTED) {
-            bonus_active = 1;
-            bonus_x = 8 + col * 16 + (16 - BONUS_W_PX) / 2;
-            bonus_y = 32 + row * 8;
-            bonus_type = mapped;
-            bonus_motion.acc = 0;
-            bonus_motion.frac = 0;
+            bonus.active = 1;
+            bonus.x = 8 + col * 16 + (16 - BONUS_W_PX) / 2;
+            bonus.y = 32 + row * 8;
+            bonus.type = mapped;
+            bonus.motion.acc = 0;
+            bonus.motion.frac = 0;
             return;
         }
     }
@@ -3527,8 +3530,8 @@ static void apply_replay_enemy_object_override(void) {
 
 /* Bake a falling bonus for the falling-object regression gate.
  * BATTY_REPLAY_BONUS = "type,x,y" (decimal or 0x-hex per field). Starts a
- * fresh fall (bonus_motion zeroed) so the accel progression
- * motion_accel_step(&bonus_motion, 0x0008, 0x02) is deterministic from y.
+ * fresh fall (bonus.motion zeroed) so the accel progression
+ * motion_accel_step(&bonus.motion, 0x0008, 0x02) is deterministic from y.
  * Put x clear of the bat to test pure fall (no catch). */
 static void apply_replay_bonus_override(void) {
     const char *spec = getenv("BATTY_REPLAY_BONUS");
@@ -3541,12 +3544,12 @@ static void apply_replay_bonus_override(void) {
     if (endp2 == endp + 1 || *endp2 != ',') return;
     y = strtol(endp2 + 1, &endp3, 0);
     if (endp3 == endp2 + 1) return;
-    bonus_active = 1;
-    bonus_type = (unsigned char)type;
-    bonus_x = (int)x;
-    bonus_y = (int)y;
-    bonus_motion.acc = 0;
-    bonus_motion.frac = 0;
+    bonus.active = 1;
+    bonus.type = (unsigned char)type;
+    bonus.x = (int)x;
+    bonus.y = (int)y;
+    bonus.motion.acc = 0;
+    bonus.motion.frac = 0;
 }
 
 /* Bake a falling enemy bomb for the bomb-fall regression gate.
@@ -3847,8 +3850,8 @@ static void write_replay_probe(void) {
      * Used to verify RNG-dependent drops match the original (e.g. that the
      * RNG-perframe flip + seed do not spawn a spurious bonus). */
     fprintf(f, "\nbonus_state=active%02X_type%02X_x%02X_y%02X_bomb%02X",
-            (unsigned)bonus_active, (unsigned)bonus_type,
-            (unsigned)(bonus_x & 0xFF), (unsigned)(bonus_y & 0xFF),
+            (unsigned)bonus.active, (unsigned)bonus.type,
+            (unsigned)(bonus.x & 0xFF), (unsigned)(bonus.y & 0xFF),
             (unsigned)bomb.active);
     fprintf(f, "\nbomb_state=active%02X_x%02X_y%02X",
             (unsigned)bomb.active, (unsigned)(bomb.x & 0xFF),
@@ -3888,10 +3891,10 @@ static void write_replay_probe(void) {
             (unsigned)probe.frame_countdown,
             (unsigned)probe.frame_active);
     fprintf(f, "\nbonus_state=%02X%02X%02X%02X%02X%04X",
-            (unsigned)bonus_active,
-            (unsigned)bonus_type,
-            (unsigned)(bonus_x & 0xFF),
-            (unsigned)(bonus_y & 0xFF),
+            (unsigned)bonus.active,
+            (unsigned)bonus.type,
+            (unsigned)(bonus.x & 0xFF),
+            (unsigned)(bonus.y & 0xFF),
             (unsigned)pts_marker.active,
             (unsigned)(pts_marker.sprite & 0xFFFFu));
     write_replay_briks_data(f);
@@ -4049,7 +4052,7 @@ static void kill_enemy_by_ball_rect(int bx_l, int by_t, int bw, int bh) {
 static void bomb_appear(Object *o) {
     unsigned int r;
     if (bomb.active) return;
-    if (bonus_active) return;
+    if (bonus.active) return;
     /* Read-current (rng_sample): $A989 reads both random_number bytes
      * without advancing. bomb_appear runs every alien frame, so leaving it
      * on next_random() advances the shared RNG every frame and is the main
@@ -4952,10 +4955,10 @@ static void redraw_full_with_ball(unsigned char level_idx) {
         blit_masked_to_scr_buff(pts_marker.sprite, pts_marker.x, pts_marker.y);
         mark_dirty_sprite_rect(pts_marker.sprite, pts_marker.x, pts_marker.y);
     }
-    if (bonus_active) {
-        unsigned int spr = spr_for_bonus(bonus_type);
+    if (bonus.active) {
+        unsigned int spr = spr_for_bonus(bonus.type);
         render_bonus_to_buff(bg_attr);
-        mark_dirty_sprite_rect(spr, bonus_x, bonus_y);
+        mark_dirty_sprite_rect(spr, bonus.x, bonus.y);
     }
     if ((enemy->sprite_set & 0x7F) != 0 && !(enemy->sprite_set & 0x80)) {
         unsigned int spr;
@@ -5037,7 +5040,7 @@ static unsigned int ball_dirty_blockers(int bat_moved) {
     if (!BALL_VISIBLE) blockers |= BALL_DIRTY_BLOCK_BALLS;
     if (static_bg_dirty || static_bg_cache_dirty || force_full_flush) blockers |= BALL_DIRTY_BLOCK_STATIC;
     if (score != prev_score || high_score != prev_high_score || lives != prev_lives) blockers |= BALL_DIRTY_BLOCK_HUD;
-    if (bonus_active || pts_marker.active || bomb.active || rocket_active) blockers |= BALL_DIRTY_BLOCK_OBJECTS;
+    if (bonus.active || pts_marker.active || bomb.active || rocket_active) blockers |= BALL_DIRTY_BLOCK_OBJECTS;
     if (objects[OBJ_ENEMY].sprite_set != 0) blockers |= BALL_DIRTY_BLOCK_OBJECTS;
     if (any_bullet_active() || any_bullet_blast()) blockers |= BALL_DIRTY_BLOCK_OBJECTS;
     if (brick_flash.ticks || any_brick_hit_anim()) blockers |= BALL_DIRTY_BLOCK_BRICKS;
@@ -5074,7 +5077,7 @@ static void prof_note_ball_dirty_blockers(unsigned int blockers) {
 
 static int can_redraw_ball_with_simple_objects(unsigned int blockers) {
     if ((blockers & ~BALL_DIRTY_BLOCK_OBJECTS) != 0) return 0;
-    if (!bonus_active && !pts_marker.active && objects[OBJ_ENEMY].sprite_set == 0
+    if (!bonus.active && !pts_marker.active && objects[OBJ_ENEMY].sprite_set == 0
         && !any_bullet_active() && !any_bullet_blast() && !bomb.active
         && !ball.extra2_active && !ball.extra3_active) return 0;
     if (rocket_active) return 0;
@@ -5167,10 +5170,10 @@ static void render_simple_objects_to_buff_and_mark(unsigned char bg_attr) {
         blit_masked_to_scr_buff(pts_marker.sprite, pts_marker.x, pts_marker.y);
         mark_dirty_sprite_rect(pts_marker.sprite, pts_marker.x, pts_marker.y);
     }
-    if (bonus_active) {
-        unsigned int spr = spr_for_bonus(bonus_type);
+    if (bonus.active) {
+        unsigned int spr = spr_for_bonus(bonus.type);
         render_bonus_to_buff(bg_attr);
-        mark_dirty_sprite_rect(spr, bonus_x, bonus_y);
+        mark_dirty_sprite_rect(spr, bonus.x, bonus.y);
     }
     render_enemy_to_buff_and_mark(bg_attr);
 }
@@ -5819,7 +5822,7 @@ static void play_bat_explosion(unsigned char level_idx) {
      * screen would persist through the explosion and reappear when
      * the player respawns. */
     bomb.active = 0;
-    bonus_active = 0;
+    bonus.active = 0;
     rocket_active = 0;
     rocket_clear_completed = 0;
     set_rocket_bonus_sprite_height(ROCKET_BONUS_H_PX);
@@ -5942,7 +5945,7 @@ static void reset_level_state(unsigned char lvl_idx) {
     BALL_Y        = BAT_Y - BALL_H_PX;
     ball.stuck_ticks   = 0;                /* counts up while waiting for launch */
     primary_ball_set_velocity(+1, -BALL_SPEED);
-    bonus_active   = 0;
+    bonus.active   = 0;
     bomb.active        = 0;
     bullet_active[0]      = 0;
     bullet_active[1]      = 0;
@@ -6160,7 +6163,7 @@ static state_t run_level(void) {
     score = 0;
     lives = LIVES_INIT;
     live_adds_awarded = 0;
-    bonus_active = 0;
+    bonus.active = 0;
     ball.speed_ramp = 0;
     bat.big_ticks = 0;
     ball.big_ticks = 0;
@@ -6415,7 +6418,7 @@ static state_t run_level(void) {
                     high_score = score;
                     high_score_beaten_this_game = 1;
                 }
-                if (bonus_active) ball_moved = 1;
+                if (bonus.active) ball_moved = 1;
                 if (pts_marker.active) ball_moved = 1;
                 if (bat.extra_px != bat.extra_target) bat_moved = 1;
                 if (objects[OBJ_ENEMY].sprite_set != 0) ball_moved = 1;
