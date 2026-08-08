@@ -523,3 +523,23 @@ appeared "caught" when it had never been compiled.
 `rm -f build/test_physics` before each run. The failure mode is quiet
 and it flatters the test: it reports the result of whichever mutation
 last triggered a real rebuild.
+
+### One more gate reading the wrong floppy — in a harness, not a gate
+
+`scripts/replay_harness.py` hardcoded `build/batty-test.img` and ignored
+`BATTY_TEST_FLOPPY`. `replay-l3-brick-flash` therefore *built*
+`build/batty-test-N.img` (the Makefile target honours the variable) and
+then *read* the shared default — whatever a concurrent job had left
+there.
+
+Missed in the earlier 30-gate sweep because that sweep looked at
+`scripts/test_*.py`. This is a harness the gates call into.
+
+It presents as a game regression: `test-midgame-brick-replay` fails with
+`unexpected PPM size 720x400` — text mode, i.e. the run never reached
+graphics — and it fails the serial retry too, because the shared image is
+still wrong. Run it alone a minute later and it passes.
+
+The `exercise_*.py` and `sweep_levels.py` scripts still hardcode the
+path. They are manual tools, never run by the suite, so they are left
+alone.

@@ -20,7 +20,7 @@ from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 sys.path.insert(0, str(Path(__file__).parent))
 from extract_scr import decode as decode_scr
 from test_visual import (PALETTE_RGB, PLAYFIELD_H, PLAYFIELD_W,
-                         ppm_inner_to_indices, run_qemu)
+                         ppm_inner_to_indices, run_qemu, test_floppy)
 from zrcp import ZrcpClient, launch_emulator
 
 
@@ -237,7 +237,7 @@ def run_port_state_probe(spec: ReplaySpec, out_dir: Path) -> None:
     if probe_file:
         extracted = out_dir / str(probe_file)
         subprocess.run([
-            "mcopy", "-i", str(spec.port.get("floppy", "build/batty-test.img")),
+            "mcopy", "-i", str(spec.port.get("floppy", test_floppy())),
             f"::{probe_file}", str(extracted),
         ], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         if extracted.exists():
@@ -262,7 +262,7 @@ def run_port_state_probe(spec: ReplaySpec, out_dir: Path) -> None:
 
 def run_port(spec: ReplaySpec, out_dir: Path) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
-    floppy = Path(str(spec.port.get("floppy", "build/batty-test.img")))
+    floppy = Path(str(spec.port.get("floppy", test_floppy())))
     boot_wait = float(spec.port.get("boot_wait", 0.0))
     actions = []
     for event in spec.events:

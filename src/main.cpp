@@ -2868,12 +2868,13 @@ static void set_rocket_bonus_sprite_height(unsigned char height) {
 /* Put an extra ball on top of the primary, travelling in `dir` at the
  * primary's speed. The extras read dir/speed/q8.8 from their object;
  * the original copies ball_1's speed and a derived direction. */
-static void spawn_extra_ball(unsigned char slot, unsigned char dir,
-                             int *dx, int *dy) {
+static void spawn_extra_ball(unsigned char slot,
+                             unsigned char x, unsigned char y,
+                             unsigned char dir, int *dx, int *dy) {
     Object *o = &objects[slot];
     o->sprite_set = 0x02;
-    o->x_coord    = BALL_X;
-    o->y_coord    = BALL_Y;
+    o->x_coord    = x;
+    o->y_coord    = y;
     o->dir        = dir;
     o->speed      = objects[OBJ_BALL_1].speed;
     o->x_coord_hi = 0;
@@ -3029,9 +3030,9 @@ static void bonus_apply(unsigned char type) {
             if (!ball.extra2_active && !ball.extra3_active) {
                 const ExtraBallDirs dirs =
                     extra_ball_dirs(delta_to_dir(ball.dx, ball.dy));
-                spawn_extra_ball(OBJ_BALL_2, dirs.second,
+                spawn_extra_ball(OBJ_BALL_2, BALL_X, BALL_Y, dirs.second,
                                  &ball.extra2_dx, &ball.extra2_dy);
-                spawn_extra_ball(OBJ_BALL_3, dirs.third,
+                spawn_extra_ball(OBJ_BALL_3, BALL_X, BALL_Y, dirs.third,
                                  &ball.extra3_dx, &ball.extra3_dy);
                 ball.extra2_active = 1;
                 ball.extra3_active = 1;
@@ -3598,24 +3599,14 @@ static void apply_replay_bigball(void) {
 static void apply_replay_multiball(void) {
     if (getenv("BATTY_REPLAY_MULTIBALL") == NULL) return;
     if (ball.extra2_active || ball.extra3_active) return;
+    /* Both extras inherit the primary's direction, unlike a real catch,
+     * so the gate probes step_extra_ball on a known trajectory. */
+    spawn_extra_ball(OBJ_BALL_2, 96, 150, objects[OBJ_BALL_1].dir,
+                     &ball.extra2_dx, &ball.extra2_dy);
+    spawn_extra_ball(OBJ_BALL_3, 160, 150, objects[OBJ_BALL_1].dir,
+                     &ball.extra3_dx, &ball.extra3_dy);
     ball.extra2_active = 1;
-    objects[OBJ_BALL_2].sprite_set = 0x02;
-    objects[OBJ_BALL_2].x_coord = 96;
-    objects[OBJ_BALL_2].y_coord = 150;
-    objects[OBJ_BALL_2].dir = objects[OBJ_BALL_1].dir;
-    objects[OBJ_BALL_2].speed = objects[OBJ_BALL_1].speed;
-    objects[OBJ_BALL_2].x_coord_hi = 0;
-    objects[OBJ_BALL_2].y_coord_hi = 0;
-    dir_to_delta(objects[OBJ_BALL_2].dir, &ball.extra2_dx, &ball.extra2_dy);
     ball.extra3_active = 1;
-    objects[OBJ_BALL_3].sprite_set = 0x02;
-    objects[OBJ_BALL_3].x_coord = 160;
-    objects[OBJ_BALL_3].y_coord = 150;
-    objects[OBJ_BALL_3].dir = objects[OBJ_BALL_1].dir;
-    objects[OBJ_BALL_3].speed = objects[OBJ_BALL_1].speed;
-    objects[OBJ_BALL_3].x_coord_hi = 0;
-    objects[OBJ_BALL_3].y_coord_hi = 0;
-    dir_to_delta(objects[OBJ_BALL_3].dir, &ball.extra3_dx, &ball.extra3_dy);
 }
 
 /* Force one bonus-drop roll at level entry for the drop-economy gate.
@@ -3655,17 +3646,10 @@ static void apply_replay_ball_ramp(void) {
  * + colour and the points_table[row] (x2 for colour nibble >= 6) award is
  * checkable. value 0x1X = single-hit (bit4 set) colour-X brick. */
 static void apply_replay_force_brick(void) {
-    const char *spec = getenv("BATTY_FORCE_BRICK");
-    char *e1, *e2;
-    long col, row, val;
-    if (spec == NULL) return;
-    col = strtol(spec, &e1, 0);
-    if (e1 == spec || *e1 != ',') return;
-    row = strtol(e1 + 1, &e2, 0);
-    if (e2 == e1 + 1 || *e2 != ',') return;
-    val = strtol(e2 + 1, NULL, 0);
-    if (col < 0 || col >= LVL_COLS || row < 0 || row >= LVL_ROWS) return;
-    live_level[row * LVL_COLS + col] = (unsigned char)val;
+    long v[3];      /* col, row, cell value */
+    if (!parse_replay_ints("BATTY_FORCE_BRICK", v, 3)) return;
+    if (v[0] < 0 || v[0] >= LVL_COLS || v[1] < 0 || v[1] >= LVL_ROWS) return;
+    live_level[v[1] * LVL_COLS + v[0]] = (unsigned char)v[2];
 }
 
 /* Bake a bullet-impact blast for the blast-animation gate.
