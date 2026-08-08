@@ -186,7 +186,9 @@ which is exactly what the separate inline blocks did.
 
 `step_active_entities` then took the twelve-call run of `step_*` plus
 the two timer decays — everything that moves independently of the
-primary ball.
+primary ball. `kill_enemies_by_balls` followed: three near-identical
+blocks differing only in which ball slot and which liveness flag, now
+one call per ball over a shared `kill_enemy_by_ball_slot`.
 
 Order from here:
 

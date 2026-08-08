@@ -6156,6 +6156,21 @@ static InputAction handle_input(int &ball_moved, int &bat_moved,
     return INPUT_NONE;
 }
 
+static void kill_enemy_by_ball_slot(unsigned char slot) {
+    kill_enemy_by_ball_rect((int)objects[slot].x_coord,
+                            (int)objects[slot].y_coord,
+                            BALL_W_PX, BALL_H_PX);
+}
+
+/* Any ball landing on an alien destroys it, not just the bat: the
+ * original calls kill_enemy_by_bat from handling_ball as well.
+ * orig: $A4B8 kill_enemy_by_bat */
+static void kill_enemies_by_balls(void) {
+    if (BALL_VISIBLE)       kill_enemy_by_ball_slot(OBJ_BALL_1);
+    if (ball.extra2_active) kill_enemy_by_ball_slot(OBJ_BALL_2);
+    if (ball.extra3_active) kill_enemy_by_ball_slot(OBJ_BALL_3);
+}
+
 /* One frame of every entity that moves independently of the primary
  * ball, plus the per-frame timer decays. */
 static void step_active_entities(void) {
@@ -6402,20 +6417,7 @@ static state_t run_level(void) {
                                                   * in the original at $98A8;
                                                   * here outside since our
                                                   * bat handler doesn't exist */
-                /* Ball-vs-alien: the original's kill_enemy_by_bat at
-                 * $A4B8 is invoked from BOTH handling_bat and
-                 * handling_ball — any ball plunking down on an alien
-                 * destroys it. Earlier port only checked the bat. */
-                if (BALL_VISIBLE)
-                    kill_enemy_by_ball_rect(BALL_X, BALL_Y, BALL_W_PX, BALL_H_PX);
-                if (ball.extra2_active)
-                    kill_enemy_by_ball_rect((int)objects[OBJ_BALL_2].x_coord,
-                                             (int)objects[OBJ_BALL_2].y_coord,
-                                             BALL_W_PX, BALL_H_PX);
-                if (ball.extra3_active)
-                    kill_enemy_by_ball_rect((int)objects[OBJ_BALL_3].x_coord,
-                                             (int)objects[OBJ_BALL_3].y_coord,
-                                             BALL_W_PX, BALL_H_PX);
+                kill_enemies_by_balls();
                 call_for_all_obj(refresh_buffer_offset);
                 sound_frame();
                 sound_tick();
