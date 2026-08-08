@@ -6411,6 +6411,35 @@ static void steer_bat_from_keys(void) {
         !rocket.active && key_state[SC_RIGHT]);
 }
 
+/* Pick this frame's redraw path and run it, cheapest first: the ball
+ * alone, the ball plus the simple-object tier, or the full compose. A
+ * frame where only the bat moved gets the narrower bat path.
+ *
+ * The bat-only branch repositions a stuck ball with
+ * BALL_X_OFFSET_ON_BAT, NOT ball.stuck_offset_x — see known-bugs.md #12.
+ * Preserved as found; it is a rendering change with no gate. */
+static void redraw_frame(unsigned char lvl_idx, unsigned char cycle,
+                         unsigned char bg_attr, int ball_moved, int bat_moved) {
+    if (ball_moved) {
+        const unsigned int blockers = ball_dirty_blockers(bat_moved);
+        if (blockers == 0) {
+            redraw_ball_only(lvl_idx);
+        } else if (can_redraw_ball_with_simple_objects(blockers)) {
+            redraw_ball_with_simple_objects(lvl_idx);
+        } else {
+            prof_note_ball_dirty_blockers(blockers);
+            redraw_full_with_ball(lvl_idx);
+        }
+        return;
+    }
+    if (!bat_moved) return;
+    redraw_bat(cycle, bg_attr);
+    if (BALL_VISIBLE && ball.stuck) {
+        BALL_X = BAT_X + BALL_X_OFFSET_ON_BAT;
+        render_ball(BALL_X, BALL_Y, bg_attr);
+    }
+}
+
 /* Set up a level and show its intro. False means the player quit during
  * the intro. */
 static bool enter_level(unsigned char lvl_idx) {
@@ -6537,23 +6566,7 @@ static state_t run_level(void) {
                 cache.full_flush = 1;
             }
 
-            if (ball_moved) {
-                unsigned int blockers = ball_dirty_blockers(bat_moved);
-                if (blockers == 0) {
-                    redraw_ball_only(lvl_idx);
-                } else if (can_redraw_ball_with_simple_objects(blockers)) {
-                    redraw_ball_with_simple_objects(lvl_idx);
-                } else {
-                    prof_note_ball_dirty_blockers(blockers);
-                    redraw_full_with_ball(lvl_idx);
-                }
-            } else if (bat_moved) {
-                redraw_bat(cycle, bg_attr);
-                if (BALL_VISIBLE && ball.stuck) {
-                    BALL_X = BAT_X + BALL_X_OFFSET_ON_BAT;
-                    render_ball(BALL_X, BALL_Y, bg_attr);
-                }
-            }
+            redraw_frame(lvl_idx, cycle, bg_attr, ball_moved, bat_moved);
 
             if (frame_ticked && !visual_checkpoint_tick()) return ST_QUIT;
 

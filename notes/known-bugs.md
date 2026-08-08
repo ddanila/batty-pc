@@ -276,3 +276,35 @@ hot path and not a rename.
 
 Whether either is visible in play: both need the bat held against a wall,
 which is reachable.
+
+
+## 12. A CATCH-held ball snaps to the default offset on a bat-only redraw
+
+`run_level`'s bat-only redraw branch repositions a stuck ball with
+
+    BALL_X = BAT_X + BALL_X_OFFSET_ON_BAT;      /* the constant 16 */
+
+while `rest_ball_on_bat` — used by every other path that places a stuck
+ball — uses `ball.stuck_offset_x`, the quantised offset the MAGNET/CATCH
+bonus recorded (`& 0xFC`, capped `0x18`, so 0, 4, 8, 12, 16, 20 or 24).
+
+They agree only when the catch happened to land on 16. Catch the ball at
+offset 0 and the two disagree by 16 px.
+
+Whether it is visible: the branch runs only when `bat_moved` and NOT
+`ball_moved`, i.e. a frame with no physics tick where the bat's drawn
+position is stale. On a ticked frame `ride_stuck_ball_on_bat` sets
+`ball_moved`, so the ball_moved branch wins. So the snap would last one
+frame and be corrected on the next tick — a flicker, not a lasting
+displacement.
+
+It matters beyond the flicker because the launch direction is derived
+from that offset (`launch_offset = ball.stuck_offset_x - 4`). The
+displayed position and the direction the ball will leave in can
+therefore disagree for a frame.
+
+Not fixed: it is a rendering change and no gate covers the bat-only
+branch with a non-default catch offset. `test-magnet-ball` catches at an
+offset that happens to agree. The fix is presumably to call
+`rest_ball_on_bat()` here, but that should land with a gate that would
+have caught it.

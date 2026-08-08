@@ -60,7 +60,7 @@ happened, and `make test-video` caught it.
 | 10 | state owners — structs at file scope | 113 vars | **done** — 11 clusters, see below |
 | 1 | replay / probe scaffolding | 480 | **last** — see below |
 
-`main.cpp`: 7,746 → 6,804. 100 host tests + source gates, all via `make test-fast` in seconds.
+`main.cpp`: 7,746 → 6,817. 100 host tests + source gates, all via `make test-fast` in seconds.
 
 ### Stage 5b: one destroyed-cell reset, not two
 
@@ -623,6 +623,12 @@ fallback-only path is unexercised by the suite. It was booted by hand
 here and runs, but with a stuck ball no collision occurs — the switch is
 effectively untested. Worth knowing before trusting it as an A/B
 baseline.
+
+`redraw_frame` took the path selection out of the frame loop — and
+reading it closely turned up known-bugs #12: its bat-only branch
+repositions a stuck ball with the constant `BALL_X_OFFSET_ON_BAT` where
+every other path uses the recorded catch offset. Preserved exactly, and
+recorded, because it is a rendering change with no gate covering it.
 
 ## What this has already found
 
