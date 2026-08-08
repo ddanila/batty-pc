@@ -2637,7 +2637,13 @@ typedef enum { ST_TITLE, ST_MENU, ST_HISCORE, ST_LEVEL, ST_QUIT } state_t;
  * game, where the player drives transitions. The legacy BATTYALL=1
  * env-var still forces it OFF for the test floppy (no-op now, but
  * kept so the autoexec.bat doesn't need editing). */
-static int auto_advance = 0;
+/* The original has no attract auto-cycle: the title, menu and hi-score
+ * screens wait for a key rather than rotating on a timer. Nothing sets
+ * this, so every TIMED_OUT below is permanently false — the timeouts are
+ * kept because they are the cycle the original's screens WOULD use, and
+ * removing them would lose that. Do not read a TIMED_OUT branch as
+ * reachable. */
+static int auto_advance = 0;   /* never assigned; see above */
 #define TIMED_OUT(start, ticks) (auto_advance && (bios_ticks() - (start) > (ticks)))
 
 /* Blink phase for the selected option's text on the MENU. Test mode

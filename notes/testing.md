@@ -399,9 +399,14 @@ was captured during the BLACK half (selected row's 11 attr cells at
 `0x58AE..0x58B8` are all `0x00`).
 
 To keep the test pixel-identical regardless of capture timing, the C
-helper `blink_phase()` pins the phase to 0 (BLACK) when `auto_advance`
-is off (= the test mode signalled by `BATTYALL`). `make run`'s floppy
-leaves `BATTYALL` unset and the user sees the natural blink.
+helper `blink_phase()` pins the phase to 0 (BLACK) when
+`test_mode_pin_blink` is set — the test mode signalled by `BATTYALL`.
+`make run`'s floppy leaves `BATTYALL` unset and the player sees the
+natural blink.
+
+(This used to be gated on `auto_advance`; commit 45cad07 separated the
+two so the menu blinks during normal play. The note said otherwise until
+2026-08-09.)
 
 ## Mid-game parity gate (frame-step)
 

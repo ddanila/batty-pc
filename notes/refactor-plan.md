@@ -60,7 +60,7 @@ happened, and `make test-video` caught it.
 | 10 | state owners — structs at file scope | 113 vars | **done** — 11 clusters, see below |
 | 1 | replay / probe scaffolding | 480 | **last** — see below |
 
-`main.cpp`: 7,746 → 6,735. 100 host tests + source gates, all via `make test-fast` in seconds.
+`main.cpp`: 7,746 → 6,741. 100 host tests + source gates, all via `make test-fast` in seconds.
 
 ### Stage 5b: one destroyed-cell reset, not two
 
@@ -514,6 +514,19 @@ known-bugs #8 turned on: the mirrored `dir_to_delta` convention was
 computed into them and discarded, while `step_extra_ball` moved the
 extras with `dir_to_dxdy` exactly like the primary. A documented bug
 with no gameplay effect, found by following a `(void)` cast.
+
+Sweeping every state struct and file-scope static for the same pattern
+afterwards found **nothing further** — a useful negative result, and it
+bounds #8 to the one instance. The sweep did surface `auto_advance`,
+which is read by `TIMED_OUT` and never assigned: the attract auto-cycle
+is intentionally absent (commit 45cad07, "no attract auto-cycle, per the
+original"), so all three timeout branches are permanently false. That is
+now said at the declaration, because nothing else in the file admits it.
+
+Marking it `const` to prove the point made Watcom emit `W368 always
+false` and `W013 unreachable code` — the compiler confirming the
+analysis, and, under `-we`, refusing to build. So it stays a plain
+`static int` with the explanation attached.
 
 ## What this has already found
 
