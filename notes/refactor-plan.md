@@ -60,7 +60,7 @@ happened, and `make test-video` caught it.
 | 10 | state owners — structs at file scope | 113 vars | **done** — 11 clusters, see below |
 | 1 | replay / probe scaffolding | 480 | **last** — see below |
 
-`main.cpp`: 7,746 → 6,729. 100 host tests + source gates, all via `make test-fast` in seconds.
+`main.cpp`: 7,746 → 6,727. 100 host tests + source gates, all via `make test-fast` in seconds.
 
 ### Stage 5b: one destroyed-cell reset, not two
 
@@ -271,6 +271,14 @@ flush: it still copies this frame's dirty rects forward before calling
 `mark_all_dirty()`, because that call widens what goes out *now*, not
 what the next frame restores from. Inline, the copy loop looked like
 something the `mark_all_dirty()` on the next line made redundant.
+
+`rest_ball_on_bat` then removed the last copy of the ball-on-bat rest
+rule. `step_ball`'s stuck early-out and `ride_stuck_ball_on_bat` each
+carried it, with a long comment apiece explaining the same `$A6`/`$A7`
+MAGNET offset — the shape that lets two copies drift. Both anti-
+regression notes survive in the one place: the 1 px MAGNET drop, and
+that `BALL_H_PX` is deliberate where the effective ball size would put
+the ball at 165 and clobber `respawn_primary_ball`.
 
 `PlayerState` needed a different tool from the rest. `score` and `lives`
 are English words that occur in comments and — the trap —

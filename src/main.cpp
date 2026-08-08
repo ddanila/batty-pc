@@ -4382,6 +4382,23 @@ static void magnet_ball_state_clear(unsigned char si) {
     ball.mag_delta[si] = 0;
 }
 
+/* Park the ball on the bat at its catch offset. The bottom row touches
+ * the bat top: $A6 = 166, the original's launch rest at LA27E_15. A ball
+ * HELD by the MAGNET bonus rests 1 px lower at $A7 = 167 (LAB1F_3), and
+ * the bat's active bonus ($03 = MAGNET, the original's IY+$14) tells the
+ * two apart without a separate caught-state flag.
+ *
+ * BALL_H_PX, not the effective ball size: using the latter put the ball
+ * at 165 every frame, silently clobbering respawn_primary_ball's $A6. */
+static void rest_ball_on_bat(void) {
+    BALL_X = BAT_X + ball.stuck_offset_x;
+    BALL_Y = BAT_Y - BALL_H_PX +
+             (objects[OBJ_BAT_1].bonus_applied == 0x03 ? 1 : 0);
+}
+
+/* A stuck ball rides the bat at the catch offset (where it hit, when
+ * the CATCH bonus stuck it; otherwise BALL_X_OFFSET_ON_BAT) until SPACE
+ * or the timeout auto-launches it. */
 static void step_ball(void) {
     int next_x, next_y;
     int dx_q8, dy_q8;
@@ -4391,18 +4408,7 @@ static void step_ball(void) {
     int bat_top   = BAT_Y;
     int ball_sz   = eff_ball_size();
     if (ball.stuck) {
-        BALL_X = BAT_X + ball.stuck_offset_x;
-        /* Rest the ball ON the bat: bottom row touches the bat top, i.e.
-         * BAT_Y - BALL_H_PX = 166 = $A6 (matches the original's launch
-         * rest at LA27E_15 and respawn_primary_ball). Using ball_sz (= 8
-         * width) here put it 1px high (165) every frame, silently
-         * clobbering respawn_primary_ball's correct $A6. A ball HELD by
-         * the MAGNET bonus rests 1px lower at $A7 = 167 (LAB1F_3 uses $A7
-         * for a caught ball vs $A6 for the launch rest); the bat's active
-         * bonus ($03 == MAGNET, the original's IY+$14) distinguishes the
-         * two without a separate caught-state flag. */
-        BALL_Y = BAT_Y - BALL_H_PX +
-                 (objects[OBJ_BAT_1].bonus_applied == 0x03 ? 1 : 0);
+        rest_ball_on_bat();
         objects[OBJ_BALL_1].x_coord_hi = 0;
         objects[OBJ_BALL_1].y_coord_hi = 0;
         return;
@@ -6089,16 +6095,8 @@ static InputAction handle_input(int &ball_moved, int &bat_moved,
     return INPUT_NONE;
 }
 
-/* A stuck ball rides the bat at the catch offset (where it hit, when
- * the CATCH bonus stuck it; otherwise BALL_X_OFFSET_ON_BAT) until SPACE
- * or the timeout auto-launches it. */
 static void ride_stuck_ball_on_bat(void) {
-    BALL_X = BAT_X + ball.stuck_offset_x;
-    /* $A6 = 166 for the launch rest (LA27E_15); a ball held by the
-     * MAGNET bonus rests 1px lower at $A7 = 167 (LAB1F_3). The bat's
-     * active bonus ($03 = MAGNET, the original's IY+$14) selects. */
-    BALL_Y = BAT_Y - BALL_H_PX +
-             (objects[OBJ_BAT_1].bonus_applied == 0x03 ? 1 : 0);
+    rest_ball_on_bat();
     ball.stuck_ticks++;
     if (ball.stuck_ticks >= STUCK_TIMEOUT) {
         ball.stuck = 0;          /* auto-launch */
