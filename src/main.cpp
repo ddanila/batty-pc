@@ -5595,13 +5595,15 @@ typedef struct {
 } death_spark_t;
 static death_spark_t death_sparks[DEATH_SPARK_COUNT];
 
-/* Single-frame render of the level scene + the active death sparks.
- * Same compose as redraw_full_with_ball but with the bat / ball / multi-
- * ball hidden (the sparks ARE the bat at this moment). */
-static void redraw_with_death_sparks(unsigned char level_idx) {
+/* The level scene as the death and rocket-tally sub-loops want it: no
+ * bat, no ball, no magnets. The sparks stand in for the bat during a
+ * death, and the tally needs the bricks it is counting still on screen.
+ * Unlike compose_level_scene this paints the brick flash and hit
+ * animations, since these sub-loops drive their own frames and there is
+ * no dirty carry to restore them. */
+static void compose_scene_no_objects(unsigned char level_idx) {
     unsigned char bg_attr = bg_attr_per_cycle[level_idx & 3];
     unsigned char cycle   = (unsigned char)(level_idx & 3);
-    int i;
     paint_bg_to_buff(bg_attr, cycle);
     paint_frame_to_buff(cycle, level_idx);
     render_lives(cycle, bg_attr);
@@ -5610,6 +5612,14 @@ static void redraw_with_death_sparks(unsigned char level_idx) {
     render_brick_band(level_idx);
     render_brick_flash_to_buff();
     render_brick_hit_anim_to_buff();
+}
+
+/* Single-frame render of the level scene + the active death sparks.
+ * Same compose as redraw_full_with_ball but with the bat / ball / multi-
+ * ball hidden (the sparks ARE the bat at this moment). */
+static void redraw_with_death_sparks(unsigned char level_idx) {
+    int i;
+    compose_scene_no_objects(level_idx);
     for (i = 0; i < DEATH_SPARK_COUNT; i++) {
         int xp, yp;
         if (!death_sparks[i].active) continue;
@@ -5624,16 +5634,7 @@ static void redraw_with_death_sparks(unsigned char level_idx) {
 
 /* Render the level scene (no death sparks) for the rocket-clear tally. */
 static void redraw_level_scene(unsigned char level_idx) {
-    unsigned char bg_attr = bg_attr_per_cycle[level_idx & 3];
-    unsigned char cycle   = (unsigned char)(level_idx & 3);
-    paint_bg_to_buff(bg_attr, cycle);
-    paint_frame_to_buff(cycle, level_idx);
-    render_lives(cycle, bg_attr);
-    render_hud_to_buff();
-    inner_border_line_c();
-    render_brick_band(level_idx);
-    render_brick_flash_to_buff();
-    render_brick_hit_anim_to_buff();
+    compose_scene_no_objects(level_idx);
     buff_to_vga();
 }
 

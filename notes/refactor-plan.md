@@ -60,7 +60,7 @@ happened, and `make test-video` caught it.
 | 10 | state owners — structs at file scope | 113 vars | **done** — 11 clusters, see below |
 | 1 | replay / probe scaffolding | 480 | **last** — see below |
 
-`main.cpp`: 7,746 → 6,718. 100 host tests + source gates, all via `make test-fast` in seconds.
+`main.cpp`: 7,746 → 6,719. 100 host tests + source gates, all via `make test-fast` in seconds.
 
 ### Stage 5b: one destroyed-cell reset, not two
 
@@ -257,6 +257,14 @@ that only read as one idea once named.
 `redraw_full_with_ball` is 123 -> ~75 lines, and what is left is the
 compose order the original fixes ($9AD0 slot table) rather than
 bookkeeping.
+
+`compose_scene_no_objects` is the third scene composer, shared by the
+death animation and the rocket-clear tally. It is deliberately NOT
+`compose_level_scene`: it paints no bat and no magnets, and it *does*
+paint the brick flash and hit animations, because those sub-loops drive
+their own frames with no dirty carry to restore them from. Folding the
+two together would have silently added magnets and the top-frame repair
+to both.
 
 `PlayerState` needed a different tool from the rest. `score` and `lives`
 are English words that occur in comments and — the trap —
