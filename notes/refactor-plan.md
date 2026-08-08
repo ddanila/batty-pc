@@ -176,7 +176,13 @@ become a handful of queries on a struct.
 
 `run_level`'s prologue is now three named steps — `new_game_reset`,
 `probe_init_from_env`, `initial_round_number` — leaving the per-frame
-loop as what is actually left to decompose.
+loop as what is actually left to decompose. Inside it, the launch and
+frame replay checkpoints were two identical eight-line blocks; they are
+now one `probe_checkpoint_due` predicate called twice.
+
+`||` short-circuiting there is load-bearing, not incidental: the first
+checkpoint to fire returns, so the second never ticks its countdown —
+which is exactly what the separate inline blocks did.
 
 Order from here:
 

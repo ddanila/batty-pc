@@ -6156,6 +6156,16 @@ static InputAction handle_input(int &ball_moved, int &bat_moved,
     return INPUT_NONE;
 }
 
+/* A replay checkpoint counts down one frame at a time; reaching zero
+ * means write PROBE.TXT and end the run. Short-circuiting the two
+ * callers is deliberate: the first to fire returns, so the second never
+ * ticks — as when each checkpoint had its own inline block. */
+static bool probe_checkpoint_due(unsigned char active, unsigned int *countdown) {
+    if (!active) return false;
+    if (*countdown > 0) (*countdown)--;
+    return *countdown == 0;
+}
+
 /* Score and lives carry across levels within one game; they reset only
  * on re-entry from ST_HISCORE. */
 static void new_game_reset(void) {
@@ -6333,21 +6343,11 @@ static state_t run_level(void) {
                     ball_speed_ramp_tick();
                     step_ball();
                     ball_moved = 1;
-                    if (probe.launch_active) {
-                        if (probe.launch_countdown > 0) probe.launch_countdown--;
-                        if (probe.launch_countdown == 0) {
-                            write_replay_probe();
-                            serial_probe_signal();
-                            return ST_QUIT;
-                        }
-                    }
-                    if (probe.frame_active) {
-                        if (probe.frame_countdown > 0) probe.frame_countdown--;
-                        if (probe.frame_countdown == 0) {
-                            write_replay_probe();
-                            serial_probe_signal();
-                            return ST_QUIT;
-                        }
+                    if (probe_checkpoint_due(probe.launch_active, &probe.launch_countdown)
+                        || probe_checkpoint_due(probe.frame_active, &probe.frame_countdown)) {
+                        write_replay_probe();
+                        serial_probe_signal();
+                        return ST_QUIT;
                     }
                 }
                 if (auto_fire) try_fire_laser();   /* held-SPACE sim (test) */
