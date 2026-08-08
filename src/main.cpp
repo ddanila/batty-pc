@@ -4805,6 +4805,25 @@ static void carry_dirty_with_previous(void) {
  *   - paint ball, bomb, 400pts, alien into scr_buff (each picks up
  *     its surrounding char cell's bg attr at buff_to_vga time)
  *   - HUD labels/scores join scr_buff before the same buff_to_vga pass. */
+/* The three single-sprite falling objects, blitted and dirty-marked the
+ * same way on every redraw path. The bomb's bat-collision kill belongs
+ * to step_bomb, not here. */
+static void render_falling_objects_to_buff(unsigned char bg_attr) {
+    if (bomb.active) {
+        blit_masked_to_scr_buff(spr_bomb_data, bomb.x, bomb.y);
+        mark_dirty_rect_px(bomb.x, bomb.y, 16, 16);
+    }
+    if (pts_marker.active) {
+        blit_masked_to_scr_buff(pts_marker.sprite, pts_marker.x, pts_marker.y);
+        mark_dirty_sprite_rect(pts_marker.sprite, pts_marker.x, pts_marker.y);
+    }
+    if (bonus.active) {
+        unsigned int spr = spr_for_bonus(bonus.type);
+        render_bonus_to_buff(bg_attr);
+        mark_dirty_sprite_rect(spr, bonus.x, bonus.y);
+    }
+}
+
 static void redraw_full_with_ball(unsigned char level_idx) {
     unsigned char bg_attr = bg_attr_per_cycle[level_idx & 3];
     unsigned char cycle   = (unsigned char)(level_idx & 3);
@@ -4953,19 +4972,7 @@ static void redraw_full_with_ball(unsigned char level_idx) {
             }
         }
     }
-    if (bomb.active) {
-        blit_masked_to_scr_buff(spr_bomb_data, bomb.x, bomb.y);
-        mark_dirty_rect_px(bomb.x, bomb.y, 16, 16);
-    }
-    if (pts_marker.active) {
-        blit_masked_to_scr_buff(pts_marker.sprite, pts_marker.x, pts_marker.y);
-        mark_dirty_sprite_rect(pts_marker.sprite, pts_marker.x, pts_marker.y);
-    }
-    if (bonus.active) {
-        unsigned int spr = spr_for_bonus(bonus.type);
-        render_bonus_to_buff(bg_attr);
-        mark_dirty_sprite_rect(spr, bonus.x, bonus.y);
-    }
+    render_falling_objects_to_buff(bg_attr);
     if ((enemy->sprite_set & 0x7F) != 0 && !(enemy->sprite_set & 0x80)) {
         unsigned int spr;
         int spr_w_px, spr_h_px;
@@ -5166,21 +5173,7 @@ static void render_simple_objects_to_buff_and_mark(unsigned char bg_attr) {
                 mark_dirty_rect_px(bullet_blast_x[i], bullet_blast_y[i], 16, 12);
         }
     }
-    /* Enemy bomb: a single falling sprite, same dirty treatment as a bonus
-     * (the bat-collision kill is handled in step_bomb, not here). */
-    if (bomb.active) {
-        blit_masked_to_scr_buff(spr_bomb_data, bomb.x, bomb.y);
-        mark_dirty_rect_px(bomb.x, bomb.y, 16, 16);
-    }
-    if (pts_marker.active) {
-        blit_masked_to_scr_buff(pts_marker.sprite, pts_marker.x, pts_marker.y);
-        mark_dirty_sprite_rect(pts_marker.sprite, pts_marker.x, pts_marker.y);
-    }
-    if (bonus.active) {
-        unsigned int spr = spr_for_bonus(bonus.type);
-        render_bonus_to_buff(bg_attr);
-        mark_dirty_sprite_rect(spr, bonus.x, bonus.y);
-    }
+    render_falling_objects_to_buff(bg_attr);
     render_enemy_to_buff_and_mark(bg_attr);
 }
 
