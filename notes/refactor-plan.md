@@ -627,8 +627,10 @@ baseline.
 `redraw_frame` took the path selection out of the frame loop — and
 reading it closely turned up known-bugs #12: its bat-only branch
 repositions a stuck ball with the constant `BALL_X_OFFSET_ON_BAT` where
-every other path uses the recorded catch offset. Preserved exactly, and
-recorded, because it is a rendering change with no gate covering it.
+every other path uses the recorded catch offset. Fixed in the next commit, gate first: `test-stuck-ball-offset` was
+written against the unfixed code, failed, and passed after the one-line
+change. A pixel gate cannot reach that branch, so the guard is the
+invariant — one function decides where a stuck ball sits.
 
 ## What this has already found
 

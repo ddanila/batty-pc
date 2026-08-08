@@ -278,7 +278,7 @@ Whether either is visible in play: both need the bat held against a wall,
 which is reachable.
 
 
-## 12. A CATCH-held ball snaps to the default offset on a bat-only redraw
+## 12. A CATCH-held ball snapped to the default offset on a bat-only redraw — fixed
 
 `run_level`'s bat-only redraw branch repositions a stuck ball with
 
@@ -303,8 +303,17 @@ from that offset (`launch_offset = ball.stuck_offset_x - 4`). The
 displayed position and the direction the ball will leave in can
 therefore disagree for a frame.
 
-Not fixed: it is a rendering change and no gate covers the bat-only
-branch with a non-default catch offset. `test-magnet-ball` catches at an
-offset that happens to agree. The fix is presumably to call
-`rest_ball_on_bat()` here, but that should land with a gate that would
-have caught it.
+**Fixed 2026-08-09**: `redraw_frame` now calls `rest_ball_on_bat()`,
+which is the one function that knows where a stuck ball sits.
+
+No pixel gate could catch this — it needs a CATCH at a non-default
+offset AND a frame where the bat moved without a physics tick, and
+`test-magnet-ball` catches at an offset that happens to agree. So the
+guard is `test-stuck-ball-offset`, a source gate on the invariant:
+every path that repositions a stuck ball goes through
+`rest_ball_on_bat`. It was written first and failed against the old
+code, which is the evidence that it guards the thing it claims to.
+
+`respawn_primary_ball` is the deliberate exception — it sets
+`stuck_offset_x = BALL_X_OFFSET_ON_BAT` on the line above, so the two
+agree by construction.

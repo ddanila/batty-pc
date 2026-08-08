@@ -6415,9 +6415,9 @@ static void steer_bat_from_keys(void) {
  * alone, the ball plus the simple-object tier, or the full compose. A
  * frame where only the bat moved gets the narrower bat path.
  *
- * The bat-only branch repositions a stuck ball with
- * BALL_X_OFFSET_ON_BAT, NOT ball.stuck_offset_x — see known-bugs.md #12.
- * Preserved as found; it is a rendering change with no gate. */
+ * A stuck ball rides the bat, so the bat-only branch has to move it
+ * too — through rest_ball_on_bat, so the position matches the recorded
+ * catch offset that the launch direction is also derived from. */
 static void redraw_frame(unsigned char lvl_idx, unsigned char cycle,
                          unsigned char bg_attr, int ball_moved, int bat_moved) {
     if (ball_moved) {
@@ -6435,7 +6435,7 @@ static void redraw_frame(unsigned char lvl_idx, unsigned char cycle,
     if (!bat_moved) return;
     redraw_bat(cycle, bg_attr);
     if (BALL_VISIBLE && ball.stuck) {
-        BALL_X = BAT_X + BALL_X_OFFSET_ON_BAT;
+        rest_ball_on_bat();
         render_ball(BALL_X, BALL_Y, bg_attr);
     }
 }
