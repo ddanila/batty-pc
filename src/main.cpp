@@ -6282,8 +6282,26 @@ static unsigned char initial_round_number(void) {
     return 0;
 }
 
+/* Set up a level and show its intro. False means the player quit during
+ * the intro. */
+static bool enter_level(unsigned char lvl_idx) {
+    current_level_idx_var = lvl_idx;
+    reset_level_state(lvl_idx);
+    apply_replay_overrides();
+    /* After the RNG seed override, so the magnets' ON/OFF coins consume
+     * the seeded walk exactly as print_magnets does; before
+     * render_level_screen, which paints from this state. */
+    magnet_level_init(lvl_idx);
+
+    probe.from_gameplay = 0;         /* the pre-gameplay seed write */
+    write_replay_probe();
+    render_level_screen(lvl_idx);
+    if (!show_level_intro((unsigned int)round_number)) return false;
+    pin_replay_frame_counter();
+    return true;
+}
+
 static state_t run_level(void) {
-    unsigned char i;
     unsigned long start;
     unsigned long last_tick;
     unsigned char cycle;
@@ -6306,24 +6324,11 @@ static state_t run_level(void) {
     BAT_PREV_X = BAT_X_INIT;
     for (;;) {
         unsigned char lvl_idx = (unsigned char)(round_number % N_LEVELS);
-        current_level_idx_var = lvl_idx;
-        i = lvl_idx;                     /* the cycle / bg_attr code below reads `i` */
 
-        reset_level_state(lvl_idx);
-        apply_replay_overrides();
-        /* After the RNG seed override, so the magnets' ON/OFF coins
-         * consume the seeded walk exactly as print_magnets does; before
-         * render_level_screen, which paints from this state. */
-        magnet_level_init(lvl_idx);
+        if (!enter_level(lvl_idx)) return ST_QUIT;
 
-        probe.from_gameplay = 0;         /* this PROBE write is the pre-gameplay seed */
-        write_replay_probe();
-        render_level_screen(lvl_idx);
-        if (!show_level_intro((unsigned int)round_number)) return ST_QUIT;
-        pin_replay_frame_counter();
-
-        cycle     = (unsigned char)(i & 3);
-        bg_attr   = bg_attr_per_cycle[i & 3];
+        cycle     = (unsigned char)(lvl_idx & 3);
+        bg_attr   = bg_attr_per_cycle[lvl_idx & 3];
         probe.from_gameplay = 1;         /* PROBE writes below are checkpoints */
         start     = bios_ticks();
         last_tick = pit_ticks();
@@ -6426,12 +6431,12 @@ static state_t run_level(void) {
             if (ball_moved) {
                 unsigned int blockers = ball_dirty_blockers(bat_moved);
                 if (blockers == 0) {
-                    redraw_ball_only(i);
+                    redraw_ball_only(lvl_idx);
                 } else if (can_redraw_ball_with_simple_objects(blockers)) {
-                    redraw_ball_with_simple_objects(i);
+                    redraw_ball_with_simple_objects(lvl_idx);
                 } else {
                     prof_note_ball_dirty_blockers(blockers);
-                    redraw_full_with_ball(i);
+                    redraw_full_with_ball(lvl_idx);
                 }
             } else if (bat_moved) {
                 redraw_bat(cycle, bg_attr);
@@ -6516,7 +6521,7 @@ static state_t run_level(void) {
                 ball.extra2_active = 0;
                 ball.extra3_active = 0;
                 cache.full_flush = 1;
-                redraw_full_with_ball(i);
+                redraw_full_with_ball(lvl_idx);
                 if (getenv("BATTY_HOLD_ROCKET_CLEAR") != NULL) {
                     while (!kbhit()) sound_tick();
                     if (getch() == KEY_ESC) return ST_QUIT;

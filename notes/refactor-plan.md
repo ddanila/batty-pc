@@ -60,7 +60,7 @@ happened, and `make test-video` caught it.
 | 10 | state owners — structs at file scope | 113 vars | **done** — 11 clusters, see below |
 | 1 | replay / probe scaffolding | 480 | **last** — see below |
 
-`main.cpp`: 7,746 → 6,741. 100 host tests + source gates, all via `make test-fast` in seconds.
+`main.cpp`: 7,746 → 6,746. 100 host tests + source gates, all via `make test-fast` in seconds.
 
 ### Stage 5b: one destroyed-cell reset, not two
 
@@ -527,6 +527,17 @@ Marking it `const` to prove the point made Watcom emit `W368 always
 false` and `W013 unreachable code` — the compiler confirming the
 analysis, and, under `-we`, refusing to build. So it stays a plain
 `static int` with the explanation attached.
+
+`enter_level` then took `run_level`'s per-level setup — reset, replay
+overrides, magnets, the seed probe write, the screen, the intro — with
+its `ST_QUIT` exit becoming a `bool`. Its one ordering constraint is
+stated once: magnets initialise after the RNG seed override so their
+ON/OFF coins consume the seeded walk exactly as `print_magnets` does,
+and before `render_level_screen`, which paints from that state.
+
+That also removed `i`, a function-scope alias for `lvl_idx` whose own
+comment said it existed only because "the cycle / bg_attr code below
+reads `i`". Six call sites now name the level they are drawing.
 
 ## What this has already found
 
