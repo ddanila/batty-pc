@@ -61,7 +61,7 @@ happened, and `make test-video` caught it.
 | 1a | `replay_parse` — the BATTY_REPLAY_* value formats | 75 | **done** — 7 tests |
 | 1 | replay / probe scaffolding | ~430 | **last** — see below |
 
-`main.cpp`: 7,746 → 6,822. 100 host tests + source gates, all via `make test-fast` in seconds.
+`main.cpp`: 7,746 → 6,844. 100 host tests + source gates, all via `make test-fast` in seconds.
 
 ### Stage 5b: one destroyed-cell reset, not two
 
@@ -511,6 +511,17 @@ to protect, violated three commits after naming it. Inert today, because
 the port's ball object handler is a stub, but `call_for_all_obj`
 dispatches on `sprite_set` and the probe dumps those objects. It uses
 the helper now.
+
+`build_static_brick_band_cache` split into `rebuild_band_cache_full` and
+`rebuild_band_cache_rows`, leaving the outer function as the choice
+between them plus its profile timing.
+
+Its incremental branch also carried an INLINE copy of the border-line
+restoration, with the band bounds written out as literals — `(y >= 50 &&
+y < 78) || (y >= 106 && y < 134)`, silently omitting the third band
+because the brick window never reaches it. That is the same rule
+`restore_inner_border_line` was extracted for two commits earlier, so it
+uses the helper now and the band definition lives in exactly one place.
 
 `bounce_ball_off_side_walls` and `bounce_ball_off_ceiling` then took
 `step_ball`'s wall handling — two near-identical branches that differed

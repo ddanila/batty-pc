@@ -2254,73 +2254,95 @@ static void build_static_background(unsigned char level_idx) {
     cache.band_dirty = 0;
 }
 
+/* The whole band is dirty: repaint it and recapture, the proven path.
+ *
+ * The rebuild rewrites scr_buff/attr_buff well beyond any small dirty
+ * rect — whole rows, the shadow attrs on the row below, the 32-byte
+ * attr rows — so every pixel row of every touched attr cell is flushed.
+ * Marking only the rect leaves the rest stale on VGA, which is what
+ * known-bugs #1's post-destroy leftovers were. */
+static void rebuild_band_cache_full(unsigned char level_idx,
+                                    unsigned char bg_attr, unsigned char cycle) {
+    int y, cr;
+    /* Whole band dirty: the proven full path. */
+    paint_bg_window_to_buff(bg_attr, cycle,
+                            BRICK_BAND_Y_TOP,
+                            BRICK_BAND_Y_BOT - BRICK_BAND_Y_TOP + 1,
+                            1, 30);
+    render_brick_band(level_idx);
+    for (y = BRICK_BAND_Y_TOP; y <= BRICK_BAND_Y_BOT; y++) {
+        memcpy(&bg_scr_buff[(y << 5) + 1], &scr_buff[(y << 5) + 1], 30);
+    }
+    for (cr = 3; cr <= 16; cr++) {
+        memcpy(&bg_attr_buff[cr << 5], &attr_buff[cr << 5], 32);
+    }
+    /* The rebuild rewrote scr_buff/attr_buff well beyond the brick
+     * flash's small dirty rect (whole rows, shadow attrs on the row
+     * below, the 32-byte attr rows). Flush every pixel row of every
+     * touched attr cell, or the parts outside the flash rect go stale
+     * on VGA — the post-destroy leftovers of known-bugs.md #1. */
+    mark_dirty_bytes(3 * 8, (16 - 3 + 1) * 8, 0, 31);
+    prof.band_rows += 14;
+}
+
+/* Only some brick rows changed. Re-composite [R0, R1] — the dirty rows
+ * widened by one on each side, so every attr and pixel the window
+ * inherits from a neighbouring row is re-derived rather than left stale
+ * (see render_brick_band_rows' boundary notes).
+ *
+ * The pixel window is those rows' bodies plus R1's bottom-edge row. The
+ * shared top-edge row (31 + 8*R0) is deliberately NOT bg-erased: print
+ * re-zeros it only under live R0 bricks, and that is the canonical
+ * content. */
+static void rebuild_band_cache_rows(unsigned char level_idx,
+                                    unsigned char bg_attr, unsigned char cycle,
+                                    int lo, int hi) {
+    int y, cr;
+    /* Incremental: re-composite [R0, R1] = the dirty brick rows
+     * widened by one row each side, so every attr/pixel the window
+     * inherits from a neighbour row is re-derived rather than left
+     * stale (see render_brick_band_rows' boundary notes). Pixel
+     * window = the rows' bodies + R1's bottom-edge row; the shared
+     * top-edge row (31 + 8*R0) is not bg-erased — print re-zeros it
+     * only under live R0 bricks, which is the canonical content. */
+    int R0  = (lo > 0) ? lo - 1 : 0;
+    int R1  = (hi + 1 < LVL_ROWS) ? hi + 1 : LVL_ROWS - 1;
+    int py0 = 32 + R0 * 8;
+    int py1 = 40 + R1 * 8;
+    int cr0 = 4 + R0;
+    int cr1 = 5 + R1;
+    paint_bg_window_to_buff(bg_attr, cycle, py0, py1 - py0 + 1, 1, 30);
+    /* The bg repaint erased the border line; put it back before the
+     * bricks, which then overwrite it — the canonical order. */
+    restore_inner_border_line(py0, py1 - py0 + 1, 1, 30);
+    render_brick_band_rows(level_idx, R0, R1, cr0, cr1);
+    /* Capture from the shared top-edge row down (print touches it). */
+    for (y = py0 - 1; y <= py1; y++) {
+        memcpy(&bg_scr_buff[(y << 5) + 1], &scr_buff[(y << 5) + 1], 30);
+    }
+    for (cr = cr0; cr <= cr1; cr++) {
+        memcpy(&bg_attr_buff[cr << 5], &attr_buff[cr << 5], 32);
+    }
+    /* Flush every pixel row of every recomposited attr cell, plus
+     * the shared top-edge pixel row (same rule as the full branch). */
+    mark_dirty_bytes(py0 - 1, (cr1 * 8 + 7) - (py0 - 1) + 1, 0, 31);
+    prof.band_rows += (unsigned long)(cr1 - cr0 + 1);
+}
+
 static void build_static_brick_band_cache(unsigned char level_idx) {
-    unsigned char bg_attr = bg_attr_per_cycle[level_idx & 3];
-    unsigned char cycle   = (unsigned char)(level_idx & 3);
-    int y;
-    int cr;
-    int lo = cache.brick_row_lo;
-    int hi = cache.brick_row_hi;
-    unsigned short t0 = pit_current_ticks();
+    const unsigned char bg_attr = bg_attr_per_cycle[level_idx & 3];
+    const unsigned char cycle   = (unsigned char)(level_idx & 3);
+    const int lo = cache.brick_row_lo;
+    const int hi = cache.brick_row_hi;
+    const unsigned short t0 = pit_current_ticks();
     unsigned short t1;
 
     if (dbg.full_band_rebuild || (lo <= 0 && hi >= LVL_ROWS - 1)) {
-        /* Whole band dirty: the proven full path. */
-        paint_bg_window_to_buff(bg_attr, cycle,
-                                BRICK_BAND_Y_TOP,
-                                BRICK_BAND_Y_BOT - BRICK_BAND_Y_TOP + 1,
-                                1, 30);
-        render_brick_band(level_idx);
-        for (y = BRICK_BAND_Y_TOP; y <= BRICK_BAND_Y_BOT; y++) {
-            memcpy(&bg_scr_buff[(y << 5) + 1], &scr_buff[(y << 5) + 1], 30);
-        }
-        for (cr = 3; cr <= 16; cr++) {
-            memcpy(&bg_attr_buff[cr << 5], &attr_buff[cr << 5], 32);
-        }
-        /* The rebuild rewrote scr_buff/attr_buff well beyond the brick
-         * flash's small dirty rect (whole rows, shadow attrs on the row
-         * below, the 32-byte attr rows). Flush every pixel row of every
-         * touched attr cell, or the parts outside the flash rect go stale
-         * on VGA — the post-destroy leftovers of known-bugs.md #1. */
-        mark_dirty_bytes(3 * 8, (16 - 3 + 1) * 8, 0, 31);
-        prof.band_rows += 14;
+        rebuild_band_cache_full(level_idx, bg_attr, cycle);
     } else {
-        /* Incremental: re-composite [R0, R1] = the dirty brick rows
-         * widened by one row each side, so every attr/pixel the window
-         * inherits from a neighbour row is re-derived rather than left
-         * stale (see render_brick_band_rows' boundary notes). Pixel
-         * window = the rows' bodies + R1's bottom-edge row; the shared
-         * top-edge row (31 + 8*R0) is not bg-erased — print re-zeros it
-         * only under live R0 bricks, which is the canonical content. */
-        int R0  = (lo > 0) ? lo - 1 : 0;
-        int R1  = (hi + 1 < LVL_ROWS) ? hi + 1 : LVL_ROWS - 1;
-        int py0 = 32 + R0 * 8;
-        int py1 = 40 + R1 * 8;
-        int cr0 = 4 + R0;
-        int cr1 = 5 + R1;
-        paint_bg_window_to_buff(bg_attr, cycle, py0, py1 - py0 + 1, 1, 30);
-        /* Re-draw the inner border line columns the bg repaint erased
-         * (canonical order: the line is drawn before the bricks, which
-         * then overwrite it — mirror inner_border_line_c's bands). */
-        for (y = py0; y <= py1; y++) {
-            if ((y >= 50 && y < 78) || (y >= 106 && y < 134)) {
-                scr_buff[y * 32 + 1]  &= 0x7F;
-                scr_buff[y * 32 + 30] &= 0xFE;
-            }
-        }
-        render_brick_band_rows(level_idx, R0, R1, cr0, cr1);
-        /* Capture from the shared top-edge row down (print touches it). */
-        for (y = py0 - 1; y <= py1; y++) {
-            memcpy(&bg_scr_buff[(y << 5) + 1], &scr_buff[(y << 5) + 1], 30);
-        }
-        for (cr = cr0; cr <= cr1; cr++) {
-            memcpy(&bg_attr_buff[cr << 5], &attr_buff[cr << 5], 32);
-        }
-        /* Flush every pixel row of every recomposited attr cell, plus
-         * the shared top-edge pixel row (same rule as the full branch). */
-        mark_dirty_bytes(py0 - 1, (cr1 * 8 + 7) - (py0 - 1) + 1, 0, 31);
-        prof.band_rows += (unsigned long)(cr1 - cr0 + 1);
+        rebuild_band_cache_rows(level_idx, bg_attr, cycle, lo, hi);
     }
+
     t1 = pit_current_ticks();
     prof.band_pit += (t1 <= t0) ? (unsigned long)(t0 - t1)
                                 : (unsigned long)((t0 - t1) + 23864u);
