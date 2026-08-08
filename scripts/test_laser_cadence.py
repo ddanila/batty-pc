@@ -25,8 +25,10 @@ import subprocess
 import sys
 from pathlib import Path
 
+from test_visual import test_floppy
+
 ROOT = Path(__file__).resolve().parent.parent
-FLOPPY = "build/batty-test.img"
+FLOPPY = test_floppy()
 
 # Steer-gate bat with byte 0x14 (bonus_applied) set to 0x01 = LASER active.
 BAT_LASER = "01017400AD000000040DEFAE1C0A74AD040DF0000180"

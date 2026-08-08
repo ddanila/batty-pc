@@ -14,6 +14,8 @@ import sys
 import time
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).parent))
+
 # 6-bit DAC values written by src/main.cpp (ZX_LO=56, ZX_HI=63).
 # QEMU's mode-13h output scales them by plain shift-2 (no LSB replication):
 # DAC 56 -> 0xE0 (224), DAC 63 -> 0xFF (255). DAC 0 -> 0.

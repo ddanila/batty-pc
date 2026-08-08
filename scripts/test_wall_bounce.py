@@ -22,7 +22,10 @@ import subprocess
 import sys
 from pathlib import Path
 
-FLOPPY = 'build/batty-test.img'
+sys.path.insert(0, str(Path(__file__).parent))
+from test_visual import test_floppy
+
+FLOPPY = test_floppy()
 
 # Ball descriptor (22 bytes): sprite_set=02 num=00 x xhi=00 y yhi=00 dir
 # speed, then the tail copied from the L3 ball seed (fields the wall path

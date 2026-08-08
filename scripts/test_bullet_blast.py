@@ -22,8 +22,10 @@ import subprocess
 import sys
 from pathlib import Path
 
+from test_visual import test_floppy
+
 ROOT = Path(__file__).resolve().parent.parent
-FLOPPY = "build/batty-test.img"
+FLOPPY = test_floppy()
 
 # (probe frame, expected ticks, expected derived frame) — countdown from 8.
 CASES = [(1, 7, 3), (3, 5, 2), (5, 3, 1), (7, 1, 0)]

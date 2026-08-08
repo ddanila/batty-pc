@@ -26,8 +26,10 @@ import subprocess
 import sys
 from pathlib import Path
 
+from test_visual import test_floppy
+
 ROOT = Path(__file__).resolve().parent.parent
-FLOPPY = "build/batty-test.img"
+FLOPPY = test_floppy()
 
 FRESH_ENEMY = "0900A80001001001030FDA35180CA801030FF0701000"
 # (probe frame, expected sprite_num) — 4-frame ping-pong cadence.

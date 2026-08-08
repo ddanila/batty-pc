@@ -309,12 +309,18 @@ serial `make parity-check-full`.
 
 **Two things that made the full run untrustworthy**, both fixed 2026-08-07:
 
-1. **17 gates hardcoded `build/batty-test.img`** and ignored
+1. **30 gates hardcoded `build/batty-test.img`** and ignored
    `BATTY_TEST_FLOPPY`, despite the claim below that they all read it.
    Under the parallel runner that variable points at a per-gate image, so
-   `make build/batty-test.img` had no rule and the gate died in 0.1 s —
-   which reads exactly like a regression. They now go through
+   the gate either died in 0.1 s (`make build/batty-test.img` has no
+   rule) or built one image and read `PROBE.TXT` from another, timing out
+   at ~211 s with "NO … in PROBE.TXT". They now go through
    `test_visual.test_floppy()`.
+
+   It took three passes to find them all, because the same bug was
+   spelled three ways: `Path("…")`, `FLOPPY = "…"`, and `FLOPPY = '…'`.
+   If you add a gate, take the floppy from `test_floppy()` — never a
+   literal.
 2. **A gate is not one boot.** `test-ball-no-tunnel` boots dozens of
    times, `test-levels-sweep` fifteen. `--full` at J=8 starved QEMU below
    real time and produced "NO … in PROBE.TXT" failures that were pure
@@ -322,6 +328,15 @@ serial `make parity-check-full`.
    **any failure is retried once alone** — only a gate that fails twice is
    reported, and gates that needed the retry are named, so a growing list
    means J is too high for that machine.
+
+**`make test-gate-greps`** guards the other recurring failure: 20 gates
+assert on the SHAPE of the source (that a constant is still `$1B`, that a
+guard still excludes `rocket_active`) by searching for a literal. Those
+rot silently when code moves or is renamed — twice in one session that
+cost six commits of red CI and a gate that passed while testing nothing.
+The check resolves needles through variables and list comprehensions,
+only considers *required* ones (`not in src` guarding a failure), and
+runs in about a second. It is part of `make test-fast`.
 
 Reliability net: a wait-key gate that reads a probe written at level init
 (`probe_phase=init`, i.e. a missed `BATTY_REPLAY_WAIT_KEY` wake on a slow

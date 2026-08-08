@@ -27,8 +27,10 @@ import subprocess
 import sys
 from pathlib import Path
 
+from test_visual import test_floppy
+
 ROOT = Path(__file__).resolve().parent.parent
-FLOPPY = "build/batty-test.img"
+FLOPPY = test_floppy()
 
 # (port bonus type, expected bat.bonus_applied = documented original code).
 CASES = [

@@ -27,7 +27,10 @@ import subprocess
 import sys
 from pathlib import Path
 
-FLOPPY = 'build/batty-test.img'
+sys.path.insert(0, str(Path(__file__).parent))
+from test_visual import test_floppy
+
+FLOPPY = test_floppy()
 
 ENV = ('BATTY_LEVEL=1 BATTY_START_LEVEL=1 BATTY_REPLAY_WAIT_KEY=1 '
        'BATTY_REPLAY_PROBE=1 BATTY_TEST_KEY_BEFORE_ANIM=1 '

@@ -29,7 +29,10 @@ import subprocess
 import sys
 from pathlib import Path
 
-FLOPPY = 'build/batty-test.img'
+sys.path.insert(0, str(Path(__file__).parent))
+from test_visual import test_floppy
+
+FLOPPY = test_floppy()
 
 
 def run_level(level: int, frames: int, laffc: bool):

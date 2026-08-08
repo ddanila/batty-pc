@@ -26,8 +26,10 @@ import subprocess
 import sys
 from pathlib import Path
 
+from test_visual import test_floppy
+
 ROOT = Path(__file__).resolve().parent.parent
-FLOPPY = "build/batty-test.img"
+FLOPPY = test_floppy()
 
 POINTS = [120, 110, 100, 90, 80, 70, 60, 50, 40, 30, 20, 10]
 COL = 5

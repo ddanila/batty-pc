@@ -28,8 +28,10 @@ import subprocess
 import sys
 from pathlib import Path
 
+from test_visual import test_floppy
+
 ROOT = Path(__file__).resolve().parent.parent
-FLOPPY = "build/batty-test.img"
+FLOPPY = test_floppy()
 
 BAT_OBJECT = "01017400AD000000040DEFAE1C0A74AD040DF0008380"
 BULLET_Y0 = 170

@@ -15,6 +15,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
+from test_visual import test_floppy
 from test_visual import (PALETTE_RGB, PLAYFIELD_W, expected_from_scr,
                          ppm_inner_to_indices, run_qemu, test_floppy)
 

@@ -37,8 +37,10 @@ import subprocess
 import sys
 from pathlib import Path
 
+from test_visual import test_floppy
+
 ROOT = Path(__file__).resolve().parent.parent
-FLOPPY = "build/batty-test.img"
+FLOPPY = test_floppy()
 
 SLOW = 1   # BONUS_TYPE_SLOW — excluded at base ball speed.
 # (seed, golden expected port type) — RANDOM fixed at 3093 (hi nibble 0 -> drop).

@@ -19,7 +19,10 @@ import subprocess
 import sys
 from pathlib import Path
 
-FLOPPY = Path('build/batty-test.img')
+sys.path.insert(0, str(Path(__file__).parent))
+from test_visual import test_floppy
+
+FLOPPY = Path(test_floppy())
 N_LEVELS = 15
 
 

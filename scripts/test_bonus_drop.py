@@ -26,8 +26,10 @@ import subprocess
 import sys
 from pathlib import Path
 
+from test_visual import test_floppy
+
 ROOT = Path(__file__).resolve().parent.parent
-FLOPPY = "build/batty-test.img"
+FLOPPY = test_floppy()
 
 # random_number hi byte (BATTY_REPLAY_RANDOM is D:E, so the first 2 hex are
 # random_d). Threshold boundary: low nibble 0..4 drop, 5..15 no drop.

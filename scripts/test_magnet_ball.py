@@ -30,7 +30,10 @@ import subprocess
 import sys
 from pathlib import Path
 
-FLOPPY = 'build/batty-test.img'
+sys.path.insert(0, str(Path(__file__).parent))
+from test_visual import test_floppy
+
+FLOPPY = test_floppy()
 
 # Ball descriptor (22 bytes) — same TAIL as test_wall_bounce (carries
 # w_body/h_body = 8x7 at +$0C/+$0D, which the magnet obj_compare reads).
