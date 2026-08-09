@@ -6328,9 +6328,15 @@ static bool probe_checkpoint_due(unsigned char active, unsigned int *countdown) 
 
 /* Score and lives carry across levels within one game; they reset only
  * on re-entry from ST_HISCORE. */
-static void new_game_reset(void) {
-    player.score = 0;
-    player.lives = LIVES_INIT;
+/* Replay knobs that SEED player state, applied after new_game_reset has
+ * finished zeroing things.
+ *
+ * Ordering is the whole point of it being a separate function. These
+ * lines first sat inline in new_game_reset, above its
+ * `player.live_adds_awarded = 0;` — which silently wiped the seeding,
+ * and the symptom was a gate sitting in the level for 13 s instead of
+ * dying. A reset added to new_game_reset later would do it again. */
+static void apply_player_seed_env(void) {
     /* BATTY_REPLAY_LIVES: start with fewer lives. The game-over sequence
      * is otherwise unreachable from a gate — three deaths means three
      * death animations on wall-clock waits, which is exactly the shape
@@ -6344,6 +6350,29 @@ static void new_game_reset(void) {
             && want >= 1 && want <= LIVES_INIT)
             player.lives = (int)want;
     }
+    /* BATTY_REPLAY_SCORE: start with a score already on the clock. The
+     * name-entry screen only runs when the score BEATS the stored high
+     * score, so with score 0 a gate reaches game over and stops there.
+     * This is what makes the last unreached screen reachable. */
+    {
+        const char *sc = getenv("BATTY_REPLAY_SCORE");
+        long want;
+        if (sc != NULL && replay_parse_ints(sc, &want, 1) && want >= 0) {
+            player.score = (unsigned long)want;
+            /* Seed the extra lives that score would ALREADY have earned.
+             * Without this, award_score_milestones hands them out on the
+             * first frame and BATTY_REPLAY_LIVES=1 silently becomes
+             * lives=N — a run set up to die immediately never dies.
+             * Found by watching a gate sit in the level for 13 s. */
+            player.live_adds_awarded = (unsigned char)
+                lives_earned(player.score, 0);
+        }
+    }
+}
+
+static void new_game_reset(void) {
+    player.score = 0;
+    player.lives = LIVES_INIT;
     player.live_adds_awarded = 0;
     bonus.active = 0;
     ball.speed_ramp = 0;
@@ -6361,6 +6390,7 @@ static void new_game_reset(void) {
     BAT_Y      = BAT_Y_PX;
     objects[OBJ_BAT_2].y_coord = BAT_Y_PX;
     BAT_PREV_X = BAT_X_INIT;
+    apply_player_seed_env();
 }
 
 static void probe_init_from_env(void) {

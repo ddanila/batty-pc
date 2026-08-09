@@ -535,3 +535,61 @@ precisely the state that makes #13's scenario reachable.
 Left alone deliberately: deleting a store and changing a unit are two
 different changes, and the second needs ground truth this port does not
 have.
+
+---
+
+## #15 — the game-over hold never expires (observed under QEMU)
+
+**Found 2026-08-09, not fixed. Open. Cause not established.**
+
+`play_game_over` shows the screen and then waits:
+
+```c
+start = bios_ticks();
+while (bios_ticks() - start < 65UL) {
+    sound_tick();
+    if (kbhit()) { getch(); break; }
+}
+```
+
+65 BIOS ticks at 18.2 Hz is about 3.6 s, after which the sequence should
+continue to `input_new_record_name` when the score was beaten.
+
+**Observed**: with the score beaten and no key sent, the game-over screen
+was still on display 11 s after it appeared — captures at 15, 17, 19, 22
+and 25 s are pixel-identical. The port had not moved on.
+
+### Why this matters beyond the screen
+
+It is why `input_new_record_name` still has NO visual coverage. Every
+other screen in the game now has some. Name entry is only reachable
+through this hold, and a gate cannot get past it without sending the key
+that also dismisses what it wanted to capture.
+
+### What is and is not established
+
+`bios_ticks()` is INT 1Ah AH=0 through `int386`, reflected to real mode
+by DOS32A. This hold is its only use on a live path: every other
+`bios_ticks` timeout goes through
+
+```c
+#define TIMED_OUT(start, ticks) (auto_advance && (bios_ticks() - ...))
+```
+
+and `auto_advance` is never assigned, so those comparisons are dead. That
+means nothing else would notice if `bios_ticks()` returned a constant —
+which would make this loop infinite except for the keypress, matching
+what was seen.
+
+NOT established: whether `bios_ticks()` actually fails to advance, or
+whether something else holds the loop. NOT checked on real hardware or on
+a different emulator. The observation is solid; the cause is a guess and
+is labelled as one.
+
+### Why it has not been chased further
+
+A player always presses a key, so the timeout firing or not is invisible
+in normal play — this is a testability defect first and a behaviour
+defect only maybe. Settling it means either instrumenting `bios_ticks`
+through the probe or booting on real hardware, neither of which is the
+small self-contained step that found it.

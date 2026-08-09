@@ -5,8 +5,8 @@ test. Started 2026-08-07.
 
 ## Where this stands
 
-The full suite runs **56/56 green** — eight clean runs now, the
-latest adding the game-over screen's first visual coverage.
+The full suite runs **56/56 green** — nine clean runs now, the
+latest covering both sides of the high-score branch.
 Six of the seven defects this refactor surfaced are closed; #14 is open
 because settling it needs ground truth the port does not have.
 
@@ -15,7 +15,7 @@ Gate count 51 → 56 this session: `test-blast-dirty-redraw`,
 `test-invariant-owners`, `test-ball-sign-cache-owner` and
 `test-game-over-visual`, each covering something nothing reached before.
 
-`main.cpp`: 7,747 → 6,812 lines (-12.1%) across 14 modules. `make test-fast`
+`main.cpp`: 7,747 → 6,842 lines (-11.9%) across 14 modules. `make test-fast`
 runs every host test and source gate in seconds; `--full` is 56 gates
 in under six minutes.
 
@@ -105,7 +105,7 @@ happened, and `make test-video` caught it.
 | 1a | `replay_parse` — the BATTY_REPLAY_* value formats | 75 | **done** — 7 tests |
 | 1 | replay / probe scaffolding | ~430 | **last** — see below |
 
-`main.cpp`: 7,747 → 6,812 (`wc -l`; see the status block on why this is not Watcom's count).
+`main.cpp`: 7,747 → 6,842 (`wc -l`; see the status block on why this is not Watcom's count).
 100 host tests + source gates, all via `make test-fast` in seconds.
 
 ### Stage 5b: one destroyed-cell reset, not two
@@ -629,6 +629,36 @@ row-scoped — now live beside the primitives they drive. What is left in
 `main.cpp` is the two thin wrappers that turn a level index into
 `(cells, lattr, bg_attr)`, which is the only thing the module could not
 know.
+
+`BATTY_REPLAY_SCORE` seeds a score, which reaches the other side of
+`render_game_over`'s `if (high_score_beaten_this_game)` — the NEW HIGH
+line and the saved initials. `test-game-over-visual` now runs both, and
+asserts the line is ABSENT on the plain run, so neither branch can quietly
+stop rendering.
+
+Two things that cost a run each, again:
+
+Seeding a score hands out the extra lives that score earns.
+`award_score_milestones` runs on the first frame, so `BATTY_REPLAY_LIVES=1`
+silently became lives=N and a run set up to die immediately never died.
+The knob seeds `live_adds_awarded` too.
+
+And the first version of that seeding sat inline in `new_game_reset`
+ABOVE its `player.live_adds_awarded = 0;`, which wiped it. The knobs now
+live in `apply_player_seed_env`, called at the END of `new_game_reset` —
+so a reset added later cannot clobber them. That is the same ordering
+mistake as the PlayerState rename earlier in this refactor: inserting
+code above a line that resets what it just set.
+
+**Open, and the reason name entry still has no visual gate**: the
+game-over hold does not expire under QEMU. Without `BATTY_HOLD_GAME_OVER`
+the screen should give way after 65 BIOS ticks (~3.6 s) and run
+`input_new_record_name`; it was still showing game over 11 s later. That
+hold is the only user of `bios_ticks()` on a live path — every other
+`bios_ticks` timeout is behind `auto_advance`, which is never assigned,
+so those are dead code. Whether `bios_ticks()` fails to advance under
+DOS32A/QEMU or something else holds the loop is NOT established, and it
+has not been checked on real hardware. Recorded in known-bugs.md #15.
 
 The game-over screen had no visual coverage at all, and `test-game-over`
 said so in its own docstring. The blocker was never the assertions — it

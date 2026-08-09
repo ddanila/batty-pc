@@ -413,6 +413,9 @@ $(TEST_FLOPPY_OUT): $(FLOPPY_TEST_EXE) $(ASSETS) $(FLOPPY_SRC)
 	if [ -n "$$BATTY_REPLAY_LIVES" ]; then \
 	    printf 'SET BATTY_REPLAY_LIVES=%s\r\n' "$$BATTY_REPLAY_LIVES" >> $(AUTOEXEC_T) ; \
 	fi; \
+	if [ -n "$$BATTY_REPLAY_SCORE" ]; then \
+	    printf 'SET BATTY_REPLAY_SCORE=%s\r\n' "$$BATTY_REPLAY_SCORE" >> $(AUTOEXEC_T) ; \
+	fi; \
 	if [ -n "$$BATTY_HOLD_GAME_OVER" ]; then \
 	    printf 'SET BATTY_HOLD_GAME_OVER=%s\r\n' "$$BATTY_HOLD_GAME_OVER" >> $(AUTOEXEC_T) ; \
 	fi; \

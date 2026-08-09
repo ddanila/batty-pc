@@ -65,7 +65,7 @@ def source_guard() -> None:
             raise SystemExit(f"FAIL: {needle} is gone — {why}")
 
 
-def build_floppy() -> None:
+def build_floppy(score: str | None) -> None:
     env = os.environ.copy()
     env.update({
         "BATTY_START_LEVEL": "1",
@@ -74,13 +74,15 @@ def build_floppy() -> None:
         "BATTY_HOLD_GAME_OVER": "1",
         "BATTY_NOSOUND": "1",
     })
+    if score is not None:
+        env["BATTY_REPLAY_SCORE"] = score
     TEST_FLOPPY.unlink(missing_ok=True)
     subprocess.run(["make", str(TEST_FLOPPY)], check=True, env=env)
 
 
-def capture() -> list:
+def capture(tag: str) -> list:
     OUT.mkdir(parents=True, exist_ok=True)
-    ppm = OUT / "game_over.ppm"
+    ppm = OUT / f"game_over_{tag}.ppm"
     # Long enough to cover boot, the round banner, the death animation and
     # the bat explosion. The hold means overshooting is free; undershooting
     # is what would break it, so this is generous on purpose.
@@ -96,65 +98,85 @@ def capture() -> list:
     return ppm_inner_to_indices(ppm)
 
 
-def main() -> int:
-    shutil.rmtree(OUT, ignore_errors=True)
-    source_guard()
-    build_floppy()
-    idx = capture()
-
-    if len(idx) != 256 * 192:
-        raise SystemExit(f"FAIL: captured {len(idx)} pixels, expected "
-                         f"{256 * 192} — the screen was not the playfield "
-                         f"(a 720x400 result means the port never left text "
-                         f"mode; see test_visual.ppm_inner_to_indices)")
-
-    counts = Counter(idx)
-    bg, bg_n = counts.most_common(1)[0]
-    share = bg_n / float(len(idx))
-    if share < 0.90:
-        raise SystemExit(
-            f"FAIL: the most common colour covers only {share:.1%} of the "
-            f"screen. render_game_over fills the whole screen first, so a "
-            f"cleared screen is ~98% one colour; the playfield is ~54%. "
-            f"This looks like the level, i.e. the run never died — check "
-            f"that BATTY_REPLAY_LIVES reached DOS (it must be in the "
-            f"AUTOEXEC_T passthrough in the Makefile, not only in src).")
-
-    # The three lines render_game_over draws in ink 15, at BORDER_Y + 70,
-    # + 95 and + 110. Glyphs are 6px tall and TOP-anchored here — unlike
-    # the round banner, whose original coordinates are bottom-anchored
-    # (that difference was a real bug once; see show_round_banner).
-    want = [(70, 75), (95, 100), (110, 115)]
+def bands_of(idx, ink):
     rows = [y for y in range(192)
-            if any(idx[y * 256 + x] == 15 for x in range(256))]
+            if any(idx[y * 256 + x] == ink for x in range(256))]
     if not rows:
-        raise SystemExit(
-            "FAIL: no ink-15 pixel anywhere. The screen cleared but no text "
-            "was drawn, or it was drawn in the background colour.")
-
-    bands, run = [], [rows[0]]
+        return []
+    out, run = [], [rows[0]]
     for y in rows[1:]:
         if y == run[-1] + 1:
             run.append(y)
         else:
-            bands.append((run[0], run[-1]))
+            out.append((run[0], run[-1]))
             run = [y]
-    bands.append((run[0], run[-1]))
+    out.append((run[0], run[-1]))
+    return out
 
-    if bands != want:
+
+def check_screen(idx, tag: str) -> float:
+    if len(idx) != 256 * 192:
+        raise SystemExit(f"FAIL[{tag}]: captured {len(idx)} pixels, expected "
+                         f"{256 * 192} — a 720x400 result means the port "
+                         f"never left text mode")
+
+    bg, bg_n = Counter(idx).most_common(1)[0]
+    share = bg_n / float(len(idx))
+    if share < 0.90:
         raise SystemExit(
-            f"FAIL: text bands are {bands}, expected {want} — the "
+            f"FAIL[{tag}]: the most common colour covers only {share:.1%}. "
+            f"render_game_over fills the screen first, so a cleared screen "
+            f"is ~98% one colour and the playfield ~54% — this is the level, "
+            f"i.e. the run never died. Check BATTY_REPLAY_LIVES reached DOS "
+            f"(Makefile AUTOEXEC_T passthrough), and that a seeded score did "
+            f"not hand out extra lives via award_score_milestones.")
+
+    # GAME OVER / SCORE / HIGH, ink 15, at BORDER_Y + 70, + 95, + 110.
+    # Glyphs are 6px and TOP-anchored here, unlike the round banner's
+    # bottom-anchored originals.
+    want = [(70, 75), (95, 100), (110, 115)]
+    got = bands_of(idx, 15)
+    if got != want:
+        raise SystemExit(
+            f"FAIL[{tag}]: ink-15 bands are {got}, expected {want} — the "
             f"GAME OVER / SCORE / HIGH lines must land at BORDER_Y + 70, "
             f"+ 95 and + 110 as render_game_over draws them.")
+    return share
 
-    xs = [x for x in range(256)
-          if any(idx[y * 256 + x] == 15 for y in range(192))]
-    if xs[0] < 8 or xs[-1] > 247:
-        raise SystemExit(f"FAIL: text spans x {xs[0]}..{xs[-1]}, which "
-                         f"runs into the frame border")
 
-    print(f"PASS game_over_visual: cleared screen ({share:.1%} one colour), "
-          f"three text bands at {bands}, x {xs[0]}..{xs[-1]}")
+def main() -> int:
+    shutil.rmtree(OUT, ignore_errors=True)
+    source_guard()
+
+    # Both sides of render_game_over's `if (high_score_beaten_this_game)`.
+    # Without a seeded score the run ends on 0, which does not beat the
+    # stored high score, so the NEW HIGH line must be ABSENT. That branch
+    # had no coverage at all until BATTY_REPLAY_SCORE existed.
+    results = []
+    for tag, score, expect_new_high in (
+        ("plain", None, False),
+        ("record", "123456", True),
+    ):
+        build_floppy(score)
+        idx = capture(tag)
+        share = check_screen(idx, tag)
+
+        # NEW HIGH is drawn in ink 14 at BORDER_Y + 130; the saved
+        # initials, also ink 14, sit on the HIGH line at + 110.
+        ink14 = bands_of(idx, 14)
+        has_new_high = (130, 135) in ink14
+        if has_new_high != expect_new_high:
+            raise SystemExit(
+                f"FAIL[{tag}]: NEW HIGH line "
+                f"{'missing' if expect_new_high else 'present'} — ink-14 "
+                f"bands are {ink14}. With score "
+                f"{score or '0'} the high score should "
+                f"{'have been' if expect_new_high else 'NOT have been'} "
+                f"beaten.")
+        results.append(f"{tag}: {share:.1%} cleared, "
+                       f"new_high={has_new_high}")
+
+    print("PASS game_over_visual: " + "; ".join(results))
     return 0
 
 
