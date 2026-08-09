@@ -9,8 +9,11 @@
  * timing, which has no analogue.
  *
  * Events are queued rather than played directly, because several can be
- * triggered in one frame and the speaker is monophonic. Five slots, each
- * holding an event id and its progress; single-frame sounds clear on
+ * triggered in one frame and the speaker is monophonic. Five slots, as
+ * in the original — `sounds_queue` is 5 rows of 7 bytes, and
+ * play_sounds_queue walks all five each frame while get_free_sound_slot
+ * only ALLOCATES from the first four; the fifth is written directly by
+ * LAFFC_37. Each slot holds an event id and its progress; single-frame sounds clear on
  * their first tick, sweeps advance a state byte until exhausted.
  *
  * The clock is injected (sound_set_clock) so the queue and envelopes can
@@ -24,7 +27,15 @@
 
 const int SOUND_SLOTS = 5;
 
-/* Event ids, matching the original's play_sounds_list at $C0BC. */
+/* Event ids = POSITIONS in the original's play_sounds_list ($C0BC).
+ * play_selected_sound indexes that table with the id, so these are not
+ * arbitrary names — `test-sound-ids` checks each against the table.
+ *
+ * SND_MAGNET is the exception and is deliberately past the end. The
+ * original never queues it: magnets.asm finishes its draw with a plain
+ * `CALL play_sound_magnet`, synchronously, and the table's $0D slot is
+ * commented out as unused. Routing it through the queue is the port's
+ * own convention. */
 const u8 SND_NORMAL_BRIK  = 0x01;
 const u8 SND_BAT_BEAT     = 0x03;
 const u8 SND_BALL_START   = 0x04;

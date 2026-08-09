@@ -1269,6 +1269,7 @@ test-source-gates:
 	$(MAKE) test-frame-derivable
 	$(MAKE) test-bg-tile-derivable
 	$(MAKE) test-asset-provenance
+	$(MAKE) test-sound-ids
 
 # Everything that needs no emulator: the host module tests plus the source
 # gates. Seconds, and it is what CI checks.
@@ -1387,6 +1388,11 @@ test-bg-tile-derivable:
 # tape's own blocks, not from a snapshot or a screen capture.
 test-asset-provenance:
 	python3 scripts/check_asset_provenance.py
+
+# A sound id IS a position in play_sounds_list — play_selected_sound
+# indexes the table with it. SND_MAGNET is deliberately past the end.
+test-sound-ids:
+	python3 scripts/check_sound_ids.py
 
 # Proof for WS7: every live brick's attr byte in the captured
 # level_attrs.bin is reproduced by briks_colors + print_border_shadow.

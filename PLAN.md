@@ -16,9 +16,9 @@ The port is "100%" when all of the following hold:
 |---|-----------|-------|
 | 1 | All three game modes work: 1 Player, 2 Players (alternating), Double Play (simultaneous split-court co-op) | 1P and 2P done; Double Play has its court, both bats, ball physics and scoring but no bat-2 INPUT |
 | 2 | Menu semantics match the original (0 starts the selected game directly; A/B input-device cycling affects play) | Key 0 starts the game (`test-menu-start`); the device byte is per-player state but still selects nothing |
-| 3 | Core gameplay byte-exact where an oracle exists (ball, bat, collision, RNG, enemy, bonuses, scoring) | **Done** — regression-locked by 88 gates |
+| 3 | Core gameplay byte-exact where an oracle exists (ball, bat, collision, RNG, enemy, bonuses, scoring) | **Done** — regression-locked by 89 gates |
 | 4 | Full game FLOW gated end-to-end: level-clear → next, life-loss → respawn, game-over → initials, level wrap | **Done** — `test-level-advance`, `test-life-loss`, `test-game-over-visual`, `test-name-entry-visual` |
-| 5 | Sound faithful to the original's 4-slot beeper queue (envelope/timing, not just effect IDs) | PIT-tone approximation of 13 effect IDs |
+| 5 | Sound faithful to the original's 5-slot beeper queue (envelope/timing, not just effect IDs) | PIT-tone approximation; the ids and slot count match, the envelopes are shapes |
 | 6 | All assets derived from the tape at build time; no captured emulator blobs | **Done** — all 13 loaded assets build from `original/blocks/`, held by `test-asset-provenance` |
 | 7 | Runs correctly on real-hardware-representative targets (XT-class + 386) | QEMU + 86Box `ibmxt` verified; real iron untested |
 | 8 | Historical completeness: Kinnock easter egg, pause semantics, hi-score behaviour | **Done** — pause, hi-score, and the easter egg (`BATTY_KINNOCK=1`) |
@@ -421,6 +421,29 @@ retro-gated.
 four transitions (plus mode-specific variants as WS2/WS3 land).
 
 ## WS5 — Sound: faithful beeper-queue port
+
+**Two corrections to this section's premise, traced 2026-08-09 before
+starting the work.**
+
+*It is a FIVE-slot queue, not four.* `sounds_queue` ($C0B8) is 5 rows of
+7 bytes. `play_sounds_queue` walks all five every frame (`LD B,$05`)
+while `get_free_sound_slot` only ALLOCATES from the first four
+(`LD B,$04`); the fifth is written directly by `LAFFC_37`. The port
+already has `SOUND_SLOTS = 5`, so this was a doc error rather than a
+port one.
+
+*The id is a table POSITION, not a label.* `play_selected_sound` does
+`LD HL,play_sounds_list-2 / ADD A,A / ... / JP (HL)`, so an id indexes
+the routine table directly — a wrong one plays a different effect, and
+one past the end jumps into whatever follows. `test-sound-ids` now
+checks each `SND_*` against its namesake's position.
+
+`SND_MAGNET` is the exception and stays outside the table: the original
+never queues it. `magnets.asm` ends its draw with a plain
+`CALL play_sound_magnet`, and the table's `$0D` slot is commented out as
+"Неиспользуемый звук". `src/sound.h` claimed the ids "match the
+original's play_sounds_list" with no exception noted; it says so now,
+and the gate pins `$0D` past the end.
 
 **What:** Close the one openly approximate subsystem. The original has
 **no music** — a 4-slot, 7-bytes-per-slot effect queue
