@@ -55,6 +55,11 @@ TEST_EXE = build/batty-test.exe
 # Which test EXE the test-floppy rule packs as BATTY.EXE.
 FLOPPY_TEST_EXE ?= $(TEST_EXE)
 
+# hi_score.bin and main_menu.bin are NOT floppy assets: the port renders
+# both screens from MARKUP.BIN / MENUMARK.BIN markup, and these two
+# 48 KB captures exist only as test-visual's references. They rode
+# along on every image until 2026-08-09; check_floppy_assets now holds
+# the line in both directions.
 ASSETS  = assets/loading.bin assets/hi_score.bin assets/main_menu.bin \
           assets/font.bin assets/markup.bin assets/main_menu_markup.bin \
           assets/indicator.bin assets/bottom_sprites.bin \
@@ -316,8 +321,6 @@ $(FLOPPY_OUT): $(FLOPPY_EXE) $(ASSETS) $(FLOPPY_SRC)
 	mcopy -i $@ -o $(FLOPPY_EXE) ::BATTY.EXE
 	mcopy -i $@ -o $(EXTENDER) ::DOS4GW.EXE
 	mcopy -i $@ -o assets/loading.bin  ::LOADING.BIN
-	mcopy -i $@ -o assets/hi_score.bin ::HISCORE.BIN
-	mcopy -i $@ -o assets/main_menu.bin ::MAINMENU.BIN
 	mcopy -i $@ -o assets/font.bin     ::FONT.BIN
 	mcopy -i $@ -o assets/markup.bin   ::MARKUP.BIN
 	mcopy -i $@ -o assets/main_menu_markup.bin ::MENUMARK.BIN
@@ -380,8 +383,6 @@ $(TEST_FLOPPY_OUT): $(FLOPPY_TEST_EXE) $(ASSETS) $(FLOPPY_SRC)
 	mcopy -i $@ -o $(FLOPPY_TEST_EXE) ::BATTY.EXE
 	mcopy -i $@ -o $(EXTENDER) ::DOS4GW.EXE
 	mcopy -i $@ -o assets/loading.bin  ::LOADING.BIN
-	mcopy -i $@ -o assets/hi_score.bin ::HISCORE.BIN
-	mcopy -i $@ -o assets/main_menu.bin ::MAINMENU.BIN
 	mcopy -i $@ -o assets/font.bin     ::FONT.BIN
 	mcopy -i $@ -o assets/markup.bin   ::MARKUP.BIN
 	mcopy -i $@ -o assets/main_menu_markup.bin ::MENUMARK.BIN
@@ -1231,6 +1232,7 @@ test-source-gates:
 	$(MAKE) test-kinnock
 	$(MAKE) test-level-attrs-derivable
 	$(MAKE) test-two-player-state
+	$(MAKE) test-floppy-assets
 
 # Everything that needs no emulator: the host module tests plus the source
 # gates. Seconds, and it is what CI checks.
@@ -1328,6 +1330,11 @@ test-double-play-bat2:
 # parsed from the tape's own txt_kinnock.asm, not copied.
 test-kinnock:
 	python3 scripts/check_kinnock.py
+
+# Every asset the port loads must ship, and nothing else. Caught two
+# 48 KB screen captures riding along unread.
+test-floppy-assets:
+	python3 scripts/check_floppy_assets.py
 
 # Proof for WS7: every live brick's attr byte in the captured
 # level_attrs.bin is reproduced by briks_colors + print_border_shadow.

@@ -108,14 +108,18 @@ The menu still only CYCLES it. Nothing reads it to choose an input
 source, and `get_right_player_ctrl_state` — the original's bat-2 reader —
 has no port equivalent.
 
-**The open decision is the menu strings, and it is not mine to make.**
-The adaptation below (keyboard set 1 / set 2 / game-port joystick)
-changes what the four options MEAN, and the menu screen is a captured
-blob (`main_menu.bin`) — so the labels cannot be relabelled honestly
-until WS7 item 3 generates that screen from the markup pipeline. Until
-then, wiring devices would mean either silently mapping PC clusters onto
-"KEMPSTON"/"CURSOR" — fake parity, which this section already argued
-against — or shipping a menu whose text contradicts its behaviour.
+**The blocker I described here was wrong** (2026-08-09). I said the
+labels could not be relabelled honestly because the menu screen is a
+captured blob. It is not: `render_menu_screen` builds it from
+`MENUMARK.BIN` markup, and `MAINMENU.BIN` is only `test-visual`'s
+reference. Changing the four option labels is a MARKUP edit plus a new
+reference capture — not a screen-generation project.
+
+So the decision is just the adaptation itself: which three PC devices
+the four slots should offer, and whether to keep the original's strings
+with remapped meaning (fake parity, which this section argues against)
+or write new ones and re-baseline `state2_menu`. Recommendation stands:
+write new strings.
 
 ## WS2 — 2 Players mode (alternating)
 
@@ -504,10 +508,20 @@ original artifact:
    brick-zone cells (26.0%) and the HUD/side/bottom rows (53.1%), so the
    blob cannot go yet. What is settled is that the rule is exact rather
    than approximate. See notes/levels.md.
-3. **Menu / hi-score screens** — `main_menu.bin`/`hi_score.bin` are
-   full-screen snapshot dumps; the markup+font pipeline
-   (`notes/menu.md`, `notes/encoding.md`) already decodes these —
-   finish generating them.
+3. ~~**Menu / hi-score screens**~~ — **already done, and the entry was
+   wrong** (checked 2026-08-09). `render_menu_screen` and
+   `render_hiscore_screen` build both screens from `MENUMARK.BIN` /
+   `MARKUP.BIN` markup plus the font and sprites; nothing in `src/`
+   loads `MAINMENU.BIN` or `HISCORE.BIN` at all. The two 48 KB captures
+   are `test-visual`'s references and nothing more — but they were still
+   being mcopied onto every floppy image, unread, which is what made
+   this entry look true. Removed from both floppy recipes;
+   `test-floppy-assets` now holds the line in both directions (a missing
+   asset breaks the boot, a dead one is evidence of exactly this kind of
+   stale belief).
+
+   Only `LOADING.BIN`, the title screen, is still a captured screen the
+   game displays.
 
 **Unlock:** deterministic builds from `batty.tap` alone, per-level
 frame variations the captured blob can't cover, and a much cleaner
