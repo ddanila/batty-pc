@@ -633,11 +633,28 @@ original artifact:
    re-bases from `level_attrs.bin` first, so comparing its output
    against the blob compares the blob with itself.
 
-   **Remaining: the HUD rows, the side-frame strips and the bottom
-   bat/lives rows — 53.1%, and none of it brick work.** Those are the
-   frame compositor's (item 1), which is the same routine `LBE8B` this
-   list already wants ported. Doing item 1 probably retires this one
-   too. See notes/levels.md.
+   *Fully accounted for, 2026-08-09.* Every one of the 768 cells per
+   level is now derived and gated:
+
+   | cells | region | gate |
+   |---|---|---|
+   | 630 | char rows 3..23, cols 1..30 | `attrs_generate` (host) |
+   |  32 | char row 0, all cols | `test-frame-derivable` |
+   |  42 | char rows 3..23, cols 0/31 | `test-frame-derivable` |
+   |   4 | char rows 1..2, cols 0/31 | `test-frame-derivable` |
+   |  60 | char rows 1..2, cols 1..30 | `test-level-attrs-derivable` |
+
+   The last two fell out of the frame work: rows 1..2's frame columns
+   come from `LBE8B_1`'s SEVENTH placement (the same one that fills the
+   HUD band's side pixels), and rows 1..2's interior is plain `bg_attr`
+   with `print_border_shadow`'s two arms. The 1UP/HI/2UP labels and the
+   score digits are PIXELS — they leave the attribute cells alone, which
+   is the colour-clash rule this port keeps meeting.
+
+   **What remains is not analysis but plumbing:** `paint_brick_band`
+   re-bases the band from `level_attrs.bin` at every level entry, and
+   `paint_frame_to_buff` takes its attrs from there too. Both could
+   generate instead, and then the blob goes. See notes/levels.md.
 3. ~~**Menu / hi-score screens**~~ — **already done, and the entry was
    wrong** (checked 2026-08-09). `render_menu_screen` and
    `render_hiscore_screen` build both screens from `MENUMARK.BIN` /

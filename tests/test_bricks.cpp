@@ -474,9 +474,20 @@ static void test_attrs_generate_without_the_capture() {
         paint_bricks(cells);
         /* print_border_shadow's left arm: col 1 of char rows 1..23. */
         for (int cr = 1; cr <= 23; cr++) attr_buff[cr * 32 + 1] &= 0xBF;
-        /* The brick zone only: char rows 4..15, cols 1..30. Everything
-         * else in the band belongs to the frame and HUD painters. */
-        for (int cr = 4; cr <= 15; cr++) {
+        /* Char rows 3..23, cols 1..30 — not just the brick cells.
+         *
+         * Row 16 is the shadow row for field row 11, written by
+         * paint_shadow_row like every other, and it is where a
+         * bg-plus-border-shadow rule falls down: 152 of its cells across
+         * the 15 levels are dimmed and nothing local says why. Rows 17
+         * and below are plain background, and row 3 sits above the band.
+         * Including them all costs nothing and pins what the painter
+         * does OUTSIDE the cells it fills.
+         *
+         * Columns 0 and 31 are the frame's, and char rows 0..2 are the
+         * HUD's; test-frame-derivable covers the first and nothing
+         * covers the second yet. */
+        for (int cr = 3; cr <= 23; cr++) {
             for (int cc = 1; cc <= 30; cc++) {
                 const u8 want = captured[lvl * 768 + cr * 32 + cc];
                 const u8 got  = attr_buff[cr * 32 + cc];

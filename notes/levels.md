@@ -205,3 +205,33 @@ Mutations confirm the test bites: removing the shadow pass, and moving
 
 What is left of the blob is the HUD rows, the side-frame strips and the
 bottom bat/lives rows — 53.1%, and none of it is brick work.
+
+
+## All of level_attrs.bin is accounted for (2026-08-09)
+
+768 cells per level, every one derived and gated:
+
+| cells | region | source | gate |
+|---|---|---|---|
+| 630 | rows 3..23, cols 1..30 | `paint_bricks` run in order | `attrs_generate` (host) |
+|  32 | row 0, all cols | the eight top border sprites' attrs | `test-frame-derivable` |
+|  42 | rows 3..23, cols 0/31 | the six side placements' attrs | `test-frame-derivable` |
+|   4 | rows 1..2, cols 0/31 | the SEVENTH side placement | `test-frame-derivable` |
+|  60 | rows 1..2, cols 1..30 | `bg_attr` + `print_border_shadow` | `test-level-attrs-derivable` |
+
+The host test's range grew from rows 4..15 to 3..23 to get there. Row 16
+is why: it is the shadow row for field row 11, written by
+`paint_shadow_row` like every other, and a bg-plus-border-shadow rule
+misses 152 of its cells across the 15 levels with nothing local
+explaining them. Rows 17..23 and row 3 are plain background and cost
+nothing to include.
+
+Rows 1 and 2 are the HUD's, and they are plain `bg_attr` with the border
+shadow — 900 of 900. The 1UP/HI/2UP labels and the score digits are
+PIXELS; they do not touch attribute cells. Same colour-clash rule as
+known-bugs #7's enemy.
+
+**The blob is now redundant, and removing it is plumbing rather than
+analysis.** `paint_brick_band` opens by re-basing the band from it at
+every level entry, and `paint_frame_to_buff` takes its attrs from it.
+Both have generators sitting next to them.

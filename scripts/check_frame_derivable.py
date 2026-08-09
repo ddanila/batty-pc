@@ -345,12 +345,15 @@ def main() -> int:
                 if got != want:
                     bad.append((lvl, "level_attrs top", 0, x + i, want, got))
             x += aw
+        # All seven placements, char rows 0..23. The seventh (bold from
+        # y=$17) supplies rows 0..2's frame columns — the HUD band's —
+        # which nothing else does.
         for base, ls, rs in placements:
             _, ah, lav = attr_block(ls)
             _, _, rav = attr_block(rs)
             for i in range(ah):
                 cr = base // 8 - i
-                if not (3 <= cr <= 23):
+                if not (0 <= cr <= 23):
                     continue
                 for col, av in ((0, lav), (31, rav)):
                     want, got = av[i], band[cr * 32 + col]

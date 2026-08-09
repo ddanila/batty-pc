@@ -134,6 +134,36 @@ def main() -> int:
               "capture that does not match assets/levels.bin.")
         return 1
 
+    # --- the HUD's two rows ------------------------------------------
+    # Char rows 1 and 2, columns 1..30: plain bg_attr, with
+    # print_border_shadow's arms taking the bright bit off column 1 (its
+    # left arm, rows 1..23) and off row 1's columns 2..30 (its top arm).
+    # The 1UP/HI/2UP labels and the score digits are PIXELS; they leave
+    # these cells alone, which is the ZX colour-clash rule this port
+    # keeps running into.
+    BG_PER_CYCLE = (0x46, 0x44, 0x45, 0x47)
+    hud_checked = 0
+    for lvl in range(N_LEVELS):
+        band = attrs[lvl * BAND:(lvl + 1) * BAND]
+        bg = BG_PER_CYCLE[lvl & 3]
+        for cr in (1, 2):
+            for cc in range(1, 31):
+                dim = (cc == 1) or (cr == 1 and 2 <= cc <= 30)
+                want = (bg & 0xBF) if dim else bg
+                got = band[cr * 32 + cc]
+                hud_checked += 1
+                if got != want:
+                    bad.append((lvl + 1, cr, cc, cc, want, got))
+    if bad:
+        print(f"FAIL: {len(bad)} HUD-row attribute bytes do not match "
+              f"bg_attr plus print_border_shadow.\n")
+        for lvl, r, c, cc, want, got in bad[:12]:
+            print(f"  level {lvl:2d} char ({r},{cc}): want {want:02X} "
+                  f"got {got:02X}")
+        return 1
+    print(f"PASS level_attrs_hud_rows: {hud_checked} cells in char rows 1 "
+          f"and 2 are bg_attr with the border shadow")
+
     pct = 100.0 * checked / len(attrs)
     print(f"PASS level_attrs_derivable: all {checked} live-brick attribute "
           f"bytes ({pct:.1f}% of level_attrs.bin) are reproduced by "
