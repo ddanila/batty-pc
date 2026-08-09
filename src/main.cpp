@@ -3246,6 +3246,26 @@ static void step_pts_400(void) {
  *
  * Each try advances the RNG: generate_new_bonus re-CALLs
  * random_generate per retry. */
+/* Which bonus to drop, given everything currently going on.
+ *
+ * THIS STAYS IN main.cpp, and the reason is worth stating so nobody
+ * spends an afternoon trying to move it (I nearly did). It reads SEVEN
+ * pieces of live game state to reject inappropriate draws:
+ *
+ *   objects[OBJ_BAT_1].bonus_applied   do not re-drop what is active
+ *   ball.extra2_active / extra3_active no multiball while extras fly
+ *   objects[OBJ_BALL_1].speed          no slow-ball at base speed
+ *   life_dropped_this_round            one extra life per round
+ *   rocket.active                      no second rocket
+ *   round_number                       gates the rocket after round 6
+ *
+ * That is not a module's worth of geometry, it is the game deciding what
+ * is appropriate. Moving it would drag most of the game's state into
+ * whatever module received it, which is the opposite of the point.
+ *
+ * The consequence for stage 1: BATTY_FORCE_SPAWN_BONUS's seeder cannot
+ * follow the bomb's into src/replay.cpp, because it calls this. That is
+ * a real boundary, not an accident of placement. */
 static unsigned char pick_bonus_type(const unsigned char *tbl) {
     int tries;
     for (tries = 0; tries < 16; tries++) {

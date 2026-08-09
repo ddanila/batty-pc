@@ -8,7 +8,7 @@ test. Started 2026-08-07.
 The stage table below is complete except stage 1, which is blocked for a
 reason rather than for want of effort — see the end of this section.
 
-**The code.** `main.cpp`: 7,747 → 6,811 lines (-12.0%) across 15
+**The code.** `main.cpp`: 7,747 → 6,831 lines (-11.8%) across 15
 modules. The longest function is `run_level` at 113 lines, and it is an
 orchestrator of named phases, which is what it should be.
 
@@ -28,13 +28,21 @@ missing #15 by the time anyone noticed.
 
 ### What is actually left
 
-1. **Stage 1's remainder.** Six replay seeders are out. The bomb's went
-   with `bomb_launch` and `BombState` into `weapons`, which is the
-   pattern for the rest: move the state AND the behaviour the seeder
-   calls, leaving the game rules behind. What is left needs
-   `try_spawn_bonus` (bonus), and `live_level` for the brick ones —
-   `live_level` is game state rather than compositor state and belongs
-   where it is, so those two may simply stay.
+1. **Stage 1 is done as far as it should go.** Six seeders are out; the
+   remaining three are blocked BY DESIGN, not by placement, and that is
+   now recorded at the code rather than only here:
+
+   - `BATTY_FORCE_SPAWN_BONUS` calls `try_spawn_bonus`, which calls
+     `pick_bonus_type` — and that reads SEVEN pieces of live game state
+     to reject inappropriate draws. It is the game deciding what is
+     appropriate, not geometry. Moving it drags most of the game's state
+     into whatever module received it.
+   - the two brick seeders need `live_level`, which is game state rather
+     than compositor state.
+
+   Forcing either would make the modules worse, so the honest end of
+   this stage is here. `pick_bonus_type` carries the reasoning in a
+   comment so the next person does not spend an afternoon on it.
 
 2. **known-bugs #14**, and only its second half: whether the original
    derives the extra balls' launch angle from a real velocity. That
@@ -120,9 +128,9 @@ happened, and `make test-video` caught it.
 | 9 | `run_level` decomposition | 684 -> 115 | **done** — every phase named |
 | 10 | state owners — structs at file scope | 113 vars | **done** — 11 clusters, see below |
 | 1a | `replay_parse` — the BATTY_REPLAY_* value formats | 75 | **done** — 7 tests |
-| 1 | replay / probe scaffolding | ~430 | **started** — 6 overrides out in `replay`, 6 host tests; the rest need their state and behaviour moved first |
+| 1 | replay / probe scaffolding | ~430 | **as far as it should go** — 6 overrides out in `replay`, 6 host tests; the remaining 3 are blocked by design, see below |
 
-`main.cpp`: 7,747 → 6,811 (`wc -l`; see the status block on why this is not Watcom's count).
+`main.cpp`: 7,747 → 6,831 (`wc -l`; see the status block on why this is not Watcom's count).
 100 host tests + source gates, all via `make test-fast` in seconds.
 
 ### Stage 5b: one destroyed-cell reset, not two
