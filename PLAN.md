@@ -390,8 +390,20 @@ whichever bat hit it. Gated by `test-double-play-bat2`, an A/B on
 
 **WS3's scoring, effects and ball physics are complete.** What is left
 is bat 2's INPUT (`p2_dev` selects nothing — see WS1) and bonus
-ownership via `object_bat_2+$14`, which also gives bat 2 the MAGNET
-catch branch it currently cannot take.
+OWNERSHIP.
+
+The ownership gap is not what an earlier note in `src/main.cpp` claimed.
+Bat 2's bonus byte is maintained — `set_bat_bonus` writes BOTH bats —
+and that is precisely the divergence: the original applies a bonus to
+the bat that CAUGHT it (`DEC (IY+$14)`, IY being the catching bat, with
+the bat-2 branch wrapped in `bonus_flag_swap`), so it can arm one bat
+and leave the other bare. The port arms both.
+
+Splitting it is entangled with two things that are not small: the CATCH
+bonus needs the stuck-ball system, which is written around the primary
+ball and bat 1 (WS6 item 2 scopes that at ~32 sites), and the width
+bonuses are bat-1 globals with nowhere to put a second bat's state. See
+notes/double-play.md.
 
 **Why after WS2:** WS2 builds the per-player state plumbing (HUD,
 banner, hi-score) that Double Play reuses; Double Play then adds the

@@ -5186,11 +5186,21 @@ static int deflect_ball_off_bat(int next_x, int *next_y) {
     return 0;
 }
 
-/* Bat 2's half of LAB1F. No catch branch: the MAGNET test is
- * `LD A,(IY+$14) / CP $03` on the HITTING bat, and bat 2's bonus byte
- * (`object_bat_2+$14`) is not maintained by the port yet — so a bat-2
- * hit is always a plain deflection. That is a gap, not a simplification;
- * see PLAN.md WS3. */
+/* Bat 2's half of LAB1F. No catch branch, and the reason is NOT that
+ * bat 2's bonus byte goes unmaintained — an earlier version of this
+ * comment said that and was wrong. `set_bat_bonus` writes BOTH bats,
+ * so `objects[OBJ_BAT_2].bonus_applied` is always in step with bat 1's.
+ *
+ * The real reason is the other end: catching needs the stuck-ball
+ * system, which is written around the primary ball and bat 1
+ * (`catch_ball_on_bat` reads BAT_X, `ball.stuck_offset_x` is one
+ * value). PLAN.md WS6 item 2 has that scoped as ~32 sites.
+ *
+ * And writing both bats is itself the divergence: the original applies
+ * a bonus to the CATCHING bat only — `get_bonus` does `DEC (IY+$14)`
+ * with IY the bat that caught it, and wraps the bat-2 branch in
+ * `bonus_flag_swap`. The port shares bonuses between the two. See
+ * notes/double-play.md. */
 static void deflect_ball_off_bat_2(int next_x, int *next_y) {
     const Object &b2 = objects[OBJ_BAT_2];
     int dx_q8, dy_q8;

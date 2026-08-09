@@ -268,3 +268,50 @@ The gate for it had to be ANCHORED to `spawn_death_sparks`' body. The
 first version checked `if (game_mode == 2) {` against the whole file,
 where `reset_level_state` has the identical line, so mutating the
 spark one to `>= 1` survived.
+
+
+## Bonuses are shared, and the original owns them per bat (2026-08-09)
+
+`set_bat_bonus` writes both bats:
+
+    static void set_bat_bonus(unsigned char code) {
+        objects[OBJ_BAT_1].bonus_applied = code;
+        objects[OBJ_BAT_2].bonus_applied = code;
+    }
+
+which is invisible with one bat and wrong with two. The original applies
+a bonus to the bat that CAUGHT it:
+
+    LA67B_1:
+      LD A,(IY+$02) / AND $80 / LD (need_change_player),A
+      ...
+      DEC (IY+$14)                 ; IY = the catching bat
+
+and reaches bat 2 by trying it only after bat 1 misses, wrapping the
+handling in `bonus_flag_swap` so the shared `bonus_flag` byte belongs to
+whichever bat is being handled:
+
+    LD IY,object_bat_1 / CALL obj_compare_2pix / JR C,LA67B_0
+    LD A,(game_mode) / CP $02 / RET NZ
+    LD IY,object_bat_2 / CALL obj_compare / RET NC
+    CALL bonus_flag_swap / CALL LA67B_0 / JP bonus_flag_swap
+
+So in Double Play the original gives LASER to one bat and leaves the
+other unarmed; the port arms both.
+
+### Why this is not the next commit
+
+Two things are entangled with it, and neither is small:
+
+- the CATCH bonus needs the stuck-ball system, which is written around
+  the primary ball and bat 1 (`catch_ball_on_bat` reads `BAT_X`,
+  `ball.stuck_offset_x` is a single value). PLAN.md WS6 item 2 already
+  scopes that at ~32 sites.
+- the width bonuses are bat-1 globals (`bat.extra_px`,
+  `bat.extra_target`, `bat.big_ticks`), so "give it to one bat" has
+  nowhere to put the other bat's state.
+
+Splitting those is the work. Recording the divergence is not a
+substitute for doing it, but an inaccurate comment claiming bat 2's
+byte was unmaintained WAS worse than nothing — it pointed at the wrong
+end of the problem.
