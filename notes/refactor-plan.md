@@ -44,9 +44,10 @@ missing #15 by the time anyone noticed.
    this stage is here. `pick_bonus_type` carries the reasoning in a
    comment so the next person does not spend an afternoon on it.
 
-2. **known-bugs #14**, and only its second half: whether the original
-   derives the extra balls' launch angle from a real velocity. That
-   needs a Spectrum, not more work in the port.
+2. **known-bugs #14 and #16.** Both need the Spectrum rather than more
+   work in the port: whether the original derives the extra balls'
+   launch angle from a real velocity (#14), and whether two enemy
+   margin-escape angles really aim out of the field (#16).
 
 3. **The parity gaps in `notes/parity-gaps.md`** — enemy RNG not
    byte-exact, multi-ball plus MAGNET catch, and the cosmetic/timing
@@ -567,6 +568,33 @@ paragraph. Use the headings, not the order. Nothing was reordered or
 removed when they were added; a multiset diff confirmed zero lines
 lost.
 
+
+#### The $38 oddity, run down
+
+Last entry left "the `$38` escape angle looks wrong" as an aside. It is
+worth more than an aside, so I measured the whole convention instead of
+reasoning from one value.
+
+`dir_to_dxdy` over all eight octants gives `$00` right, `$10` down,
+`$20` left, `$30` up — anchored by `$10` being straight down, which
+matches the note in `handling_bird_obj` about an earlier port getting
+that exact direction wrong. So `$38` is up-right.
+
+Against that, four of the six margin-escape angles aim inward and two do
+not: the right edge's upper case and the top edge's right half both use
+`$38`, which is outward on the x axis at the right edge and outward on
+the y axis at the top. The top-right case is both at once. `$18`
+(down-left) would be inward for both and differs by one bit.
+
+Recorded as known-bugs #16, NOT fixed. There is no capture of the
+original at a right-edge alien, the routine mirrors LAA7D, and a 1980s
+routine that lets an alien clip a corner is entirely plausible. Changing
+it on a symmetry argument would replace measured behaviour with a guess,
+which is the mistake this file already records twice.
+
+The useful part is that the test written last entry pins all six values,
+so whoever does get the capture will find the test failing and have to
+decide explicitly.
 
 #### "margins_aim_inward" did not check that it aimed inward
 

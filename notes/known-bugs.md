@@ -13,6 +13,7 @@
 | #13 | extra balls write the primary's sign cache | fixed; `test-ball-sign-cache-owner` |
 | #14 | the sign cache mixed signs and speeds | units fixed; **one question OPEN**, needs the Spectrum |
 | #15 | `bios_ticks()` frozen during gameplay | fixed; `test-frozen-clock` |
+| #16 | two enemy margin-escape angles aim OUT of the field | **open**, and unverified — needs the original; see below |
 
 **#14 is the only open item**, and it is open for a reason that cannot be
 closed from the port: `delta_to_dir` selects its angle by MAGNITUDE, and
@@ -665,3 +666,62 @@ The frozen clock made two things wrong that nobody had noticed: the
 game-over screen waited forever, and the name-entry cursor never blinked
 (`blink_phase()` returned a constant). Both are visible in normal play.
 Neither was caught, because a player always presses a key.
+
+
+---
+
+## #16 — two enemy margin-escape angles aim out of the field
+
+**Found 2026-08-09. NOT fixed, and deliberately so: it needs ground
+truth this port does not have.**
+
+`enemy_target_away_from_margins` exists so an alien near a wall stops
+picking random targets and aims at a fixed angle that leads away — the
+header says "so it cannot grind along an edge". Six cases, and four of
+them do that.
+
+Direction convention, measured from `dir_to_dxdy` (not assumed —
+`dir_to_delta` is mirrored in two quadrants, known-bugs #8):
+
+    $00 right   $08 down-right   $10 down   $18 down-left
+    $20 left    $28 up-left      $30 up     $38 up-right
+
+`$10` being straight down agrees with the note in `handling_bird_obj`
+about an earlier port getting that wrong, so the convention is anchored.
+
+| case | angle | direction | inward? |
+|---|---|---|---|
+| left edge, upper | `$08` | down-right | yes |
+| left edge, lower | `$00` | right | yes |
+| **right edge, upper** | `$38` | **up-right** | **NO** |
+| right edge, lower | `$20` | left | yes |
+| top edge, left half | `$08` | down-right | yes |
+| **top edge, right half** | `$38` | **up-right** | **NO** |
+
+At the right edge, aiming right is outward. At the top edge, aiming up
+is outward. The top-right case is both at once.
+
+`$18` (down-left) would be inward for both, and differs from `$38` by
+one bit ($20). That is the shape of a transcription slip — but it is
+also exactly the kind of guess this repo has been burned by, so it stays
+a hypothesis.
+
+### Why it is not fixed
+
+I have no capture of the original at a right-edge or top-right alien.
+The routine mirrors LAA7D, and the original may genuinely do this; a
+1980s routine that lets an alien clip a corner before recovering is
+entirely plausible. Changing it on symmetry alone would be replacing
+measured behaviour with a guess.
+
+Settling it needs a ZEsarUX capture of an alien driven into the right
+margin — `scripts/capture_enemy_flight.py` already does the equivalent
+for the descend phase.
+
+### What is in place meanwhile
+
+`test_margins_aim_inward` now pins all six angles as a value table. So
+if someone verifies the original and the values change, the test fails
+and forces the decision to be explicit rather than silent. That is the
+useful state for an unresolved question: the current behaviour is
+recorded and cannot drift unnoticed.
