@@ -642,6 +642,26 @@ struct PlayerState {
 static PlayerState players[2] = {{0, LIVES_INIT, 0, 0, 0},
                                 {0, LIVES_INIT, 0, 0, 0}};
 
+/* The original's `game_mode`, and it is 0-BASED:
+ *
+ *   0  1 Player
+ *   1  2 Players (alternating)
+ *   2  Double Play
+ *
+ * read off LBC10 — `CP $02 / CALL Z,print_txt_players_1_and_2` prints
+ * "PLAYERS 1 AND 2" for mode 2, and the life-loss path's
+ * `LD A,(game_mode) / DEC A / CALL Z,current_level_2up_copier` runs the
+ * alternation for mode 1. The menu's `selected_mode` is 1..3, because
+ * it comes straight from `k - '0'`, so the conversion is a subtract-one
+ * and `game_mode_from_selection` is the only place allowed to do it.
+ * See notes/menu.md. */
+static unsigned char game_mode = 0;
+
+static unsigned char game_mode_from_selection(unsigned char selection) {
+    return (unsigned char)((selection >= 1 && selection <= 3)
+                           ? selection - 1 : 0);
+}
+
 /* Whose turn it is: 0 = 1UP, 1 = 2UP. Modes 2 and 3 are not wired yet
  * (PLAN.md WS2/WS3), so nothing moves this off 0 and every gate sees
  * exactly what it saw before. The HUD, though, now reads players[1]
@@ -2839,6 +2859,7 @@ static state_t run_menu(void) {
                 /* The original's game_mode is always one of the three;
                  * the port's 0 means "nothing picked yet". */
                 if (selected_mode == 0) selected_mode = 1;
+                game_mode = game_mode_from_selection(selected_mode);
                 return ST_LEVEL;
             }
             if (k == '\r') return ST_HISCORE;    /* attract chain */
@@ -3947,6 +3968,8 @@ static void probe_write_harness_state(FILE *f) {
      * walking to the snapped position. Without this the whole reaction
      * is invisible to every capture — the bricks are untouched by
      * design, so there is nothing on screen that says it fired. */
+    fprintf(f, "\ngame_mode=%02X_player%02X",
+            (unsigned)game_mode, (unsigned)active_player);
     fprintf(f, "\nenemy_home=%02X%02X",
             (unsigned)enemy_home_target.x, (unsigned)enemy_home_target.y);
     fprintf(f, "\nbonus_pts_raw=%02X%02X%02X%02X%02X%04X",
@@ -5807,8 +5830,12 @@ static void draw_round_banner(int round_num) {
      * lands, swap the trailing $01 for the active player number. */
     draw_text(text_x, BORDER_Y + 138, 15, player_codes, 7);
     {
-        unsigned char one = 0x01;
-        draw_text(text_x + 7 * 8, BORDER_Y + 138, 15, &one, 1);
+        /* orig: `LD A,(player_number) / INC A / LD (txt_player_x+11),A`.
+         * This was a hardcoded $01 with a comment saying to swap it in
+         * once the 2-player wiring landed; active_player is that wiring.
+         * It renders identically while nothing moves the turn off 0. */
+        unsigned char digit = (unsigned char)(active_player + 1);
+        draw_text(text_x + 7 * 8, BORDER_Y + 138, 15, &digit, 1);
     }
     draw_text(text_x, BORDER_Y + 153, 15, round_codes, 8);
 }
@@ -6997,6 +7024,15 @@ static state_t apply_env_switches(void) {
     if (getenv("BATTY_AUTO_FIRE") != NULL)                  dbg.auto_fire = 1;
     if (getenv("BATTY_LAFFC") != NULL)                      dbg.use_laffc = 1;
     if (getenv("BATTY_KINNOCK") != NULL)                    dbg.kinnock = 1;
+    {
+        /* BATTY_GAME_MODE takes the ORIGINAL's 0-based value, not the
+         * menu's 1..3 — a gate that wants 2-player writes 1. Gates reach
+         * gameplay through BATTY_START_LEVEL and never touch the menu,
+         * so without this the mode is unreachable from a test. */
+        const char *gm = getenv("BATTY_GAME_MODE");
+        if (gm != NULL && *gm >= '0' && *gm <= '2' && gm[1] == '\0')
+            game_mode = (unsigned char)(*gm - '0');
+    }
     if (getenv("BATTY_LEGACY_COLLISION") != NULL)           dbg.use_laffc = 0;
 
     /* Unlike the rest, this one can force EITHER state: it defaults on,

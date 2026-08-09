@@ -512,6 +512,9 @@ $(TEST_FLOPPY_OUT): $(FLOPPY_TEST_EXE) $(ASSETS) $(FLOPPY_SRC)
 	if [ -n "$$BATTY_KINNOCK" ]; then \
 	    printf 'SET BATTY_KINNOCK=%s\r\n' "$$BATTY_KINNOCK" >> $(AUTOEXEC_T) ; \
 	fi; \
+	if [ -n "$$BATTY_GAME_MODE" ]; then \
+	    printf 'SET BATTY_GAME_MODE=%s\r\n' "$$BATTY_GAME_MODE" >> $(AUTOEXEC_T) ; \
+	fi; \
 	if [ -n "$$BATTY_LEGACY_COLLISION" ]; then \
 	    printf 'SET BATTY_LEGACY_COLLISION=%s\r\n' "$$BATTY_LEGACY_COLLISION" >> $(AUTOEXEC_T) ; \
 	fi; \

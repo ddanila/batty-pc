@@ -147,10 +147,26 @@ Also settled: `game_mode` is 0-based (0 = 1 Player, 1 = 2 Players,
 2 = Double Play) while the port's `selected_mode` is 1..3, so the
 dispatch has to subtract one.
 
-Remaining stages: a per-player copy of the 180-cell grid swapped with
-`live_level` (this is the substantial part, and why stage 2 stopped
-short of guessing it), the swap on life loss, and the menu's mode-2
-dispatch. See notes/menu.md.
+**Stage 3 done (2026-08-09): the mode itself, and seeing it.** The port
+now has `game_mode`, 0-based like the original, produced from the menu's
+1..3 `selected_mode` by the single conversion
+`game_mode_from_selection`. `BATTY_GAME_MODE` sets it directly for
+gates, which reach gameplay through `BATTY_START_LEVEL` and never touch
+the menu — without that knob the mode is unreachable from a test.
+`PROBE.TXT` reports `game_mode=<n>_player<n>`.
+
+It also closes a TODO that had been sitting in the round banner: the
+"PLAYER 1" digit was a hardcoded `$01` with a comment saying to swap it
+in once the 2-player wiring landed. It reads `active_player + 1` now,
+which is the original's `LD A,(player_number) / INC A`, and renders
+identically while nothing moves the turn off 0.
+
+Remaining: the swap itself — a per-player copy of the 180-cell grid
+exchanged with `live_level` at the same moment the counters swap, plus
+the level re-entry it implies. The port's `lose_a_life` respawns in
+place where the original does `JP LB9E8_1`, so this stage needs a
+control-flow change in `run_level` and is deliberately not bundled with
+the plumbing above. See notes/menu.md.
 
 **What:** Classic turn-taking (research-confirmed: on the Spectrum,
 2 PLAYERS alternates turns, unlike the C64 version). Per-player state

@@ -155,6 +155,42 @@ def main() -> int:
                              f"`{target}`")
     print("PASS per_player_progress: round and level are the active "
           "player's")
+
+    # game_mode is 0-based; selected_mode is 1..3. One conversion site.
+    conv = body_of(code, "static unsigned char game_mode_from_selection(")
+    if "selection - 1" not in conv:
+        raise SystemExit(
+            "FAIL: game_mode_from_selection no longer subtracts one. The "
+            "original's game_mode is 0-based (0 = 1 Player, 1 = 2 Players, "
+            "2 = Double Play) while the menu's selected_mode comes from "
+            "`k - '0'` and is 1..3. notes/menu.md.")
+    users = [l for l in code.split("\n")
+             if "game_mode =" in l and "game_mode_from_selection" not in l
+             and "static unsigned char game_mode" not in l]
+    for line in users:
+        if "BATTY_GAME_MODE" in code.split(line)[0][-400:]:
+            continue        # the env knob, which takes the 0-based value
+        raise SystemExit(
+            f"FAIL: game_mode is assigned outside "
+            f"game_mode_from_selection:\n  {line.strip()}\n"
+            f"Every menu-side assignment must go through the conversion, "
+            f"or a 1..3 value reaches code that expects 0..2.")
+    print("PASS game_mode_zero_based: one conversion site, and it "
+          "subtracts one")
+
+    # The banner digit is state, not a literal.
+    try:
+        banner = body_of(code, "static void draw_round_banner(int round_num) {")
+    except ValueError:
+        raise SystemExit("FAIL: draw_round_banner is gone; if the banner "
+                         "moved, point this gate at it")
+    if "active_player + 1" not in banner:
+        raise SystemExit(
+            "FAIL: the round banner no longer prints active_player + 1. "
+            "The original is `LD A,(player_number) / INC A / "
+            "LD (txt_player_x+11),A`; a hardcoded 1 is the stub this "
+            "replaced, and it renders identically today.")
+    print("PASS banner_player_digit: the banner prints active_player + 1")
     return 0
 
 
