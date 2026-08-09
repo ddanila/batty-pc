@@ -180,15 +180,28 @@ live cells over the top; and `print_border_shadow` runs last over
 column 1 and row 1. An empty cell's value is whatever survives that
 sequence, which depends on the order, not on a local rule.
 
-### The cheap way to finish it
+### Settled by simulation, not by a rule (2026-08-09)
 
-The port already implements that order — `paint_brick_band` +
-`dim_border_shadow_column` produce `attr_buff` for a level. So the next
-attempt should not write a predicate at all: run the port's own painter
-in a HOST test over each of the 15 levels and compare `attr_buff`'s
-brick-zone rows against `level_attrs.bin`. `tests/test_bricks.cpp`
-already links the bricks module and uses `attr_buff`.
+Done, and it works. `tests/test_bricks.cpp`'s `attrs_generate` fills the
+band with `bg_attr_per_cycle[]`, runs `paint_bricks`, applies
+`print_border_shadow`'s left arm, and compares char rows 4..15, cols
+1..30 against `level_attrs.bin`:
 
-That would settle the whole 47% brick zone in one gate, and it would be
-proof the painter matches the capture rather than proof that a
-hand-written rule does.
+    attrs_generate               5400 cells, 15 levels
+
+**All 5400 match, for all 15 levels.** That is the whole brick zone —
+46.9% of the blob — generated from `assets/levels.bin` and the tape's
+`briks_colors`, with no reference to the capture at all.
+
+The instrument had to be `paint_bricks`, NOT `paint_brick_band`. The
+latter starts with `memcpy(&attr_buff[3*32], &lattr[3*32], 14*32)` — it
+re-bases from `level_attrs.bin` — so comparing its output against the
+blob would have compared the blob with itself. `paint_bricks` is the
+generator: it walks the rows calling `paint_shadow_row` (the
+`brik_shadow` port) exactly where `print_briks` does.
+
+Mutations confirm the test bites: removing the shadow pass, and moving
+`brik_attr_buf` one char row, are both caught.
+
+What is left of the blob is the HUD rows, the side-frame strips and the
+bottom bat/lives rows — 53.1%, and none of it is brick work.

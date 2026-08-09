@@ -427,6 +427,81 @@ static void test_band_bounds_follow_the_field_geometry() {
     report("band_bounds_from_geometry", before, "vs level.h           ok");
 }
 
+/* Can the brick zone's ATTRS be generated, or must they stay captured?
+ *
+ * `assets/level_attrs.bin` is 15 x 768 bytes of ZX attribute cells taken
+ * from emulator screens, and PLAN.md WS7 wants it gone.
+ * `test-level-attrs-derivable` already proves the LIVE-BRICK fifth is
+ * reproducible from `briks_colors` plus the border shadow. This asks the
+ * harder half: the EMPTY cells, whose value is whatever survives
+ * `print_briks`' row-by-row pass with `brik_shadow` interleaved.
+ *
+ * An earlier attempt tried to answer that with a neighbour predicate and
+ * reached 94.4% — curve-fitting, abandoned (notes/levels.md). The right
+ * instrument is the port's own painter, which implements the pass ORDER:
+ * `paint_bricks` walks the rows calling `paint_shadow_row` (the
+ * `brik_shadow` port) exactly where the original does.
+ *
+ * So: fill the band with bg_attr, run paint_bricks, apply
+ * print_border_shadow's left arm, and compare against the capture. No
+ * re-base from level_attrs — that is what `paint_brick_band` does and it
+ * would make this circular. */
+static const u8 BG_ATTR_PER_CYCLE[4] = { 0x46, 0x44, 0x45, 0x47 };
+
+static bool load_level_attrs(u8 *out) {
+    FILE *f = fopen("assets/level_attrs.bin", "rb");
+    if (!f) return false;
+    const size_t n = fread(out, 1, 15u * 768u, f);
+    fclose(f);
+    return n == 15u * 768u;
+}
+
+static void test_attrs_generate_without_the_capture() {
+    const int before = failures;
+    static u8 captured[15 * 768];
+    if (!load_level_attrs(captured)) {
+        printf("  %-28s SKIP (no assets/level_attrs.bin)\n",
+               "attrs_generate");
+        return;
+    }
+    int checked = 0, wrong = 0, first_lvl = -1, first_cr = 0, first_cc = 0;
+    u8 first_want = 0, first_got = 0;
+    for (int lvl = 0; lvl < 15; lvl++) {
+        const u8 bg = BG_ATTR_PER_CYCLE[lvl & 3];
+        const u8 *cells = level_cells(lvl);
+        memset(attr_buff, bg, ATTR_BUFF_SIZE);
+        memset(scr_buff, 0, SCR_BUFF_SIZE);
+        paint_bricks(cells);
+        /* print_border_shadow's left arm: col 1 of char rows 1..23. */
+        for (int cr = 1; cr <= 23; cr++) attr_buff[cr * 32 + 1] &= 0xBF;
+        /* The brick zone only: char rows 4..15, cols 1..30. Everything
+         * else in the band belongs to the frame and HUD painters. */
+        for (int cr = 4; cr <= 15; cr++) {
+            for (int cc = 1; cc <= 30; cc++) {
+                const u8 want = captured[lvl * 768 + cr * 32 + cc];
+                const u8 got  = attr_buff[cr * 32 + cc];
+                checked++;
+                if (got != want && wrong++ == 0) {
+                    first_lvl = lvl + 1; first_cr = cr; first_cc = cc;
+                    first_want = want; first_got = got;
+                }
+            }
+        }
+    }
+    check(wrong == 0,
+          "%d of %d generated attrs differ from the capture; first at "
+          "level %d char (%d,%d): captured %02X, generated %02X\n",
+          wrong, checked, first_lvl, first_cr, first_cc,
+          first_want, first_got);
+    if (failures == before) {
+        char detail[64];
+        snprintf(detail, sizeof(detail), "%d cells, 15 levels", checked);
+        report("attrs_generate", before, detail);
+    } else {
+        report("attrs_generate", before, "");
+    }
+}
+
 int main(int argc, char **argv) {
     const char *levels_path = argc > 1 ? argv[1] : "assets/levels.bin";
     printf("bricks tests\n");
@@ -442,6 +517,7 @@ int main(int argc, char **argv) {
     test_destroyed_cells_reset_but_sentinels_survive();
     test_destroyed_cell_shadow_follows_left_neighbour();
     test_window_repaint_matches_full_at_its_edges();
+    test_attrs_generate_without_the_capture();
     test_live_count_vs_solid();
     test_band_bounds_follow_the_field_geometry();
     printf("\n%d tests, %d failed\n", tests_run, failures);

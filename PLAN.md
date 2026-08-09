@@ -516,13 +516,23 @@ original artifact:
    `print_briks` / `brik_shadow` / `print_border_shadow`, not on a local
    rule.
 
-   **Next step is cheap and settles the whole 47% brick zone at once:**
-   the port already implements that order, so run `paint_brick_band` +
-   `dim_border_shadow_column` in a HOST test over the 15 levels and
-   compare `attr_buff` against the blob. `tests/test_bricks.cpp` already
-   links the module and uses `attr_buff`. That proves the painter
-   matches the capture, rather than proving a hand-written rule does.
-   See notes/levels.md.
+   *Settled 2026-08-09 by simulation.* `tests/test_bricks.cpp`'s
+   `attrs_generate` fills the band with `bg_attr_per_cycle[]`, runs
+   `paint_bricks`, applies `print_border_shadow`'s left arm, and
+   compares char rows 4..15, cols 1..30 against the blob: **all 5400
+   cells match, all 15 levels.** The whole brick zone — 46.9% — is
+   generated from `assets/levels.bin` plus the tape's `briks_colors`,
+   with no reference to the capture.
+
+   It had to be `paint_bricks`, not `paint_brick_band`: the latter
+   re-bases from `level_attrs.bin` first, so comparing its output
+   against the blob compares the blob with itself.
+
+   **Remaining: the HUD rows, the side-frame strips and the bottom
+   bat/lives rows — 53.1%, and none of it brick work.** Those are the
+   frame compositor's (item 1), which is the same routine `LBE8B` this
+   list already wants ported. Doing item 1 probably retires this one
+   too. See notes/levels.md.
 3. ~~**Menu / hi-score screens**~~ — **already done, and the entry was
    wrong** (checked 2026-08-09). `render_menu_screen` and
    `render_hiscore_screen` build both screens from `MENUMARK.BIN` /

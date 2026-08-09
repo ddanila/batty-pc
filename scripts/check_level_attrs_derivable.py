@@ -30,16 +30,17 @@ one of the 38 misses differs by exactly $40.
 
 ### What this does and does not prove
 
-It covers the 2412 live-brick bytes — 20.9% of the blob. The brick zone
-(char rows 4..15, cols 1..30) is 5400 bytes, 46.9%; the rest of that
-zone is empty cells, which carry side-strip and background colours this
-gate does not yet derive. The other 53.1% is the HUD rows, the side
-frame strips and the bottom bat/lives rows.
+It covers the 2412 live-brick bytes — 20.9% of the blob — as a pure
+RULE, with no renderer involved. `tests/test_bricks.cpp`'s
+`attrs_generate` covers the whole brick zone (5400 bytes, 46.9%) by
+running the port's painter and comparing; the two overlap deliberately.
+This one says the colour table and the border shadow are right; that one
+says the painter's pass order is. A change that broke only the table
+would fail both, but a change that broke only the pass order would fail
+just the other, and the messages should not be interchangeable.
 
-So: the blob cannot be deleted yet. What is settled is that a fifth of
-it is redundant and that the rule reproducing it is exact rather than
-approximate — which is the thing WS7 needs to know before porting the
-rest of the writer.
+What is left of the blob is the HUD rows, the side-frame strips and the
+bottom bat/lives rows — 53.1%, none of it brick work.
 
 It is also a regression gate on two things a screendump would only catch
 indirectly: the `briks_colors` transcription, and a bad re-extraction of
