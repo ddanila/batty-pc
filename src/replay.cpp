@@ -34,7 +34,14 @@ void replay_apply_random(void) {
      * frame-0 values, next_random reproduces random_generate frame for
      * frame (validated offline against the original's $8D48 sequence —
      * see notes/rng-model.md). Without it the walk reads a different ROM
-     * offset. Only the low 14 bits matter ($8000-$9FFF). */
+     * offset.
+     *
+     * The value is MASKED into the $8000-$9FFF window by rng_seed, with
+     * `addr & 0x9FFF` — the same operation that wraps the walk from
+     * $9FFF back to $8000. So $A100 is stored as $8100. (An earlier
+     * version of this comment said "the low 14 bits", which is wrong:
+     * the window is 8 KB, and the mask is not a bit-width truncation
+     * anyway. See tests/test_replay.cpp.) */
     s = getenv("BATTY_REPLAY_RANDOM_SEED");
     if (s != NULL && *s != '\0') {
         v = strtoul(s, &endp, 16);

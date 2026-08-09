@@ -1000,6 +1000,20 @@ $(REPLAY_PARSE_TEST): tests/test_replay_parse.cpp src/replay_parse.cpp src/repla
 test-replay-parse: $(REPLAY_PARSE_TEST)
 	./$(REPLAY_PARSE_TEST)
 
+REPLAY_TEST = build/test_replay
+
+# Links replay.cpp with the modules it seeds, since these tests assert on
+# what landed in objects[] / the bullet arrays / the RNG, not on a return
+# value. That IS the module's contract.
+$(REPLAY_TEST): tests/test_replay.cpp src/replay.cpp src/replay.h \
+                src/replay_parse.cpp src/objects.cpp src/weapons.cpp \
+                src/rng.cpp src/types.h | build
+	$(HOSTCXX) $(HOSTCXXFLAGS) -o $@ tests/test_replay.cpp \
+	    src/replay_parse.cpp src/objects.cpp src/weapons.cpp src/rng.cpp
+
+test-replay: $(REPLAY_TEST)
+	@$(REPLAY_TEST)
+
 SCORING_TEST = build/test_scoring
 
 $(SCORING_TEST): tests/test_scoring.cpp src/scoring.cpp src/scoring.h src/types.h | build
@@ -1129,7 +1143,7 @@ test-source-gates:
 # gates. Seconds, and it is what CI checks.
 test-fast: test-video test-rng test-physics test-assets test-bricks \
            test-sound test-hud-unit test-objects test-weapons test-enemies \
-           test-bonus-codes test-scoring test-source-gates
+           test-bonus-codes test-scoring test-replay test-source-gates
 	@echo "test-fast: all host tests and source gates green"
 
 test-hud: $(FLOPPY_OUT)

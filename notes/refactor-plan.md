@@ -16,7 +16,7 @@ Gate count 51 → 57 this session: `test-blast-dirty-redraw`,
 `test-game-over-visual` and `test-name-entry-visual`, each covering
 something nothing reached before.
 
-`main.cpp`: 7,747 → 6,862 lines (-12.0%) across 15 modules. `make test-fast`
+`main.cpp`: 7,747 → 6,815 lines (-12.7%) across 15 modules. `make test-fast`
 runs every host test and source gate in seconds; `--full` is 57 gates
 in under six minutes.
 
@@ -104,9 +104,9 @@ happened, and `make test-video` caught it.
 | 9 | `run_level` decomposition | 684 -> 115 | **done** — every phase named |
 | 10 | state owners — structs at file scope | 113 vars | **done** — 11 clusters, see below |
 | 1a | `replay_parse` — the BATTY_REPLAY_* value formats | 75 | **done** — 7 tests |
-| 1 | replay / probe scaffolding | ~430 | **started** — 5 overrides out in `replay`; the rest need the state first |
+| 1 | replay / probe scaffolding | ~430 | **started** — 5 overrides out in `replay`, 6 host tests; the rest need the state first |
 
-`main.cpp`: 7,747 → 6,862 (`wc -l`; see the status block on why this is not Watcom's count).
+`main.cpp`: 7,747 → 6,815 (`wc -l`; see the status block on why this is not Watcom's count).
 100 host tests + source gates, all via `make test-fast` in seconds.
 
 ### Stage 5b: one destroyed-cell reset, not two
@@ -669,6 +669,25 @@ and the gate was extended in the same commit to press LEFT and require
 the letter row to change, since placement alone would look identical
 whether `step_name_letter` worked or not. Mutation-checked by making the
 LEFT arm a no-op.
+
+Testing that slice found two things the extraction alone would not
+have.
+
+`objects[]` was declared `extern` in `objects.h` but DEFINED in
+`main.cpp` — stage 6a moved the object model and left the storage
+behind, so the module described an array it did not own and nothing
+linking `objects.cpp` alone could touch it. Nobody noticed for eleven
+stages because `main.cpp` was always in the link. The host test could
+not link, which is how it surfaced. The table moved.
+
+And `rng_seed` does not store a walk address verbatim: it applies
+`addr & 0x9FFF`, so `$A100` lands on `$8100`. That is not sloppiness —
+it is the same operation that wraps the walk from `$9FFF` back to
+`$8000` in one step (`rng_next` does `(addr + 1) & 0x9FFF`). My first
+test expected verbatim storage and was wrong. The comment carried into
+`replay.cpp` was wrong too: it called this "the low 14 bits" when the
+window is 8 KB and the mask is not a bit-width truncation at all. Both
+the test and the comment now say what actually happens.
 
 Stage 1 has a first real slice. `src/replay.{cpp,h}` holds the five
 `BATTY_REPLAY_*` seeders that depend ONLY on state other modules already
