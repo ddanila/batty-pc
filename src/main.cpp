@@ -1905,37 +1905,20 @@ static void render_brick_band(unsigned char level_idx) {
     print_border_shadow_c();
 }
 
-/* Row-scoped variant of print_briks_c: re-composite brick rows [r0, r1]
- * into char rows [cr0, cr1] (= [4+r0, 5+r1]: cell rows + the last row's
- * shadow row). Used by the incremental band-cache rebuild.
+/* Put back what a row-scoped repaint disturbed at its edges.
  *
- * Boundary care (the source of the destroyed-brick leftovers,
- * known-bugs.md #1/#2): char row cr0 doubles as row r0-1's SHADOW row,
- * and cr1 doubles as row r1+1's CELL row. The level_attrs base copy
- * resurrects the captured LIVE look for both, so the destroyed-cell
- * reset loop must extend one brick row beyond [r0, r1] on each side —
- * with each attr write guarded to the base-copied range (rows outside
- * it keep their current, already-correct values). Pixel edges interlock
- * the same way (a brick writes its top/bottom edge one pixel row into
- * the neighbouring cell row); the caller's window and the two edge
- * fix-ups below keep those rows canonical. */
-static void render_brick_band_rows(unsigned char level_idx,
-                                   int r0, int r1, int cr0, int cr1) {
-    int lvl_col, cr;
-    const unsigned char *cells = live_level;
-    const unsigned char *lattr = &level_attrs[(int)level_idx * ATTR_BAND_SIZE];
-    unsigned char bg_attr = bg_attr_per_cycle[level_idx & 3];
-
-    if (level_idx >= N_LEVELS) return;
-
-    /* Base attrs for the recomposited char rows (ATTR_COLS == 32). */
-    memcpy(&attr_buff[cr0 * 32], &lattr[cr0 * ATTR_COLS],
-                (unsigned int)((cr1 - cr0 + 1) * 32));
-
-    reset_destroyed_cell_attrs(cells, bg_attr, r0, r1, cr0, cr1);
-
-    paint_brick_rows(cells, r0, r1);
-
+ * A full ascending paint gets these for free: each row's print
+ * overwrites the previous row's edge bytes as it goes. Painting only
+ * [r0, r1] stops short, so the boundary rows keep whatever the bg
+ * repaint left. Getting this wrong is what known-bugs #1 and #2 were.
+ *
+ * The comments' numbers are the order these were FOUND, not the order
+ * they run; they are applied bottom-edge first because each later one
+ * overwrites part of the earlier one's output.
+ */
+static void repair_band_row_boundaries(const unsigned char *cells,
+                                       int r0, int r1) {
+    int col;
     /* Edge fix-up 1: row r1's print zeroed its bottom-edge row, which in
      * the full ascending paint is overwritten by row r1+1's body row 0
      * where that brick is live — re-paint those two bytes plus the
@@ -1955,15 +1938,50 @@ static void render_brick_band_rows(unsigned char level_idx,
      * where the brick above is live. */
     if (r0 > 0) {
         unsigned int hl = 0x401u + (unsigned int)r0 * 0x100u;
-        for (lvl_col = 0; lvl_col < LVL_COLS; lvl_col++) {
-            if ((cells[r0 * LVL_COLS + lvl_col] & 0x80)
-                && !(cells[(r0 - 1) * LVL_COLS + lvl_col] & 0x80)) {
+        for (col = 0; col < LVL_COLS; col++) {
+            if ((cells[r0 * LVL_COLS + col] & 0x80)
+                && !(cells[(r0 - 1) * LVL_COLS + col] & 0x80)) {
                 scr_buff[hl]     = 0;
                 scr_buff[hl + 1] = 0;
             }
             hl += 2;
         }
     }
+
+}
+
+/* Row-scoped variant of print_briks_c: re-composite brick rows [r0, r1]
+ * into char rows [cr0, cr1] (= [4+r0, 5+r1]: cell rows + the last row's
+ * shadow row). Used by the incremental band-cache rebuild.
+ *
+ * Boundary care (the source of the destroyed-brick leftovers,
+ * known-bugs.md #1/#2): char row cr0 doubles as row r0-1's SHADOW row,
+ * and cr1 doubles as row r1+1's CELL row. The level_attrs base copy
+ * resurrects the captured LIVE look for both, so the destroyed-cell
+ * reset loop must extend one brick row beyond [r0, r1] on each side —
+ * with each attr write guarded to the base-copied range (rows outside
+ * it keep their current, already-correct values). Pixel edges interlock
+ * the same way (a brick writes its top/bottom edge one pixel row into
+ * the neighbouring cell row); the caller's window and the two edge
+ * fix-ups below keep those rows canonical. */
+static void render_brick_band_rows(unsigned char level_idx,
+                                   int r0, int r1, int cr0, int cr1) {
+    int cr;
+    const unsigned char *cells = live_level;
+    const unsigned char *lattr = &level_attrs[(int)level_idx * ATTR_BAND_SIZE];
+    unsigned char bg_attr = bg_attr_per_cycle[level_idx & 3];
+
+    if (level_idx >= N_LEVELS) return;
+
+    /* Base attrs for the recomposited char rows (ATTR_COLS == 32). */
+    memcpy(&attr_buff[cr0 * 32], &lattr[cr0 * ATTR_COLS],
+                (unsigned int)((cr1 - cr0 + 1) * 32));
+
+    reset_destroyed_cell_attrs(cells, bg_attr, r0, r1, cr0, cr1);
+
+    paint_brick_rows(cells, r0, r1);
+
+    repair_band_row_boundaries(cells, r0, r1);
 
     /* Border-shadow (left col-1 dim) for the recomposited char rows. */
     for (cr = cr0; cr <= cr1; cr++) attr_buff[cr * 32 + 1] &= 0xBF;

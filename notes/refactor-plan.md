@@ -48,7 +48,7 @@ happened, and `make test-video` caught it.
 | 3b | collision geometry/effects split | 166 | **done** — 7 more tests |
 | 4 | `assets` | 167 | **done** — 6 tests |
 | 5 | `bricks` — the compositor | 278 | **done** — 5 tests, byte-exact vs 15 captured screens |
-| 5b | level paint / band orchestration | ~310 | **started** — destroyed-cell reset + scene compose unified |
+| 5b | level paint / band orchestration | ~250 | **started** — destroyed-cell reset, scene compose and edge repairs named |
 | 6a | `objects` — the 22-byte descriptor + slots | 60 | **done** — 5 tests |
 | 6b-i | `weapons` — bullets + blasts | 95 | **done** — 6 tests |
 | 6b-ii | `enemies` — steering | 145 | **done** — 5 tests |
@@ -61,7 +61,7 @@ happened, and `make test-video` caught it.
 | 1a | `replay_parse` — the BATTY_REPLAY_* value formats | 75 | **done** — 7 tests |
 | 1 | replay / probe scaffolding | ~430 | **last** — see below |
 
-`main.cpp`: 7,746 → 6,891. 100 host tests + source gates, all via `make test-fast` in seconds.
+`main.cpp`: 7,746 → 6,909. 100 host tests + source gates, all via `make test-fast` in seconds.
 
 ### Stage 5b: one destroyed-cell reset, not two
 
@@ -511,6 +511,18 @@ to protect, violated three commits after naming it. Inert today, because
 the port's ball object handler is a stub, but `call_for_all_obj`
 dispatches on `sprite_set` and the probe dumps those objects. It uses
 the helper now.
+
+`repair_band_row_boundaries` grouped the four edge fix-ups the
+row-scoped repaint needs. A full ascending paint gets them for free —
+each row's print overwrites the previous row's edge bytes as it goes —
+so painting only `[r0, r1]` leaves the boundary rows holding whatever
+the bg repaint left. Getting that wrong is what known-bugs #1 and #2
+were.
+
+Their comments are numbered 1, 4, 3, 2: the order they were FOUND, not
+the order they run. That is now said out loud, since the sequence is
+load-bearing (each later repair overwrites part of an earlier one's
+output) and the numbering suggests otherwise.
 
 `render_brick_effects_and_mark` collected the brick band's transients —
 the destruction marker and the multi-hit animations. Neither draws
