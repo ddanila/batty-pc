@@ -112,11 +112,32 @@ per-slot for the same class of reason: with two players the 2UP score
 changes while `player` does not, so a cache keyed on the active player
 would show a stale number.
 
-Nothing moves `active_player` off 0, so behaviour is byte-identical and
-all 61 QEMU gates are unchanged. `test-two-player-state` holds it: no
-screendump can tell a literal `0` from `players[1].score` in a 1-player
-game. Remaining stages: the swap on life loss, per-player level/round
-state, and the menu's mode-2 dispatch.
+**Stage 2 done (2026-08-09): per-player progress.** `round_number` and
+the level index are now `players[active_player]` fields. The original's
+per-player block is eight bytes at `lives_1up`, exchanged wholesale by
+`players_swap`:
+
+    +0  lives
+    +1  briks_quantity        bricks left on THAT player's level
+    +2  current_level_number  0..14
+    +3  round_number          may exceed 15; the level wraps, this does not
+    +4..6 current_score       three BCD cells
+    +7  ctrl_type             the input device, PER PLAYER
+
+so a player resumes their own round and level rather than a shared one.
+That last byte is also the answer to where WS1's device selection
+belongs: `p1_dev`/`p2_dev` are the menu's copy of `ctrl_type`.
+
+Nothing moves `active_player` off 0 through either stage, so behaviour
+is byte-identical and all 61 QEMU gates are unchanged.
+`test-two-player-state` holds both: no screendump can tell a literal `0`
+from `players[1].score` in a 1-player game, nor a per-player counter
+from a global while there is one player.
+
+Remaining stages: `briks_quantity` per player (it needs the level-reset
+question answered first — the original stores only the COUNT, so what a
+returning player's grid looks like is not yet established), the swap on
+life loss, and the menu's mode-2 dispatch.
 
 **What:** Classic turn-taking (research-confirmed: on the Spectrum,
 2 PLAYERS alternates turns, unlike the C64 version). Per-player state

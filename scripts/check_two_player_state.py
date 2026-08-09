@@ -29,6 +29,19 @@ What it pins:
     2UP score changes while `player` does not, and the HUD would keep
     showing a stale number.
   - `new_game_reset` clears BOTH players, as `game_restart` does.
+  - the round and level counters live in `PlayerState`, because the
+    original keeps them in the eight-byte block `players_swap`
+    exchanges — each player resumes their own round and level.
+
+### The 1UP slot really does mean player 1
+
+`players_swap` swaps the two score blocks in memory rather than
+indexing, which looks at first like the 1UP position would show whoever
+is currently playing. It does not: the block starts with the SCREEN
+ADDRESS of its own slot ($0F00 for 1UP, $0FD0 for 2UP) and the swap
+covers `B=$0A` — 2 address + 2 rudiment + 6 digits. The address travels
+with the digits, so each player keeps their own position on screen.
+Checked because this gate asserts it.
 """
 
 from __future__ import annotations
@@ -118,6 +131,30 @@ def main() -> int:
             "resetting only the active player lets a 2-player game inherit "
             "the previous game's 2UP score.")
     print("PASS new_game_reset_both: both players cleared, turn back to 1UP")
+
+    # The round/level counters belong to the player, not the machine.
+    for field in ("level_number", "round_number"):
+        if f"unsigned char {field};" not in "".join(
+                l for l in struct.split("\n")):
+            raise SystemExit(
+                f"FAIL: PlayerState has no {field}. The original's "
+                f"per-player block at lives_1up carries lives, "
+                f"briks_quantity, current_level_number, round_number, the "
+                f"score and ctrl_type, and players_swap exchanges all eight "
+                f"bytes — so each player resumes their OWN round and level.")
+    for macro, target in (("round_number", "players[active_player].round_number"),
+                          ("current_level_idx_var",
+                           "players[active_player].level_number")):
+        if f"#define {macro}" not in code:
+            raise SystemExit(f"FAIL: {macro} is no longer the active "
+                             f"player's; it went back to being one global "
+                             f"shared by both players.")
+        line = [l for l in code.split("\n") if l.startswith(f"#define {macro}")][0]
+        if "".join(target.split()) not in "".join(line.split()):
+            raise SystemExit(f"FAIL: {macro} maps to `{line}`, expected "
+                             f"`{target}`")
+    print("PASS per_player_progress: round and level are the active "
+          "player's")
     return 0
 
 

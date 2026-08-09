@@ -622,8 +622,25 @@ struct PlayerState {
     unsigned long score;
     int           lives;
     unsigned char live_adds_awarded;
+    /* The original's per-player block is eight bytes at `lives_1up`,
+     * and `players_swap` exchanges it wholesale with `lives_2up`:
+     *
+     *   +0  lives
+     *   +1  briks_quantity        bricks left on THAT player's level
+     *   +2  current_level_number  0..14
+     *   +3  round_number          may exceed 15; the level wraps, this
+     *                             does not
+     *   +4..6 current_score       three BCD cells
+     *   +7  ctrl_type             the input device, PER PLAYER
+     *
+     * So a player resumes their own round and level, not a shared one.
+     * `ctrl_type` living here is also the answer to where WS1's device
+     * selection belongs — `p1_dev`/`p2_dev` are the menu's copy of it. */
+    unsigned char level_number;
+    unsigned char round_number;
 };
-static PlayerState players[2] = {{0, LIVES_INIT, 0}, {0, LIVES_INIT, 0}};
+static PlayerState players[2] = {{0, LIVES_INIT, 0, 0, 0},
+                                {0, LIVES_INIT, 0, 0, 0}};
 
 /* Whose turn it is: 0 = 1UP, 1 = 2UP. Modes 2 and 3 are not wired yet
  * (PLAN.md WS2/WS3), so nothing moves this off 0 and every gate sees
@@ -631,9 +648,17 @@ static PlayerState players[2] = {{0, LIVES_INIT, 0}, {0, LIVES_INIT, 0}};
  * rather than printing a literal zero into the 2UP slot. */
 static unsigned char active_player = 0;
 
-/* Reads as it always did. Token-based, so `player_codes` and
- * `players_swap` are untouched. */
-#define player players[active_player]
+/* Read as they always did. Token-based, so `player_codes` and
+ * `players_swap` are untouched.
+ *
+ * round_number and the level index are the active player's because the
+ * original keeps them in the per-player block players_swap exchanges —
+ * each player resumes their own round and level, not a shared one.
+ * Nothing swaps yet (WS2 stage 3), so active_player stays 0 and every
+ * value is exactly what it was. */
+#define player                players[active_player]
+#define round_number          players[active_player].round_number
+#define current_level_idx_var players[active_player].level_number
 
 static unsigned long high_score = 0;
 
@@ -804,7 +829,6 @@ static unsigned int rng_sample(void);   /* defined later; used by enemy steering
 static volatile unsigned long pit_frame_counter;
 static unsigned char random_hi(unsigned int r) { return (unsigned char)(r >> 8); }
 static unsigned char random_lo(unsigned int r) { return (unsigned char)r; }
-extern unsigned char round_number;
 /* Ball speed model (handling_ball LA27E_22 / get_bonus LA67B_7):
  * the original ball ACCELERATES over a level. A per-ball counter
  * (object+$13) increments when (counter_misc & 7) == 0 — every 8
@@ -3793,11 +3817,8 @@ static const unsigned char prop_uneven[6] = { 0x09, 0xF0, 0x70, 0x18, 0x0C, 0x01
 static const unsigned char prop_even[6]   = { 0x08, 0x60, 0x90, 0x18, 0x10, 0x01 };
 static const unsigned char prop_x_coord[4]= { 0x40, 0xA8, 0x40, 0xA8 };
 
-unsigned char round_number = 0;              /* current round counter */
 static void play_bat_explosion(unsigned char level_idx);   /* forward */
 static void respawn_primary_ball(void);                     /* forward */
-static unsigned char current_level_idx_var;  /* set by run_level so
-                                              * enemy_prepare can read it */
 
 static unsigned int replay_probe_screen_addr_for_brick(int col, int row) {
     unsigned int x = 8u + (unsigned int)col * 16u;
