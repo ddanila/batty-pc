@@ -62,13 +62,22 @@ why the disassembly says of each pair "следующие два спрайта 
 строго друг за другом", these two sprites must come strictly one after
 the other.
 
-### Scope
+### Scope: all of it
 
-y 0..7 across all 32 byte-columns (256/cycle) and the two 1-byte side
-columns over y 24..191 (336/cycle): **2368 of `frame_l1.bin`'s 4416,
-53.6%** — the whole ornament. Plus the 1110 attribute cells in
-`level_attrs.bin` that those sprites' attr blocks produce, over all 15
-levels.
+The 24-row top block is GENERATED — background texture, the seventh side
+placement, `LBE8B_2`'s first inner-outline band, the eight top sprites,
+then the addon strip, in `LBE8B`'s order — and compared whole:
+3072 bytes. The side strips add 1344. That is **every byte of
+`frame_l1.bin`**, all four cycles, from the tape.
+
+Plus the 1110 attribute cells in `level_attrs.bin` those sprites' attr
+blocks produce, over all 15 levels.
+
+Checking the pieces separately reached 2986 of 3072 and left a residue
+in byte columns 1 and 30. The missing piece was ORDERING, not data:
+`LBE8B_2`'s band runs BEFORE the top border, which then overwrites rows
+0..7 of what it did. A generator gets that for free; a predicate over
+positions cannot.
 
 The rest of that blob is not frame work at all. `extract_frame.py`'s own
 comment says so: of its 24 top pixel rows, y 0..7 are the ornament and
@@ -168,34 +177,82 @@ def main() -> int:
                          f"multiple of {N_CYCLES} cycles")
     per = len(frame) // N_CYCLES
 
-    checked = 0
     bad = []
-    for cyc in range(N_CYCLES):
-        x_byte = 0
-        for name, (w, h, px) in zip(SEQUENCE, sprites):
-            for row in range(h):
-                y = BASE_Y - row               # print_sprite_pix goes UP
-                for bx in range(w):
-                    want = px[row * w + bx]
-                    got = frame[cyc * per + y * 32 + x_byte + bx]
-                    checked += 1
-                    if got != want:
-                        bad.append((cyc, name, row, bx, want, got))
-            x_byte += w
 
-    if bad:
-        print(f"FAIL: {len(bad)} of {checked} top-strip bytes do not match "
-              f"the tape's sprites.\n")
-        for cyc, name, row, bx, want, got in bad[:12]:
-            print(f"  cycle {cyc} {name} row {row} byte {bx}: "
-                  f"want {want:02X} got {got:02X}")
-        if len(bad) > 12:
-            print(f"  ... and {len(bad) - 12} more")
-        print("\nEither set_border_horizontal's order changed, or "
-              "frame_l1.bin was re-extracted from a different capture. "
-              "Note the rows go UPWARD from y=$07 — laying them out "
-              "top-down matches 58 of 256.")
-        return 1
+    # --- GENERATE the whole 24-row top block --------------------------
+    # LBE8B's passes, in its order. Piecewise checks got this to
+    # 2986/3072 and left a residue in byte columns 1 and 30; generating
+    # the block instead closes it, because the missing piece was an
+    # ORDERING one — see the inner-border band below.
+    bold_l, bold_r = block(asm, "6B3F"), block(asm, "6B67")
+    thin_l, thin_r = block(asm, "6B8F"), block(asm, "6BAE")
+    addon_m = re.search(r"border_horizontal_addon:\n((?:\s*DEFB[^\n]*\n)+)",
+                        ASM.read_text())
+    if not addon_m:
+        raise SystemExit("FAIL: border_horizontal_addon is not in batty.asm")
+    addon = [int(h, 16)
+             for h in re.findall(r"\$([0-9A-Fa-f]{2})", addon_m.group(1))]
+    if len(addon) != 30:
+        raise SystemExit(f"FAIL: border_horizontal_addon is {len(addon)} "
+                         f"bytes, expected the $1E the loop counts")
+    tile = TILE.read_bytes()
+    tsz = len(tile) // N_CYCLES
+
+    checked = 0
+    for cyc in range(N_CYCLES):
+        t = tile[cyc * tsz:(cyc + 1) * tsz]
+        buf = bytearray(24 * 32)
+
+        # 1. the level's background texture, which LBE8B paints first
+        for y in range(24):
+            ty = (y & 15) * 2
+            t0, t1 = t[ty], t[ty + 1]
+            for bx in range(32):
+                buf[y * 32 + bx] = t0 if bx % 2 == 0 else t1
+
+        # 2. LBE8B_1's SEVENTH side placement, bold from y=$17. The
+        #    other six live below this block; this one fills the sides
+        #    of the HUD band.
+        for r in range(bold_l[1]):
+            y = 0x17 - r
+            if 0 <= y < 24:
+                buf[y * 32 + 0] = bold_l[2 + r]
+                buf[y * 32 + 31] = bold_r[2 + r]
+
+        # 3. LBE8B_2's FIRST inner-outline band. The loop runs A=$04
+        #    bands of 28 rows, 56 rows apart; the port's
+        #    inner_border_line_c has only the lower THREE (y0 = 50, 106,
+        #    162) because this one's effect is already baked into
+        #    frame_l1.bin. It starts 56 rows above 50, i.e. y=-6, so
+        #    rows 0..21 of this block get bit 7 of byte 1 and bit 0 of
+        #    byte 30 cleared.
+        #
+        #    Order matters and is the whole reason the piecewise version
+        #    fell short: this runs BEFORE the top border, which then
+        #    overwrites rows 0..7.
+        for y in range(0, 22):
+            buf[y * 32 + 1] &= 0x7F
+            buf[y * 32 + 30] &= 0xFE
+
+        # 4. the top border, eight sprites drawn UPWARD from y=$07
+        x = 0
+        for name in SEQUENCE:
+            w, h, px = sprite(asm, name)
+            for r in range(h):
+                y = BASE_Y - r
+                for bx in range(w):
+                    buf[y * 32 + x + bx] = px[r * w + bx]
+            x += w
+
+        # 5. border_horizontal_addon, ANDed into row 8 bytes 1..30
+        for i in range(30):
+            buf[8 * 32 + 1 + i] &= addon[i]
+
+        for k in range(24 * 32):
+            checked += 1
+            if buf[k] != frame[cyc * per + k]:
+                bad.append((cyc, "top block", k // 32, k % 32,
+                            buf[k], frame[cyc * per + k]))
 
     # --- the side strips ---------------------------------------------
     # extract_frame.py's layout, per cycle, since the attrs were
@@ -211,8 +268,6 @@ def main() -> int:
             f"{TOP_PX + 2 * SIDE_PX} (24 top rows + two 168-row side "
             f"columns, pixels only). If the layout changed, update this "
             f"gate and extract_frame.py together.")
-    bold_l, bold_r = block(asm, "6B3F"), block(asm, "6B67")
-    thin_l, thin_r = block(asm, "6B8F"), block(asm, "6BAE")
     # LBE8B_1: bold from y=$BF, thin from y=$9F, each -56 per turn.
     placements = []
     y_bold, y_thin = 0xBF, 0x9F
@@ -264,59 +319,6 @@ def main() -> int:
         aw, ah = rest[0], rest[1]
         return aw, ah, rest[2:2 + aw * ah]
 
-    # --- the HUD rows are ornament too -------------------------------
-    # frame_l1.bin's top block is 24 rows, and rows 8..23 are NOT just
-    # the HUD's background: byte columns 0 and 31 carry the side
-    # ornament down to y=8. That is LBE8B_1's SEVENTH placement — bold
-    # from y=$17 — which the first version of this gate skipped as
-    # "runs off the top and is covered by the top border". It is not
-    # covered; it fills the sides of the HUD band.
-    #
-    # Measured the hard way: blitting only rows 0..7 and letting the
-    # background show through moved 345 pixels in test-visual's
-    # state4_level1, which is pixel-identical otherwise.
-    hud_checked = 0
-    for cyc in range(N_CYCLES):
-        for r in range(bold_l[1]):
-            y = 0x17 - r
-            if not (8 <= y <= 23):
-                continue
-            for col, spr in ((0, bold_l), (31, bold_r)):
-                want = spr[2 + r]
-                got = frame[cyc * per + y * 32 + col]
-                hud_checked += 1
-                if got != want:
-                    bad.append((cyc, "hud-side", r, y, want, got))
-
-    # --- border_horizontal_addon -------------------------------------
-    # LBE8B's last pixel pass ANDs a 30-byte strip into scr_buff+$101,
-    # which is row 8, bytes 1..30 — an inner outline one pixel thick
-    # under the top border. AND, not copy, so the background shows
-    # through wherever the strip has a 1 bit.
-    addon_m = re.search(r"border_horizontal_addon:\n((?:\s*DEFB[^\n]*\n)+)",
-                        ASM.read_text())
-    if not addon_m:
-        raise SystemExit("FAIL: border_horizontal_addon is not in batty.asm")
-    addon = [int(h, 16)
-             for h in re.findall(r"\$([0-9A-Fa-f]{2})", addon_m.group(1))]
-    if len(addon) != 30:
-        raise SystemExit(f"FAIL: border_horizontal_addon is {len(addon)} "
-                         f"bytes, expected the $1E the loop counts")
-    tile = TILE.read_bytes()
-    tsz = len(tile) // N_CYCLES
-    addon_checked = 0
-    for cyc in range(N_CYCLES):
-        t = tile[cyc * tsz:(cyc + 1) * tsz]
-        t0, t1 = t[(8 & 15) * 2], t[(8 & 15) * 2 + 1]
-        for i in range(30):
-            bx = 1 + i
-            bg = t0 if bx % 2 == 0 else t1
-            want = addon[i] & bg
-            got = frame[cyc * per + 8 * 32 + bx]
-            addon_checked += 1
-            if got != want:
-                bad.append((cyc, "addon", 8, bx, want, got))
-
     # --- the attrs the PORT actually uses --------------------------
     # paint_frame_to_buff takes its pixels from frame_l1.bin but its
     # ATTRS from level_attrs.bin — all three paint_strip_to_buff calls
@@ -364,11 +366,10 @@ def main() -> int:
                   f"want {want:02X} got {got:02X}")
         return 1
 
-    total = checked + side_checked + hud_checked + addon_checked + used_checked
+    total = checked + side_checked + used_checked
     print(f"PASS frame_derivable: all {total} frame bytes "
-          f"({checked} top px + {side_checked} side px + "
-          f"{hud_checked} HUD-band side px + {addon_checked} addon px + "
-          f"{used_checked} level_attrs cells over "
+          f"({checked} generated top-block px + {side_checked} side px "
+          f"+ {used_checked} level_attrs cells over "
           f"{N_LEVELS} levels) are set_border_horizontal and the "
           f"bold/thin side pair, drawn upward")
     return 0

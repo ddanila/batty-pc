@@ -568,13 +568,28 @@ original artifact:
    a one-pixel inner outline. AND, not copy, so the background shows
    through. Verified against `bg_tile.bin`.
 
-   Generating the whole 24-row top block from background + sides + top
-   border + addon reaches **2986 of 3072**. The residue sits in byte
-   columns 1 and 30, which is `LBE8B_2`'s inner-outline pass
-   (`RES 7,(HL)` left, `RES 0,(HL)` right, 4 bands of 28 rows) — the one
-   piece of the ornament still unmodelled.
+   *Closed 2026-08-09: every byte of `frame_l1.bin` now derives.* The
+   last residue was `LBE8B_2`'s inner-outline pass. It runs **four**
+   bands of 28 rows, 56 apart; the port's `inner_border_line_c` has only
+   the lower three (y0 = 50, 106, 162) because the first one's effect is
+   already baked into the blob. It starts 56 rows above 50 — y=-6 — so
+   it clears bit 7 of byte 1 and bit 0 of byte 30 across rows 0..21.
 
-   `test-frame-derivable` holds 3726 bytes across the two blobs.
+   And the reason piecewise checking could not find it: **ordering**.
+   That band runs BEFORE the top border, which then overwrites rows
+   0..7 of what it did. A generator gets that for free; a predicate over
+   positions cannot. Same lesson as the brick zone's empty cells, in the
+   same week.
+
+   `test-frame-derivable` now GENERATES the 24-row top block —
+   background, seventh side placement, inner-outline band, eight top
+   sprites, addon strip, in LBE8B's order — and compares it whole:
+   3072 + 1344 side + 1110 `level_attrs` cells = 5526 bytes.
+
+   **Nothing is left to discover for this item.** What remains is the
+   port itself: extract the sprites at `$6B17..` as an asset, write the
+   upward unmasked blit, and generate the frame at level entry instead
+   of loading `frame_l1.bin`.
 2. **`level_attrs.bin` residue** — brick-body attrs are already
    computed; port the writer for frame-strip columns and pre-dimmed
    shadow attrs. This is also the root of the accepted 4px frame-step
