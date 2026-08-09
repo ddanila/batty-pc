@@ -257,8 +257,29 @@ So the base band's brick colours and its border shadow are both dead
 weight in the generated array. What is NOT redundant is the frame's
 columns 0/31 and row 0, which `paint_frame_to_buff` reads directly.
 
-Worth measuring next: fill `level_attrs[]` with nothing but `bg_attr`
-plus the frame cells and see whether all 15 levels still match. If they
-do, the whole 11 KB array collapses to a handful of per-cycle values and
-the frame attrs — and `paint_brick_band`'s opening `memcpy` goes with
-it.
+### Measured (2026-08-09): the brick pass goes, the shadow stays
+
+Three builds, all 15 levels each:
+
+| generator | result |
+|---|---|
+| bg + frame attrs only | **FAIL** — L01 off by 1696 px, L03 by 1608 |
+| bg + frame attrs + border shadow | **all 15 pixel-identical** |
+| the above + `paint_bricks` | all 15 pixel-identical |
+
+So the brick colours are redundant and the border shadow is not. The
+base band is the EMPTY playfield's attributes; the port repaints live
+bricks at every level entry through `paint_brick_band`, which is why
+dropping the pass changes nothing.
+
+That also makes `reset_destroyed_cell_attrs`' name half-wrong now. Its
+reset half — clearing brick colour out of cells whose brick is gone — is
+a no-op against a band that never had brick colour. Its SHADOW half
+still earns its keep: a destroyed cell's left char goes non-bright when
+its left neighbour is live, and nothing else writes that. `bricks.h`
+says so.
+
+The array itself has not collapsed: `paint_frame_to_buff` reads char
+rows 0..2 across all 32 columns and rows 3..23's columns 0 and 31, and
+`paint_brick_band` re-bases rows 3..16 so the `$C0` sentinel cells keep
+their background. What HAS gone is any dependence on a capture.

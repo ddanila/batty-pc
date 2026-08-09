@@ -661,15 +661,18 @@ original artifact:
    (`test-levels-sweep` runs `test-visual`'s now-asserting
    `state4_level1` per level).
 
-   Two mutations of the generator SURVIVE, and they are equivalent
-   mutants rather than a coverage gap: dropping the brick attrs, and
-   shortening the border-shadow column. `paint_brick_band` calls
-   `paint_bricks` again at every level entry and
-   `render_brick_band_rows` re-applies `dim_border_shadow_column`, so
-   the runtime passes rebuild both. Which raises a real question worth
-   measuring: **how much of the generated band is redundant with the
-   runtime passes?** Possibly all of it except the frame columns, in
-   which case the whole array could go.
+   The brick pass turned out to be redundant and was removed after
+   measuring: bg + frame attrs alone FAILS (L01 off by 1696 px), adding
+   the border shadow makes all 15 levels pixel-identical, and adding
+   `paint_bricks` on top changes nothing — the port repaints live bricks
+   at every level entry. So the generated band is the EMPTY playfield's
+   attributes, and `reset_destroyed_cell_attrs`' reset half is now a
+   no-op (its shadow half still earns its keep; `bricks.h` says so).
+
+   The array itself stays: `paint_frame_to_buff` reads char rows 0..2 in
+   full and rows 3..23's columns 0/31, and `paint_brick_band` re-bases
+   rows 3..16 so the `$C0` sentinel cells keep their background. What has
+   gone is any dependence on a capture.
 3. ~~**Menu / hi-score screens**~~ — **already done, and the entry was
    wrong** (checked 2026-08-09). `render_menu_screen` and
    `render_hiscore_screen` build both screens from `MENUMARK.BIN` /

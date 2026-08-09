@@ -49,10 +49,17 @@ int bricks_live_count(const u8 *cells);
 /* Paint every standing brick in `cells` into scr_buff / attr_buff. */
 void paint_bricks(const u8 *cells);
 
-/* level_attrs.bin was captured with every brick alive, so it still
- * carries brick colour in cells whose brick is now destroyed. Reset
- * those to the band background across char rows [cr0, cr1] — the rows
- * the caller just re-based from level_attrs.
+/* Reset destroyed cells to the band background across char rows
+ * [cr0, cr1] — the rows the caller just re-based from level_attrs.
+ *
+ * The base band used to be a capture taken with every brick ALIVE, so
+ * it carried brick colour in cells whose brick is now gone, and this
+ * routine's job was to clear that. Since 2026-08-09 the band is
+ * generated and carries no brick colour at all — the port repaints live
+ * bricks every entry — so the reset half is a no-op. What still earns
+ * its keep is the SHADOW half below: a destroyed cell's left char goes
+ * non-bright when its left neighbour is still live, and nothing else
+ * writes that.
  *
  * The row scan runs one brick row beyond [r0, r1] on each side, because
  * cr0 doubles as row r0-1's shadow row and cr1 as row r1+1's cell row.

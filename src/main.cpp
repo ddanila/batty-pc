@@ -1535,8 +1535,9 @@ static void build_frame_from_sprites(void) {
  *   4. print_border_shadow last, which is what makes column 1 and row 1
  *      non-bright
  *
- * paint_bricks writes scr_buff too; harmless here, nothing has been
- * drawn yet. */
+ * The brick colours the original's band carries are deliberately NOT
+ * reproduced: the port repaints them at every level entry. See the
+ * comment on step 3. */
 static const unsigned char *border_attrs(unsigned int off, int *aw, int *ah) {
     const unsigned int after_px = off + 2u
         + (unsigned int)border_spr[off] * (unsigned int)border_spr[off + 1];
@@ -1582,8 +1583,17 @@ static void build_level_attrs_from_data(void) {
             if (bold) y_bold -= 56; else y_thin -= 56;
         }
 
-        /* 3. every brick alive, with brik_shadow interleaved */
-        paint_bricks(&levels[(int)lvl * LVL_CELLS]);
+        /* 3. NO brick pass. The original's band is the "every brick
+         *    alive" state and the capture recorded it that way, but the
+         *    port repaints it: paint_brick_band calls paint_bricks at
+         *    every level entry, which writes each live brick's colour
+         *    and its shadow row over whatever the base held.
+         *
+         *    Measured, not assumed — dropping this leaves all 15 levels
+         *    pixel-identical, while dropping the border shadow below
+         *    breaks L01 by 1696 pixels. So the base band is the EMPTY
+         *    playfield's attributes, and saying so here is worth more
+         *    than a paint_bricks call whose output is overwritten. */
 
         /* 4. print_border_shadow ($BFCF), last */
         for (cr = 1; cr <= 23; cr++) attr_buff[cr * 32 + 1] &= 0xBF;
