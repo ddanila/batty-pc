@@ -382,7 +382,54 @@ the L3 state gives `HL = $0000`, so the Z branch is taken and `LAFFC`
 IS called. Without that check the grid result would have been about a
 code path that cannot damage bricks anyway.
 
-#### An open puzzle: dir $00 moved the alien UP
+#### What LAFFC does for the BIRD — traced in full
+
+The port's remaining enemy gap is `CALL LAFFC`. What it does depends
+entirely on WHO called it, and `LAFFC_30` — the on-hit path — says so:
+
+    LAFFC_30:
+      LD A,$01 / LD (flag_2),A     ; "something was hit"
+      LD A,(IX+$00) / AND $7F
+      CP $02 / JR Z,LAFFC_32       ; sprite_set $02 = BALL   -> destroy path
+      CP $05 / JR Z,LAFFC_31       ; sprite_set $05 = BULLET -> its own path
+      AND $FE / CP $08 / RET NZ    ; $08/$09 = bird/UFO -> on; else RET
+      LD L,(IX+$02)                ; enemy x
+      LD H,(IX+$04)                ; enemy y
+      LD (LAA7B),HL
+
+An alien that hits a brick does NOT take the ball's destroy-and-score
+path — that is `LAFFC_32`, reached only for `sprite_set $02`. This is
+the MECHANISM behind the grid capture showing no cell changing, rather
+than a coincidence of that scenario.
+
+Instead the enemy's own position is written to `LAA7B` — the same word
+`handling_bird` tests at its top:
+
+    LD HL,(LAA7B) / LD A,H / AND A / JR Z,LA9BC_1
+
+`H` is the stored Y, so once it is non-zero the bird stops running the
+steer/move/LAFFC path and takes `LAA44`, the homing routine that walks
+`(IX+$02)` toward `L`. A brick hit switches the alien into another mode
+entirely.
+
+There is a second response: `handling_bird`'s tail reads `flag_2` and,
+if set, `JP LAA7D_1` —
+
+    LD A,(random_number) / AND $3F / LD (IX+$14),A
+
+a random re-target.
+
+**The port implements none of this.** `handling_bird_obj` runs no brick
+collision, so an alien crosses the band unaffected. A faithful port
+needs the hit DETECTION (the sweep, without `brick_hit_resolve`), the
+`LAA7B` latch, the `LAA44` homing branch, the `flag_2` re-target, and
+`LAFFC`'s entry guard — which returns unless the object's y is inside
+the band (`y < $80`, and `y + height >= $20`).
+
+This also explains the earlier `LAA7B = $0000` reading: no brick had
+been hit in that capture, so the homing branch was correctly not taken.
+
+#### RESOLVED: dir $00 moving the alien UP was my own setup
 
 In the same capture, with `dir` poked to `$00` and the target pinned to
 `$00`, the alien moved UPWARD (y 40 -> 28) while x barely changed.

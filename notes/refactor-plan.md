@@ -569,6 +569,37 @@ removed when they were added; a multiset diff confirmed zero lines
 lost.
 
 
+#### The new tool paid for itself in one sitting
+
+Used `disasm.py` on the last enemy gap — what `CALL LAFFC` does for the
+bird — and it turned out to depend entirely on WHO called it:
+
+    LAFFC_30:                      ; the on-hit path
+      LD (flag_2),A                ; "something was hit"
+      LD A,(IX+$00) / AND $7F
+      CP $02 / JR Z,LAFFC_32       ; BALL   -> destroy and score
+      CP $05 / JR Z,LAFFC_31       ; BULLET -> its own path
+      AND $FE / CP $08 / RET NZ    ; bird/UFO -> on; anything else RET
+      LD L,(IX+$02) / LD H,(IX+$04) / LD (LAA7B),HL
+
+So the alien never reaches the destroy path — that is `sprite_set $02`
+only. That is the MECHANISM behind last week's grid capture showing no
+cell changing, where before I had only the observation.
+
+What it does instead is latch its own position into `LAA7B`, which is
+the word `handling_bird` tests at its top to divert onto `LAA44`, the
+homing routine. A brick hit puts the alien into a different mode. And
+the tail re-targets randomly off `flag_2`.
+
+The port implements none of it. So the last enemy gap is now specified
+down to the branch: hit DETECTION without `brick_hit_resolve`, the
+`LAA7B` latch, the `LAA44` branch, the `flag_2` re-target, and LAFFC's
+band guard.
+
+Three greps, no emulator. The tool was written to make tracing cheaper
+than guessing and the first thing it produced was the answer to a
+question two captures had only circled.
+
 #### Making the disassembly cheaper to reach than a guess
 
 Three of my hypotheses died on `original/disasm/batty.asm` in a week, and
