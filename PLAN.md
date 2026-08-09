@@ -18,7 +18,7 @@ The port is "100%" when all of the following hold:
 | 2 | Menu semantics match the original (0 starts the selected game directly; A/B input-device cycling affects play) | Key 0 starts the game (`test-menu-start`); the device byte is per-player state but still selects nothing |
 | 3 | Core gameplay byte-exact where an oracle exists (ball, bat, collision, RNG, enemy, bonuses, scoring) | **Done** — regression-locked by 89 gates |
 | 4 | Full game FLOW gated end-to-end: level-clear → next, life-loss → respawn, game-over → initials, level wrap | **Done** — `test-level-advance`, `test-life-loss`, `test-game-over-visual`, `test-name-entry-visual` |
-| 5 | Sound faithful to the original's 5-slot beeper queue (envelope/timing, not just effect IDs) | PIT-tone approximation; the ids and slot count match, the envelopes are shapes |
+| 5 | Sound faithful to the original's 5-slot beeper queue (envelope/timing, not just effect IDs) | ids, slot count and PITCHES faithful; every effect lasts 20 ms because the sound clock is the 50 Hz frame counter |
 | 6 | All assets derived from the tape at build time; no captured emulator blobs | **Done** — all 13 loaded assets build from `original/blocks/`, held by `test-asset-provenance` |
 | 7 | Runs correctly on real-hardware-representative targets (XT-class + 386) | QEMU + 86Box `ibmxt` verified; real iron untested |
 | 8 | Historical completeness: Kinnock easter egg, pause semantics, hi-score behaviour | **Done** — pause, hi-score, and the easter egg (`BATTY_KINNOCK=1`) |
@@ -437,6 +437,27 @@ port one.
 the routine table directly — a wrong one plays a different effect, and
 one past the end jumps into whatever follows. `test-sound-ids` now
 checks each `SND_*` against its namesake's position.
+
+**And the remaining gap is one thing, not thirteen.** `src/sound.cpp`
+already carries the original's `(D, E)` pairs verbatim with citations,
+and converts E to a PIT divisor honestly
+(`period = 8.86 * E -> 9 * E`). What it drops is D:
+
+    void sound_beep_cont_d(unsigned char d, unsigned char e) {
+        (void)d;
+        sound_beep_e(e);
+    }
+
+`sound_beep_e` starts the tone for one tick, and a tick is a 50 Hz PIT
+frame — so every effect lasts **20 ms** against the original's 3-9 ms
+(`normall_brik` 4.04, `bat_beat` 3.03, `metal_brik` 8.56). The pitches
+are right; the durations are all ~5x too long, from one cause.
+
+That is not a one-line fix: 20 ms is the port's finest unit and the
+original's envelopes are sub-frame. WS5 is therefore a timing-
+infrastructure change — a finer clock, or a speaker driver that can
+schedule a stop between frames — not a table of constants. Decode and
+verified examples in notes/sound.md.
 
 `SND_MAGNET` is the exception and stays outside the table: the original
 never queues it. `magnets.asm` ends its draw with a plain
