@@ -52,6 +52,20 @@ const u8 SND_MAGNET       = 0x0D;
  * monotonic in a test. Must be set before the first sound. */
 void sound_set_clock(unsigned long (*now)());
 
+/* How many clock ticks make a second — the rate of the function above.
+ * Defaults to 50, the game's PIT frame counter.
+ *
+ * It exists so DURATION can be expressed at all. The original's
+ * envelopes are `D` square-wave cycles of half-period `E`, which is
+ * `D * 2 * E * 13` T-states at 3.5 MHz — 3 to 9 ms for the effects
+ * measured (notes/sound.md). At 50 Hz every one of those rounds to a
+ * single tick of 20 ms, so the port holds each note about five times
+ * too long. That is the whole of WS5's remaining gap.
+ *
+ * Setting a finer rate here is what fixes it; the envelope arithmetic
+ * below already computes the real duration and converts through this. */
+void sound_set_clock_hz(unsigned long hz);
+
 /* One envelope — the magnet zip — is noise and consumes the game's RNG.
  * Injected so a test's sequence is its own. */
 void sound_set_random(u8 (*source)());

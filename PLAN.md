@@ -18,7 +18,7 @@ The port is "100%" when all of the following hold:
 | 2 | Menu semantics match the original (0 starts the selected game directly; A/B input-device cycling affects play) | Key 0 starts the game (`test-menu-start`); the device byte is per-player state but still selects nothing |
 | 3 | Core gameplay byte-exact where an oracle exists (ball, bat, collision, RNG, enemy, bonuses, scoring) | **Done** — regression-locked by 90 gates |
 | 4 | Full game FLOW gated end-to-end: level-clear → next, life-loss → respawn, game-over → initials, level wrap | **Done** — `test-level-advance`, `test-life-loss`, `test-game-over-visual`, `test-name-entry-visual` |
-| 5 | Sound faithful to the original's 5-slot beeper queue (envelope/timing, not just effect IDs) | ids, slot count and PITCHES faithful; every effect lasts 20 ms because the sound clock is the 50 Hz frame counter |
+| 5 | Sound faithful to the original's 5-slot beeper queue (envelope/timing, not just effect IDs) | ids, slot count, pitches and envelope ARITHMETIC faithful; durations still round to 20 ms because the sound clock is the 50 Hz frame counter |
 | 6 | All assets derived from the tape at build time; no captured emulator blobs | **Done** — all 13 loaded assets build from `original/blocks/`, held by `test-asset-provenance` |
 | 7 | Runs correctly on real-hardware-representative targets (XT-class + 386) | QEMU + 86Box `ibmxt` verified; real iron untested |
 | 8 | Historical completeness: Kinnock easter egg, pause semantics, hi-score behaviour | **Done** — pause, hi-score, and the easter egg (`BATTY_KINNOCK=1`) |
@@ -453,11 +453,16 @@ frame — so every effect lasts **20 ms** against the original's 3-9 ms
 (`normall_brik` 4.04, `bat_beat` 3.03, `metal_brik` 8.56). The pitches
 are right; the durations are all ~5x too long, from one cause.
 
-That is not a one-line fix: 20 ms is the port's finest unit and the
-original's envelopes are sub-frame. WS5 is therefore a timing-
-infrastructure change — a finer clock, or a speaker driver that can
-schedule a stop between frames — not a table of constants. Decode and
-verified examples in notes/sound.md.
+**Half of that is now fixed.** `sound_beep_cont_d` computes the real
+duration — `D * 2 * E * 13` T-states through `sound_set_clock_hz` — and
+a host test drives the module at a microsecond clock to pin the three
+measured envelopes. What still rounds them to 20 ms is the clock rate,
+not the model, and the same test asserts that floor so it cannot be
+believed fixed while it is not.
+
+What remains is therefore narrow: give `sound_set_clock_hz` something
+finer than the 50 Hz frame counter, and a speaker driver that can stop a
+note between frames. Decode and verified examples in notes/sound.md.
 
 `SND_MAGNET` is the exception and stays outside the table: the original
 never queues it. `magnets.asm` ends its draw with a plain

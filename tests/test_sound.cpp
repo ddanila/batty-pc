@@ -305,6 +305,55 @@ static void test_metal_brik_plays_and_obeys_mute() {
     report("metal_brik", before, "tone + honours mute   ok");
 }
 
+/* D is the envelope's LENGTH, and it used to be thrown away.
+ *
+ * sound_beep_cont_d(D, E) is D square-wave cycles of half-period E:
+ * D * 2 * E * 13 T-states at 3.5 MHz. The port discarded D and held
+ * every note for one tick, which at the game's 50 Hz is 20 ms against
+ * the original's 3 to 9 ms (notes/sound.md).
+ *
+ * At 50 Hz the arithmetic still rounds to one tick — that is the clock,
+ * not the model, and swapping it is what WS5 needs. This drives the
+ * module at a microsecond clock so the durations are visible, and pins
+ * the three effects measured against the disassembly. */
+static void test_beep_duration_follows_d() {
+    const int before = failures;
+    struct { const char *name; unsigned char d, e; unsigned long us; } cases[] = {
+        { "normall_brik", 0x08, 0x44, 4043 },   /* 8 * 2 * 68 * 13 T */
+        { "bat_beat",     0x04, 0x66, 3030 },   /* 4 * 2 * 102 * 13 T */
+        { "metal_brik",   0x18, 0x30, 8557 },   /* 24 * 2 * 48 * 13 T */
+    };
+    sound_set_clock_hz(1000000ul);
+    for (int i = 0; i < 3; i++) {
+        reset();
+        sound_beep_cont_d(cases[i].d, cases[i].e);
+        /* Hold until the module releases the speaker, counting ticks. */
+        unsigned long held = 0;
+        while (sound_test_silences == 0 && held < 100000ul) {
+            fake_clock++;
+            held++;
+            sound_tick();
+        }
+        const long slack = (long)cases[i].us / 50 + 2;   /* 2% + rounding */
+        const long diff = (long)held - (long)cases[i].us;
+        check(diff <= slack && diff >= -slack,
+              "%s held %lu us, expected ~%lu (D=%02X E=%02X)\n",
+              cases[i].name, held, cases[i].us,
+              cases[i].d, cases[i].e);
+    }
+    /* Back to the game's rate, and there every effect is one tick —
+     * which is the gap, stated as an assertion so it cannot be believed
+     * fixed while it is not. */
+    sound_set_clock_hz(50);
+    reset();
+    sound_beep_cont_d(0x08, 0x44);
+    fake_clock++;
+    sound_tick();
+    check(sound_test_silences == 1,
+          "at 50 Hz a 4 ms effect should still round to one 20 ms tick\n");
+    report("beep_duration_follows_d", before, "3 envelopes + the 50 Hz floor");
+}
+
 int main() {
     printf("sound tests\n");
     test_repeat_events_collapse();
@@ -317,6 +366,7 @@ int main() {
     test_silence_keeps_the_queue_stop_all_empties_it();
     test_stop_all_silences_a_held_note();
     test_metal_brik_plays_and_obeys_mute();
+    test_beep_duration_follows_d();
     printf("\n%d tests, %d failed\n", tests_run, failures);
     return failures ? 1 : 0;
 }

@@ -84,7 +84,20 @@ clock is the 50 Hz PIT frame counter, so every effect lasts **20 ms**
 against the original's 3-9 ms. The pitches are right; the durations are
 all ~5x too long, from one cause.
 
-### Why that is not a one-line fix
+### Half of it is fixed (2026-08-09)
+
+`sound_beep_cont_d` computes the real duration now —
+`D * 2 * E * 13` T-states, converted to clock ticks through
+`sound_set_clock_hz` — instead of `(void)d`. A host test drives the
+module at a microsecond clock and pins the three measured envelopes:
+
+    beep_duration_follows_d      3 envelopes + the 50 Hz floor
+
+The last assertion in that test is the gap itself: at 50 Hz a 4 ms
+effect still rounds to one 20 ms tick. It is written as an assertion so
+nobody can believe this fixed while it is not.
+
+### Why the rest is not a one-line fix
 
 20 ms is the port's finest unit. The original's envelopes are sub-frame
 — `sound_beep_cont_d` returns after a few thousand T-states, well inside
@@ -93,4 +106,6 @@ counter, or a speaker driver that can schedule a stop between frames.
 
 That is the actual content of WS5, and it is a timing-infrastructure
 change rather than a table of constants. The constants are already
-there.
+there, and so is the arithmetic — what is left is `sound_set_clock_hz`
+being given something finer than the frame counter, and a speaker
+driver that can stop a note between frames.

@@ -18,12 +18,13 @@ namespace {
 
 bool muted = false;
 unsigned long (*clock_now)() = 0;
+unsigned long clock_hz = 50;   /* the game's PIT frame counter */
 /* One envelope (the magnet zip) is noise, so it consumes the game RNG.
  * Injected rather than reached for, so the sequence a test sees is
  * its own. */
 u8 (*random_byte)() = 0;
 
-u8            ticks_left = 0;
+unsigned int  ticks_left = 0;
 unsigned long last_tick  = 0;
 
 struct Slot { u8 id; u8 state; };
@@ -57,17 +58,11 @@ void speaker_tone(unsigned period) {
 }
 #endif
 
-void sound_start_period(unsigned int period, unsigned char ticks) {
+void sound_start_period(unsigned int period, unsigned int ticks) {
     if (muted || ticks == 0) return;
     speaker_tone(period);
     ticks_left = ticks;
     last_tick = clock_now();
-}
-
-void sound_beep_e(unsigned char e) {
-    /* Original period is proportional to E. PIT divisor ~= 1193180 /
-     * (3500000 / (26*E)) = 8.86*E; use 9*E as the close integer form. */
-    sound_start_period((unsigned int)e * 9u, 1);
 }
 
 void sound_beep2_bd(unsigned char b, unsigned char d) {
@@ -76,14 +71,41 @@ void sound_beep2_bd(unsigned char b, unsigned char d) {
     sound_start_period((unsigned int)period * 9u, 1);
 }
 
+/* orig: sound_beep_cont_d ($C25C) — D square-wave cycles of half-period
+ * E. One `sound_beep` is one cycle; a DJNZ that loops is 13 T-states,
+ * so the whole thing is D * 2 * E * 13 T-states at 3.5 MHz.
+ *
+ * D used to be discarded here — `(void)d` — and every effect played for
+ * one tick. At the game's 50 Hz that is 20 ms against the original's 3
+ * to 9 ms. The arithmetic is honest now; what still rounds it to a
+ * single tick is the clock rate, not this. */
+/* The PIT divisor for half-period E. Original period is proportional to
+ * E: 1193180 / (3500000 / (26*E)) = 8.86*E, and 9*E is the close
+ * integer form. (26 = 2 * 13, a full cycle of DJNZ turns.) */
+static unsigned int beep_period(unsigned char e) {
+    return (unsigned int)e * 9u;
+}
+
+static unsigned int beep_ticks(unsigned char d, unsigned char e) {
+    /* T-states -> microseconds: 3.5 MHz, so us = T * 2 / 7. Done in
+     * that order to stay inside 32 bits on a 16-bit target. */
+    const unsigned long t_states = (unsigned long)d * 2ul
+                                 * (unsigned long)e * 13ul;
+    const unsigned long us = t_states * 2ul / 7ul;
+    unsigned long ticks = us * clock_hz / 1000000ul;
+    if (ticks == 0) ticks = 1;          /* never silent */
+    if (ticks > 60000ul) ticks = 60000ul;
+    return (unsigned int)ticks;
+}
+
 void sound_beep_cont_d(unsigned char d, unsigned char e) {
-    (void)d;
-    sound_beep_e(e);
+    sound_start_period(beep_period(e), beep_ticks(d, e));
 }
 
 void sound_beep_cont_de(unsigned char d, unsigned char e) {
-    (void)d;
-    sound_beep_e(e);
+    /* orig $C263: same shape, with its own tail. The duration model is
+     * the one above. */
+    sound_start_period(beep_period(e), beep_ticks(d, e));
 }
 
 void sound_play_lc122(unsigned char c, unsigned char e) {
@@ -259,6 +281,7 @@ void sound_stop_all() {
 }
 
 void sound_set_clock(unsigned long (*now)()) { clock_now = now; }
+void sound_set_clock_hz(unsigned long hz) { if (hz) clock_hz = hz; }
 void sound_set_random(u8 (*source)()) { random_byte = source; }
 
 void sound_set_enabled(bool on) { muted = !on; }
