@@ -143,3 +143,52 @@ port had `print_border_shadow_c` all along.
 the extraction is manual and off the build graph (see the Makefile note
 on `frame_l1.bin`'s twin problem), so nothing else would notice a
 re-extraction that no longer matches `assets/levels.bin`.
+
+
+## The empty brick-zone cells resist a predicate (2026-08-09)
+
+The live-brick fifth of `level_attrs.bin` is derived exactly
+(`test-level-attrs-derivable`). The next 26% is the EMPTY cells of the
+brick zone — destroyed markers and the `$C0` sentinel. Measured, they
+take exactly two values per colour cycle:
+
+| cycle | levels | bright | dimmed |
+|---|---|---|---|
+| 0 | 1, 5, 9, 13  | `$46` | `$06` |
+| 1 | 2, 6, 10, 14 | `$44` | `$04` |
+| 2 | 3, 7, 11, 15 | `$45` | `$05` |
+| 3 | 4, 8, 12     | `$47` | `$07` |
+
+which is `bg_attr_per_cycle[]` and the same value with bit 6 cleared.
+So the only question is WHICH cells are dimmed.
+
+I tried to answer it with a neighbour predicate and got close enough to
+be misleading:
+
+    dimmed if char col 1 (border shadow)                    89.4%
+      ... or the cell to the left is live                   91.8%
+      ... or the cell above-left is live                    94.4%
+
+**That is curve-fitting, not deriving,** and 94.4% is exactly the range
+where one more term looks tempting. Stopped there deliberately.
+
+The real answer is not a predicate over neighbours at all: it is the
+ORDER of the passes. `print_briks` walks the band row by row calling
+`brik_shadow`, which dims both chars of every LIVE brick's column at
+`brik_attr_buf`'s row; the NEXT row's own print then re-brightens its
+live cells over the top; and `print_border_shadow` runs last over
+column 1 and row 1. An empty cell's value is whatever survives that
+sequence, which depends on the order, not on a local rule.
+
+### The cheap way to finish it
+
+The port already implements that order — `paint_brick_band` +
+`dim_border_shadow_column` produce `attr_buff` for a level. So the next
+attempt should not write a predicate at all: run the port's own painter
+in a HOST test over each of the 15 levels and compare `attr_buff`'s
+brick-zone rows against `level_attrs.bin`. `tests/test_bricks.cpp`
+already links the bricks module and uses `attr_buff`.
+
+That would settle the whole 47% brick zone in one gate, and it would be
+proof the painter matches the capture rather than proof that a
+hand-written rule does.

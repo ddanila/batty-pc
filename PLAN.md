@@ -506,8 +506,23 @@ original artifact:
    `briks_colors` + `print_border_shadow`'s left arm, and
    `test-level-attrs-derivable` now holds that. The rest is empty
    brick-zone cells (26.0%) and the HUD/side/bottom rows (53.1%), so the
-   blob cannot go yet. What is settled is that the rule is exact rather
-   than approximate. See notes/levels.md.
+   blob cannot go yet.
+
+   *Second pass:* the empty cells take exactly two values per colour
+   cycle — `bg_attr_per_cycle[]` and the same with bit 6 cleared — so
+   the only question is which are dimmed. A neighbour predicate reaches
+   94.4% and stops being derivation somewhere around the second term;
+   abandoned deliberately. The value depends on the ORDER of
+   `print_briks` / `brik_shadow` / `print_border_shadow`, not on a local
+   rule.
+
+   **Next step is cheap and settles the whole 47% brick zone at once:**
+   the port already implements that order, so run `paint_brick_band` +
+   `dim_border_shadow_column` in a HOST test over the 15 levels and
+   compare `attr_buff` against the blob. `tests/test_bricks.cpp` already
+   links the module and uses `attr_buff`. That proves the painter
+   matches the capture, rather than proving a hand-written rule does.
+   See notes/levels.md.
 3. ~~**Menu / hi-score screens**~~ — **already done, and the entry was
    wrong** (checked 2026-08-09). `render_menu_screen` and
    `render_hiscore_screen` build both screens from `MENUMARK.BIN` /
