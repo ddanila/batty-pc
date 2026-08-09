@@ -424,3 +424,31 @@ UFOs steered to different positions; single-checkpoint runs at frame
 screen comparisons, only the FIRST checkpoint of a timeline is valid —
 use one checkpoint per boot, or re-pin the counter on every checkpoint
 wake.
+
+Fourth instance (2026-08-09): **when the phase makes a gate flaky, look
+for something in the capture that says which outcome happened.**
+`test-enemy-descend` asserted `target == $10` on the frame the entry
+slide ends, and failed about two runs in three. That frame is the first
+one the alien can steer, and steering is gated on a GLOBAL counter's
+phase — so both `$10` (not steered) and `$29` (steered, arrival re-pick,
+fixed RNG) are correct, and which one you get depends on how long boot
+took.
+
+The lesson from the third instance was "re-pin the counter". Here that
+was unnecessary: `PROBE.TXT` already carried
+`enemy_repicks=arrival<N>_margin<N>_turns<N>`, so the gate could assert
+the IMPLICATION — `turns == 0 -> $10`, `turns == 1 -> $29` — plus that
+the slide frames cannot steer at all. That pins BOTH legal outcomes,
+where the old assertion pinned one and rolled a die.
+
+So the order to try is: (1) does the capture already distinguish the
+cases? assert the implication; (2) if not, pin the phase; (3) dropping
+the assertion is the last resort, and it costs coverage.
+
+The other half of this: `parity-check-parallel` retries a failure once
+alone and prints `(starved when parallel)` when the retry passes. That
+message is a GUESS about the cause, and it was the wrong one here — the
+retry passed because it was a coin flip, not because it was alone. A
+runner that explains nondeterminism as contention hides exactly the
+gates worth finding. Treat "only passed on retry" as unexplained until
+measured. See known-bugs #17.

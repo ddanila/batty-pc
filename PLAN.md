@@ -193,6 +193,12 @@ In priority order (all pre-scoped in `parity-gaps.md` / notes):
 4. **Byte-exact enemy target gating:** blocked on a boot-phase-
    normalized comparison harness (test-infra, not port code). Do it if
    and when WS8's harness work makes it cheap.
+   *Partly sidestepped (2026-08-09):* `test-enemy-descend` needed the
+   phase and did not get the harness — it reads `enemy_repicks` out of
+   the probe and asserts the implication (`turns == 0 -> target $10`,
+   `turns == 1 -> target $29`) instead. Where a capture already says
+   which outcome happened, no phase normalisation is needed.
+   known-bugs #17.
 
 **Exit:** items 1–3 gated; parity-gaps.md's "behavioral" section
 reduced to the accepted-residuals list below.

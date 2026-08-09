@@ -64,6 +64,38 @@ BALL_OBJECT = "02006C004E001F03020CEEF008076C4E020C0000008C"
 CASES = [(3, 4), (6, 7), (8, 8)]
 EXP_X, EXP_DIR, EXP_SPD, EXP_TARGET = 168, 0x10, 1, 0x10
 
+# Frame 8 is not deterministic in `target`, and asserting $10 there made
+# this gate fail about two runs in three (known-bugs #17). Measured, four
+# runs of frame 8 alone:
+#
+#   target=0x10  arrival0_margin0_turns0
+#   target=0x29  arrival1_margin0_turns1
+#   target=0x29  arrival1_margin0_turns1
+#   target=0x10  arrival0_margin0_turns0
+#
+# Both are CORRECT. Frame 8 is where the entry slide ends, so it is the
+# first frame the alien can steer, and steering is gated on
+# `pit_frame_counter & 3` — the port's stand-in for the original's
+# `counter_misc`, a GLOBAL counter, exactly as the original gates it. Its
+# phase when the alien is seeded depends on how long boot took, so under
+# load the steer lands on frame 8 or it doesn't. The original is
+# phase-dependent here too; see PLAN.md WS6 item 4.
+#
+# So the gate asserts the IMPLICATION instead of one arm. That is
+# stronger than what it replaced, not weaker: it now pins BOTH outcomes,
+# and it pins that the slide frames cannot steer at all.
+#
+#   turns == 0  ->  target is untouched, still $10
+#   turns == 1  ->  dir has ARRIVED at target, so the turn re-picked; the
+#                   replay RNG is fixed (BATTY_REPLAY_RANDOM=8E49) and
+#                   frame 8 is a fixed frame, so the re-pick is $29
+#   during the slide (`if (y < 8) { y++; return; }`) no turn can run at
+#   all, so turns MUST be 0 on frames 3 and 6
+#
+# A margin re-pick is wrong at every one of these frames: x=168 is
+# nowhere near an edge.
+TARGET_AFTER_REPICK = 0x29
+
 
 def probe_enemy(frame: int):
     Path(ROOT / FLOPPY).unlink(missing_ok=True)
@@ -87,29 +119,58 @@ def probe_enemy(frame: int):
                    cwd=ROOT, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     if not probe.exists():
         return None
-    m = re.search(r"object_enemy=([0-9A-Fa-f]+)", probe.read_text())
-    return bytes.fromhex(m.group(1)) if m else None
+    text = probe.read_text()
+    m = re.search(r"object_enemy=([0-9A-Fa-f]+)", text)
+    if not m:
+        return None, None
+    r = re.search(r"enemy_repicks=arrival(\d+)_margin(\d+)_turns(\d+)", text)
+    if not r:
+        raise SystemExit("FAIL: PROBE.TXT has no enemy_repicks line — this "
+                         "gate reads it to tell an un-steered frame from a "
+                         "steered one (known-bugs #17)")
+    counts = tuple(int(g) for g in r.groups())      # arrival, margin, turns
+    return bytes.fromhex(m.group(1)), counts
 
 
 def main() -> int:
     ok = True
     for frame, exp_y in CASES:
-        b = probe_enemy(frame)
+        b, counts = probe_enemy(frame)
         if b is None:
             print(f"  frame {frame}: NO enemy in PROBE.TXT [FAIL]")
             ok = False
             continue
+        arrival, margin, turns = counts
         sset, x, y, d, spd, tgt = b[0], b[2], b[4], b[6], b[7], b[0x14]
+
+        # The slide returns before the steer, so a turn there is a bug in
+        # the port. Only the frame the slide ENDS on may steer.
+        max_turns = 0 if frame < 8 else 1
+        if turns > max_turns or margin:
+            why = f"turns={turns} margin={margin}"
+            exp_tgt = "no steer at all"
+        elif turns == 0:
+            why = "not steered yet"
+            exp_tgt = f"0x{EXP_TARGET:02X}"
+        else:
+            why = "steered: dir had arrived, so it re-picked"
+            exp_tgt = f"0x{TARGET_AFTER_REPICK:02X}"
+
+        want_tgt = EXP_TARGET if turns == 0 else TARGET_AFTER_REPICK
         good = (sset == 0x09 and x == EXP_X and y == exp_y and d == EXP_DIR
-                and spd == EXP_SPD and tgt == EXP_TARGET)
+                and spd == EXP_SPD and tgt == want_tgt
+                and turns <= max_turns and margin == 0 and arrival == turns)
         ok = ok and good
         print(f"  frame {frame}: sprite_set={sset:02X} x={x} y={y} "
               f"dir=0x{d:02X} spd={spd} target=0x{tgt:02X} "
+              f"arrival={arrival} margin={margin} turns={turns} "
               f"[{'PASS' if good else 'FAIL'}] (expect x={EXP_X} y={exp_y} "
-              f"dir=0x{EXP_DIR:02X} spd={EXP_SPD} target=0x{EXP_TARGET:02X})")
+              f"dir=0x{EXP_DIR:02X} spd={EXP_SPD} target={exp_tgt} "
+              f"— {why})")
     if ok:
         print("PASS enemy_descend: port handling_bird descend matches the "
-              "original (y +1/frame, x/dir/spd/target held) — GT-validated")
+              "original (y +1/frame, x/dir/spd held; target follows the "
+              "steer count) — GT-validated")
         return 0
     print("FAIL enemy_descend")
     return 1

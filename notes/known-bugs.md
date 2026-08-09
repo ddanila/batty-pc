@@ -969,6 +969,38 @@ nondeterminism as contention hides exactly the class of gate that most
 needs finding. Any gate that only passes on retry should be suspected of
 this until measured, not explained away by the runner.
 
-Not fixed. Fixing it properly is the WS6-4 harness work: seed the alien
-at a known counter phase, or capture the phase and expect the steer
-frame it implies.
+### FIXED 2026-08-09 — by asserting the implication, not one arm
+
+The phase does not need pinning. The probe already reports
+`enemy_repicks=arrival<N>_margin<N>_turns<N>`, so the gate can read
+whether a steer ran and expect the target that follows from it. Four
+runs of frame 8 alone, which is what settled it:
+
+    target=0x10  arrival0_margin0_turns0
+    target=0x29  arrival1_margin0_turns1
+    target=0x29  arrival1_margin0_turns1
+    target=0x10  arrival0_margin0_turns0
+
+Both arms are correct behaviour, and the second is deterministic too:
+the replay RNG is fixed and frame 8 is a fixed frame, so an arrival
+re-pick there is always `$29`. The gate now asserts
+
+    turns == 0  ->  target still $10
+    turns == 1  ->  target $29
+    frames 3 and 6 (mid-slide)  ->  turns MUST be 0, because
+                                    `if (y < 8) { y++; return; }` returns
+                                    before the steer can run
+    margin re-picks              ->  always 0; x=168 is nowhere near an
+                                     edge
+    arrival == turns             ->  the only reason to turn here is that
+                                     dir has arrived
+
+That is STRONGER than the assertion it replaced, which only ever pinned
+one of the two legal outcomes and rolled a die on which it got. 5 runs
+green where the baseline failed 2 in 3, and mutating the slide threshold
+from 8 to 9 — the discriminator the gate exists for — is still caught.
+
+The general form: when a gate is flaky because the system has two legal
+outcomes, look for something already in the capture that says WHICH one
+happened. Asserting `A -> X, B -> Y` beats both pinning the phase (more
+machinery) and dropping the assertion (less coverage).
