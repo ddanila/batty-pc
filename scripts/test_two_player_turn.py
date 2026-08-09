@@ -24,20 +24,25 @@ keeps playing. Traced in notes/menu.md.
   guard      BATTY_GAME_MODE=1 with BATTY_REPLAY_LIVES_2UP=0 -> it does
              NOT: the original's `LD A,(lives_2up) / AND A / RET Z` is
              what lets a solo player keep playing
+  game over  BATTY_GAME_MODE=1 with BATTY_REPLAY_LIVES=1 -> the active
+             player runs OUT, gets the GAME OVER screen, and the other
+             takes over anyway (orig LBC10_7)
 
-STILL NOT COVERED: the LBC10_7 hand-over, where the active player runs
-OUT of lives, gets the GAME OVER screen, and the other takes over
-anyway. `play_game_over` holds for 178 PIT frames (~3.5 s) and the
-capture window ends inside that hold, so PROBE.TXT keeps the
-level-ENTRY write from before the death and every counter reads 0.
-Measured with BATTY_REPLAY_LIVES=1: `go=0`, i.e. even the "reached the
-game-over branch" counter never makes it to the file, while
-BATTY_REPLAY_LIVES=2 (which hands over WITHOUT a game over) reports
-`life=1` immediately. Adding a probe write before `return ST_TITLE`
-did not help for the same reason.
+That last case took three attempts to make observable, and the first two
+failures are worth knowing about.
 
-What it needs is a way to cut the hold short under the harness, not
-another counter. See PLAN.md WS2.
+`active_player` cannot carry it: PROBE.TXT is rewritten at every level
+entry and these scenarios die repeatedly, so a probe read at any moment
+reports whoever entered LAST. Hence the counters, which accumulate.
+
+Counters alone were not enough either. `play_game_over` holds for 178
+PIT frames (~3.5 s) and the capture window ended INSIDE that hold, so
+the file still held the level-ENTRY write from before the death — even
+`go`, incremented on the line before the hold, read 0. Hence
+`BATTY_FAST_HOLDS=1`, which cuts the wait to 2 frames. It is a separate
+knob from `BATTY_HOLD_GAME_OVER`, which makes the hold wait for a KEY:
+that one is for visual gates that want the screen to STAY up, the
+opposite need.
 
 ### Why counters and not `active_player`
 
@@ -96,7 +101,8 @@ def probe(mode: str, extra: str = "", lives: str = "3"):
         f"BATTY_TEST_FLOPPY={FLOPPY} BATTY_START_LEVEL=1 "
         f"BATTY_GAME_MODE={mode} BATTY_REPLAY_LIVES={lives} "
         f"BATTY_HIDE_BALL=1 {extra} "
-        f"BATTY_NOSOUND=1 BATTY_REPLAY_PROBE=1 BATTY_REPLAY_WAIT_KEY=1 "
+        f"BATTY_NOSOUND=1 BATTY_FAST_HOLDS=1 "
+        f"BATTY_REPLAY_PROBE=1 BATTY_REPLAY_WAIT_KEY=1 "
         f"BATTY_REPLAY_COUNTER=0 "
         f"BATTY_VISUAL_PROBE_FRAMES={PROBE_FRAME}"
     )
@@ -132,7 +138,8 @@ def main() -> int:
             ("1", "", "3", None, 1, 0, "2 Players: the life loss hands over"),
             ("1", "BATTY_REPLAY_LIVES_2UP=0", "3", 0, 0, 0,
              "2 Players but player 2 is out: the guard holds the turn"),
-):
+            ("1", "", "1", None, 0, 1,
+             "2 Players, last life: GAME OVER then the other continues")):
         got = probe(mode, l2, lives)
         if got is None:
             print(f"  mode {mode} {l2}: NO PROBE.TXT [FAIL]")

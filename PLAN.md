@@ -179,7 +179,7 @@ Gated by `test-two-player-turn`, an A/B on `BATTY_GAME_MODE` with a
 third case (`BATTY_REPLAY_LIVES_2UP=0`) for the guard that lets a solo
 player keep playing.
 
-**Stage 5 (2026-08-09): `LBC10_7` ported, NOT gated.** When one player
+**Stage 5 (2026-08-09): `LBC10_7` ported and GATED.** When one player
 runs out of lives the port now shows their GAME OVER screen and then
 hands over to the other player if they still have lives, instead of
 returning to the title and ending a game the other player is still in.
@@ -187,27 +187,29 @@ It reuses `two_player_turn_change`, whose guards already cover both of
 LBC10_7's conditions — asking them again at the call site is the
 duplicate-guard mistake stage 4 ran into.
 
-**It is still not gated, but the reason is now pinned rather than
-guessed.** The first diagnosis — "the probe is rewritten at every level
-entry, so a repeatedly-dying scenario reports whoever entered last" —
-was real, and fixed: `turn_changes_life` / `turn_changes_over` are
-counters, they accumulate, and they survive every later write. That is
-what `test-two-player-turn` asserts now, and it made the mode-1
-life-loss case robust instead of parity-dependent.
+Gating it took three attempts, and the two failures are the useful part.
 
-It did NOT make LBC10_7 reachable. `play_game_over` holds for 178 PIT
-frames (~3.5 s) and the capture window ends inside that hold, so
-PROBE.TXT keeps the level-ENTRY write from before the death. Measured
-with `BATTY_REPLAY_LIVES=1`: even `go`, a counter incremented on the
-line BEFORE `play_game_over`, reads 0 — while `BATTY_REPLAY_LIVES=2`
-(which hands over without a game over) reports `life=1` immediately.
-Adding a probe write before `return ST_TITLE` did not help, for the same
-reason.
+`active_player` cannot carry it: `PROBE.TXT` is rewritten at every level
+entry and these scenarios die repeatedly, so a probe read at any moment
+reports whoever entered LAST. Hence `turn_changes_life` /
+`turn_changes_over`, counters that accumulate and survive every later
+write.
 
-So it needs a way to cut the hold short under the harness, not another
-counter. `BATTY_HOLD_GAME_OVER` makes the hold wait for a key instead of
-a timer, which is the opposite of what is wanted; a `BATTY_SKIP_HOLDS`
-that zeroes it is the obvious next thing to try.
+Counters alone were not enough either. `play_game_over` holds for 178
+PIT frames (~3.5 s) and the capture window ended INSIDE that hold, so
+the file still held the level-ENTRY write from before the death — even
+`go`, incremented on the line before the hold, read 0. Hence
+`BATTY_FAST_HOLDS=1`, which cuts the wait to 2 frames. Separate from
+`BATTY_HOLD_GAME_OVER`, which makes the hold wait for a KEY: that is for
+visual gates that want the screen to STAY up, the opposite need.
+
+With both in place the path is observed — `over=1`, turn on player 2 —
+and disabling the hand-over is caught, as is ignoring the fast-holds
+knob. **WS2's flow is complete.** What is left of the workstream is
+cosmetic: the GAME OVER screen does not print "PLAYER n" (the original
+patches `txt_player_0+$0C` with `player_number`), and the menu's
+mode-2/3 selection still starts whatever mode is chosen without the
+Double Play court split (WS3).
 
 **What:** Classic turn-taking (research-confirmed: on the Spectrum,
 2 PLAYERS alternates turns, unlike the C64 version). Per-player state

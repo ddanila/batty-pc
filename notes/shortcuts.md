@@ -86,3 +86,25 @@ gate with its own transcription agrees with a wrong transcription in the
 port as long as both are wrong the same way. It is a source gate because
 a timed QEMU screendump would have to land inside a 0.3 s window, and a
 gate that depends on luck is worse than none (known-bugs #17).
+
+
+## `BATTY_FAST_HOLDS=1` — cut the game-over hold to 2 frames
+
+`play_game_over` waits 178 PIT frames (~3.5 s), the port's count of the
+original's `pause_long B=$0C`. Inside a capture window that is enough to
+end the run before anything downstream happens, which is why the
+2-player `LBC10_7` hand-over could not be gated: `PROBE.TXT` still held
+the level-ENTRY write from before the death, and every counter read 0 —
+including one incremented on the line immediately before the hold.
+
+`BATTY_FAST_HOLDS=1` makes the wait 2 frames.
+
+It is deliberately NOT the same knob as `BATTY_HOLD_GAME_OVER`, which
+makes the hold wait for a keypress instead of a timer. That one exists
+so a visual gate can screendump the screen while it is up; this one
+exists so a gate can get PAST it. Opposite needs, and merging them would
+give one knob two contradictory meanings.
+
+The 178 literal stays in the source either way — `test-game-over` pins
+it, and the knob picks between `2UL` and `178UL` rather than replacing
+the constant.

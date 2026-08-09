@@ -515,6 +515,9 @@ $(TEST_FLOPPY_OUT): $(FLOPPY_TEST_EXE) $(ASSETS) $(FLOPPY_SRC)
 	if [ -n "$$BATTY_GAME_MODE" ]; then \
 	    printf 'SET BATTY_GAME_MODE=%s\r\n' "$$BATTY_GAME_MODE" >> $(AUTOEXEC_T) ; \
 	fi; \
+	if [ -n "$$BATTY_FAST_HOLDS" ]; then \
+	    printf 'SET BATTY_FAST_HOLDS=%s\r\n' "$$BATTY_FAST_HOLDS" >> $(AUTOEXEC_T) ; \
+	fi; \
 	if [ -n "$$BATTY_REPLAY_LIVES_2UP" ]; then \
 	    printf 'SET BATTY_REPLAY_LIVES_2UP=%s\r\n' "$$BATTY_REPLAY_LIVES_2UP" >> $(AUTOEXEC_T) ; \
 	fi; \

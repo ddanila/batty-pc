@@ -1187,8 +1187,9 @@ struct DebugSwitches {
     unsigned char rng_perframe;           /* BATTY_RNG_PERFRAME, default=1 */
     unsigned long profile_auto_frames;    /* BATTY_PROFILE_AUTO_FRAMES, default=0 */
     unsigned char kinnock;                /* BATTY_KINNOCK, default=0 */
+    unsigned char fast_holds;             /* BATTY_FAST_HOLDS, default=0 */
 };
-static DebugSwitches dbg = { 0, 0, 0, 0, 0, 0, 1, 1, 0, 0 };
+static DebugSwitches dbg = { 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0 };
 
 /* While set the frame body does no physics; only P (toggle), ESC
  * (quit) and ENTER (advance) are acted on. */
@@ -6771,8 +6772,16 @@ static void play_game_over(void) {
          * during gameplay (known-bugs.md #15) — this loop was therefore
          * infinite except for the keypress, and the screen sat there
          * unchanged for the full 40 s a capture watched it. */
+        /* BATTY_FAST_HOLDS cuts the wait to 2 frames. The hold is
+         * 3.5 s of wall time inside a capture window, and it is why
+         * the LBC10_7 hand-over could not be gated: PROBE.TXT kept the
+         * level-ENTRY write from before the death because the capture
+         * ended mid-hold. Not merged with BATTY_HOLD_GAME_OVER, which
+         * makes the hold wait for a KEY — that is for visual gates
+         * that want the screen to stay up, the opposite need. */
+        const unsigned long hold = dbg.fast_holds ? 2UL : 178UL;
         start = pit_ticks();
-        while (pit_ticks() - start < 178UL) {
+        while (pit_ticks() - start < hold) {
             sound_tick();
             if (kbhit()) { getch(); break; }
         }
@@ -7170,6 +7179,7 @@ static state_t apply_env_switches(void) {
     if (getenv("BATTY_AUTO_FIRE") != NULL)                  dbg.auto_fire = 1;
     if (getenv("BATTY_LAFFC") != NULL)                      dbg.use_laffc = 1;
     if (getenv("BATTY_KINNOCK") != NULL)                    dbg.kinnock = 1;
+    if (getenv("BATTY_FAST_HOLDS") != NULL)                 dbg.fast_holds = 1;
     {
         /* BATTY_GAME_MODE takes the ORIGINAL's 0-based value, not the
          * menu's 1..3 — a gate that wants 2-player writes 1. Gates reach
