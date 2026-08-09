@@ -292,3 +292,53 @@ probably why it has stayed deferred.
 It is also the same refactor bat 2's catch needs (notes/double-play.md):
 `catch_ball_on_bat` reads `BAT_X` directly, so the index has to name a
 BAT as well as a ball. Doing it once serves both.
+
+
+## The second half is threaded (2026-08-10)
+
+The fourteen sites now know WHICH ball. The eight functions take a slot:
+
+    ball_launch_from_bat(int b)        was primary_ball_launch_from_bat
+    catch_ball_on_bat(int b, contact)
+    rest_ball_on_bat(int b)
+    ride_stuck_ball_on_bat(int b)
+
+and the four readers that are not functions of their own — `step_ball`,
+`step_primary_ball`, `launch_or_fire`, `redraw_frame` — spell the slot
+`BALL_PRIMARY` instead of a bare `0`.
+
+**No behaviour change, and that is the whole point of doing it alone.**
+Every caller still passes `BALL_PRIMARY`, because `catch_ball_on_bat` is
+still only reachable from the primary's path. The feature that follows —
+a secondary ball being caught — is then a diff about the feature rather
+than a rename with a feature buried in it. Verified by the full sweep:
+66 of 67 QEMU gates green, and the 67th was already red before this
+work (known-bugs #18).
+
+### Why `BALL_PRIMARY` rather than leaving `0`
+
+`[0]` reads two ways that must not be confused: "the first ball", and
+"the only ball that can be here". Ten of the twenty-four sites are
+primary BY CONSTRUCTION — an extra ball is spawned in flight and is
+never stuck, so `respawn_primary_ball` and the replay overrides can
+never mean anything else. The other fourteen are primary FOR NOW.
+
+Both were spelled `0`. Now the second group says `BALL_PRIMARY` at a
+call site, which is a thing you can grep for and change; the first group
+keeps its `[0]` inside functions whose names already say primary.
+
+### The one place the slot is deliberately ignored
+
+`ball_launch_from_bat` passes `&objects[b]` to
+`refresh_ball_motion_signs`, which returns early for anything that is
+not the primary — the dx/dy sign cache is the primary's alone
+(known-bugs #13). For `b > 0` that call is a no-op ON PURPOSE, and the
+comment says so, because a reader who did not know would "fix" it.
+
+### What is left
+
+`catch_ball_on_bat` still reads `BAT_X` directly, so the index names a
+ball but not yet a BAT. That is the half bat 2's catch needs
+(notes/double-play.md), and it is the natural next step: the function
+takes a bat, the deflection site passes the bat that actually hit, and
+bat 2 can hold a ball.

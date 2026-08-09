@@ -8,15 +8,18 @@ test. Started 2026-08-07.
 The stage table below is complete except stage 1, which is blocked for a
 reason rather than for want of effort — see the end of this section.
 
-**The code.** `main.cpp`: 7,747 → 7,877 lines (net -1) across 15
+**The code.** `main.cpp`: 7,747 → 7,896 lines (net -1) across 15
 modules. The longest function is `run_level` at 113 lines, and it is an
 orchestrator of named phases, which is what it should be.
 
 **The tests.** 95 gates, indexed in `notes/testing.md` and kept complete
 by `test-gate-index`. They fall in three groups:
 
-  - 67 QEMU gates — `make parity-check-parallel`, ~6 min, twelve clean
-    runs, the latest covering the `handle_input` split.
+  - 67 QEMU gates — **`python3 scripts/run_gates_parallel.py --full`**,
+    ~7 min. Plain `make parity-check-parallel` runs only the 8-gate
+    PARITY_CHECK subset in ~100 s; this line named it as the 67-gate
+    sweep until 2026-08-10, and that error is part of how a red gate
+    went unnoticed for ten commits (see notes/known-bugs.md #18).
   - 28 emulator-free source gates plus 14 host suites — `make test-fast`,
     seconds. CI runs exactly this.
   - 3 ZEsarUX-oracle gates — `make parity-check-full`.
@@ -131,7 +134,7 @@ happened, and `make test-video` caught it.
 | 1a | `replay_parse` — the BATTY_REPLAY_* value formats | 75 | **done** — 7 tests |
 | 1 | replay / probe scaffolding | ~430 | **as far as it should go** — 6 overrides out in `replay`, 6 host tests; the remaining 3 are blocked by design, see below |
 
-`main.cpp`: 7,747 → 7,877 (`wc -l`; see the status block on why this is not Watcom's count).
+`main.cpp`: 7,747 → 7,896 (`wc -l`; see the status block on why this is not Watcom's count).
 100 host tests + source gates, all via `make test-fast` in seconds.
 
 ### Stage 5b: one destroyed-cell reset, not two

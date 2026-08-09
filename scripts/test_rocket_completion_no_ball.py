@@ -26,7 +26,7 @@ def source_guard() -> None:
         # check that helper still clears both halves of their liveness —
         # otherwise this assertion could be satisfied by a helper that
         # stopped doing it.
-        "BALL_HIDE();\n    ball.stuck[0] = 0;\n    hide_extra_balls();",
+        "BALL_HIDE();\n    ball.stuck[BALL_PRIMARY] = 0;\n    hide_extra_balls();",
         "ball.extra2_active = 0;\n    ball.extra3_active = 0;",
         "objects[OBJ_BALL_2].sprite_set = 0x82;",
         # The level-clear path hides every ball and repaints before the

@@ -613,8 +613,19 @@ In priority order (all pre-scoped in `parity-gaps.md` / notes):
    indexed as the `mag_*` arrays already were, and all 24 sites read
    `[0]`. No behaviour change — the whole suite is green — so the
    feature that follows can be judged on its own diff rather than on a
-   rename buried inside it. What remains is the fourteen sites learning
-   which ball, and `catch_ball_on_bat` learning which bat.
+   rename buried inside it.
+
+   **The fourteen sites know which ball, 2026-08-10.** Eight functions
+   take a slot (`ball_launch_from_bat`, `catch_ball_on_bat`,
+   `rest_ball_on_bat`, `ride_stuck_ball_on_bat` and the four inline
+   readers), and every caller passes the new `BALL_PRIMARY` — so still
+   no behaviour change, verified against the full 67-gate sweep. The
+   named constant is the point: `[0]` meaning "the first ball" and `[0]`
+   meaning "the only ball that can be here" were indistinguishable, and
+   ten of the 24 sites are the second kind. See notes/bat-deflection.md.
+
+   What remains is `catch_ball_on_bat` learning which BAT — it still
+   reads `BAT_X` — and then a secondary ball actually being caught.
 3. ~~**Seeded destroyed-cell mismatch**~~ — **CLOSED 2026-08-09, and it
    had already fixed itself.** This entry said the port and original
    destroy different *cells* on `replay-l3-brick-flash-both`. They do

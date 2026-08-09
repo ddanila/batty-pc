@@ -15,6 +15,7 @@
 | #15 | `bios_ticks()` frozen during gameplay | fixed; `test-frozen-clock` |
 | #16 | the port bounces and re-aims an alien at a wall; the original only clamps | fixed 2026-08-09 — `check_margins` ported literally, the invented reflect-and-re-aim deleted; `test-enemy-margin-clamp` |
 | #17 | `test-enemy-descend` failed about two runs in three | fixed 2026-08-09 — the gate asserts the implication, and `BATTY_REPLAY_COUNTER` pins the phase |
+| #18 | `test-enemy-brick-residue` red since `ec8c03d`: the dirty redraw leaves 92 px of residue | **open** — bisected 2026-08-10; the attr band lost its brick pass, verified only against static level-entry captures |
 
 **Nothing here is open.** #14's port-side half is fixed and gated; what
 remains of it is a QUESTION about the original that cannot be answered
@@ -1076,3 +1077,40 @@ The tool was validated by taking the pin back out of
 `test-enemy-margin-clamp`, whose `dir` expectations are exact: it
 reported PHASE-DEPENDENT at pins 1, 2 and 3. That also settles, with
 evidence rather than assumption, that pinning that gate was necessary.
+
+
+## #18 — `test-enemy-brick-residue` has been RED since ec8c03d (2026-08-10)
+
+**Open.** Bisected to `ec8c03d` "refactor: the generated attr band needs
+no brick pass — measured". Its parent `650ac8e` passes; `ec8c03d` and
+every commit after it fail with the same figure:
+
+    FAIL: dirty path leaves residue vs full redraw after 80 frames:
+    92 px [roi (0, 0, 256, 192)]
+
+That commit dropped the brick pass from `build_level_attrs_from_data`,
+so the base attribute band is now the EMPTY playfield's attributes
+rather than the "every brick alive" state the capture recorded. It was
+verified — three builds, all 15 levels — but only against level-ENTRY
+captures, which are static. `test-enemy-brick-residue` compares the
+DIRTY partial-redraw path against a full redraw after 80 frames of play,
+which is a different question about the same data: what the partial path
+restores when it repaints over a cell.
+
+The likely shape is that some dirty-redraw path reads the base band
+expecting brick colour and now finds background. Not yet confirmed —
+recorded at the point of bisection rather than guessed further.
+
+### Why it hid for ten commits
+
+Two things, and the second is the one to fix in process terms.
+
+`make parity-check-parallel` runs the 8-gate PARITY_CHECK subset, not
+the full 67. The full sweep needs `--full`. `notes/refactor-plan.md`
+described the plain command as the 67-gate sweep, so "ran the parity
+check, green" was true and meant much less than it read.
+
+And the gate is not in `test-fast`, so the day-to-day loop never saw it.
+
+Corrected in refactor-plan.md. The gate itself did its job the first
+time it was actually run.
