@@ -10,7 +10,7 @@ latest covering the compose-order unification, which merged the two
 redraw paths' copies of the `$9AD0` slot sequence. All five defects
 this refactor surfaced are closed.
 
-`main.cpp`: 7,746 → 6,803 lines (-12%) across 14 modules. `make test-fast`
+`main.cpp`: 7,746 → 6,789 lines (-12%) across 14 modules. `make test-fast`
 runs every host test and source gate in seconds; `--full` is 54 gates
 in under six minutes.
 
@@ -76,7 +76,7 @@ happened, and `make test-video` caught it.
 | 3b | collision geometry/effects split | 166 | **done** — 7 more tests |
 | 4 | `assets` | 167 | **done** — 6 tests |
 | 5 | `bricks` — the compositor | 278 | **done** — 5 tests, byte-exact vs 15 captured screens |
-| 5b | level paint / band orchestration | ~140 | **started** — reset, edge repairs and band paint moved to `bricks`, 3 new tests |
+| 5b | level paint / band orchestration | ~125 | **started** — both band painters, the reset and the edge repairs now in `bricks`; 3 new tests |
 | 6a | `objects` — the 22-byte descriptor + slots | 60 | **done** — 5 tests |
 | 6b-i | `weapons` — bullets + blasts | 95 | **done** — 6 tests |
 | 6b-ii | `enemies` — steering | 145 | **done** — 5 tests |
@@ -606,6 +606,12 @@ being a frame concern rather than a brick one.
 
 `main.cpp`'s `render_brick_band` is now four lines: guard, paint,
 shadow.
+
+`paint_brick_band_rows` went the same way, so both painters — full and
+row-scoped — now live beside the primitives they drive. What is left in
+`main.cpp` is the two thin wrappers that turn a level index into
+`(cells, lattr, bg_attr)`, which is the only thing the module could not
+know.
 
 `release_brick_hit_anim_if_gone` came from the same pass: the stepper
 and the renderer both freed a slot whose brick had been destroyed. Note

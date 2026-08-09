@@ -48,6 +48,13 @@ void reset_destroyed_cell_attrs(const u8 *cells, u8 bg_attr,
  * concern rather than a brick one. */
 void paint_brick_band(const u8 *cells, const u8 *lattr, u8 bg_attr);
 
+/* The same, scoped to brick rows [r0, r1] and the char rows [cr0, cr1]
+ * they re-base — the incremental rebuild's path. Unlike the full paint
+ * this must repair its own edges, because a repaint that stops at a
+ * boundary does not get the next row's overwrite for free. */
+void paint_brick_band_rows(const u8 *cells, const u8 *lattr, u8 bg_attr,
+                           int r0, int r1, int cr0, int cr1);
+
 /* The same, for brick rows [first_row, last_row] only. Callers must
  * repaint or otherwise account for the neighbouring rows' edges. */
 void paint_brick_rows(const u8 *cells, int first_row, int last_row);

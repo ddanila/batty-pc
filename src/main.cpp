@@ -1880,25 +1880,11 @@ static void render_brick_band(unsigned char level_idx) {
  * fix-ups below keep those rows canonical. */
 static void render_brick_band_rows(unsigned char level_idx,
                                    int r0, int r1, int cr0, int cr1) {
-    int cr;
-    const unsigned char *cells = live_level;
-    const unsigned char *lattr = &level_attrs[(int)level_idx * ATTR_BAND_SIZE];
-    unsigned char bg_attr = bg_attr_per_cycle[level_idx & 3];
-
     if (level_idx >= N_LEVELS) return;
-
-    /* Base attrs for the recomposited char rows (ATTR_COLS == 32). */
-    memcpy(&attr_buff[cr0 * 32], &lattr[cr0 * ATTR_COLS],
-                (unsigned int)((cr1 - cr0 + 1) * 32));
-
-    reset_destroyed_cell_attrs(cells, bg_attr, r0, r1, cr0, cr1);
-
-    paint_brick_rows(cells, r0, r1);
-
-    repair_band_row_boundaries(cells, r0, r1);
-
-    /* Border-shadow (left col-1 dim) for the recomposited char rows. */
-    for (cr = cr0; cr <= cr1; cr++) attr_buff[cr * 32 + 1] &= 0xBF;
+    paint_brick_band_rows(live_level,
+                          &level_attrs[(int)level_idx * ATTR_BAND_SIZE],
+                          bg_attr_per_cycle[level_idx & 3],
+                          r0, r1, cr0, cr1);
 }
 
 /* Port of the inner-border-line routine at LBE8B_2 ($BE99), adjusted to
