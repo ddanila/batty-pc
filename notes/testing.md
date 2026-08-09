@@ -1,7 +1,7 @@
 # Visual regression test
 
 > **`make test-fast` needs no emulator and runs in seconds** — 14 host
-> test suites plus 27 source gates. Start there; it is also exactly what
+> test suites plus 28 source gates. Start there; it is also exactly what
 > CI runs. `make test-video` is one of those suites: it compiles the
 > video engine (`src/zxvga.cpp`) with the host compiler and checks the
 > ZX attribute/colour-clash model exhaustively — every attr x every byte
@@ -366,6 +366,7 @@ mentioned nowhere in this file, including several of the oldest.
 - `test-sound-ids` — effect ids are play_sounds_list positions.
 - `test-known-bugs-table` — the bug table agrees with the sections below it.
 - `test-no-dead-constants` — every `#define` in src/ is used.
+- `test-no-orphan-gates` — every gate script is run by a target.
 - `test-level-attrs-derivable` — the live-brick fifth of level_attrs.bin is computed, not captured.
 - `test-two-player-state` — two sets of counters, and the HUD/cache both read them.
 - `test-two-player-turn` — a life loss hands the turn over in mode 1, not in mode 0.
@@ -510,6 +511,28 @@ something long since fixed:
 All three are asserting now, and `test-visual` lints its own table: a
 bare `False` fails, `False,  # INFO: <why>` passes. Downgrading is still
 allowed — leaving no reason is not.
+
+## Tools and gates are told apart by name
+
+`scripts/test_*.py` and `scripts/check_*.py` are gates; everything else
+in `scripts/` is a tool. `test-no-orphan-gates` keeps the convention
+honest — a gate-named script no Makefile target runs looks like coverage
+in a directory listing and is not.
+
+The worked example is `visualise_levels.py`, which was called
+`sweep_levels.py` until 2026-08-10. Reading it mid-session — no failure
+path, prints diff counts, always exits 0 — I nearly reported that the
+levels gate could never fail. The gate is `test_levels_sweep.py`, one
+character away in the listing, and it fails properly.
+
+**Six gates were audited for "can this actually fail?" and all six can.**
+They end `sys.exit(main())` with `return fails`, a COUNT that is
+non-zero when something failed: `test_levels_sweep`, `test_wall_bounce`,
+`test_magnet_ball`, `test_laffc_levels_sane`, `test_laffc_ball_frame1`,
+`test_bat_deflection_port`. That is a third idiom alongside
+`raise SystemExit(...)` and `return 1`, which is exactly why it is not
+gated — a checker enumerating three idioms will call a working gate
+broken the day someone writes a fourth.
 
 ## A checker's haystack decides what counts as a use
 
@@ -907,7 +930,7 @@ It presents as a game regression: `test-midgame-brick-replay` fails with
 graphics — and it fails the serial retry too, because the shared image is
 still wrong. Run it alone a minute later and it passes.
 
-The `exercise_*.py` and `sweep_levels.py` scripts still hardcode the
+The `exercise_*.py` and `visualise_levels.py` scripts still hardcode the
 path. They are manual tools, never run by the suite, so they are left
 alone.
 

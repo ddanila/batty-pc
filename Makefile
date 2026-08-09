@@ -1273,6 +1273,7 @@ test-source-gates:
 	$(MAKE) test-sound-ids
 	$(MAKE) test-known-bugs-table
 	$(MAKE) test-no-dead-constants
+	$(MAKE) test-no-orphan-gates
 
 # Everything that needs no emulator: the host module tests plus the source
 # gates. Seconds, and it is what CI checks.
@@ -1412,6 +1413,11 @@ test-known-bugs-table:
 # BAT_X_MIN/MAX read 8 and 216 while the real clamp is check_*_margin.
 test-no-dead-constants:
 	python3 scripts/check_no_dead_constants.py
+
+# A test_*/check_* script no target runs looks like coverage in a
+# directory listing and is not.
+test-no-orphan-gates:
+	python3 scripts/check_no_orphan_gates.py
 
 # Proof for WS7: every live brick's attr byte in the captured
 # level_attrs.bin is reproduced by briks_colors + print_border_shadow.

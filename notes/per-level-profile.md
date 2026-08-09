@@ -33,7 +33,7 @@ attr / shadow nuance or a stale GT), not a sprite bug.
 
 1. **Sweep all 15 levels** and rebuild the table:
    `for N in 1..15: rm -f build/batty-test.img; BATTY_LEVEL=$N make test`
-   (or `scripts/sweep_levels.py` for a single-boot composite grid —
+   (or `scripts/visualise_levels.py` for a single-boot composite grid —
    note it cycles levels with ENTER rather than booting per level, so
    confirm a discrepancy with the per-boot command before trusting it).
    Key question: is the drift L9-only, cycle-0-wide (L5/L13 share

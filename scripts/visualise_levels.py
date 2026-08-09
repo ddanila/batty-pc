@@ -1,6 +1,21 @@
 #!/usr/bin/env python3
-"""Capture all 15 levels from our DOS recreation and grid them
-side-by-side with the GT captures.
+"""Capture all 15 levels and grid them beside the GT captures — A TOOL.
+
+NOT A GATE, and renamed from sweep_levels.py on 2026-08-10 to stop it
+being read as one. It has no failure path at all: it prints per-level
+diff counts and writes a composite PNG for a human to look at, and
+always exits 0.
+
+`make test-levels-sweep` is the GATE, and it runs
+scripts/test_levels_sweep.py — a different file whose name was one
+character away. Mid-session I read this script, saw it could never fail,
+and was about to report that the levels gate was a visualiser. It is
+not; test_levels_sweep.py runs test-visual's state4_level1 per level and
+fails properly. The names were close enough to draw the wrong
+conclusion from the right observation.
+
+Use this when a level looks wrong and you want to SEE the difference;
+use the gate when you want to know whether anything broke.
 
 Boots build/batty-test.img (BATTYALL=1 so every transition is keypress-
 driven), advances through TITLE -> MENU -> HISCORE -> ST_LEVEL with
