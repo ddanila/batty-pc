@@ -162,7 +162,6 @@ static PlayerState players[2] = {{0, LIVES_INIT, 0, 0, 0, 0},
  * Stored on disk as one 132 B blob: P1 header+body (66) then P2 (66). */
 #define INDICATOR_W_BYTES  4
 #define INDICATOR_H        16
-#define INDICATOR_ROW_BYTES INDICATOR_W_BYTES
 static unsigned char ind_p1[INDICATOR_W_BYTES * INDICATOR_H];
 static unsigned char ind_p2[INDICATOR_W_BYTES * INDICATOR_H];
 
@@ -274,8 +273,6 @@ ZX_STATIC_ASSERT(LVL_ROWS == FIELD_ROWS && LVL_COLS == FIELD_COLS,
 /* ATTR_ROWS / ATTR_COLS (the 32x24 attribute grid) come from zxvga.h. */
 #define ATTR_BAND_SIZE  (ATTR_ROWS * ATTR_COLS)
 #define ATTR_TOTAL_SIZE (N_LEVELS * ATTR_BAND_SIZE)
-#define BRICK_ATTR_ROW_BASE 3     /* brick char-rows start at attr-row 3
-                                   * (= y=24..119 / 8 = char rows 3..14) */
 
 static unsigned char levels[LVL_SIZE];
 
@@ -498,7 +495,6 @@ static const unsigned char bg_attr_per_cycle[4] = {
  *   2  cyan    (L3, L7, L11, L15)
  *   3  white   (L4, L8, L12)
  * Within a cycle the bitmap is byte-identical. */
-#define BG_TILE_W_PX 16
 #define BG_TILE_H_PX 16
 #define BG_TILE_SIZE (BG_TILE_H_PX * 2)
 #define BG_TILE_CYCLES 4
@@ -521,8 +517,6 @@ static unsigned char bg_tile[BG_TILE_CYCLES * BG_TILE_SIZE];
  * frame strip can clip the bat at the edges, but the user prefers
  * full reach over partial-visibility cosmetics. Proper fix awaits
  * the frame ornament painter port. */
-#define BAT_X_MIN     8
-#define BAT_X_MAX   216
 #define BAT_X_INIT  0x74             /* = 116, matches object_bat_1.x_coord */
 /* The bat's authoritative state lives in objects[OBJ_BAT_1] - macros
  * defined after the object table below. */
@@ -538,7 +532,6 @@ static unsigned char bg_tile[BG_TILE_CYCLES * BG_TILE_SIZE];
                                   * object_ball_1.x_coord - object_bat_1.x_coord */
 #define BALL_Y_TOP     8
 #define BALL_X_MIN     8
-#define BALL_X_MAX   240        /* 256 - 8 - body 8 */
 /* Ball state - x/y now live in objects[OBJ_BALL_1].x_coord/y_coord
  * (the descriptor is the source of truth, mirroring the original's
  * IX-relative access). The primary ball uses the descriptor's
@@ -640,7 +633,6 @@ static void render_brick_hit_anim_to_buff(void);
  * 3-byte-wide, 27/28-row sprite; get_rocket also patches frame 1's
  * height to $1B. Use that visible footprint for the brick sweep rather
  * than the narrower placeholder box the earlier port used. */
-#define ROCKET_W_PX     24
 #define ROCKET_H_PX     27
 #define ROCKET_BONUS_H_PX 0x0C
 struct RocketState {
@@ -3107,9 +3099,6 @@ static unsigned long pit_ticks(void) {
 static void (__interrupt *prev_int9)(void) = NULL;
 static volatile unsigned char key_state[128];
 
-#define SC_ESC      0x01
-#define SC_P        0x19
-#define SC_ENTER    0x1C
 #define SC_SPACE    0x39
 #define SC_LEFT     0x4B    /* arrow / keypad 4 */
 #define SC_RIGHT    0x4D    /* arrow / keypad 6 */
@@ -3147,7 +3136,6 @@ typedef enum { ST_TITLE, ST_MENU, ST_HISCORE, ST_LEVEL, ST_QUIT } state_t;
 #define TITLE_TIMEOUT_TICKS   60    /* ~3.3 s */
 #define MENU_TIMEOUT_TICKS   200    /* ~11 s  */
 #define HISCORE_TIMEOUT_TICKS 120   /* ~6.6 s */
-#define LEVEL_TIMEOUT_TICKS   40    /* ~2.2 s per level in the cycle */
 
 /* Attract-mode auto-cycle through TITLE / MENU / HISCORE states for
  * the no-input demo loop. Defaults to OFF — matches the original

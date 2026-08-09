@@ -1272,6 +1272,7 @@ test-source-gates:
 	$(MAKE) test-asset-provenance
 	$(MAKE) test-sound-ids
 	$(MAKE) test-known-bugs-table
+	$(MAKE) test-no-dead-constants
 
 # Everything that needs no emulator: the host module tests plus the source
 # gates. Seconds, and it is what CI checks.
@@ -1406,6 +1407,11 @@ test-sound-ids:
 # section without a row, no row claiming open over a recorded fix.
 test-known-bugs-table:
 	python3 scripts/check_known_bugs_table.py
+
+# A #define nobody reads is a claim the program does not make.
+# BAT_X_MIN/MAX read 8 and 216 while the real clamp is check_*_margin.
+test-no-dead-constants:
+	python3 scripts/check_no_dead_constants.py
 
 # Proof for WS7: every live brick's attr byte in the captured
 # level_attrs.bin is reproduced by briks_colors + print_border_shadow.

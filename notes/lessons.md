@@ -606,3 +606,18 @@ table: a bare `False` fails, `False,  # INFO: <why>` passes. The point
 is not that downgrading is banned — sometimes it is right — but that the
 reason has to exist and be re-readable, because the row itself will
 never tell you it has gone stale.
+
+**A checker that scans prose counts prose as use.** `check_no_dead_constants`
+scans `src/`, `tests/` and `scripts/` for a constant's name, so a gate
+that greps for one counts as a user. Its own DOCSTRING lists the eleven
+dead constants it first found — which made all eleven look alive, and
+let a reintroduced `BAT_X_MAX` survive the mutation that was supposed to
+prove the gate worked.
+
+Third time this week in a different costume: `notes_symbols` flagged its
+own write-up, and the fix there was to name retired symbols without
+backticks. Here it is to strip Python docstrings and comments before
+searching, which is what `phase_sweep` already does for the same reason.
+
+The rule: when a checker's haystack includes documentation, decide
+explicitly whether a MENTION is a USE. Usually it is not.

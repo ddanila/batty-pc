@@ -16,7 +16,7 @@ The port is "100%" when all of the following hold:
 |---|-----------|-------|
 | 1 | All three game modes work: 1 Player, 2 Players (alternating), Double Play (simultaneous split-court co-op) | 1P and 2P done; Double Play has its court, both bats, ball physics and scoring but no bat-2 INPUT |
 | 2 | Menu semantics match the original (0 starts the selected game directly; A/B input-device cycling affects play) | Key 0 starts the game (`test-menu-start`); the device byte is per-player state but still selects nothing |
-| 3 | Core gameplay byte-exact where an oracle exists (ball, bat, collision, RNG, enemy, bonuses, scoring) | **Done** — regression-locked by 91 gates |
+| 3 | Core gameplay byte-exact where an oracle exists (ball, bat, collision, RNG, enemy, bonuses, scoring) | **Done** — regression-locked by 92 gates |
 | 4 | Full game FLOW gated end-to-end: level-clear → next, life-loss → respawn, game-over → initials, level wrap | **Done** — `test-level-advance`, `test-life-loss`, `test-game-over-visual`, `test-name-entry-visual` |
 | 5 | Sound faithful to the original's 5-slot beeper queue (envelope/timing, not just effect IDs) | ids, slot count, pitches and envelope ARITHMETIC faithful; durations still round to 20 ms because the sound clock is the 50 Hz frame counter |
 | 6 | All assets derived from the tape at build time; no captured emulator blobs | **Done** — all 13 loaded assets build from `original/blocks/`, held by `test-asset-provenance` |

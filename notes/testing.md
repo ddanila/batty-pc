@@ -1,7 +1,7 @@
 # Visual regression test
 
 > **`make test-fast` needs no emulator and runs in seconds** — 14 host
-> test suites plus 26 source gates. Start there; it is also exactly what
+> test suites plus 27 source gates. Start there; it is also exactly what
 > CI runs. `make test-video` is one of those suites: it compiles the
 > video engine (`src/zxvga.cpp`) with the host compiler and checks the
 > ZX attribute/colour-clash model exhaustively — every attr x every byte
@@ -365,6 +365,7 @@ mentioned nowhere in this file, including several of the oldest.
 - `test-asset-provenance` — every loaded asset is built from the tape.
 - `test-sound-ids` — effect ids are play_sounds_list positions.
 - `test-known-bugs-table` — the bug table agrees with the sections below it.
+- `test-no-dead-constants` — every `#define` in src/ is used.
 - `test-level-attrs-derivable` — the live-brick fifth of level_attrs.bin is computed, not captured.
 - `test-two-player-state` — two sets of counters, and the HUD/cache both read them.
 - `test-two-player-turn` — a life loss hands the turn over in mode 1, not in mode 0.
