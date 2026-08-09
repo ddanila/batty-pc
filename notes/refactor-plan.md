@@ -10,7 +10,7 @@ latest covering the compose-order unification, which merged the two
 redraw paths' copies of the `$9AD0` slot sequence. All five defects
 this refactor surfaced are closed.
 
-`main.cpp`: 7,746 → 6,806 lines (-12%) across 14 modules. `make test-fast`
+`main.cpp`: 7,746 → 6,817 lines (-12%) across 14 modules. `make test-fast`
 runs every host test and source gate in seconds; `--full` is 54 gates
 in under six minutes.
 
@@ -612,6 +612,17 @@ row-scoped — now live beside the primitives they drive. What is left in
 `main.cpp` is the two thin wrappers that turn a level index into
 `(cells, lattr, bg_attr)`, which is the only thing the module could not
 know.
+
+Sweeping for the rest of that pattern — every helper written this
+session, grepped for hand-rolled copies — came back clean except one:
+`restore_inner_border_line` re-implemented the two masks
+`black_inner_border_pixels` owns, so `0x7F` on byte 1 and `0xFE` on
+byte 30 each appeared twice. Split per side, since a window repaint can
+reach one byte and not the other, and both callers now use them.
+
+Everything else the sweep found was inside the helper itself. The three
+`BALL_X = BAT_X + ...` sites are the known ones: the catch, the rest
+rule, and `respawn_primary_ball`'s documented exception.
 
 `reset_level_state` was re-implementing two helpers that already
 existed: it cleared the extra balls' flags and sprite bits by hand

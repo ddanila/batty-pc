@@ -1908,11 +1908,20 @@ static bool in_inner_border_band(int y) {
     return false;
 }
 
-/* The two pixel columns the border line blacks out: x=8 and x=247, the
- * inner edges of the frame's side strips. */
-static void black_inner_border_pixels(int y) {
-    scr_buff[y * 32 + 1]  &= 0x7F;   /* leftmost bit of byte 1  -> x=8   */
+/* The two pixel columns the border line blacks out — x=8 and x=247, the
+ * inner edges of the frame's side strips. Split per side because a
+ * window repaint may reach one byte and not the other. */
+static void black_inner_border_left(int y) {
+    scr_buff[y * 32 + 1] &= 0x7F;    /* leftmost bit of byte 1 -> x=8 */
+}
+
+static void black_inner_border_right(int y) {
     scr_buff[y * 32 + 30] &= 0xFE;   /* rightmost bit of byte 30 -> x=247 */
+}
+
+static void black_inner_border_pixels(int y) {
+    black_inner_border_left(y);
+    black_inner_border_right(y);
 }
 
 static void inner_border_line_c(void) {
@@ -1929,12 +1938,14 @@ static void inner_border_line_c(void) {
  * line disappears wherever the sprite above it happens to be
  * transparent. See known-bugs.md #11. */
 static void restore_inner_border_line(int y0, int h, int byte_lo, int byte_hi) {
+    const int left  = (byte_lo <= 1  && byte_hi >= 1);
+    const int right = (byte_lo <= 30 && byte_hi >= 30);
     int y;
-    if (byte_lo > 1 && byte_hi < 30) return;      /* window misses both */
+    if (!left && !right) return;                  /* window misses both */
     for (y = y0; y < y0 + h; y++) {
         if (!in_inner_border_band(y)) continue;
-        if (byte_lo <= 1  && byte_hi >= 1)  scr_buff[y * 32 + 1]  &= 0x7F;
-        if (byte_lo <= 30 && byte_hi >= 30) scr_buff[y * 32 + 30] &= 0xFE;
+        if (left)  black_inner_border_left(y);
+        if (right) black_inner_border_right(y);
     }
 }
 
