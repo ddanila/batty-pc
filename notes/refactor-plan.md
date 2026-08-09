@@ -5,11 +5,12 @@ test. Started 2026-08-07.
 
 ## Where this stands
 
-The full suite runs **54/54 green in 343s**, twice — the second run
-covering the three behaviour fixes in the table and everything since.
-All five defects this refactor surfaced are now closed.
+The full suite runs **54/54 green in 343s**, three times now — the
+latest covering the compose-order unification, which merged the two
+redraw paths' copies of the `$9AD0` slot sequence. All five defects
+this refactor surfaced are closed.
 
-`main.cpp`: 7,746 → 6,905 lines across 14 modules. `make test-fast`
+`main.cpp`: 7,746 → 6,905 lines (-11%) across 14 modules. `make test-fast`
 runs every host test and source gate in seconds; `--full` is 54 gates
 in under six minutes.
 
