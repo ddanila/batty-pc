@@ -460,9 +460,31 @@ measured envelopes. What still rounds them to 20 ms is the clock rate,
 not the model, and the same test asserts that floor so it cannot be
 believed fixed while it is not.
 
-What remains is therefore narrow: give `sound_set_clock_hz` something
-finer than the 50 Hz frame counter, and a speaker driver that can stop a
-note between frames. Decode and verified examples in notes/sound.md.
+**What remains is a DESIGN question, and I had it wrong.** "Give it a
+finer clock" was my own framing two commits ago; it does not survive
+reading the primitive. The original's beeper BLOCKS — `sound_beep` is a
+pair of DJNZ spin loops around `OUT ($FE),A`, so the CPU makes the wave
+and `play_sounds_queue` consumes 3-9 ms of real frame time. The callers
+know it:
+
+    CALL play_sounds_queue
+    JR NZ,LBAED_4
+
+`play_sounds_queue` latches the frame counter on entry, compares on
+exit, and returns Z only if the queue fitted inside one interrupt; the
+main loop branches on that and skips ahead to the running-dot draw when
+it did not.
+
+A PC does not need any of that — the PIT holds a tone with no CPU, which
+is why the port latches a divisor and returns. So the choice is between
+blocking like the original (faithful to the millisecond, hands back the
+frame-pacing behaviour, costs 3-9 ms of any frame that makes a noise)
+and keeping the latch (needs the stop scheduled from an interrupt, and
+the port's timer is the same 50 Hz).
+
+That is a decision about how much of the original's frame timing to
+import, not a defect to fix — so it wants a deliberate call. Decode,
+verified examples and both options in notes/sound.md.
 
 `SND_MAGNET` is the exception and stays outside the table: the original
 never queues it. `magnets.asm` ends its draw with a plain

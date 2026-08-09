@@ -97,7 +97,47 @@ The last assertion in that test is the gap itself: at 50 Hz a 4 ms
 effect still rounds to one 20 ms tick. It is written as an assertion so
 nobody can believe this fixed while it is not.
 
-### Why the rest is not a one-line fix
+### The rest is a DESIGN question, not a clock
+
+Two commits ago I wrote that WS5 needs "a finer clock, or a speaker
+driver that can schedule a stop between frames". That was the wrong
+frame for it.
+
+**The original's beeper BLOCKS.** `sound_beep` is a pair of DJNZ spin
+loops around `OUT ($FE),A` — there is no timer, the CPU makes the wave
+itself — so `play_sounds_queue` consumes real time, 3 to 9 ms of it per
+effect. And the callers know:
+
+    CALL play_sounds_queue
+    JR NZ,LBAED_4
+
+`play_sounds_queue` latches the frame counter on entry and compares it
+on exit, returning Z only if the whole queue fitted inside one
+interrupt. The main loop branches on that — `LBAED_4` skips ahead to the
+running-dot draw, i.e. the frame gives up some of its remaining work
+when the sound ran long.
+
+A PC does not need that. The PIT holds a tone with no CPU at all, which
+is why the port latches a divisor and returns. That is an ADAPTATION,
+and a defensible one — but it means "faithful envelopes" cannot be
+reached by making the clock finer. The choice is:
+
+1. **Block like the original.** Spin for `D * 2 * E * 13` T-states'
+   worth of time inside the frame, and port the overrun branch. Faithful
+   to the millisecond, and it hands back the frame-pacing behaviour the
+   original has. Costs 3-9 ms of every frame that plays a sound, on
+   hardware where that budget was measured for something else.
+2. **Keep latching, stop on a finer tick.** Needs `sound_tick()` called
+   far more often than once a frame — the resolution of STOPPING is
+   whatever calls it, not the clock's units — so realistically it needs
+   the stop scheduled from an interrupt, and the port's timer runs at
+   the same 50 Hz.
+
+Neither is a small change, and (1) is the faithful one. It is a decision
+about how much of the original's frame-timing behaviour to import, not a
+bug to fix, so it wants a deliberate call rather than an autonomous one.
+
+### Why the arithmetic fix was worth doing anyway
 
 20 ms is the port's finest unit. The original's envelopes are sub-frame
 — `sound_beep_cont_d` returns after a few thousand T-states, well inside
