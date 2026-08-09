@@ -1,11 +1,33 @@
-# Known bugs (user-reported, unfixed)
+# Known bugs
 
-Concrete defects observed by the user that aren't yet caught by the
-visual-regression test (= mid-game state we don't snapshot). Listed
-here so the next iter has a target. When fixing, add a section to
-`per-level-profile.md` or the relevant area doc; remove from here.
+## Status
 
-(none currently)
+| # | what | state |
+|---|------|-------|
+| #8 | multiball direction convention | no gameplay effect — the mirrored values were written to fields nothing read |
+| #9 | blast dirty rect 16x8 vs 16x12 | fixed; `test-blast-dirty-redraw` |
+| #10 | bullet animation phase depends on the redraw path | fixed; host tests |
+| #11 | narrow bat redraw loses the inner border line | fixed; `test-bat-redraw-window` |
+| #12 | stuck ball snapped to the default offset | fixed; `test-stuck-ball-offset` |
+| #13 | extra balls write the primary's sign cache | fixed; `test-ball-sign-cache-owner` |
+| #14 | the sign cache mixed signs and speeds | units fixed; **one question OPEN**, needs the Spectrum |
+| #15 | `bios_ticks()` frozen during gameplay | fixed; `test-frozen-clock` |
+
+**#14 is the only open item**, and it is open for a reason that cannot be
+closed from the port: `delta_to_dir` selects its angle by MAGNITUDE, and
+now that the cache provably holds signs, the `0x08` angle is unreachable
+from its only production caller. Whether the ORIGINAL derives the extra
+balls' launch angle from real velocity needs hardware. See the end of
+that section.
+
+This file originally read "user-reported, unfixed" and "(none
+currently)". Both stopped being true: #8-#15 were surfaced by the
+refactor rather than reported, and #14 is open. The header said
+otherwise for long enough that someone scanning it would have concluded
+there was nothing outstanding.
+
+When fixing one, add a section to `per-level-profile.md` or the relevant
+area doc, and update the row above rather than only the section below.
 
 (The bird/UFO render-parity program is fully closed as of 2026-06-12:
 the LAAD2 anim stepper is ported, both compose paths follow the $9AD0

@@ -7,8 +7,8 @@ test. Started 2026-08-07.
 
 The full suite runs **59/59 green** — twelve clean runs now, the
 latest covering the name-entry decomposition.
-Six of the seven defects this refactor surfaced are closed; #14 is open
-because settling it needs ground truth the port does not have.
+Seven of the eight defects this refactor surfaced are closed; #14 is
+open because settling it needs ground truth the port does not have.
 
 Gate count 51 → 59 this session: `test-blast-dirty-redraw`,
 `test-game-over`, `test-stuck-ball-offset`, `test-visual-checkpoints`
@@ -29,15 +29,11 @@ the cause is not established. Mixing the two understated the reduction.
 `scripts/check_notes_numbers.py` now pins this section's numbers to
 reality on every `make test-fast`.
 
-| finding | state |
-|---------|-------|
-| #8 multiball direction convention | no gameplay effect — the mirrored values were written to fields nothing read |
-| #9 blast dirty rect 16x8 vs 16x12 | fixed; settled by measuring the sprite, gated by `test-blast-dirty-redraw` |
-| #10 bullet animation phase | fixed; direction settled from the snapshot, gated by host tests |
-| #11 narrow redraw loses the border line | fixed; gated by `test-bat-redraw-window`, which is deterministic now |
-| #12 stuck ball snapped to the default offset | fixed; gated by `test-stuck-ball-offset` |
-| #13 extra balls write the primary's sign cache | fixed; gated by `test-ball-sign-cache-owner` |
-| #14 sign cache mixes signs and speeds | open; pinned by `test_delta_to_dir_sign_inputs`, needs the Spectrum to settle |
+Eight defects this refactor surfaced, #8 through #15. Seven are closed;
+**#14 is the only open one**, and it needs the Spectrum rather than more
+work here. `notes/known-bugs.md` carries the status table and the
+reasoning — this file deliberately does NOT keep a second copy, because
+the copy here was already missing #15 by the time anyone noticed.
 
 ## How to read this file
 
@@ -669,6 +665,19 @@ and the gate was extended in the same commit to press LEFT and require
 the letter row to change, since placement alone would look identical
 whether `step_name_letter` worked or not. Mutation-checked by making the
 LEFT arm a no-op.
+
+`notes/known-bugs.md` opened with "user-reported, unfixed" and "(none
+currently)". Neither had been true for a while: #8-#15 were surfaced by
+this refactor rather than reported, and #14 is open. Someone scanning
+the top would have concluded there was nothing outstanding. It has a
+status table now, and the sections it names all exist — checked, because
+a table pointing at absent sections is the same "looks documented"
+failure as a dead citation.
+
+That made SIX duplicated lists: this file kept its own copy of the same
+findings table, and that copy was already missing #15. Replaced with a
+pointer rather than synced, per the rule the fourth one taught — derive
+or point, do not duplicate.
 
 Three file citations had rotted (named below without paths, per the
 convention this turned into). A `magnets-missing` note was folded into
