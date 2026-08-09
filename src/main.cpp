@@ -6471,6 +6471,36 @@ static bool visual_checkpoint_tick(void) {
     return true;
 }
 
+/* One frame of the primary ball: riding the bat while stuck, otherwise
+ * ramping its speed and stepping. A hidden ball does neither.
+ *
+ * SLOW is a speed reset ($02), not a frame skip — handling_ball runs
+ * every frame in the original and the speed byte, via dir_to_dxdy's
+ * magnitude, is what changes. So a visible ball always steps.
+ *
+ * False means a replay checkpoint fired: the probe is written and the
+ * run should end. */
+static bool step_primary_ball(int *ball_moved) {
+    if (ball.stuck) {
+        ride_stuck_ball_on_bat();
+        *ball_moved = 1;
+        return true;
+    }
+    if (!BALL_VISIBLE) return true;
+
+    ball_speed_ramp_tick();
+    step_ball();
+    *ball_moved = 1;
+
+    if (probe_checkpoint_due(probe.launch_active, &probe.launch_countdown)
+        || probe_checkpoint_due(probe.frame_active, &probe.frame_countdown)) {
+        write_replay_probe();
+        serial_probe_signal();
+        return false;
+    }
+    return true;
+}
+
 /* The main loop's RNG work, in the original's order at LB9E8_2.
  *
  * The magnet toggle samples the CURRENT value — it is reading LAST
@@ -6593,24 +6623,7 @@ static state_t run_level(void) {
                 frame_ticked = 1;
                 tick_frame_rng();
                 steer_bat_from_keys();
-                if (ball.stuck) {
-                    ride_stuck_ball_on_bat();
-                    ball_moved = 1;
-                } else if (BALL_VISIBLE) {
-                    /* SLOW is now a ball-speed reset ($02), not a
-                     * frame-skip — handling_ball runs every frame in the
-                     * original; the speed byte (via dir_to_dxdy magnitude)
-                     * is what changes. So the ball always steps here. */
-                    ball_speed_ramp_tick();
-                    step_ball();
-                    ball_moved = 1;
-                    if (probe_checkpoint_due(probe.launch_active, &probe.launch_countdown)
-                        || probe_checkpoint_due(probe.frame_active, &probe.frame_countdown)) {
-                        write_replay_probe();
-                        serial_probe_signal();
-                        return ST_QUIT;
-                    }
-                }
+                if (!step_primary_ball(&ball_moved)) return ST_QUIT;
                 if (dbg.auto_fire) try_fire_laser();   /* held-SPACE sim (test) */
                 step_active_entities();
                 handle_no_ball_death();
