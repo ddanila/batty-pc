@@ -301,6 +301,4 @@ void paint_brick_band_rows(const u8 *cells, const u8 *lattr, u8 bg_attr,
     reset_destroyed_cell_attrs(cells, bg_attr, r0, r1, cr0, cr1);
     paint_brick_rows(cells, r0, r1);
     repair_band_row_boundaries(cells, r0, r1);
-    /* Border shadow: dim char column 1 across the recomposited rows. */
-    for (int cr = cr0; cr <= cr1; cr++) attr_buff[cr * ATTR_COLS + 1] &= 0xBF;
 }

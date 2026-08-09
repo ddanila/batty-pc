@@ -1855,6 +1855,7 @@ static void render_lives(unsigned char cycle, unsigned char attr) {
  * Does NOT touch VGA — buff_to_vga handles the final pass. Assumes
  * paint_bg_to_buff already pre-filled the rest of the buffers. */
 static void print_border_shadow_c(void);
+static void dim_border_shadow_column(int cr0, int cr1);
 static void render_brick_band(unsigned char level_idx) {
     if (level_idx >= N_LEVELS) return;
     paint_brick_band(live_level,
@@ -1885,6 +1886,7 @@ static void render_brick_band_rows(unsigned char level_idx,
                           &level_attrs[(int)level_idx * ATTR_BAND_SIZE],
                           bg_attr_per_cycle[level_idx & 3],
                           r0, r1, cr0, cr1);
+    dim_border_shadow_column(cr0, cr1);
 }
 
 /* Port of the inner-border-line routine at LBE8B_2 ($BE99), adjusted to
@@ -1944,15 +1946,23 @@ static void restore_inner_border_line(int y0, int h, int byte_lo, int byte_hi) {
  * brick color into cc 1, painting the left dim strip with the brick
  * colour instead of the non-bright side-strip attr the level expects
  * (e.g. L1 cr 7 cc 1: should be $1F, our print_briks_c writes $5F). */
-static void print_border_shadow_c(void) {
+/* Dim char column 1 over [cr0, cr1] — the left arm of the border
+ * shadow. Split out because a scoped band rebuild has to re-apply it for
+ * the rows it repainted, exactly as restore_inner_border_line does for
+ * the border line. */
+static void dim_border_shadow_column(int cr0, int cr1) {
     int cr;
+    for (cr = cr0; cr <= cr1; cr++) attr_buff[cr * 32 + 1] &= 0xBF;
+}
+
+/* The frame's drop shadow: the whole left column and the top row. It
+ * spans the playfield, not the brick band, which is why it stays here
+ * rather than in the bricks module.
+ * orig: print_border_shadow $BFCF */
+static void print_border_shadow_c(void) {
     int cc;
-    for (cr = 1; cr <= 23; cr++) {
-        attr_buff[cr * 32 + 1] &= 0xBF;
-    }
-    for (cc = 2; cc <= 30; cc++) {
-        attr_buff[1 * 32 + cc] &= 0xBF;
-    }
+    dim_border_shadow_column(1, 23);
+    for (cc = 2; cc <= 30; cc++) attr_buff[1 * 32 + cc] &= 0xBF;
 }
 
 /* Pre-fill scr_buff with the hex tile and attr_buff uniformly with

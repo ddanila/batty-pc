@@ -51,7 +51,9 @@ void paint_brick_band(const u8 *cells, const u8 *lattr, u8 bg_attr);
 /* The same, scoped to brick rows [r0, r1] and the char rows [cr0, cr1]
  * they re-base — the incremental rebuild's path. Unlike the full paint
  * this must repair its own edges, because a repaint that stops at a
- * boundary does not get the next row's overwrite for free. */
+ * boundary does not get the next row's overwrite for free.
+ *
+ * Like the full paint, it leaves the border shadow to the caller. */
 void paint_brick_band_rows(const u8 *cells, const u8 *lattr, u8 bg_attr,
                            int r0, int r1, int cr0, int cr1);
 

@@ -10,7 +10,7 @@ latest covering the compose-order unification, which merged the two
 redraw paths' copies of the `$9AD0` slot sequence. All five defects
 this refactor surfaced are closed.
 
-`main.cpp`: 7,746 → 6,789 lines (-12%) across 14 modules. `make test-fast`
+`main.cpp`: 7,746 → 6,799 lines (-12%) across 14 modules. `make test-fast`
 runs every host test and source gate in seconds; `--full` is 54 gates
 in under six minutes.
 
@@ -623,14 +623,17 @@ underneath — comparing `paint_brick_band_rows` against
 It fails, on all 150 level/window pairs, and the pixels are fine: the
 difference is entirely in the attrs. Two reasons, both deliberate.
 
-- `paint_brick_band_rows` dims char column 1 itself; `paint_brick_band`
+- `paint_brick_band_rows` dimmed char column 1 itself; `paint_brick_band`
   leaves the border shadow to the caller's `print_border_shadow_c`, a
-  frame concern the module does not own.
+  frame concern the module does not own. **Fixed since:** the scoped
+  painter no longer dims it either, and `main.cpp`'s wrapper calls
+  `dim_border_shadow_column(cr0, cr1)` — the same split
+  `restore_inner_border_line` got. Both painters now have one contract.
 - The row-scoped painter re-bases only `[cr0, cr1]`. In the game the
   rows around it come from the static cache, so a standalone full paint
   is not the right oracle for them.
 
-So the comparison is between different contracts, not evidence of a bug.
+That left one real asymmetry, since fixed, and one that is inherent.
 The test stays where it was — at the primitive level, where its attr
 comparison is mutation-verified to catch `repaint_row_attrs` going
 missing. Strengthening it properly would mean giving the test the cache
