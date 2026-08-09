@@ -64,10 +64,22 @@ the other.
 
 ### Scope
 
-y 0..7 across all 32 byte-columns (256/cycle) and the two 1-byte side
-columns over y 24..191 (336/cycle): 2368 of `frame_l1.bin`'s 4968, 47.7%.
-The attribute rows and the `border_horizontal_addon` AND-strip are the
-rest of `LBE8B` and are not covered.
+y 0..7 across all 32 byte-columns (256/cycle), the two 1-byte side
+columns over y 24..191 (336/cycle), and the attribute cells those
+sprites carry (74/cycle): **2664 of `frame_l1.bin`'s 4968**.
+
+The rest of that blob is not frame work at all. `extract_frame.py`'s own
+comment says so: of its 24 top pixel rows, y 0..7 are the ornament and
+y 8..23 are the HUD's labels and score digits — which the port draws
+itself in `render_hud_to_buff`. The same goes for top attr rows 1 and 2
+(they match these sprites 26 and 13 times out of 128, i.e. not at all).
+
+So everything in `frame_l1.bin` is either ornament that derives from the
+tape or HUD the port already generates. Retiring the blob needs the
+`LBE8B` port, not more data.
+
+Not covered: the `border_horizontal_addon` AND-strip at `scr_buff+$101`,
+which modifies pixels after the sprites are laid down.
 """
 
 from __future__ import annotations
@@ -101,11 +113,26 @@ def block(asm: str, addr: str):
     original reaches them by letting DE walk off the end of the left
     one — so they can only be named by address.
     """
-    m = re.search(r"; Data block at " + addr + r"\n(?:;[^\n]*\n)*(?:\w+:\n)?"
-                  r"((?:\s*DEFB[^\n]*\n)+)", asm)
+    # The `:?` is not decoration: the header for $6C95 in the
+    # disassembly reads "; Data block at 6C95:" with a stray colon, and
+    # a strict pattern silently drops the last top-border sprite.
+    m = re.search(r"; Data block at " + addr + r":?\n(?:;[^\n]*\n)*"
+                  r"(?:\w+:\n)?((?:\s*DEFB[^\n]*\n)+)", asm)
     if not m:
         raise SystemExit(f"FAIL: no data block at ${addr} in {GFX.name}")
     return [int(h, 16) for h in re.findall(r"\$([0-9A-Fa-f]{2})", m.group(1))]
+
+
+def raw_sprite(asm: str, name: str):
+    """Every DEFB byte of the named sprite's block, header included."""
+    try:
+        i = asm.index(name + ":")
+    except ValueError:
+        raise SystemExit(f"FAIL: {name} is not in {GFX.name} — if the "
+                         f"border sprites moved, point this gate at them")
+    nxt = asm.find("; Data block", i)
+    body = asm[i:nxt if nxt > 0 else len(asm)]
+    return [int(h, 16) for h in re.findall(r"\$([0-9A-Fa-f]{2})", body)]
 
 
 def sprite(asm: str, name: str):
@@ -115,14 +142,7 @@ def sprite(asm: str, name: str):
     agrees with a wrong copy in the port as long as both are wrong the
     same way.
     """
-    try:
-        i = asm.index(name + ":")
-    except ValueError:
-        raise SystemExit(f"FAIL: {name} is not in {GFX.name} — if the "
-                         f"border sprites moved, point this gate at them")
-    nxt = asm.find("; Data block", i)
-    body = asm[i:nxt if nxt > 0 else len(asm)]
-    b = [int(h, 16) for h in re.findall(r"\$([0-9A-Fa-f]{2})", body)]
+    b = raw_sprite(asm, name)
     w, h = b[0], b[1]
     if len(b) < 2 + w * h:
         raise SystemExit(f"FAIL: {name} declares {w}x{h} but carries "
@@ -214,11 +234,66 @@ def main() -> int:
               "UPWARD from the given y.")
         return 1
 
-    total = checked + side_checked
+    # --- the attribute rows ------------------------------------------
+    # Each sprite carries its own attr block after the pixels: (aw, ah)
+    # then aw*ah bytes, written by print_sprite_attrib. Those stack
+    # UPWARD as well — laying them downward matches 48 of 168.
+    TOP_A = 768
+    LEFT_A = 768 + 96 + 168
+    RIGHT_A = 768 + 96 + 168 + 21 + 168
+    def attr_block(b):
+        w, h = b[0], b[1]
+        rest = b[2 + w * h:]
+        aw, ah = rest[0], rest[1]
+        return aw, ah, rest[2:2 + aw * ah]
+
+    attr_checked = 0
+    for cyc in range(N_CYCLES):
+        # Top: char row 0 only. Rows 1 and 2 of this block are the HUD's
+        # label and score-digit rows, which render_hud_to_buff draws —
+        # not frame work, and they do not match these sprites (26 and 13
+        # of 128).
+        # SEQUENCE, not a second list of addresses. The first version
+        # carried one, and mutating its last entry SURVIVED — because
+        # right_bold and right_edge happen to have identical attr blocks,
+        # so the duplicate list was both redundant AND unable to justify
+        # itself. The pixel pass above already names all eight.
+        x = 0
+        for name in SEQUENCE:
+            aw, _, av = attr_block(raw_sprite(asm, name))
+            for i in range(aw):
+                want = av[i]
+                got = frame[cyc * per + TOP_A + x + i]
+                attr_checked += 1
+                if got != want:
+                    bad.append((cyc, f"top-attr {addr}", 0, x + i, want, got))
+            x += aw
+        for base, ls, rs in placements:
+            _, ah, lav = attr_block(ls)
+            _, _, rav = attr_block(rs)
+            for i in range(ah):
+                cr = base // 8 - i
+                if not (3 <= cr <= 23):
+                    continue
+                for off, av in ((LEFT_A, lav), (RIGHT_A, rav)):
+                    want = av[i]
+                    got = frame[cyc * per + off + (cr - 3)]
+                    attr_checked += 1
+                    if got != want:
+                        bad.append((cyc, "side-attr", i, cr, want, got))
+
+    if bad:
+        print(f"FAIL: {len(bad)} frame attribute bytes do not match.\n")
+        for cyc, name, row, bx, want, got in bad[:12]:
+            print(f"  cycle {cyc} {name} row {row} byte {bx}: "
+                  f"want {want:02X} got {got:02X}")
+        return 1
+
+    total = checked + side_checked + attr_checked
     print(f"PASS frame_derivable: all {total} frame bytes "
-          f"({checked} top + {side_checked} side, {N_CYCLES} cycles) are "
-          f"set_border_horizontal and the bold/thin side pair, drawn "
-          f"upward")
+          f"({checked} top px + {side_checked} side px + {attr_checked} "
+          f"attrs, {N_CYCLES} cycles) are set_border_horizontal and the "
+          f"bold/thin side pair, drawn upward")
     return 0
 
 

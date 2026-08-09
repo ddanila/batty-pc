@@ -521,11 +521,27 @@ original artifact:
    the next block in memory — which is why the disassembly says of each
    pair "следующие два спрайта должны идти строго друг за другом".
 
-   Together: **2368 of `frame_l1.bin`'s 4968 bytes, 47.7%**, all four
-   cycles, held by `test-frame-derivable`.
+   *Attribute rows too.* Each sprite carries its own attr block after
+   the pixels — `(aw, ah)` then `aw*ah` bytes — and those stack UPWARD
+   as well (downward matches 48 of 168).
 
-   Remaining for this item: the attribute rows, and the
-   `border_horizontal_addon` AND-strip at `scr_buff+$101`.
+   Together: **2664 of `frame_l1.bin`'s 4968 bytes**, all four cycles,
+   held by `test-frame-derivable`.
+
+   **And the rest of that blob is not frame work.** `extract_frame.py`'s
+   own comment says it: of its 24 top pixel rows, y 0..7 are the
+   ornament and y 8..23 are the HUD's labels and score digits, which the
+   port draws itself in `render_hud_to_buff`. Same for top attr rows 1
+   and 2 — they match these sprites 26 and 13 times out of 128, i.e. not
+   at all.
+
+   So **everything in `frame_l1.bin` is either ornament that derives
+   from the tape or HUD the port already generates.** Retiring it needs
+   the `LBE8B` port, not more data — and the sprites at `$6B17..` need a
+   new asset extraction the way `separator.bin` did.
+
+   Remaining unverified: the `border_horizontal_addon` AND-strip at
+   `scr_buff+$101`, which modifies pixels after the sprites land.
 2. **`level_attrs.bin` residue** — brick-body attrs are already
    computed; port the writer for frame-strip columns and pre-dimmed
    shadow attrs. This is also the root of the accepted 4px frame-step
