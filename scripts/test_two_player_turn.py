@@ -24,6 +24,17 @@ keeps playing. Traced in notes/menu.md.
   guard      BATTY_GAME_MODE=1 with BATTY_REPLAY_LIVES_2UP=0 -> it does
              NOT: the original's `LD A,(lives_2up) / AND A / RET Z` is
              what lets a solo player keep playing
+NOT covered here: the LBC10_7 hand-over, where the active player runs
+OUT of lives, gets the GAME OVER screen, and the other player takes over
+anyway. With BATTY_REPLAY_LIVES=1 the death fires on the FIRST frame, so
+`visual_checkpoint_tick` never reaches its count and the capture reads
+the level-ENTRY probe — the same value whether the hand-over happened or
+not. Measured: lives=1 with and without BATTY_REPLAY_LIVES_2UP=1 both
+report `player00`, indistinguishable from no hand-over at all.
+
+Reaching it needs a checkpoint that survives the game-over hold, or a
+knob that delays the first death. Written down in PLAN.md rather than
+approximated with a case that would pass for the wrong reason.
 
 The third case exists because mutating that guard from `lives <= 0` to
 `lives < 0` SURVIVED the first version of this gate — every case had
@@ -59,14 +70,14 @@ FLOPPY = os.environ.get("BATTY_TEST_FLOPPY", "build/batty-turn.img")
 PROBE_FRAME = 120
 
 
-def probe(mode: str, lives_2up: str = ""):
+def probe(mode: str, extra: str = "", lives: str = "3"):
     Path(ROOT / FLOPPY).unlink(missing_ok=True)
     out = ROOT / "build/PROBE_turn.txt"
     out.unlink(missing_ok=True)
     env = (
         f"BATTY_TEST_FLOPPY={FLOPPY} BATTY_START_LEVEL=1 "
-        f"BATTY_GAME_MODE={mode} BATTY_REPLAY_LIVES=3 BATTY_HIDE_BALL=1 "
-        f"{lives_2up} "
+        f"BATTY_GAME_MODE={mode} BATTY_REPLAY_LIVES={lives} "
+        f"BATTY_HIDE_BALL=1 {extra} "
         f"BATTY_NOSOUND=1 BATTY_REPLAY_PROBE=1 BATTY_REPLAY_WAIT_KEY=1 "
         f"BATTY_REPLAY_COUNTER=0 "
         f"BATTY_VISUAL_PROBE_FRAMES={PROBE_FRAME}"
@@ -93,12 +104,12 @@ def probe(mode: str, lives_2up: str = ""):
 
 def main() -> int:
     ok = True
-    for mode, l2, want_player, why in (
-            ("0", "", 0, "1 Player: the turn cannot change"),
-            ("1", "", 1, "2 Players: the life loss hands over"),
-            ("1", "BATTY_REPLAY_LIVES_2UP=0", 0,
+    for mode, l2, lives, want_player, why in (
+            ("0", "", "3", 0, "1 Player: the turn cannot change"),
+            ("1", "", "3", 1, "2 Players: the life loss hands over"),
+            ("1", "BATTY_REPLAY_LIVES_2UP=0", "3", 0,
              "2 Players but player 2 is out: the guard holds the turn")):
-        got = probe(mode, l2)
+        got = probe(mode, l2, lives)
         if got is None:
             print(f"  mode {mode} {l2}: NO PROBE.TXT [FAIL]")
             ok = False
@@ -106,7 +117,7 @@ def main() -> int:
         got_mode, got_player = got
         good = (got_mode == int(mode) and got_player == want_player)
         ok = ok and good
-        print(f"  BATTY_GAME_MODE={mode} {l2 or '-':26s} "
+        print(f"  mode={mode} lives={lives} {l2 or '-':26s} "
               f"game_mode={got_mode} "
               f"active_player={got_player} "
               f"[{'PASS' if good else 'FAIL'}] "

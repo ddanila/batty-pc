@@ -179,11 +179,25 @@ Gated by `test-two-player-turn`, an A/B on `BATTY_GAME_MODE` with a
 third case (`BATTY_REPLAY_LIVES_2UP=0`) for the guard that lets a solo
 player keep playing.
 
-**Still open, and it is the last piece of WS2:** `LBC10_7` — when one
-player runs out of lives but the other has some left, the original shows
-GAME OVER for that player and continues with the other. The port still
-returns to the title. That needs the game-over/name-entry flow to become
-per-player, which is a bigger change than the hand-over was.
+**Stage 5 (2026-08-09): `LBC10_7` ported, NOT gated.** When one player
+runs out of lives the port now shows their GAME OVER screen and then
+hands over to the other player if they still have lives, instead of
+returning to the title and ending a game the other player is still in.
+It reuses `two_player_turn_change`, whose guards already cover both of
+LBC10_7's conditions — asking them again at the call site is the
+duplicate-guard mistake stage 4 ran into.
+
+**It is not gated, and that is a real gap.** `test-two-player-turn`
+cannot reach it: with `BATTY_REPLAY_LIVES=1` the death fires on the
+FIRST frame, so `visual_checkpoint_tick` never reaches its count and the
+capture reads the level-ENTRY probe — the same value whether the
+hand-over happened or not. Measured both ways; both report `player00`.
+
+Reaching it needs one of: a checkpoint that survives the game-over hold
+(the hold breaks on any key, and the harness sends one), or a knob that
+delays the first death so a checkpoint lands between entry and death.
+The second is probably a few lines. Until then this is behaviour with no
+regression cover, which is worth less than it looks.
 
 **What:** Classic turn-taking (research-confirmed: on the Spectrum,
 2 PLAYERS alternates turns, unlike the C64 version). Per-player state

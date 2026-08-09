@@ -7089,9 +7089,25 @@ static state_t run_level(void) {
                 respawn_primary_ball();
             }
 
-            /* End-of-life conditions. */
+            /* End-of-life conditions. orig LBC10_6 -> LBC10_7: the
+             * finishing player gets the GAME OVER screen and their name
+             * entry, and THEN, in 2-player mode, the other player
+             * carries on if they have lives left:
+             *
+             *   LBC10_7:
+             *     DEC A / JP NZ,game_restart          ; game_mode != 1
+             *     LD A,(lives_2up) / AND A / JP Z,game_restart
+             *     CALL current_level_2up_copier / JP LB9E8_1
+             *
+             * Both of those conditions are two_player_turn_change's
+             * already — asking them again here is the duplicate-guard
+             * mistake that made a mutation survive in stage 4. */
             if (player.lives == 0) {
                 play_game_over();
+                if (two_player_turn_change()) {
+                    turn_changed = 1;
+                    break;
+                }
                 return ST_TITLE;
             }
             /* Mirror LBAED_0's exit conditions:
