@@ -477,11 +477,24 @@ In priority order (all pre-scoped in `parity-gaps.md` / notes):
    spans ~32 sites; catching the unified secondaries means mirroring it
    per-ball. Deliberately deferred as substantial new code for the
    niche MAGNET+TRIPLE case — schedule it, don't ignore it.
-3. **Seeded destroyed-cell mismatch:** `replay-l3-brick-flash-both`
-   still shows the port and original destroying different *cells*
-   (same count); the moving-object/destroyed-cell rows are INFO-only.
-   Tighten the LAFFC neighbour-mask/cell-priority port until those rows
-   can be promoted to required equality.
+3. ~~**Seeded destroyed-cell mismatch**~~ — **CLOSED 2026-08-09, and it
+   had already fixed itself.** This entry said the port and original
+   destroy different *cells* on `replay-l3-brick-flash-both`. They do
+   not: `current_level_copy` — the whole 180-cell grid — comes back
+   byte-identical. It was sitting in the INFO tier because nobody
+   re-ran the comparison after the LAFFC work landed, so the row that
+   would have said so was never promoted.
+
+   Promoted to `required_probe_rows`. Verified it bites: mutating the
+   destroyed marker from `$80` to `$C0` fails the gate.
+
+   Two rows stay INFO deliberately, with the reason recorded in the
+   replay's `note` rather than left implicit:
+   - `briks_data` — the port does not maintain the original's five
+     metal-shimmer slots; it tracks the same animation in
+     `brick_hit_anim_ticks`.
+   - `random_number` and the object rows — by this frame the two
+     runners are at different points in their RNG walks.
 4. **Byte-exact enemy target gating:** blocked on a boot-phase-
    normalized comparison harness (test-infra, not port code). Do it if
    and when WS8's harness work makes it cheap.

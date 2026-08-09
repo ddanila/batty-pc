@@ -575,3 +575,19 @@ So: when a gate is downgraded to INFO for a known residual, the residual
 is a TODO with an expiry, not a permanent state. Re-check it when the
 thing it was measuring changes — and promoting it back is usually one
 line.
+
+**Re-run the comparison before believing the gap.** PLAN.md carried
+"the port and original destroy different cells" as an open WS6 item.
+Running `replay-l3-brick-flash-both` once showed `current_level_copy`
+byte-identical — the whole 180-cell grid. It had presumably been equal
+since the LAFFC work landed, and stayed in the INFO tier because an INFO
+row that starts matching says nothing: it prints PASS either way and
+nobody promotes it.
+
+Same shape as `state4_level1` sitting at `assert_match=False` while
+printing "pixel-identical" for weeks. A diagnostic row is a question
+somebody asked once; the answer can change without anyone noticing,
+because the row's whole point is that it does not fail.
+
+So when a plan names a diagnostic row as evidence of a gap, run it
+before doing the work it implies.

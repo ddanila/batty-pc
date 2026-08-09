@@ -10,6 +10,11 @@ they are good next targets when tightening original fidelity.
 > actually left.
 >
 > OPEN:
+>  0. ~~**Seeded destroyed-cell mismatch**~~ — CLOSED 2026-08-09.
+>     `replay-l3-brick-flash-both`'s `current_level_copy` row is
+>     byte-identical between port and original and is now a required
+>     row. It had been equal for some time; the INFO tier is where it
+>     stayed because nothing re-ran the comparison.
 >  1. **Multi-ball + MAGNET catch** — a MAGNET bat catches the primary ball
 >     but not the unified secondaries; mirroring the ~32-site stuck system
 >     per-ball is deferred feature work (see "bat-ball deflection").
