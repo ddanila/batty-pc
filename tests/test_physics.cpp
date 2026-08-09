@@ -257,6 +257,86 @@ static void test_delta_to_dir_sign_inputs() {
     report("delta_to_dir_sign_inputs", before, "8 sign inputs         ok");
 }
 
+
+/* The shared fall accelerator (LA55A_0). Three falling things use it
+ * with different constants and none of them had a test.
+ *
+ * The property that matters is the CURVE: velocity ramps and then
+ * settles at the cap, so a bonus reaches 2 px/frame and stays there. A
+ * bug that made it settle one step early or never settle would move
+ * every falling object and be visible only as a slow drift against the
+ * captured timings. */
+static void test_motion_accel_ramps_then_caps() {
+    const int before = failures;
+    motion_acc_t m = {0, 0};
+    int total = 0, last = 0, settled_at = -1;
+
+    /* 64 steps to reach the cap, measured — de=$0008 needs acc to hit
+     * $0200 and it climbs 8 per step. The first draft of this test
+     * guessed 40 and failed; the guess was wrong, not the code. */
+    for (int f = 0; f < 120; f++) {
+        const int step = motion_accel_step(&m, 0x0008, 0x02);
+        check(step >= 0 && step <= 2,
+              "frame %d gave a %d px step; a falling bonus moves 0..2\n",
+              f, step);
+        total += step;
+        if (step == 2 && last == 2 && settled_at < 0) settled_at = f;
+        last = step;
+    }
+    check(settled_at > 0 && settled_at < 100,
+          "the fall settled at 2 px/frame on frame %d\n", settled_at);
+    /* Measured: 25 px in the first 40 frames, so 120 frames covers well
+     * over 100 once it is at terminal speed. */
+    check(total > 100, "120 frames of falling covered only %d px\n", total);
+    /* Capped: the accumulator's high byte must sit exactly on the cap. */
+    check((m.acc >> 8) == 0x02, "accumulator high byte is %02X, expected 02\n",
+          (unsigned)(m.acc >> 8));
+    report("motion_accel_ramps_then_caps", before, "0..2 px, settles     ok");
+}
+
+/* The +400 marker uses a much steeper curve and a cap of $80. It must
+ * still cap rather than run away, or the marker would outrun the screen
+ * before its y=$C0 death check. */
+static void test_motion_accel_fast_variant_caps() {
+    const int before = failures;
+    motion_acc_t m = {0, 0};
+    /* Measured: the cap is reached at step 820 (acc climbs $28 to
+     * $8000), so 1000 is comfortably past it. */
+    for (int f = 0; f < 1000; f++) motion_accel_step(&m, 0x0028, 0x80);
+    check((m.acc >> 8) == 0x80, "fast variant settled at %02X, expected 80\n",
+          (unsigned)(m.acc >> 8));
+    report("motion_accel_fast_caps", before, "de=$28 cap=$80       ok");
+}
+
+/* The clamp tests the HIGH BYTE for equality, not the value for >=,
+ * because that is what the Z80 did. So a `de` large enough to step the
+ * accumulator PAST the cap in one add never triggers it, and the value
+ * runs away. None of the three production constants can do that — this
+ * pins that fact rather than the bug, so if someone adds a fourth caller
+ * with a big `de` the test says why it misbehaves. */
+static void test_motion_accel_clamp_is_equality_not_ge() {
+    const int before = failures;
+    motion_acc_t m = {0, 0};
+    /* de = $0180 steps the high byte 0 -> 1 -> 3, skipping the cap of 2. */
+    for (int f = 0; f < 8; f++) motion_accel_step(&m, 0x0180, 0x02);
+    check((m.acc >> 8) != 0x02,
+          "a de that skips the cap was clamped anyway — the clamp is now a "
+          ">= test, which is NOT what the original did; check the falling "
+          "curves against the captured timings before keeping this\n");
+
+    /* ...and every production constant does hit it. */
+    const unsigned int de[2] = {0x0008, 0x0028};
+    const unsigned char cap[2] = {0x02, 0x80};
+    for (int i = 0; i < 2; i++) {
+        motion_acc_t n = {0, 0};
+        for (int f = 0; f < 1000; f++) motion_accel_step(&n, de[i], cap[i]);
+        check((n.acc >> 8) == cap[i],
+              "de=%04X cap=%02X settled at %02X\n",
+              de[i], (unsigned)cap[i], (unsigned)(n.acc >> 8));
+    }
+    report("motion_accel_clamp_shape", before, "equality, not >=     ok");
+}
+
 /* --- Collision sweeps -------------------------------------------------- */
 
 /* A field with every cell standing, then knock individual ones out. */
@@ -570,6 +650,9 @@ int main() {
     test_speed_scales_linearly();
     test_delta_roundtrip_quadrants();
     test_delta_to_dir_sign_inputs();
+    test_motion_accel_ramps_then_caps();
+    test_motion_accel_fast_variant_caps();
+    test_motion_accel_clamp_is_equality_not_ge();
     test_sweeps_miss_outside_the_band();
     test_sweeps_miss_empty_field();
     test_hits_name_a_standing_cell();

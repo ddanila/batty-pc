@@ -124,4 +124,30 @@ struct ExtraBallDirs { u8 second, third; };
 
 ExtraBallDirs extra_ball_dirs(u8 base_dir);
 
+/* The original's shared fixed-point fall accelerator, LA55A_0.
+ *
+ * One 16-bit accumulator plus an 8-bit fraction. Each step adds `de` to
+ * the accumulator, CLAMPS it by high byte to `cap_hi`, then adds the
+ * accumulator to the fraction and returns the carry out as a signed
+ * pixel delta. Three things fall through it with different constants:
+ *
+ *   falling bonuses  de=$0008 cap=$02   accelerate to 2 px/frame
+ *   enemy bombs      de=$0008 cap=$02   the same curve
+ *   the +400 marker  de=$0028 cap=$80   much faster, dies at y=$C0
+ *
+ * The clamp compares the HIGH BYTE for equality rather than the value
+ * for >=, which is what the Z80 did; it matters because the accumulator
+ * can step past the cap in one add if `de` is large enough, and then the
+ * equality never fires. The constants above are all safe, and
+ * tests/test_physics.cpp pins that.
+ *
+ * Pure arithmetic: no game state, which is why it lives here and not
+ * with any one of its three callers. */
+typedef struct {
+    unsigned int  acc;
+    unsigned char frac;
+} motion_acc_t;
+
+int motion_accel_step(motion_acc_t *m, unsigned int de, unsigned char cap_hi);
+
 #endif /* BATTY_PHYSICS_H */

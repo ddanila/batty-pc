@@ -16,7 +16,7 @@ Gate count 51 → 59 this session: `test-blast-dirty-redraw`,
 `test-game-over-visual` and `test-name-entry-visual`, each covering
 something nothing reached before.
 
-`main.cpp`: 7,747 → 6,838 lines (-11.7%) across 15 modules. `make test-fast`
+`main.cpp`: 7,747 → 6,823 lines (-11.9%) across 15 modules. `make test-fast`
 runs every host test and source gate in seconds; `--full` is 59 gates
 in under six minutes.
 
@@ -106,7 +106,7 @@ happened, and `make test-video` caught it.
 | 1a | `replay_parse` — the BATTY_REPLAY_* value formats | 75 | **done** — 7 tests |
 | 1 | replay / probe scaffolding | ~430 | **started** — 5 overrides out in `replay`, 6 host tests; the rest need the state first |
 
-`main.cpp`: 7,747 → 6,838 (`wc -l`; see the status block on why this is not Watcom's count).
+`main.cpp`: 7,747 → 6,823 (`wc -l`; see the status block on why this is not Watcom's count).
 100 host tests + source gates, all via `make test-fast` in seconds.
 
 ### Stage 5b: one destroyed-cell reset, not two
@@ -669,6 +669,28 @@ and the gate was extended in the same commit to press LEFT and require
 the letter row to change, since placement alone would look identical
 whether `step_name_letter` worked or not. Mutation-checked by making the
 LEFT arm a no-op.
+
+The shared fall accelerator (`motion_acc_t` + `motion_accel_step`, the
+original's LA55A_0) moved to `physics` with three host tests. It is pure
+arithmetic with no state, shared by falling bonuses, enemy bombs and the
++400 marker with different constants — exactly the kind of thing that
+belongs in the module that owns motion, and exactly the kind of
+fixed-point code that is easy to get subtly wrong. It had no test.
+
+The interesting property is the CLAMP: it compares the accumulator's
+HIGH BYTE for equality with the cap, not the value for `>=`, which is
+what the Z80 did. A `de` large enough to step past the cap in one add
+therefore never triggers it and the value runs away. All three
+production constants are safe, and the test pins that fact rather than
+the bug — so a fourth caller with a big `de` gets told why it
+misbehaves. Mutation-checked: changing the clamp to `>=`, or perturbing
+the accumulator by one, is caught by that test and by neither of the two
+curve tests.
+
+Both of the curve tests failed on their first run because I guessed the
+frame counts. `de=$0008` needs 64 steps to reach a cap of `$02`, not the
+40 I assumed, and the fast variant needs 820, not 200. Measured, then
+written down next to the numbers.
 
 Writing the clear-bricks knob surfaced that this codebase has TWO
 "is this brick there" rules, and both are correct:

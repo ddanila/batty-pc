@@ -316,3 +316,13 @@ ExtraBallDirs extra_ball_dirs(u8 base_dir) {
     }
     return out;
 }
+
+int motion_accel_step(motion_acc_t *m, unsigned int de, unsigned char cap_hi) {
+    unsigned int acc = (unsigned int)(m->acc + de);
+    unsigned int sum;
+    if ((unsigned char)(acc >> 8) == cap_hi) acc = (unsigned int)cap_hi << 8;
+    m->acc = acc;
+    sum = acc + m->frac;
+    m->frac = (unsigned char)sum;
+    return (int)((signed char)(sum >> 8));
+}

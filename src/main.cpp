@@ -578,21 +578,6 @@ static RocketState rocket = {0, 0, 0, 0, 0, 0, 0};
  * fixed-point accelerator. Falling bonuses and bombs use DE=$0008,
  * B=$02 (accelerate to 2 px/frame); the +400 marker uses DE=$0028,
  * B=$80 and dies when it reaches y=$C0. */
-typedef struct {
-    unsigned int  acc;
-    unsigned char frac;
-} motion_acc_t;
-
-static int motion_accel_step(motion_acc_t *m, unsigned int de,
-                             unsigned char cap_hi) {
-    unsigned int acc = (unsigned int)(m->acc + de);
-    unsigned int sum;
-    if ((unsigned char)(acc >> 8) == cap_hi) acc = (unsigned int)cap_hi << 8;
-    m->acc = acc;
-    sum = acc + m->frac;
-    m->frac = (unsigned char)sum;
-    return (int)((signed char)(sum >> 8));
-}
 
 /* The original shares object_bonus between the bomb and a regular
  * bonus, making them mutually exclusive; the port keeps them separate.
