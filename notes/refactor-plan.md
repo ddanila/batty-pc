@@ -666,6 +666,23 @@ the letter row to change, since placement alone would look identical
 whether `step_name_letter` worked or not. Mutation-checked by making the
 LEFT arm a no-op.
 
+`make help` was the SEVENTH stale list, and the one a newcomer meets
+first. It named 13 individual gates from an earlier era and omitted the
+two entry points that matter — `test-fast` and `parity-check-parallel`.
+Someone reading it would not learn that everything emulator-free runs in
+seconds.
+
+It now names the entry points and points at `notes/testing.md` for the
+per-gate index, which is itself checked by `test-gate-index`. Listing 90
+targets would just have restarted the rot.
+
+Writing it, I put "59 gates" into the help text — a number in a place
+nothing checks, which is precisely the failure this session has spent
+several turns cleaning up. Removed rather than gated: the count is
+useful in the checked index, not in a one-line orientation. Adding an
+eighth checked location for it would be exactly the over-engineering
+these notes keep warning about.
+
 `notes/known-bugs.md` opened with "user-reported, unfixed" and "(none
 currently)". Neither had been true for a while: #8-#15 were surfaced by
 this refactor rather than reported, and #14 is open. Someone scanning
