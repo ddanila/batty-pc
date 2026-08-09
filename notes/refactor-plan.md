@@ -569,6 +569,34 @@ removed when they were added; a multiset diff confirmed zero lines
 lost.
 
 
+#### Both halves of the "dir $00 moves UP" puzzle were mine
+
+Last entry left an open observation: the original might drive enemy
+motion by `(dir - $10) & $3F`, because an alien with `dir` pinned to
+`$00` moved upward. Traced it instead of leaving it, and both halves
+dissolved.
+
+**The `$10` rotation is a FACING test, not motion.** `LAA02` is
+`LD C,$00` with the `$00` patched, so `C` is the rotated dir from before
+the move; the code recomputes it after the move, `XOR`s, and tests bit 5.
+On a change it runs `LD A,(IX+$01) / XOR $07 / ADD A,$07` — `(IX+$01)`
+is the sprite number. It selects which way the alien is drawn. `LAD69`
+still gets the raw dir, exactly as the port does.
+
+**The upward drift was my experiment.** I pinned the target to `$00` to
+stop steering interfering, with `dir` also `$00` —
+`enemy_turn_towards_target` treats `delta == 0` as ARRIVAL and re-picks
+a random target. Pinning the target to the current dir is the one value
+that guarantees the steering fires. The alien flew toward whatever it
+drew.
+
+So the port is right here and I invented the anomaly. Worth the two
+greps: the alternative was leaving "the enemy's dir may be read with a
+`$10` rotation" in the notes for someone to act on. That is the third
+hypothesis of mine this week to die on contact with the disassembly, and
+the pattern is consistent — the guesses were plausible, the traces were
+cheap, and I did the guessing first every time.
+
 #### Checking my own capture was on the right code path
 
 An anomaly in a follow-up run nearly retracted the previous entry.

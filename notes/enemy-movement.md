@@ -394,11 +394,29 @@ driven by `(dir - $10) & $3F` rather than `dir` — and `$00 - $10` is
 `$30`, which IS up. The port calls `dir_to_dxdy(o->dir, ...)` with the
 raw dir.
 
-Recorded as an observation, not a conclusion: `LAA02` is patched
-self-modifying code and what consumes it has not been traced here. If
-the offset is real it would mean the enemy's direction byte and the
-ball's are read with a `$10` rotation between them, which is worth
-knowing before anyone ports the bird's motion further.
+Both halves turned out wrong, and tracing beat guessing on each.
+
+**The `$10` rotation is not motion.** `LAA02` is `LD C,$00` with the
+`$00` as the patched operand, so `C` holds `(dir - $10) & $3F` from
+BEFORE the move. The code recomputes the same expression from the dir
+AFTER the move, `XOR C`, and tests `AND $20` — bit 5. On a change it
+falls into `LA9BC_4`, which does `LD A,(IX+$01) / XOR $07 / ADD A,$07`,
+and `(IX+$01)` is the sprite number in the object's set. So the rotation
+is a FACING test — did the alien cross the left/right half — selecting a
+sprite. `LAD69` is still called with the raw `(IX+$06)`, exactly as the
+port does. There is no `$10` offset in the motion.
+
+**The upward drift was the experiment, not the game.** I pinned the
+target to `$00` to stop the steering interfering, with `dir` also `$00`.
+But `enemy_turn_towards_target` computes `delta = (dir - target) & $3F`
+and treats `delta == 0` as ARRIVAL — it re-picks a random target
+immediately. Pinning the target to the current dir is the one value that
+GUARANTEES the steering fires. The alien then flew toward whatever it
+drew, which is the "unexplained" vertical motion.
+
+The lesson is about the setup: to hold an alien on a heading, pin the
+target to something it is steering toward but has not reached — never to
+the dir itself.
 
 ## Ground-truth capture — FIRST enemy GT validation (2026-06-05)
 
