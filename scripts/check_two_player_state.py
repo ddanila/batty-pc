@@ -268,6 +268,21 @@ def main() -> int:
             "every ball owned by the same player.")
     print("PASS ball_start_alternates: the start side toggles each entry")
 
+    # ...and it is re-owned on every bat deflection. LAB1F_0 does
+    # `RES 7,(IX+$12) / BIT 7,(IY+$02) / SET 7,(IX+$12)` with IY the bat
+    # that obj_compare matched. This was missed at first because the two
+    # writes use RES/SET, not LD, and a grep for `LD (IX+$12)` found
+    # only the counter ones — which led to a published claim that
+    # nothing in flight changes the owner.
+    if "ball_owner_side = (unsigned char)((BAT_X & 0x80) ? 1 : 0);" not in code:
+        raise SystemExit(
+            "FAIL: the ball's owner is no longer reassigned on a bat "
+            "deflection. LAB1F_0 sets it from the HITTING bat's x every "
+            "time, so the ball changes hands in play; without this it "
+            "keeps whoever it started with and brick points go to the "
+            "wrong player for the rest of the ball. notes/double-play.md.")
+    print("PASS ball_owner_on_deflect: a bat hit re-owns the ball")
+
     # The rocket-clear tally is the odd one out: it splits the surviving
     # bricks EVENLY rather than by side. orig zeroes the flag before the
     # sweep and XORs it after every award.

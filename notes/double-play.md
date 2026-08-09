@@ -129,9 +129,31 @@ and every operation on the counter preserves that bit on purpose:
     LA27E_22:  ... INC A ... AND $7F / CP $7F ...          ; wrap counter
                LD A,(IX+$12) / AND $80 / LD (IX+$12),A
 
-So nothing in flight ever changes it. It is set once, at
-`all_var_init`, from which side the ball STARTS on — and the start side
-alternates on every entry:
+So the COUNTER half never disturbs it.
+
+**Correction (2026-08-09), the second on this bit.** The paragraph that
+used to follow said "nothing in flight ever changes it". Wrong. The bit
+is written in two places, and the one in play uses `RES`/`SET` rather
+than `LD`, which is why a grep for `LD (IX+$12)` and
+`LD (object_ball_1+$12)` found only the counter writes and the initial
+one:
+
+    LAB1F_0:
+      RES 7,(IX+$12)      ; the ball's owner bit
+      BIT 7,(IY+$02)      ; the HITTING bat's x
+      JR Z,LAB1F_1
+      SET 7,(IX+$12)
+
+`IY` is whichever bat `obj_compare` matched, so **the ball changes hands
+on every bat deflection**, and brick points follow whoever last hit it.
+That is a much more sensible rule than "whoever it spawned toward", and
+it should have been the suspicion when the first answer sounded odd.
+
+Search lesson: Z80 bit twiddling is `RES`/`SET`/`BIT`, not `LD`. A grep
+for assignments to a byte will miss every one of them.
+
+The other write is the initial one, at `all_var_init`, from which side
+the ball STARTS on — and the start side alternates on every entry:
 
     LD A,(ball_x_coord+$01) / XOR $88 / LD (ball_x_coord+$01),A
     ...
@@ -142,11 +164,23 @@ alternates on every entry:
 
 `$48 XOR $88 = $C0` and back, so the ball starts left, right, left...
 
-**Brick points therefore go to whoever the BALL belongs to, for that
-ball's whole life, wherever the brick is.** Only the bat, bullet and
-bonus sites are positional. Ported as `ball_owner_side`, with
-`ball_start_right` carrying the alternation; `PROBE.TXT` reports it as
+**Brick points therefore go to whoever last HIT the ball, wherever the
+brick is** — the ball carries its owner, and a deflection transfers it.
+Only the bat, bullet and bonus sites read a live coordinate. Ported as
+`ball_owner_side`: set from the start side at level entry, reassigned
+from `BAT_X`'s top bit at every deflection. `PROBE.TXT` reports it as
 the `own` field of `scores=`.
+
+Still missing: `LAB1F`'s second-bat test itself —
+
+    LD IY,object_bat_1 / CALL obj_compare / JR C,LAB1F_0
+    LD A,(game_mode) / CP $02 / RET NZ
+    LD IY,object_bat_2 / CALL obj_compare / RET NC
+
+so in Double Play the ball can be deflected by EITHER bat. The port has
+no bat-2 collider, so `BAT_X` is the only source of the owner bit today.
+That is the next WS3 item and it needs bat 2 to be a real object in the
+ball's path, not just a sprite.
 
 Not ported: the mode-2 START X itself ($48 / $C0 instead of resting on
 a bat). The alternation drives the owner either way, and moving the

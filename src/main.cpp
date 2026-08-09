@@ -748,7 +748,14 @@ static unsigned long high_score = 0;
  *   LA27E_22:  ... INC A ... AND $7F / CP $7F ...        ; wrap counter
  *              LD A,(IX+$12) / AND $80 / LD (IX+$12),A
  *
- * so nothing in flight ever changes it. It is set once, at
+ * so the COUNTER half never disturbs it. The bit itself is written in
+ * two places, and the second one was missed at first because it uses
+ * RES/SET rather than LD:
+ *
+ *   LAB1F_0:  RES 7,(IX+$12) / BIT 7,(IY+$02) / JR Z / SET 7,(IX+$12)
+ *
+ * — on every bat deflection, from the x of the bat that hit it. So the
+ * ball changes hands in play. The other write is the initial one at
  * `all_var_init`, from which side the ball STARTS on, and the start side
  * alternates every entry:
  *
@@ -4912,6 +4919,19 @@ static int deflect_ball_off_bat(int next_x, int *next_y) {
      * object's left edge, the original's IY+$02); an enlarged bat
      * selects the LABFC table. Validated against captured ground
      * truth — see notes/bat-deflection.md. */
+    /* LAB1F_0 re-owns the ball to the side of the bat that hit it,
+     * BEFORE the deflection:
+     *
+     *   RES 7,(IX+$12)      ; ball's owner bit
+     *   BIT 7,(IY+$02)      ; the HITTING bat's x
+     *   JR Z,LAB1F_1
+     *   SET 7,(IX+$12)
+     *
+     * IY is whichever bat obj_compare matched, so in Double Play the
+     * ball changes hands on every deflection. Outside it, bat 1's x is
+     * the only source and the bit follows the bat across the middle —
+     * harmless, since add_points_to_score ignores it unless mode $02. */
+    ball_owner_side = (unsigned char)((BAT_X & 0x80) ? 1 : 0);
     objects[OBJ_BALL_1].dir =
         bat_deflect_dir(objects[OBJ_BALL_1].dir,
                         next_x + 3 - BAT_X, bat.extra_px != 0);

@@ -328,10 +328,13 @@ preserves on purpose, so nothing in flight changes it. It is set once at
 `all_var_init` from which side the ball STARTS on, and the start side
 alternates every entry (`XOR $88` flips the self-modified `$48` <-> `$C0`).
 
-So **brick points go to whoever the BALL belongs to, for that ball's
-whole life, wherever the brick is** — only the bat, bullet and bonus
-sites are positional. This corrects what the entry above said when it
-was written; see notes/double-play.md.
+So brick points go to whoever the BALL belongs to. **Corrected again
+2026-08-09:** the owner is NOT fixed for the ball's life —
+`LAB1F_0` does `RES 7,(IX+$12) / BIT 7,(IY+$02) / SET 7,(IX+$12)` on
+every bat deflection, from the x of the bat that hit it. The first read
+missed it because those are bit ops, not `LD`, and the grep looked for
+assignments. So brick points follow whoever last HIT the ball. Ported;
+see notes/double-play.md.
 
 Not ported: the mode-2 start X itself. The alternation drives the owner
 either way, and moving the ball off the bat at Double Play entry is a

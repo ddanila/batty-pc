@@ -526,3 +526,20 @@ just remove work, it found the real work.
 
 Applies to my own PLAN.md entries as much as to inherited ones: a
 roadmap written from observation is a hypothesis.
+
+**Z80 bit twiddling is `RES`/`SET`/`BIT`, not `LD`.** Hunting for every
+write to the ball's owner bit (`object_ball_1+$12` bit 7), I grepped for
+`LD (IX+$12)` and `LD (object_ball_1+$12)`, found only the counter
+writes and one initialisation, and concluded — in a commit and in two
+notes — that nothing in flight ever changes it. `LAB1F_0` changes it on
+every bat deflection with `RES 7,(IX+$12)` / `SET 7,(IX+$12)`.
+
+The tell was there: the conclusion was strange. "Brick points go to
+whoever the ball spawned toward, for the ball's whole life" is a worse
+game than "whoever last hit it", and a rule that sounds wrong usually
+is. Strangeness is a reason to widen the search, not to write the
+finding up more carefully.
+
+When looking for every write to a BIT, search the bit ops too — or
+better, read the routines that consume it rather than grepping for
+writers.
