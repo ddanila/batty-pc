@@ -511,6 +511,33 @@ All three are asserting now, and `test-visual` lints its own table: a
 bare `False` fails, `False,  # INFO: <why>` passes. Downgrading is still
 allowed — leaving no reason is not.
 
+## A checker's haystack decides what counts as a use
+
+Several gates here answer "is X used?" by searching source for X's name.
+That makes the haystack part of the assertion, and documentation inside
+it is the trap: a MENTION is not a USE.
+
+Four instances, all found by mutation rather than review:
+
+| gate | what it counted | fix |
+|---|---|---|
+| `notes_symbols` | its own write-up's backticked names | name retired symbols plainly |
+| `phase_sweep` | a docstring explaining `BATTY_REPLAY_COUNTER` | strip docstrings before matching |
+| `check_no_dead_constants` | its own docstring listing the dead names | strip Python docstrings and comments |
+| `check_floppy_assets`, `check_asset_provenance` | a C comment naming `asset_load("X.BIN")` | strip `/* */` and `//` |
+
+The last pair had it in the other direction from the rest: a comment
+that names an asset — explaining why it is NOT loaded, say — made the
+gate DEMAND the floppy ship it.
+
+`check_env_passthrough` was probed the same way and does not have the
+defect; a comment naming a fake `BATTY_*` knob does not make it ask for
+a passthrough.
+
+So when writing one of these: decide explicitly whether prose counts,
+and prove it with a mutation that puts the name in a comment. Three of
+the four above passed review and failed that test.
+
 ## Counter-phase sweeps (`scripts/phase_sweep.py`)
 
 `pit_frame_counter` free-runs from boot, and cadences key off its low

@@ -43,10 +43,23 @@ SHIPS = re.compile(r"mcopy[^\n]*::([A-Z0-9_]+\.BIN)")
 SHOWS = re.compile(r'show\(\s*"([A-Z0-9_]+\.BIN)"')
 
 
+def strip_c_comments(text: str) -> str:
+    """Drop /* */ and // so a MENTION is not read as a call.
+
+    This gate scans src/ for `asset_load*("X.BIN"`. Without stripping,
+    a comment that names an asset — explaining why it is NOT loaded, say
+    — makes the gate demand the floppy ship it. Verified by mutation: a
+    commented `asset_load("NOSUCH.BIN", ...)` failed the gate before
+    this.
+    """
+    text = re.sub(r"/\*.*?\*/", " ", text, flags=re.S)
+    return re.sub(r"//[^\n]*", " ", text)
+
+
 def main() -> int:
     loaded = set()
     for f in sorted(SRC.glob("*.cpp")):
-        text = f.read_text()
+        text = strip_c_comments(f.read_text())
         loaded |= set(LOADS.findall(text))
         loaded |= set(SHOWS.findall(text))
     if not loaded:
