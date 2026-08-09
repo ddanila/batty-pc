@@ -239,22 +239,43 @@ def main() -> int:
             "coordinate.")
     print("PASS score_side_rule: it keys on game_mode $02 and the top bit")
 
-    # The BRICK sites take the ball's owner, not a position and not
-    # SIDE_ACTIVE. handling_ball's flag is (IX+$12) & $80, a persistent
-    # owner bit that nothing in flight changes — so brick points follow
-    # the BALL, wherever the brick is. Both mutations below SURVIVED
-    # until this check existed.
-    brick_owner = len(re.findall(
-        r"add_points_to_score\(pts, ball_owner_side \? 0x80 : 0\)", code))
-    if brick_owner < 2:
+    # There are exactly THREE brick-scoring sites, and they take THREE
+    # DIFFERENT sides, because the routines that reach them each set
+    # need_change_player from a different thing:
+    #
+    #   ball    handling_ball    (IX+$12) & $80  the ball's OWNER bit
+    #   bullet  handling_bullet  (IX+$02) & $80  the BULLET's x
+    #   left    add_points_for_left_briks        alternated, split evenly
+    #
+    # This check used to demand that TWO of them take ball_owner_side,
+    # calling them "the LAFFC path and the sweep path". There is no
+    # sweep scoring path — the second site is the BULLET, and the
+    # original credits it by the bullet's own x. So the check was
+    # pinning a mis-attribution in place, and rejected the fix for it.
+    #
+    # Corrected 2026-08-10 to assert by IDENTITY rather than by count.
+    # A count cannot tell three different-but-correct sides from two
+    # correct and one wrong, which is exactly what went unnoticed.
+    sides = re.findall(r"add_points_to_score\(pts,\s*([^)]+)\)", code)
+    if len(sides) != 3:
         raise SystemExit(
-            f"FAIL: only {brick_owner} brick-scoring site(s) use "
-            f"ball_owner_side; expected the two that handling_ball covers "
-            f"(the LAFFC path and the sweep path). A brick score keyed on "
-            f"anything else — a coordinate, or SIDE_ACTIVE — credits the "
-            f"wrong player in Double Play. notes/double-play.md.")
-    print(f"PASS brick_score_owner: {brick_owner} brick sites take the "
-          f"ball's owner")
+            f"FAIL: expected 3 brick-scoring sites (ball, bullet, "
+            f"leftover), found {len(sides)}: {sides}. If a path was added "
+            f"or removed, decide what need_change_player is at that point "
+            f"in the original before updating this list.")
+    want = {"ball_owner_side ? 0x80 : 0", "side_x",
+            "left_brik_side ? 0x80 : 0"}
+    got = set(x.strip() for x in sides)
+    if got != want:
+        raise SystemExit(
+            f"FAIL: the brick-scoring sides are {sorted(got)}, expected "
+            f"{sorted(want)}. The ball path takes the ball's OWNER bit "
+            f"(not its x), the bullet path takes the BULLET's x (not the "
+            f"ball's owner), and the leftover-brick path alternates. "
+            f"Getting these interchanged credits the wrong player in "
+            f"Double Play and is invisible in 1P. notes/double-play.md.")
+    print(f"PASS brick_score_sides: the 3 brick sites take the 3 "
+          f"different sides the original names")
 
     # The owner comes from an ALTERNATING start side, orig
     # `LD A,(ball_x_coord+$01) / XOR $88 / LD (ball_x_coord+$01),A`.

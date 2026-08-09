@@ -473,3 +473,67 @@ Whether the step falls inside the gate's 20-frame window is a race, and
 it was measured going both ways on consecutive runs ($B4, then $B0). The
 gate allows either. It was nearly pinned at $B4 on one observation; the
 re-run after tightening is what caught it.
+
+## Ported: bat 2 kills the alien, and three wrong score attributions
+(2026-08-10)
+
+`kill_enemy_by_bat` ($A4B8) is reached from `handling_bat`, which in
+mode $02 runs for BOTH bats. There is no bonus condition on it — the
+routine checks only that an alien exists and is not already exploding,
+then `obj_compare_2pix` against the bat. **Any bat touching an alien
+destroys it.** The port checked bat 1 only, so an alien drifting over
+bat 2's half flew straight through it.
+
+Bat 2's kill zone is the plain 28-wide body with no `extra_px` term,
+because the width bonuses are bat-1 globals — the open WS3 residual.
+
+### The side the 350 goes to, and the four routines that disagree
+
+`add_points_to_score` credits whichever side `need_change_player` names,
+and every routine that can reach `kill_enemy` sets it from something
+different:
+
+    handling_bat      (IX+$02) & $80   the BAT's x
+    LA67B_1  (bonus)  (IY+$02) & $80   the CATCHING BAT's x
+    handling_bullet   (IX+$02) & $80   the BULLET's x
+    handling_ball     (IX+$12) & $80   the ball's OWNER bit, not its x
+
+All four are the first thing their routine does, before any collision
+test, so the value is unambiguous at the moment of the kill.
+
+The port passed `BAT_X` to all four. That is right for one. Now each
+path passes its own: `blast_active_alien` and `kill_enemy_in_rect` take
+the side as a parameter instead of reading `BAT_X` behind the caller's
+back.
+
+The bullet's BRICK points were wrong the same way, and differently: they
+took the ball's owner. A bullet is not the ball, and `handling_bullet`
+says so in its first three instructions.
+
+### The gate that was pinning the bug in place
+
+`check_two_player_state` demanded that TWO brick-scoring sites take
+`ball_owner_side`, describing them as "the LAFFC path and the sweep
+path". There is no sweep scoring path. The second site is the BULLET,
+and the original credits it by the bullet's own x — so the check was
+holding a mis-attribution in place, and it FAILED on the fix.
+
+It now asserts by IDENTITY: three sites, three different sides (ball
+owner, bullet x, alternating leftover). A count cannot tell three
+different-but-correct sides from two correct and one wrong, which is
+precisely what went unnoticed.
+
+Worth generalising: a checker that counts occurrences of the RIGHT
+answer will also accept the right answer in the wrong place. Where the
+sites differ from each other on purpose, assert the difference.
+
+### What is measured and what is only cited
+
+`test-double-play-alien-kill` measures the bat-2 kill and the 350
+landing on 2UP, A/B on `BATTY_GAME_MODE` with the alien parked on bat 2
+at ($B8, $AD).
+
+The other three attributions are NOT measured. Reaching them from a
+seeded scenario needs bonus ownership and a bat-2 laser, both open WS3
+items. They are a code fix with a source citation, and the gate's
+docstring says so rather than leaving it to be found later.

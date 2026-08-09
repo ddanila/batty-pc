@@ -807,6 +807,7 @@ parity-check-full:
 	$(MAKE) test-double-play-court
 	$(MAKE) test-double-play-bat2
 	$(MAKE) test-double-play-input
+	$(MAKE) test-double-play-alien-kill
 	$(MAKE) test-stuck-auto-launch
 	$(MAKE) test-bat-redraw-window
 	$(MAKE) test-ball-left-wall-escape
@@ -1375,6 +1376,12 @@ test-double-play-bat2:
 # crossing the divider at $80. Keys held via BATTY_HOLD_KEYS.
 test-double-play-input:
 	python3 scripts/test_double_play_input.py
+
+# WS3: kill_enemy_by_bat is reached from handling_bat, which runs for
+# BOTH bats in mode $02 — so bat 2 kills the alien and scores for its
+# own side. A/B on BATTY_GAME_MODE with the alien parked on bat 2.
+test-double-play-alien-kill:
+	python3 scripts/test_double_play_alien_kill.py
 
 # A ball left on the bat launches itself after STUCK_TIMEOUT (192)
 # ticks. Nothing gated this: mutating the counter so it never fires

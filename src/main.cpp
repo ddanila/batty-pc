@@ -3541,7 +3541,7 @@ static void attach_rocket_to_bat(void) {
  * of (old_w_shadow - 2) * 4 on X and 4 on Y. An alien already
  * exploding is left alone.
  * orig: kill_enemy $A4C4 / $A4D2, sound $C1A8, score $0350 BCD */
-static void blast_active_alien(void) {
+static void blast_active_alien(int side_x) {
     Object *e = &objects[OBJ_ENEMY];
     if ((e->sprite_set & 0x7F) == 0) return;
     if (e->sprite_set & 0x80) return;
@@ -3554,9 +3554,11 @@ static void blast_active_alien(void) {
     e->sprite_set = 0x0A;
     e->sprite_num = 0;
     e->misc_12    = 0x50;   /* kill_enemy $A4C4 seed */
-    /* kill_enemy_by_bat, reached from handling_bat, which has
-     * just set need_change_player from the BAT's x. */
-    add_points_to_score(350, BAT_X);
+    /* The 350 goes to whichever side `need_change_player` names, and
+     * the four routines that reach kill_enemy each set it from a
+     * DIFFERENT thing (notes/double-play.md). Hence the parameter: this
+     * used to hardcode BAT_X, which is right for one of the four. */
+    add_points_to_score(350, side_x);
     sound_queue(SND_ALIEN_BLAST);
 }
 
@@ -3630,7 +3632,10 @@ static void bonus_apply(unsigned char type) {
             /* bat.bonus_applied = \$09 is already set above; enemy_prepare
              * reads it to stop spawning. This only clears the alien
              * already on screen, for immediate visible effect. */
-            blast_active_alien();
+            /* LA67B_1 sets the side from the CATCHING bat's x. Only
+             * bat 1 catches bonuses in the port (ownership is the open
+             * WS3 residual), so BAT_X is that bat. */
+            blast_active_alien(BAT_X);
             break;
         case BONUS_TYPE_CATCH:
             /* bat.bonus_applied = \$03 has already been set above —
@@ -4535,7 +4540,8 @@ static void enemy_prepare(void) {
  * so a ball plunking down on an alien destroys it the same way a bat
  * crashing into one does. AABB between the ball body (8x7) and the
  * alien body. */
-static void kill_enemy_in_rect(int bx_l, int by_t, int bw, int bh) {
+static void kill_enemy_in_rect(int bx_l, int by_t, int bw, int bh,
+                               int side_x) {
     Object *e = &objects[OBJ_ENEMY];
     int ex_l, ex_r, ey_t, ey_b;
     int bx_r = bx_l + bw;
@@ -4549,7 +4555,7 @@ static void kill_enemy_in_rect(int bx_l, int by_t, int bw, int bh) {
     ey_b = e->y_coord + e->h_body_px;
     if (ex_r <= bx_l || ex_l >= bx_r) return;
     if (ey_b <= by_t || ey_t >= by_b) return;
-    blast_active_alien();
+    blast_active_alien(side_x);
 }
 
 /* Port of kill_enemy_by_bat at $A4B8 / kill_enemy at $A4C4. AABB check
@@ -4563,7 +4569,22 @@ static void kill_enemy_by_bat(void) {
      * which grows with the bonus. Height is $0A per object_bat_1's
      * init, i.e. the body band without the shadow rows. */
     kill_enemy_in_rect(eff_bat_left(), BAT_Y,
-                       eff_bat_right() - eff_bat_left(), 10);
+                       eff_bat_right() - eff_bat_left(), 10, BAT_X);
+
+    /* `kill_enemy_by_bat` is called from `handling_bat`, which in mode
+     * $02 runs for BOTH bats — so bat 2 kills the alien too, and scores
+     * for its own side. There is no bonus condition on either: any bat
+     * touching the alien destroys it.
+     *
+     * Bat 2 is always the plain 28-wide sprite (the width bonuses are
+     * bat-1 globals, a WS3 residual), so its kill zone is the body with
+     * no extra_px term. */
+    if (game_mode == 2) {
+        const Object &b2 = objects[OBJ_BAT_2];
+        if (!(b2.sprite_set & 0x80))
+            kill_enemy_in_rect((int)b2.x_coord, BAT_Y, BAT_BODY_W, 10,
+                               (int)b2.x_coord);
+    }
 }
 
 /* Port of bomb_appear at $A977 - called per alien tick. Probability
@@ -4625,8 +4646,13 @@ static void step_bullet_one(int b) {
     Object *enemy = &objects[OBJ_ENEMY];
     const BulletHit hit = bullet_advance(b, *enemy, BrickField(live_level));
 
+    /* `handling_bullet` opens with `LD A,(IX+$02) / AND $80 /
+     * LD (need_change_player),A` — the BULLET's own x, not the bat's and
+     * not the ball's owner. Both scoring paths below take it. */
+    const int side_x = bullet_x[b];
+
     if (hit.what == BulletHit::ENEMY) {
-        blast_active_alien();
+        blast_active_alien(side_x);
         return;
     }
 
@@ -4644,7 +4670,7 @@ static void step_bullet_one(int b) {
             unsigned int idx = (unsigned int)((hit.row < 12) ? hit.row : 11);
             unsigned int pts = points_table[idx];
             if ((*cell & 0x0F) >= 6) pts *= 2;    /* metal scores double */
-            add_points_to_score(pts, ball_owner_side ? 0x80 : 0);
+            add_points_to_score(pts, side_x);
             *cell |= 0x80;
             mark_brick_row_dirty(hit.row);
             brick_flash_spawn(hit.col, hit.row);
@@ -7052,9 +7078,14 @@ static bool entities_need_redraw(void) {
 }
 
 static void kill_enemy_by_ball_slot(unsigned char slot) {
+    /* `handling_ball` opens with `LD A,(IX+$12) / AND $80 /
+     * LD (need_change_player),A` — the ball's OWNER bit, not its x. A
+     * ball that crossed into the other half still scores for whoever
+     * last deflected it, which is the whole point of the owner bit. */
     kill_enemy_in_rect((int)objects[slot].x_coord,
                             (int)objects[slot].y_coord,
-                            BALL_W_PX, BALL_H_PX);
+                            BALL_W_PX, BALL_H_PX,
+                            ball_owner_side ? 0x80 : 0);
 }
 
 /* Any ball landing on an alien destroys it, not just the bat: the

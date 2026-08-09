@@ -649,3 +649,25 @@ what its caller does next.
 The cost is not just the wrong note. Everything built on it inherits the
 error, and here the note was the stated reason a plan item had been
 struck out — so the work would not have been done at all.
+
+## A checker that counts the right answer accepts it in the wrong place
+(2026-08-10)
+
+`check_two_player_state` required that TWO brick-scoring sites pass
+`ball_owner_side`, calling them "the LAFFC path and the sweep path".
+There is no sweep scoring path. The second site was the BULLET, which
+the original credits by the bullet's own x — so the check was pinning a
+mis-attribution in place, and it FAILED the commit that fixed it.
+
+The shape: three sites that must differ from one another on purpose, a
+check that counted how many matched one of the three. Any two-of-three
+satisfies it, including the two wrong ones.
+
+**Where sites differ deliberately, assert the difference, not the
+count.** The corrected version reads all three sides and compares the
+SET against the expected set, so swapping two of them fails even though
+the count is unchanged.
+
+The tell was in the failure message itself: it named "the sweep path",
+which does not exist. A checker's own error text is a claim about the
+code, and it had gone unread for as long as the check had been green.
