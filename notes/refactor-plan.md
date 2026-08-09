@@ -568,6 +568,33 @@ removed when they were added; a multiset diff confirmed zero lines
 lost.
 
 
+#### A test named for the property it did not check
+
+Closing the laffc question. It turned out `test_physics` already had a
+test called `boundary_faces_stay_open` — and it never looked at
+`face_mask`. It asserted that a hit OCCURRED on a boundary cell and
+named the right cell, which is why inverting the boundary term survived
+it. A name can carry all the reassurance of coverage without any of it.
+
+It also used dir `$28` for the left case, which the direction gate
+strips bit 1 from — so the left face could not have been asserted even
+had someone tried. Measured rather than reasoned: with every brick
+standing, a left-boundary cell reports its left face open for dirs
+`$00-$0C` and `$30-$3C`, closed for `$10-$2C`.
+
+Fixed in place rather than by adding a second test beside it — a
+duplicate would have left the misleading name in the suite. It now
+asserts the face bits on the top and left edges, plus an INTERIOR
+negative control so neither check can pass by being always-open.
+
+And the honest part. The `cell_x == FIELD_X0` term is REDUNDANT:
+`BrickField::standing` treats out-of-range as gone, so
+`!standing(row, -1)` is already true at the edge. Deleting the term
+survives, correctly — an equivalent mutant, now listed as one. What the
+interior control catches is the INVERSION, which is bug #6's actual
+shape. A green run here does not prove the boundary term is
+load-bearing, and the test says so.
+
 #### Re-verifying the two published claims
 
 Finding that `mutate.py` could report on a stale DOS EXE put two

@@ -372,6 +372,8 @@ static void test_motion_accel_clamp_is_equality_not_ge() {
 
 /* --- Collision sweeps -------------------------------------------------- */
 
+
+
 /* A field with every cell standing, then knock individual ones out. */
 static u8 field_cells[FIELD_ROWS * FIELD_COLS];
 static void field_fill(bool standing) {
@@ -467,19 +469,70 @@ static void test_hit_origin_matches_cell() {
 /* known-bugs #6: a brick against a playfield boundary keeps that boundary
  * face OPEN, so a ball arriving along it bounces instead of passing
  * through. Inverting this let balls fall through row-0 metal bricks. */
+/* A brick against a playfield boundary keeps that boundary face OPEN.
+ *
+ * This is the half of the open-face rule that known-bugs #6 had
+ * INVERTED: the port had `Lx != $08 && EMPTY` where the original has
+ * "open when the neighbour is gone OR the cell is against the
+ * boundary". Inverted, a boundary brick's outer face read CLOSED and a
+ * ball straight into it was not deflected — it passed through.
+ * User-reported, fixed 2026-06-17.
+ *
+ * This test was named for that property and did not check it. It
+ * asserted only that a hit OCCURRED and named the right cell, never
+ * face_mask — so mutating `cell_x == FIELD_X0` to `!=` survived it, and
+ * survived test-laffc-ball-frame1 too, whose L3 trajectory never decides
+ * a left-boundary cell.
+ *
+ * It also used dir $28 for the left case, which the direction gate
+ * strips bit 1 from, so the left face could not have been asserted even
+ * had someone tried. Measured: with every brick standing, a
+ * left-boundary cell reports the left face open for dirs $00-$0C and
+ * $30-$3C, and closed for $10-$2C.
+ *
+ * WHAT IS ACTUALLY BEING CAUGHT. The `cell_x == FIELD_X0` term is
+ * REDUNDANT: BrickField::standing treats out-of-range as gone, so
+ * `!standing(row, -1)` is already true at the left edge. Deleting the
+ * term survives this test, and correctly — it is an equivalent mutant,
+ * kept because it mirrors the original's LAFFC structure.
+ *
+ * What the interior control below catches is the INVERSION, which is
+ * bug #6's actual shape: `!=` makes the face open for every non-boundary
+ * cell. Worth stating, so nobody reads a green run here as proof that
+ * the boundary term itself is load-bearing. */
 static void test_boundary_faces_stay_open() {
     const int before = failures;
     field_fill(true);
     const BrickField field(field_cells);
+
     /* Top row, ball heading down: the UP face is against the boundary. */
     const LaffcHit top = laffc_sweep(field, 0x08, 8, 7, FIELD_X0, FIELD_Y0);
     check(top.hit, "no hit on the top row\n");
     check(top.row == 0, "expected row 0, got %d\n", top.row);
-    /* Left column: the LEFT face is against the boundary. */
-    const LaffcHit left = laffc_sweep(field, 0x28, 8, 7, FIELD_X0, FIELD_Y0 + 40);
+    check((top.face_mask & 4) != 0,
+          "the UP face of a top-row brick reads CLOSED (mask=%02X) — "
+          "known-bugs #6, the ball is not deflected\n",
+          (unsigned)top.face_mask);
+
+    /* Left column. dir $38 keeps bit 1 through the direction gate. */
+    const LaffcHit left = laffc_sweep(field, 0x38, 8, 7, FIELD_X0, FIELD_Y0 + 40);
     check(left.hit && left.col == 0, "no hit in the left column\n");
     check(left.cell_x == FIELD_X0, "left column origin is %d\n", left.cell_x);
-    report("boundary_faces_stay_open", before, "top + left edges     ok");
+    check((left.face_mask & 1) != 0,
+          "the LEFT face of a left-column brick reads CLOSED (mask=%02X)\n",
+          (unsigned)left.face_mask);
+
+    /* Negative control, so neither check above can pass by being always
+     * open: an INTERIOR brick whose left neighbour stands must report
+     * its left face closed. */
+    const LaffcHit inner = laffc_sweep(field, 0x38, 8, 7,
+                                       FIELD_X0 + 4 * BRICK_W_PX,
+                                       FIELD_Y0 + 40);
+    check(inner.hit, "no hit on the interior brick\n");
+    check((inner.face_mask & 1) == 0,
+          "an interior brick with a standing left neighbour reports its "
+          "left face OPEN (mask=%02X)\n", (unsigned)inner.face_mask);
+    report("boundary_faces_stay_open", before, "faces, not just hits ok");
 }
 
 /* The bounce always lands the ball flush against the cell it hit, never

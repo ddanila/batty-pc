@@ -412,6 +412,11 @@ caught, something else changed.
   pass by design.
 - `bricks.cpp` `repaint_row_top_edge` — see the plan's entry: no test
   can distinguish it, for the same reason.
+- `physics.cpp` `laffc_sweep`'s four boundary terms
+  (`cell_x == FIELD_X0` and friends). `BrickField::standing` treats
+  out-of-range as gone, so the neighbour check alone already opens an
+  edge face. Deleting a term changes nothing; INVERTING one does, and
+  test_boundary_faces_stay_open catches that.
 
 ## CI (`.github/workflows/parity-check.yml`)
 
