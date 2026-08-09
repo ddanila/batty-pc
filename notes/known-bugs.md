@@ -410,3 +410,65 @@ code, which is the evidence that it guards the thing it claims to.
 `respawn_primary_ball` is the deliberate exception — it sets
 `stuck_offset_x = BALL_X_OFFSET_ON_BAT` on the line above, so the two
 agree by construction.
+
+---
+
+## #13 — the primary ball's sign cache is written from extra balls
+
+**Found 2026-08-09, not fixed. Open.**
+
+`ball.dx` / `ball.dy` hold the PRIMARY ball's direction reduced to signs
+(-1/0/+1). They are not the physics — motion is q8.8 in the object
+descriptor — they are a summary, and exactly two things read them:
+
+  - `ball_lands_on_bat()` gates the bat hit on `ball.dy > 0`
+  - `apply_multi_ball_bonus()` derives the extras' launch directions
+    from `delta_to_dir(ball.dx, ball.dy)`
+
+Four places refresh them, now all through `refresh_ball_motion_signs()`.
+Two of those four take an `Object *` that may be an **extra** ball:
+
+  - `laffc_collision(o, ...)` — called from `step_extra_ball` (and from
+    `magnet_ball_frame`, which itself runs for extras)
+  - `magnet_ball_frame(o, si)` — si 1 and 2 are the extras
+
+Both write the primary's cache from whichever ball they were handed.
+
+### Why nothing breaks today
+
+Ordering, and nothing stronger:
+
+  - `step_ball` refreshes both from the primary at the top of its move,
+    before `ball_lands_on_bat` reads `ball.dy`. So the extras' write from
+    the previous frame is always overwritten before the hot read.
+  - `apply_multi_ball_bonus` early-returns when extras are already
+    active, and while no extras exist nothing else can write the cache.
+
+Neither is a property of the writing code. Both are properties of code
+elsewhere that could reasonably change.
+
+### The reachable scenario
+
+`step_ball` has two early returns above the refresh — a stuck ball, and
+a magnet-handled frame. So:
+
+  1. extras are out, one bounces off a brick → cache = the extra's signs
+  2. the primary is stuck on the bat (CATCH), so `step_ball` returns
+     before refreshing
+  3. the extras die
+  4. the player catches MULTIBALL while the primary is still stuck
+
+The new extras then launch from the dead extra ball's last direction
+rather than the primary's. Narrow, but not impossible.
+
+### Why it is recorded rather than fixed
+
+Making the write conditional on `o == &objects[OBJ_BALL_1]` changes
+behaviour in that scenario, and no gate covers it — `test-magnet-ball`
+and the multiball gates do not reach the stuck-primary-plus-dead-extras
+sequence. The fix needs the gate first, in that order, as with #12.
+
+This is the same shape as #8: a convention that writes state belonging to
+another object. #8 turned out to be harmless because nothing read the
+fields. Here something does read them, and only the frame ordering saves
+it.

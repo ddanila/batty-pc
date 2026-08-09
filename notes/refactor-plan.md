@@ -5,8 +5,9 @@ test. Started 2026-08-07.
 
 ## Where this stands
 
-The full suite runs **55/55 green in 343s** — five clean runs now, the
-latest covering the `step_ball` decomposition.
+The full suite runs **55/55 green in 343s** — six clean runs now, the
+latest covering the ball sign-cache extraction (which the compiler did
+NOT inline identically, so the pixel gates were the only proof available).
 All five defects this refactor surfaced are closed.
 
 Gate count 51 → 55 this session: `test-blast-dirty-redraw`,
@@ -14,7 +15,7 @@ Gate count 51 → 55 this session: `test-blast-dirty-redraw`,
 and `test-invariant-owners`, each covering something nothing reached
 before.
 
-`main.cpp`: 7,747 → 6,762 lines (-12.7%) across 14 modules. `make test-fast`
+`main.cpp`: 7,747 → 6,780 lines (-12.5%) across 14 modules. `make test-fast`
 runs every host test and source gate in seconds; `--full` is 55 gates
 in under six minutes.
 
@@ -102,7 +103,7 @@ happened, and `make test-video` caught it.
 | 1a | `replay_parse` — the BATTY_REPLAY_* value formats | 75 | **done** — 7 tests |
 | 1 | replay / probe scaffolding | ~430 | **last** — see below |
 
-`main.cpp`: 7,747 → 6,762 (`wc -l`; see the status block on why this is not Watcom's count).
+`main.cpp`: 7,747 → 6,780 (`wc -l`; see the status block on why this is not Watcom's count).
 100 host tests + source gates, all via `make test-fast` in seconds.
 
 ### Stage 5b: one destroyed-cell reset, not two
@@ -626,6 +627,26 @@ row-scoped — now live beside the primitives they drive. What is left in
 `main.cpp` is the two thin wrappers that turn a level index into
 `(cells, lattr, bg_attr)`, which is the only thing the module could not
 know.
+
+Deduplicating the ball's sign cache turned up an ownership bug that the
+line count alone would never have flagged — `notes/known-bugs.md` #13.
+`ball.dx`/`ball.dy` summarise the PRIMARY ball's direction, but two of
+the four places that refresh them take an `Object*` that may be an
+EXTRA ball: `laffc_collision` (called from `step_extra_ball`) and
+`magnet_ball_frame` (slots 1 and 2). They write the primary's cache from
+the extra's direction regardless of which ball they were handed.
+
+Nothing observes it today, and the reason is pure ordering: `step_ball`
+recomputes both from the primary before `ball_lands_on_bat` reads
+`ball.dy`, and `apply_multi_ball_bonus` early-returns while extras are
+active. Neither is a property of the writing code — this is exactly the
+shape of known-bugs #8, where a mirrored convention wrote fields nothing
+read. Recorded rather than fixed: changing it alters behaviour in the one
+reachable scenario, and that needs a gate first.
+
+The duplicate-block scan that found it now reports ZERO six-line
+duplicates across `src/*.cpp`. At a four-line window the only non-table
+hit was this one.
 
 The slot-paint order had THREE explanations of itself. Once the two
 compose paths were unified behind `compose_moving_objects`, each caller
