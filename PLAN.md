@@ -697,6 +697,18 @@ emulator-derived original imagery.
 gates stay pixel-identical (they are the proof the generation is
 right).
 
+**Status 2026-08-09.** Everything the game LOADS is tape-derived except
+`LOADING.BIN`, the title screen. `bg_tile.bin` was the last hold-out and
+was never captured out of necessity: the four textures are tape data at
+`$C015`/`$8EE8`/`$8F10`/`$8F38`, and switching the extractor to them
+produced a byte-identical file. Their attribute bytes are
+`bg_attr_per_cycle[]`, which `test-bg-tile-derivable` now ties to its
+source — it was a hand-written copy of four tape bytes with nothing
+checking it.
+
+`assets/frame_l1.bin`, `level_attrs.bin`, `main_menu.bin` and
+`hi_score.bin` remain as gate REFERENCES; none is loaded or shipped.
+
 ## WS8 — Infrastructure: CI, real hardware, load time
 
 1. **Re-test KVM on hosted CI.** The "hosted runners have no KVM"

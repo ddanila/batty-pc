@@ -232,10 +232,14 @@ assets/level_attrs.bin: build/level_gt/level_01.scr scripts/extract_level_attrs.
 	python3 scripts/extract_level_attrs.py $@
 	@echo "wrote $@ ($$(wc -c < $@) bytes)"
 
-# 16x16-pixel honeycomb tile used as the playfield bg under the bricks.
-# Pulled from a pure-bg region of level_01.scr; the tile bitmap is
-# colour-invariant (1bpp; per-level paper/ink applies at render time).
-assets/bg_tile.bin: build/level_gt/level_01.scr scripts/extract_bg_tile.py
+# 16x16-pixel honeycomb tile used as the playfield bg under the bricks,
+# one per colour cycle. Straight from the tape's spr_level_texture_1..4
+# ($C015, $8EE8, $8F10, $8F38), rows reversed because print_sprite_pix
+# stacks upward and paint_bg_to_buff indexes from the top.
+#
+# This used to be read back out of build/level_gt/level_01.scr. It never
+# needed to be: the switch produced a byte-identical file.
+assets/bg_tile.bin: original/blocks/03_DATA_headless.dat.bin scripts/extract_bg_tile.py
 	python3 scripts/extract_bg_tile.py $@
 	@echo "wrote $@ ($$(wc -c < $@) bytes)"
 
@@ -1249,6 +1253,7 @@ test-source-gates:
 	$(MAKE) test-two-player-state
 	$(MAKE) test-floppy-assets
 	$(MAKE) test-frame-derivable
+	$(MAKE) test-bg-tile-derivable
 
 # Everything that needs no emulator: the host module tests plus the source
 # gates. Seconds, and it is what CI checks.
@@ -1356,6 +1361,12 @@ test-floppy-assets:
 # drawn UPWARD, not captured pixels. 2368 of frame_l1.bin's 4968 bytes.
 test-frame-derivable:
 	python3 scripts/check_frame_derivable.py
+
+# The playfield's hex tile is the tape's four level textures reversed,
+# and their attr bytes are bg_attr_per_cycle — a hand-written copy
+# nothing else ties to its source.
+test-bg-tile-derivable:
+	python3 scripts/check_bg_tile_derivable.py
 
 # Proof for WS7: every live brick's attr byte in the captured
 # level_attrs.bin is reproduced by briks_colors + print_border_shadow.
