@@ -560,6 +560,40 @@ removed when they were added; a multiset diff confirmed zero lines
 lost.
 
 
+#### The gate that guards the other gates was skipping a third of them
+
+Last commit found `check_notes_numbers` checking almost nothing, so I
+mutation-tested the four source gates I had never verified — the ones
+predating this session. `test-death-sparks`, `test-rocket-bonus` and
+`test-l3-replay-seed` all caught their mutations.
+
+`check_gate_greps` did not. Renaming `rest_ball_on_bat` — which
+`test-stuck-ball-offset` greps for BY NAME — left it green.
+
+The cause: it selected gates to inspect by matching the literal string
+`src/main.cpp`, so any gate building its path from pathlib segments
+(`ROOT / "src" / "main.cpp"`) was invisible. Four were skipped, and they
+were exactly the invariant gates — `test-stuck-ball-offset`,
+`test-invariant-owners`, `test-game-over`, `test-ball-sign-cache-owner`.
+The `check_*.py` gates were not scanned at all.
+
+Widening the filter to "mentions a C source filename" then produced a
+FALSE positive: `check_notes_numbers` reads `main.cpp` for a line count
+but greps the PLAN document, so its `## Where this stands` was reported
+as a stale source needle. Judging by filename is the wrong axis — what
+matters is the HAYSTACK. It now tracks which variables in a gate hold
+source text (following simple transforms like
+`compact = "".join(src.split())`) and only checks needles compared
+against those.
+
+One more classifier bug fell out: a needle compared against an INLINE
+`"".join(src.split())` was treated as raw and warned about "matching
+only after whitespace normalisation" — a complaint about the gate's own
+parsing, not the source.
+
+Coverage went from 36 needles across 22 gates to 42 across 33. All three
+mutations are now caught, each naming the gate and needle.
+
 #### The status block rewritten, and a gate that was not checking it
 
 `Where this stands` had drifted into a summary of the last few commits
