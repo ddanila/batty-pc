@@ -560,6 +560,28 @@ removed when they were added; a multiset diff confirmed zero lines
 lost.
 
 
+#### Mutation testing made reliable, after it went wrong three ways
+
+The technique found five real gaps in this repo's own tests. It also
+produced two confident false results along the way, which is a poor
+ratio for the thing being used to judge everything else.
+`scripts/mutate.py` removes all three failure modes rather than leaving
+them to be re-learned: it deletes every `build/test_*` FILE instead of
+guessing which binary a target builds (the `test-video` →
+`build/test_zxvga` trap), which also defeats the same-second timestamp
+problem, and it treats a substitution that matches nothing as an ERROR
+rather than as a survived mutation.
+
+That last one matters most. A no-op substitution leaves the source
+clean, the suite passes, and it reads as a FINDING — the failure mode
+that manufactures work rather than losing it. It now has its own exit
+code, distinct from both outcomes.
+
+`notes/testing.md` gains a section for the tool and, deliberately, a
+list of the KNOWN EQUIVALENT MUTANTS — the two that survive by design.
+Without that list the next audit re-investigates them and reaches the
+same conclusion at the same cost.
+
 #### zxvga never checked WHERE a sprite lands
 
 Finishing the host-suite audit: `bricks`, `hud`, `sound` and `assets`

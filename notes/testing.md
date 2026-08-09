@@ -349,6 +349,49 @@ mentioned nowhere in this file, including several of the oldest.
 - `test-invariant-owners` — two-place state changes have one writer each.
 - `test-rng-walk` — the RNG walk matches the original's sequence.
 
+## Mutation testing (`scripts/mutate.py`)
+
+A green test suite says the tests pass, not that they would fail if the
+code were wrong. Asking the second question found five real gaps here:
+`check_gate_greps` skipping a third of the gates, `test_objects` and
+`test_weapons` pinning the shape of a value rather than the value, and
+`zxvga` never checking where a sprite lands.
+
+    scripts/mutate.py <file> <find> <replace> <make-target> [label]
+
+    exit 0  caught     — the tests failed, which is the good outcome
+    exit 1  SURVIVED   — a gap, or an equivalent mutant. Decide which.
+    exit 2  ERROR      — the substitution matched nothing
+
+Doing this by hand went wrong three ways, twice producing a confident
+false result, so the script handles all three:
+
+- **Stale binary, same second.** Restoring a source within the same
+  second as the last build leaves the timestamp unchanged, `make` reruns
+  the OLD binary, and the mutation looks caught.
+- **Stale binary, wrong name.** `make test-video` builds
+  `build/test_zxvga`. Deleting `build/test_video` deletes nothing. Every
+  run then used a stale binary and a REAL gap was reported as caught;
+  it surfaced only because a restored source still failed, which cannot
+  happen. The script deletes every `build/test_*` file rather than
+  guessing, leaving directories alone (the QEMU gates keep captures
+  there).
+- **Silent no-op.** A substitution matching nothing leaves the source
+  clean, the test passes, and it reads as "not caught" — the worst
+  outcome, because it looks like a finding.
+
+### Known equivalent mutants
+
+Survive by design. Do not re-investigate; if one of these starts being
+caught, something else changed.
+
+- `zxvga.cpp` `byte_hi = (x_end - 1) >> 3` → `x_end >> 3`. Marks one
+  extra dirty byte; the flush then copies a byte that is already
+  correct, so the output is identical and the flush-equivalence tests
+  pass by design.
+- `bricks.cpp` `repaint_row_top_edge` — see the plan's entry: no test
+  can distinguish it, for the same reason.
+
 ## CI (`.github/workflows/parity-check.yml`)
 
 Hosted GitHub runners have no KVM, so QEMU runs under TCG emulation that is
