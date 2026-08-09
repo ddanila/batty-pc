@@ -591,3 +591,18 @@ because the row's whole point is that it does not fail.
 
 So when a plan names a diagnostic row as evidence of a gap, run it
 before doing the work it implies.
+
+**Third instance, and now a lint.** `state2_menu` in `test-visual` was
+`assert_match=False` with no comment at all — reporting
+"pixel-identical" on every run, failing nothing. It predates
+`test_mode_pin_blink`, which pins the menu's blink phase under
+`BATTYALL=1` and made the screen deterministic: the reason for the
+downgrade went away and the downgrade did not.
+
+Three in one week (`state2_menu`, `state4_level1`, the replay
+comparison's `current_level_copy`), all the same shape, so it stopped
+being worth re-learning. `test-visual` now lints its own checkpoint
+table: a bare `False` fails, `False,  # INFO: <why>` passes. The point
+is not that downgrading is banned — sometimes it is right — but that the
+reason has to exist and be re-readable, because the row itself will
+never tell you it has gone stale.

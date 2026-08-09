@@ -486,6 +486,27 @@ caught, something else changed.
   edge face. Deleting a term changes nothing; INVERTING one does, and
   test_boundary_faces_stay_open catches that.
 
+## INFO rows go stale silently
+
+`test-visual`'s checkpoint table has an `assert_match` flag. Setting it
+False keeps the row — it still captures, still diffs, still prints
+"pixel-identical" when it is — but it fails nothing. That is the right
+tool for a known residual, and the wrong one to leave lying around: the
+row cannot tell you the residual is gone.
+
+Three were found passing silently in one week, each downgraded for
+something long since fixed:
+
+| row | downgraded for | found |
+|---|---|---|
+| `state2_menu` | menu blink, before `test_mode_pin_blink` pinned it | no comment at all |
+| `state4_level1` | a rendering residual | printing pixel-identical for weeks |
+| `current_level_copy` (replay) | port and original destroying different cells | byte-identical |
+
+All three are asserting now, and `test-visual` lints its own table: a
+bare `False` fails, `False,  # INFO: <why>` passes. Downgrading is still
+allowed — leaving no reason is not.
+
 ## Counter-phase sweeps (`scripts/phase_sweep.py`)
 
 `pit_frame_counter` free-runs from boot, and cadences key off its low

@@ -326,7 +326,40 @@ def lint_bat_redraw_window(src_path: Path) -> int:
     if failed:
         return failed
     print("  PASS lint: redraw_bat is byte-window scoped")
+    info_fails = lint_no_silent_info(Path(__file__))
+    if info_fails:
+        print("  FAIL lint: a checkpoint is INFO with no reason:")
+        for f in info_fails:
+            print(f"    {f}")
+        return 1
+    print("  PASS lint: no checkpoint is silently INFO")
     return 0
+
+
+def lint_no_silent_info(src_path):
+    """A checkpoint may only be downgraded to INFO with a reason.
+
+    `assert_match=False` turns a pixel comparison into a measurement:
+    the row still prints, still says "pixel-identical" when it is, and
+    fails nothing. Three were found passing silently in one week —
+    state2_menu, state4_level1, and the replay comparison's
+    current_level_copy — each downgraded for a residual that had since
+    been fixed, and each printing PASS the whole time.
+
+    So a bare `False` in the checkpoint table is a lint failure now.
+    `False,  # INFO: <why>` is still allowed: the point is that the
+    reason exists and can be re-read, not that downgrading is banned.
+    """
+    import re as _re
+    fails = []
+    for n, line in enumerate(src_path.read_text().split('\n'), 1):
+        st = line.strip()
+        if not st.startswith("('state"):
+            continue
+        if _re.search(r",\s*False\s*,", line) and 'INFO:' not in line:
+            fails.append(f'{n}: {st[:60]} - assert_match=False with no '
+                         f'`# INFO: <why>` on the line')
+    return fails
 
 
 def main():
@@ -364,6 +397,19 @@ def main():
     # source_label='other_state' -> diff against another checkpoint's PPM
     #   (used by ROI checkpoints that re-examine an already-captured frame).
     # `assert_match=False` => captured, diff-reported, but not failing.
+    #
+    # NOTHING IS SET TO False ANY MORE, and the lint below keeps it that
+    # way unless a reason is written on the same line. state2_menu was
+    # the last one: a bare `False` with no comment, reporting
+    # pixel-identical on every run. It predates test_mode_pin_blink,
+    # which pins the menu's blink phase to 0 under BATTYALL=1 and made
+    # the screen deterministic — the reason it was downgraded went away
+    # and the downgrade did not. Promoted 2026-08-09.
+    #
+    # This is the third INFO row this week found passing silently
+    # (state4_level1, and the replay comparison's current_level_copy).
+    # An INFO row is a measurement, and a measurement nobody re-reads is
+    # a claim nobody checks.
     # state4_level1 diffs the full playfield against a modded-batty GT
     # captured AFTER one gameplay-loop iter has painted bat/ball/lives
     # to VRAM (see notes/modded-batty.md).
@@ -381,7 +427,7 @@ def main():
     # buried inside the whole-frame number — fix this before state4.
     checkpoints = [
         ('state1_title',    TITLE_SCR,    True,  None,                 None),
-        ('state2_menu',     SNAP_MENU,    False, None,                 None),
+        ('state2_menu',     SNAP_MENU,    True,  None,                 None),
         ('state3_hiscore',  SNAP_HISCORE, True,  None,                 None),
         ('state4_level1',   GT_LEVEL1,    True,  None,                 None),
         ('state5_bat_band', GT_LEVEL1,    True,  (0, 160, 256, 192),  'state4_level1'),
