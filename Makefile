@@ -813,6 +813,7 @@ parity-check-full:
 	$(MAKE) test-double-play-alien-kill
 	$(MAKE) test-double-play-bat2-catch
 	$(MAKE) test-secondary-ball-catch
+	$(MAKE) test-extra-ball-bat2
 	$(MAKE) test-stuck-auto-launch
 	$(MAKE) test-bat-redraw-window
 	$(MAKE) test-ball-left-wall-escape
@@ -1398,6 +1399,11 @@ test-double-play-bat2-catch:
 # BATTY_REPLAY_MULTIBALL seeds the spawn, the bonus catch adds the code.
 test-secondary-ball-catch:
 	python3 scripts/test_secondary_ball_catch.py
+
+# WS3: LAB1F falls through to bat 2 for EVERY ball, extras included.
+# A/B on BATTY_GAME_MODE with the extras thrown into bat 2's half.
+test-extra-ball-bat2:
+	python3 scripts/test_extra_ball_bat2.py
 
 # A ball left on the bat launches itself after STUCK_TIMEOUT (192)
 # ticks. Nothing gated this: mutating the counter so it never fires

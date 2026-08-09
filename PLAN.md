@@ -16,7 +16,7 @@ The port is "100%" when all of the following hold:
 |---|-----------|-------|
 | 1 | All three game modes work: 1 Player, 2 Players (alternating), Double Play (simultaneous split-court co-op) | 1P and 2P done; Double Play has its court, both bats, ball physics, scoring and INPUT (2026-08-10); bonus ownership and bat-2 catch remain |
 | 2 | Menu semantics match the original (0 starts the selected game directly; A/B input-device cycling affects play) | Key 0 starts the game (`test-menu-start`); the device byte is per-player state but still selects nothing |
-| 3 | Core gameplay byte-exact where an oracle exists (ball, bat, collision, RNG, enemy, bonuses, scoring) | **Done** — regression-locked by 97 gates |
+| 3 | Core gameplay byte-exact where an oracle exists (ball, bat, collision, RNG, enemy, bonuses, scoring) | **Done** — regression-locked by 98 gates |
 | 4 | Full game FLOW gated end-to-end: level-clear → next, life-loss → respawn, game-over → initials, level wrap | **Done** — `test-level-advance`, `test-life-loss`, `test-game-over-visual`, `test-name-entry-visual` |
 | 5 | Sound faithful to the original's 5-slot beeper queue (envelope/timing, not just effect IDs) | ids, slot count, pitches and envelope ARITHMETIC faithful; durations still round to 20 ms because the sound clock is the 50 Hz frame counter |
 | 6 | All assets derived from the tape at build time; no captured emulator blobs | **Done** — all 13 loaded assets build from `original/blocks/`, held by `test-asset-provenance` |
@@ -646,10 +646,15 @@ In priority order (all pre-scoped in `parity-gaps.md` / notes):
    primary-only, so the item was repaying a port divergence, not porting
    a mechanic.
 
-   **A different gap stays open:** `step_extra_ball` never consults bat
-   2, so in Double Play a secondary can be neither caught nor deflected
-   by it. Named in the gate's docstring; left whole rather than
-   half-done.
+   **That different gap closed too** (2026-08-10, next commit):
+   `extra_ball_meets_bat` factors the bat block out and mode $02 tries
+   bat 2 when bat 1 missed, mirroring LAB1F's fall-through
+   (`test-extra-ball-bat2`).
+
+   Still open from the same thread: the extras have no OWNER bit, so
+   brick points from a secondary go to the primary's owner. The bat-2
+   path leaves the bit alone rather than reusing it — see
+   notes/double-play.md.
 3. ~~**Seeded destroyed-cell mismatch**~~ — **CLOSED 2026-08-09, and it
    had already fixed itself.** This entry said the port and original
    destroy different *cells* on `replay-l3-brick-flash-both`. They do

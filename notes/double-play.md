@@ -578,3 +578,48 @@ The branch is correct either way and needs no change when ownership
 splits. The GATE does: it drops a CATCH bonus on bat 1 and relies on it
 reaching bat 2. Its docstring says so, so that day is a one-line edit
 rather than a mystery failure.
+
+
+## Ported: the extras meet bat 2 too (2026-08-10)
+
+`LAB1F` runs once per BALL object and falls through to bat 2 when bat 1
+did not overlap, so this was never a primary-only rule. The port's
+`step_extra_ball` tested bat 1 only — its bat block read
+`eff_bat_left`/`eff_bat_right` and nothing else — so a secondary fell
+straight through bat 2 and was lost.
+
+This is the gap that was named and left whole when the secondary CATCH
+landed, closed the next commit.
+
+`extra_ball_meets_bat` is the block factored out, which is what makes
+adding bat 2 four lines instead of a duplicated paragraph. Inlining it
+was the reason bat 2 had been skipped: the cost of adding it was
+copying the whole block.
+
+### Three outcomes, not two
+
+    0  no contact — try the next bat
+    1  deflected  — *next_y snapped, direction rewritten
+    2  caught     — stop the frame
+
+The first draft returned a boolean "was it caught". A bat-1 DEFLECTION
+then read as "no contact", so the ball was offered to bat 2 and could be
+handled TWICE in one frame. LAB1F falls through only when bat 1 did not
+OVERLAP, so a deflection has to stop the search as firmly as a catch.
+
+Caught by reading the control flow rather than by a test, and it is not
+gated: the two bats are 28 px apart at their closest, and both
+deflections landing in one frame is not something a seeded trajectory
+here produces. The comment in `extra_ball_meets_bat` is what carries it,
+and the gate's docstring says as much rather than implying coverage.
+
+### What the helper deliberately does NOT do
+
+It never touches `ball_owner_side`. That is the PRIMARY's owner bit, and
+the original keeps one per ball — `RES 7,(IX+$12)` on whichever ball
+LAB1F is handling. The port models only the primary's, so an extra
+bouncing off bat 2 must not rewrite it, or brick points would change
+hands on the strength of a ball that has no owner of its own.
+
+A real per-extra owner is its own item. Silently reusing the primary's
+would be worse than not having one, because it would look correct.

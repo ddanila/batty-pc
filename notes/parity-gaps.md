@@ -21,9 +21,14 @@ they are good next targets when tightening original fidelity.
 >     in as three behaviour-neutral steps plus the catches. See
 >     notes/bat-deflection.md.
 >
->     A NARROWER gap replaces it: `step_extra_ball` never consults bat 2,
->     so in Double Play a secondary can be neither caught nor deflected
->     by it. Not the same thing, and not a re-open of this one.
+>     The narrower gap it left — `step_extra_ball` never consulting bat
+>     2 — closed the next commit (`test-extra-ball-bat2`).
+>
+>     What remains from that thread: the extras have no OWNER bit. The
+>     original keeps one per ball (`RES 7,(IX+$12)`); the port models
+>     only the primary's, so brick points from a secondary are credited
+>     to the primary's owner. Not invented over — the bat-2 deflection
+>     leaves the bit alone rather than reusing it.
 >  2. **Cosmetic / timing**: big-bat resize timing is matched visually
 >     rather than being a literal port of the original's bit-gated state
 >     machine. Out of scope: sound.

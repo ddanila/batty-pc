@@ -5399,6 +5399,57 @@ static void step_ball(void) {
 /* Defined with the other stuck-ball handling, further down. */
 static void ride_stuck_ball_on_bat(int b, int bat);
 
+/* One bat's worth of LAB1F for a SECONDARY ball: contact test, then
+ * either the catch or the deflection.
+ *
+ *   0  no contact — the caller should try the next bat
+ *   1  deflected  — *next_y snapped, direction rewritten
+ *   2  caught     — the caller must stop the frame
+ *
+ * Three outcomes, not two, and that is load-bearing. LAB1F falls
+ * through to bat 2 only when bat 1 did not OVERLAP, so a bat-1
+ * DEFLECTION has to stop the search as firmly as a catch does. A
+ * boolean "was it caught" collapses those two, and the first draft of
+ * this did exactly that: a ball deflected by bat 1 was then offered to
+ * bat 2 and could be handled twice in one frame.
+ *
+ * Factored out because bat 2 needs exactly the same thing with
+ * different extents, and the previous inline version was the reason
+ * extras were never tested against bat 2 at all: adding it meant
+ * duplicating the block.
+ *
+ * `big` is bat 1's own affair — bat 2 is always the plain 28-wide
+ * sprite, since the width bonuses are bat-1 globals (WS3 residual).
+ *
+ * NOT here: `ball_owner_side`. That is the PRIMARY's owner bit, and the
+ * original keeps one per ball (`RES 7,(IX+$12)` on whichever ball
+ * LAB1F is handling). The port models only the primary's, so an extra
+ * bouncing off bat 2 must not rewrite it — brick points would change
+ * hands on a ball that has no owner of its own. A real per-extra owner
+ * is a separate item; silently reusing the primary's would be worse
+ * than not having one. */
+static int extra_ball_meets_bat(Object *o, int bat_idx, int slot,
+                                int bat_left, int bat_right, int bat_top,
+                                int ball_sz, bool big,
+                                int next_x, int *next_y, int dy_q8) {
+    if (!(dy_q8 > 0
+          && *next_y + BALL_H_PX > bat_top
+          && *next_y < bat_top
+          && next_x + ball_sz > bat_left
+          && next_x < bat_right))
+        return 0;
+
+    if (objects[bat_idx].bonus_applied == 0x03 && !big) {
+        catch_ball_on_bat(slot, bat_idx, next_x);
+        return 2;
+    }
+    *next_y = bat_top - BALL_H_PX;
+    o->dir = bat_deflect_dir(o->dir, next_x + 3 - (int)objects[bat_idx].x_coord,
+                             big);
+    sound_queue(SND_BAT_BEAT);
+    return 1;
+}
+
 static void step_extra_ball(unsigned char *in_active,
                              unsigned char obj_idx) {
     Object *o = &objects[obj_idx];
@@ -5433,27 +5484,26 @@ static void step_extra_ball(unsigned char *in_active,
     if (next_x < BALL_X_MIN)  { next_x = BALL_X_MIN; next_x_q8 = (long)next_x << 8; object_reflect(*(o), 1, 0); }
     else if (next_x > x_max)  { next_x = x_max;      next_x_q8 = (long)next_x << 8; object_reflect(*(o), 1, 0); }
     if (next_y < BALL_Y_TOP)  { next_y = BALL_Y_TOP; next_y_q8 = (long)next_y << 8; object_reflect(*(o), 0, 1); }
-    /* Bat: LAB1F contact (ball_y >= 167) + exact deflection, and since
-     * 2026-08-10 the CATCH branch too — the original runs one
-     * handling_ball per ball and LAB1F does not care which one it is,
-     * so a MAGNET bat holds a secondary exactly as it holds the primary
-     * (PLAN.md WS6 item 2, the case the item was opened for).
-     *
-     * Still bat 1 only. Extras are not tested against bat 2 at all —
-     * this whole block reads eff_bat_left/right — and that is a
-     * separate gap from this one, left alone rather than half-done. */
-    if (dy_q8 > 0
-        && next_y + BALL_H_PX > bat_top
-        && next_y < bat_top
-        && next_x + ball_sz > bat_left
-        && next_x < bat_right) {
-        if (objects[OBJ_BAT_1].bonus_applied == 0x03 && bat.extra_px == 0) {
-            catch_ball_on_bat(obj_idx, OBJ_BAT_1, next_x);
-            return;                 /* held: it does not move this frame */
+    /* Bat: LAB1F contact (ball_y >= 167), catch or deflect. The original
+     * runs one handling_ball per ball and LAB1F does not care which one
+     * it is, so an extra meets a bat exactly as the primary does —
+     * including bat 2 in mode $02, which it tries only when bat 1
+     * missed, mirroring LAB1F's own fall-through order. */
+    {
+        int met = extra_ball_meets_bat(o, OBJ_BAT_1, obj_idx,
+                                       bat_left, bat_right, bat_top,
+                                       ball_sz, bat.extra_px != 0,
+                                       next_x, &next_y, dy_q8);
+        if (met == 0 && game_mode == 2
+            && !(objects[OBJ_BAT_2].sprite_set & 0x80)) {
+            const Object &b2 = objects[OBJ_BAT_2];
+            met = extra_ball_meets_bat(o, OBJ_BAT_2, obj_idx,
+                                       (int)b2.x_coord,
+                                       (int)b2.x_coord + BAT_BODY_W,
+                                       (int)b2.y_coord, ball_sz, false,
+                                       next_x, &next_y, dy_q8);
         }
-        next_y = bat_top - BALL_H_PX;
-        o->dir = bat_deflect_dir(o->dir, next_x + 3 - BAT_X, bat.extra_px != 0);
-        sound_queue(SND_BAT_BEAT);
+        if (met == 2) return;       /* held: it does not move this frame */
     }
     if (next_y >= PLAYFIELD_H) {        /* off the bottom: deactivate */
         magnet_ball_state_clear((unsigned char)(obj_idx == OBJ_BALL_2 ? 1 : 2));
