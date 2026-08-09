@@ -235,3 +235,30 @@ known-bugs #7's enemy.
 analysis.** `paint_brick_band` opens by re-basing the band from it at
 every level entry, and `paint_frame_to_buff` takes its attrs from it.
 Both have generators sitting next to them.
+
+
+## level_attrs is generated now, and may not be needed at all
+
+`build_level_attrs_from_data` replaces the `LVLATTR.BIN` load, running
+the attribute passes in `game_screen_draw_to_buffer`'s order: `bg_attr`
+everywhere, the frame sprites' attr blocks, `paint_bricks` (which calls
+`paint_shadow_row` per row), then `print_border_shadow`. All 15 levels
+come out pixel-identical.
+
+Mutating that generator taught me something. Dropping the brick-attr
+pass entirely, and shortening `print_border_shadow`'s column by a row,
+BOTH survive the whole suite — and they are equivalent mutants, not
+missed coverage. `paint_brick_band` calls `paint_bricks` again at every
+level entry, and `render_brick_band_rows` re-applies
+`dim_border_shadow_column` for the rows it rebuilds. The runtime passes
+redo the work.
+
+So the base band's brick colours and its border shadow are both dead
+weight in the generated array. What is NOT redundant is the frame's
+columns 0/31 and row 0, which `paint_frame_to_buff` reads directly.
+
+Worth measuring next: fill `level_attrs[]` with nothing but `bg_attr`
+plus the frame cells and see whether all 15 levels still match. If they
+do, the whole 11 KB array collapses to a handful of per-cycle values and
+the frame attrs — and `paint_brick_band`'s opening `memcpy` goes with
+it.

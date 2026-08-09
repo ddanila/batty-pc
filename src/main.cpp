@@ -1519,6 +1519,80 @@ static void build_frame_from_sprites(void) {
     }
 }
 
+/* Build level_attrs[] the way game_screen_draw_to_buffer does, instead
+ * of loading a capture of the result.
+ *
+ * The band is the "every brick alive" state that paint_brick_band
+ * re-bases from, so this runs LBE8B's and print_briks' ATTRIBUTE passes
+ * in their order:
+ *
+ *   1. the level's bg_attr everywhere
+ *   2. the frame sprites' own attr blocks — row 0 from the eight
+ *      horizontal pieces, columns 0 and 31 from the seven side
+ *      placements
+ *   3. print_briks, via paint_bricks, which writes each live brick's
+ *      colour and calls paint_shadow_row (brik_shadow) per row
+ *   4. print_border_shadow last, which is what makes column 1 and row 1
+ *      non-bright
+ *
+ * paint_bricks writes scr_buff too; harmless here, nothing has been
+ * drawn yet. */
+static const unsigned char *border_attrs(unsigned int off, int *aw, int *ah) {
+    const unsigned int after_px = off + 2u
+        + (unsigned int)border_spr[off] * (unsigned int)border_spr[off + 1];
+    *aw = border_spr[after_px];
+    *ah = border_spr[after_px + 1];
+    return &border_spr[after_px + 2];
+}
+
+static void build_level_attrs_from_data(void) {
+    int lvl;
+    for (lvl = 0; lvl < N_LEVELS; lvl++) {
+        unsigned char *band = level_attrs + (unsigned int)lvl * ATTR_BAND_SIZE;
+        const unsigned char bg = bg_attr_per_cycle[lvl & 3];
+        int i, cr, cc, x_char, aw, ah, placement, y_bold, y_thin;
+
+        memset(attr_buff, bg, ATTR_BUFF_SIZE);
+
+        /* 2a. the top border's attr row, char row 0 */
+        x_char = 0;
+        for (i = 0; i < 8; i++) {
+            const unsigned char *av = border_attrs(border_top_seq[i], &aw, &ah);
+            for (cc = 0; cc < aw; cc++)
+                attr_buff[0 * 32 + x_char + cc] = av[cc];
+            x_char += aw;
+        }
+        /* 2b. the side placements' attrs, stacking UPWARD like the
+         *     pixels. All seven: the last supplies char rows 0..2. */
+        y_bold = 0xBF;
+        y_thin = 0x9F;
+        for (placement = 0; placement < 7; placement++) {
+            const int bold = (placement % 2) == 0;
+            const unsigned int lo = bold ? BSPR_SIDE_BOLD_L : BSPR_SIDE_THIN_L;
+            const unsigned int ro = bold ? BSPR_SIDE_BOLD_R : BSPR_SIDE_THIN_R;
+            const int base_y = bold ? y_bold : y_thin;
+            const unsigned char *lav = border_attrs(lo, &aw, &ah);
+            const unsigned char *rav = border_attrs(ro, &aw, &ah);
+            for (i = 0; i < ah; i++) {
+                cr = base_y / 8 - i;
+                if (cr < 0 || cr >= ATTR_ROWS) continue;
+                attr_buff[cr * 32 + 0]  = lav[i];
+                attr_buff[cr * 32 + 31] = rav[i];
+            }
+            if (bold) y_bold -= 56; else y_thin -= 56;
+        }
+
+        /* 3. every brick alive, with brik_shadow interleaved */
+        paint_bricks(&levels[(int)lvl * LVL_CELLS]);
+
+        /* 4. print_border_shadow ($BFCF), last */
+        for (cr = 1; cr <= 23; cr++) attr_buff[cr * 32 + 1] &= 0xBF;
+        for (cc = 2; cc <= 30; cc++) attr_buff[1 * 32 + cc] &= 0xBF;
+
+        memcpy(band, attr_buff, ATTR_BAND_SIZE);
+    }
+}
+
 static void paint_frame_to_buff(unsigned char cycle, unsigned char level_idx) {
     const unsigned char *base     = frame_l1 + (unsigned int)cycle * FRAME_SIZE;
     const unsigned char *top_px   = base;
@@ -7605,7 +7679,6 @@ int main(void) {
         asset_load("FONT.BIN",    font,        sizeof(font)) &&
         asset_load("HUDSPR.BIN",  hud_sprites, sizeof(hud_sprites)) &&
         asset_load("LEVELS.BIN",  levels,      sizeof(levels)) &&
-        asset_load("LVLATTR.BIN", level_attrs, sizeof(level_attrs)) &&
         asset_load("BGTILE.BIN",  bg_tile,     sizeof(bg_tile)) &&
         asset_load("BORDER.BIN", border_spr, sizeof(border_spr)) &&
         asset_load("SPRITES.BIN", sprites_blob, sizeof(sprites_blob)) &&
@@ -7624,6 +7697,7 @@ int main(void) {
         /* The perimeter frame is BUILT, not loaded. It needs bg_tile,
          * so it runs after the asset block rather than inside it. */
         build_frame_from_sprites();
+        build_level_attrs_from_data();
     } else {
         fill(0, 0, SCREEN_W, SCREEN_H, 10 /* bright red */);
     }

@@ -345,7 +345,6 @@ $(FLOPPY_OUT): $(FLOPPY_EXE) $(ASSETS) $(FLOPPY_SRC)
 	mcopy -i $@ -o assets/bottom_sprites.bin ::BOTSPR.BIN
 	mcopy -i $@ -o assets/hud_sprites.bin ::HUDSPR.BIN
 	mcopy -i $@ -o assets/levels.bin ::LEVELS.BIN
-	mcopy -i $@ -o assets/level_attrs.bin ::LVLATTR.BIN
 	mcopy -i $@ -o assets/bg_tile.bin ::BGTILE.BIN
 	mcopy -i $@ -o assets/sprites.bin ::SPRITES.BIN
 	mcopy -i $@ -o assets/separator.bin ::SEPARAT.BIN
@@ -407,7 +406,6 @@ $(TEST_FLOPPY_OUT): $(FLOPPY_TEST_EXE) $(ASSETS) $(FLOPPY_SRC)
 	mcopy -i $@ -o assets/bottom_sprites.bin ::BOTSPR.BIN
 	mcopy -i $@ -o assets/hud_sprites.bin ::HUDSPR.BIN
 	mcopy -i $@ -o assets/levels.bin ::LEVELS.BIN
-	mcopy -i $@ -o assets/level_attrs.bin ::LVLATTR.BIN
 	mcopy -i $@ -o assets/bg_tile.bin ::BGTILE.BIN
 	mcopy -i $@ -o assets/sprites.bin ::SPRITES.BIN
 	mcopy -i $@ -o assets/separator.bin ::SEPARAT.BIN

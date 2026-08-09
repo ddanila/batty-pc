@@ -651,10 +651,25 @@ original artifact:
    score digits are PIXELS — they leave the attribute cells alone, which
    is the colour-clash rule this port keeps meeting.
 
-   **What remains is not analysis but plumbing:** `paint_brick_band`
-   re-bases the band from `level_attrs.bin` at every level entry, and
-   `paint_frame_to_buff` takes its attrs from there too. Both could
-   generate instead, and then the blob goes. See notes/levels.md.
+   **DONE 2026-08-09.** `build_level_attrs_from_data` runs the
+   attribute passes in `game_screen_draw_to_buffer`'s order — bg_attr,
+   the frame sprites' own attr blocks (row 0 from the eight horizontal
+   pieces, columns 0/31 from all seven side placements), `paint_bricks`
+   with `paint_shadow_row` interleaved, then `print_border_shadow` last
+   — and fills `level_attrs[]` at startup. `LVLATTR.BIN` is off the
+   floppy. All 15 levels are pixel-identical
+   (`test-levels-sweep` runs `test-visual`'s now-asserting
+   `state4_level1` per level).
+
+   Two mutations of the generator SURVIVE, and they are equivalent
+   mutants rather than a coverage gap: dropping the brick attrs, and
+   shortening the border-shadow column. `paint_brick_band` calls
+   `paint_bricks` again at every level entry and
+   `render_brick_band_rows` re-applies `dim_border_shadow_column`, so
+   the runtime passes rebuild both. Which raises a real question worth
+   measuring: **how much of the generated band is redundant with the
+   runtime passes?** Possibly all of it except the frame columns, in
+   which case the whole array could go.
 3. ~~**Menu / hi-score screens**~~ — **already done, and the entry was
    wrong** (checked 2026-08-09). `render_menu_screen` and
    `render_hiscore_screen` build both screens from `MENUMARK.BIN` /
