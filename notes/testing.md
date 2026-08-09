@@ -477,6 +477,37 @@ caught, something else changed.
   edge face. Deleting a term changes nothing; INVERTING one does, and
   test_boundary_faces_stay_open catches that.
 
+## Stale symbol citations (`scripts/notes_symbols.py`)
+
+`check_doc_links` catches a note that points at a file which no longer
+exists. Nothing caught a note that names a ROUTINE which no longer
+exists, and that is how these notes actually rot: something is renamed
+or deleted, and prose that was true keeps naming it.
+
+The case that prompted the tool: `bounce_enemy_off_margins` was deleted
+on 2026-08-09 and three notes still named it — one of them, known-bugs
+#16, in the PRESENT TENSE, asserting the exact opposite of the code
+("The port does all three. `bounce_enemy_off_margins` clamps to ...").
+The reasoning around it was still correct; only its premise had rotted,
+which is the hard kind to notice.
+
+    scripts/notes_symbols.py
+
+lists every backticked `snake_case` identifier in `notes/*.md` that
+nothing in `src/`, `tests/`, `scripts/`, the Makefile or the
+disassembly defines.
+
+**It is a report, not a gate, on purpose.** It currently names ~42
+identifiers and most are legitimate: past-tense history this repo
+deliberately keeps (the sentence describing `static_bg_dirty`'s rename
+to `static_bg_cache_dirty` has to name both), partial names
+(`all_metal_briks` for `all_metal_briks_animation_snd`), and probe-field
+values that look like identifiers (`active01_type04`). Separating those
+from a rotted present-tense claim needs a reader. Making it fail the
+build would mean either an allowlist that goes stale exactly the way the
+notes do, or pressure to delete history to get green — so the judgement
+stays with whoever runs it, during a hygiene pass.
+
 ## CI (`.github/workflows/parity-check.yml`)
 
 Hosted GitHub runners have no KVM, so QEMU runs under TCG emulation that is

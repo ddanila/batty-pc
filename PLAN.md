@@ -288,11 +288,22 @@ right).
    once per game (`print_kinnock` is called from the per-level entry
    `LB9E8_1`), and it is up for only ~0.3 s (`pause_short` with D=0 is
    ~1.05M T-states). See notes/shortcuts.md.
-2. **Docs hygiene:** reconcile stale notes — `parity-gaps.md` still
-   leads with "enemy RNG not per-frame" (fixed 2026-06-05, default
-   flipped) and `rng-model.md` mentions the stale L3 `8E49` seed
-   (superseded by the 3793/962A wiring). One pass so the notes match
-   reality before the mode work rewrites them again.
+2. **Docs hygiene: pass done 2026-08-09.** Both named items fixed, plus
+   three more the pass turned up:
+   - `parity-gaps.md`'s priority list led with two struck-through CLOSED
+     items, burying the two actually open. Reordered to OPEN first.
+   - its "Some motion is approximate" section had six DONE entries under
+     that heading, and the enemy bullet said "still approximate" one
+     line above the list of four routines the port matches.
+   - its closing paragraph had been edited in place three times and read
+     "...end-to-end coverage. and the byte-exact frame-step oracle...".
+   - `rng-model.md`'s "remaining work" paragraph outlived both its items
+     by two months.
+   - **known-bugs #16 asserted the opposite of the code** in the present
+     tense, naming a routine deleted the same day.
+   New tool from it: `scripts/notes_symbols.py` lists identifiers the
+   notes cite and the tree no longer defines. A report, not a gate —
+   see notes/testing.md for why.
 3. **Distribution decision (user call, before any publicity):** Elite
    Systems still actively monetizes Batty (official iOS/macOS app) and
    historically denied archive distribution; the CityAceE disasm repo

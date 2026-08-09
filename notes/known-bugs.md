@@ -821,14 +821,27 @@ Three things the original did NOT do, across the whole run:
   - it never reflected `dir`: `$3C` across the wrap, unchanged;
   - it never clamped at the RIGHT edge at all.
 
-The port does all three. `bounce_enemy_off_margins` clamps to
-`x_max = 256 - 8 - w`, reflects `dir` with `(0x20 - dir) & 0x3F`, and
-calls `enemy_target_away_from_margins`. None of that has a counterpart
-here, which is consistent with `notes/enemy-movement.md` calling the
-margin handling an approximation.
+The port did all three. `bounce_enemy_off_margins` clamped to
+`x_max = 256 - 8 - w`, reflected `dir` with `(0x20 - dir) & 0x3F`, and
+called `enemy_target_away_from_margins`. None of that had a counterpart
+in the original.
 
 So #16's original question — `$38` or `$18`? — is the wrong question.
 The angle table belongs to a re-aim the original does not perform.
+
+**Closed 2026-08-09.** `check_margins` is now ported literally — three
+clamps, no reflection, no re-aim — and both invented routines are
+deleted. `test-enemy-margin-clamp` gates it. What survives of #16 is the
+original's own 8-bit overflow in `check_right_margin`, reproduced rather
+than fixed: for the bird's `w = $18`, x in `[$E1,$E7]` clamps back to
+`$E0` and x >= `$E8` escapes the clamp entirely. Only a LAFFC snap can
+put an alien there; ordinary flight moves 2px a frame.
+
+*(Until this edit the two paragraphs above were present tense — "The
+port does all three" — which by then asserted the exact opposite of the
+code. The reasoning was still right; only the premise had rotted. Found
+by `scripts/notes_symbols.py` (added the same day), which lists
+identifiers that notes cite and the tree no longer defines.)*
 
 ### The disassembly explains all of it
 

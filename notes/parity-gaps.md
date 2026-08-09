@@ -5,37 +5,57 @@ or still depends on captured original data. This is separate from
 `known-bugs.md`: these are not necessarily user-reported defects, but
 they are good next targets when tightening original fidelity.
 
-> **Remaining gaps as of 2026-06-17** (after the #6/#7 fixes + the broadened
-> coverage in parity-status.md). In rough priority:
->  1. ~~**Enemy RNG not byte-exact**~~ — CLOSED. `BATTY_RNG_PERFRAME` is
->     the default and is byte-exact (`make test-rng-walk`). What remains
->     of enemy motion is that the bird uses `bounce_enemy_off_margins`
->     instead of `LAFFC` + the exact `check_margins`. (See "Some motion
->     is approximate".)
->  2. **Multi-ball + MAGNET catch** — a MAGNET bat catches the primary ball
+> **Remaining gaps as of 2026-08-09.** Open first, then what closed —
+> a list that leads with struck-through entries buries the two things
+> actually left.
+>
+> OPEN:
+>  1. **Multi-ball + MAGNET catch** — a MAGNET bat catches the primary ball
 >     but not the unified secondaries; mirroring the ~32-site stuck system
 >     per-ball is deferred feature work (see "bat-ball deflection").
->  3. ~~**Full game-flow transitions**~~ — CLOSED 2026-08-09. All five are
->     gated end-to-end: `test-level-advance` (level-clear -> next, and the
->     wrap), `test-life-loss`, `test-game-over-visual`,
->     `test-name-entry-visual`. See "Test coverage gaps" below — which is
->     where this was first marked closed, while this priority list kept
->     saying otherwise for several commits.
->  4. **Cosmetic / timing**: big-bat resize timing is matched visually
+>  2. **Cosmetic / timing**: big-bat resize timing is matched visually
 >     rather than being a literal port of the original's bit-gated state
->     machine. (The metal-brick shimmer was also listed here; it is a
->     literal port now — see below.) Out of scope: sound.
->  5. **Infra**: QEMU-on-CI needs a KVM/self-hosted runner (hosted TCG is
+>     machine. Out of scope: sound.
+>  3. **Infra**: QEMU-on-CI needs a KVM/self-hosted runner (hosted TCG is
 >     too slow even with the deterministic serial harness — calibrated dead
 >     end). The full QEMU suite runs locally (`make parity-check-parallel`).
+>
+> CLOSED, kept because each was wrong here for a while before it was:
+>  - **Enemy RNG not byte-exact** — closed 2026-06-05. `BATTY_RNG_PERFRAME`
+>    is the default and is byte-exact (`make test-rng-walk`).
+>  - **Enemy motion approximate** — closed 2026-08-09. The bird now runs
+>    `LAFFC` (`enemy_brick_reaction` + `enemy_home_step`) and the literal
+>    `check_margins`; the entry above kept naming
+>    `bounce_enemy_off_margins`, which no longer exists.
+>  - **Full game-flow transitions** — closed 2026-08-09. All five gated
+>    end-to-end: `test-level-advance` (level-clear -> next, and the wrap),
+>    `test-life-loss`, `test-game-over-visual`, `test-name-entry-visual`.
+>    "Test coverage gaps" below marked this closed several commits before
+>    this list did.
+>  - **Metal-brick shimmer** — a literal port now; see below.
 
 ## Visible / behavioral
 
-### Some motion is approximate, not descriptor-exact
+### Motion: what is descriptor-exact and what is not
 
-Several paths use gameplay-equivalent but not byte-exact motion:
+Most of this section is now DONE and kept for the record — enemy
+movement, brick/ball collision, bat deflection, alien-explosion cadence,
+ball speed-up/SLOW and the rocket flight are all literal ports. What is
+still gameplay-equivalent rather than byte-exact is the short list at the
+bottom: big-bat resize TIMING, enemy sprite facing (cosmetic), and the
+metal-brick shimmer's L3 frame-step residual.
 
-- enemy movement: the `LAA7D` steering is decoded and ported (turn 1
+The heading used to read "Some motion is approximate, not
+descriptor-exact", which stopped being a fair summary somewhere around
+the third DONE. Each entry keeps its own history because several were
+wrong here for weeks after the code was right.
+
+- enemy movement — **DONE 2026-08-09.** Kept here rather than deleted
+  because this bullet was wrong in two different directions before it
+  was right: it claimed the RNG was not byte-exact for two months after
+  it was, and then said "still approximate" in the same breath as
+  listing the four routines the port matches. The `LAA7D` steering is
+  decoded and ported (turn 1
   dir-step toward target every 4 frames; repick a random target *on
   arrival*, matching the original — the old 64-frame timer repick is
   gone). The RNG half is **DONE**: `BATTY_RNG_PERFRAME` defaults ON and
@@ -45,7 +65,8 @@ Several paths use gameplay-equivalent but not byte-exact motion:
   claimed the opposite — "the port advances the RNG on demand ... so
   enemy targets aren't byte-exact" — for two months after the default
   flipped on 2026-06-05.
-  Still approximate, and now decoded precisely — `handling_bird` calls
+
+  Decoded precisely: `handling_bird` calls
   `LAA7D` (steer, every 4 frames), `LAD69` (move), `LAFFC` (brick
   collision), then `check_margins` (clamp), in that order. The port
   matches all four as of 2026-08-09. The brick collision is
@@ -258,11 +279,18 @@ invariants (see notes/testing.md for the full list). Now covered:
   magnet), no-escape, all-sprite attr non-corruption, and a long-run
   multi-level soak (`test-gameplay-soak`).
 
-Remaining test gaps (see the priority list at the top of this file): of the
-game-FLOW transitions, game-over and the hi-score name entry are now gated
-visually (`test-game-over-visual`, `test-name-entry-visual`) and life-loss by
-an A/B on the death (`test-life-loss`). Level-clear -> next and the level wrap are gated by `test-level-advance`,
-which uses `BATTY_REPLAY_CLEAR_BRICKS` to empty the grid at entry. All five
-game-FLOW transitions now have end-to-end coverage. and the byte-exact frame-step
-oracle is built for L3/L5 — the poke-`$B7EA`+`$BA24` recipe generalizes it
-to any level when more are wanted.
+All five game-FLOW transitions now have end-to-end coverage:
+game-over and the hi-score name entry visually
+(`test-game-over-visual`, `test-name-entry-visual`), life-loss by an A/B
+on the death (`test-life-loss`), and level-clear -> next plus the level
+wrap by `test-level-advance`, which uses `BATTY_REPLAY_CLEAR_BRICKS` to
+empty the grid at entry.
+
+The byte-exact frame-step oracle is built for L3 and L5; the
+poke-`$B7EA`+`$BA24` recipe generalizes it to any level when more are
+wanted.
+
+(This paragraph had been edited in place three times and by 2026-08-09
+read "...now have end-to-end coverage. and the byte-exact frame-step
+oracle is built..." — a sentence spliced onto the end of another one.
+Rewritten rather than patched again.)

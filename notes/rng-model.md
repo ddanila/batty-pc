@@ -339,6 +339,15 @@ stale/swapped RNG). See notes/enemy-movement.md. (A ~1px x residual at
 f20/f24 remains — sub-pixel, dir/y match.) So RNG-dependent parity is
 UNBLOCKED: the per-frame tick + correct seed reproduce the original's
 random sequence, hence the enemy target and (by the same mechanism) bonus
-drops. The remaining work is a deliberate default-flip of
-`BATTY_RNG_PERFRAME` + wiring the snapshot's true seed into the replay
-infra (the L3 env still bakes the stale `8E49`), now that there is a gate.
+drops.
+
+*(Both "remaining work" items named here are long done, and this
+paragraph outlived them by two months. `BATTY_RNG_PERFRAME` flipped to
+default-ON on 2026-06-05 — the next heading in this file says so — and
+the L3 replay env bakes `BATTY_REPLAY_RANDOM=3793
+BATTY_REPLAY_RANDOM_SEED=962A`, not the stale `8E49`. Bare `8E49` still
+appears in several port-only gates, where it is fine: it seeds
+`random_number` deterministically and those gates never compare against
+the original's sequence. The old complaint about `8E49` was that it left
+the ROM-walk SEED ADDRESS un-set, which is what
+`BATTY_REPLAY_RANDOM_SEED` exists to fix.)*
