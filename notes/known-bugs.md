@@ -4,6 +4,7 @@
 
 | # | what | state |
 |---|------|-------|
+| #3 | multi-hit bricks shimmer continuously | fixed 2026-06-11; **now gated** by `test-shimmer-one-pass` — until 2026-08-09 nothing guarded it and all 59 QEMU gates passed with it broken |
 | #8 | multiball direction convention | no gameplay effect — the mirrored values were written to fields nothing read |
 | #9 | blast dirty rect 16x8 vs 16x12 | fixed; `test-blast-dirty-redraw` |
 | #10 | bullet animation phase depends on the redraw path | fixed; host tests |

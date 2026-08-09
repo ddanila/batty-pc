@@ -1171,8 +1171,14 @@ test-switch-defaults:
 test-gate-freshness:
 	python3 scripts/check_gate_freshness.py
 
+# known-bugs #3: the metal shimmer plays one pass, not a loop. Mutating
+# the wrap leaves all 59 QEMU gates green, so this is the only guard.
+test-shimmer-one-pass:
+	python3 scripts/test_shimmer_one_pass.py
+
 test-source-gates:
 	$(MAKE) test-gate-greps
+	$(MAKE) test-shimmer-one-pass
 	$(MAKE) test-gate-freshness
 	$(MAKE) test-switch-defaults
 	$(MAKE) test-host-tests-wired

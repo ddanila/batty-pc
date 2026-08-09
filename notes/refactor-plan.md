@@ -12,12 +12,12 @@ reason rather than for want of effort — see the end of this section.
 modules. The longest function is `run_level` at 113 lines, and it is an
 orchestrator of named phases, which is what it should be.
 
-**The tests.** 73 gates, indexed in `notes/testing.md` and kept complete
+**The tests.** 74 gates, indexed in `notes/testing.md` and kept complete
 by `test-gate-index`. They fall in three groups:
 
   - 59 QEMU gates — `make parity-check-parallel`, ~6 min, twelve clean
     runs, the latest covering the `handle_input` split.
-  - 14 emulator-free source gates plus 14 host suites — `make test-fast`,
+  - 15 emulator-free source gates plus 14 host suites — `make test-fast`,
     seconds. CI runs exactly this.
   - 3 ZEsarUX-oracle gates — `make parity-check-full`.
 
