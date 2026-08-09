@@ -1359,6 +1359,9 @@ Object objects[N_OBJECTS] = {
  *
  * so anything that rewrites the primary's direction must refresh them.
  *
+ * The deltas may be at ANY scale — q8.8 from dir_to_dxdy, or whole
+ * pixels from primary_ball_set_velocity. Only their SIGN is taken.
+ *
  * Hence the `from` parameter, which is the whole point of it: two
  * callers take an Object* that may be an EXTRA ball — laffc_collision
  * (reached from step_extra_ball) and magnet_ball_frame (slots 1 and 2) —
@@ -1378,8 +1381,13 @@ static void refresh_ball_motion_signs(const Object *from, int dx_q8, int dy_q8) 
 }
 
 static void primary_ball_set_velocity(int dx, int dy) {
-    ball.dx = dx;
-    ball.dy = dy;
+    /* The cache holds SIGNS. Callers pass whatever reads naturally at
+     * their site — +1/-BALL_SPEED at the two launch points, raw parsed
+     * values from BATTY_REPLAY_BALL_VEL — so normalise HERE rather than
+     * trusting each of them (known-bugs.md #14). Behaviour is unchanged:
+     * the dir selection below uses only the signs of dx and dy, and so
+     * do both readers of the cache. */
+    refresh_ball_motion_signs(&objects[OBJ_BALL_1], dx, dy);
     objects[OBJ_BALL_1].speed = BALL_SPEED;
     objects[OBJ_BALL_1].x_coord_hi = 0;
     objects[OBJ_BALL_1].y_coord_hi = 0;
@@ -4437,7 +4445,15 @@ static void catch_ball_on_bat(int contact_x) {
     ball.stuck_offset_x = off;
     ball.stuck          = 1;
     ball.stuck_ticks    = 0;
-    ball.dy             = -BALL_SPEED;
+    /* A SIGN, not a speed. Every other writer of this cache stores
+     * {-1,0,+1}; this one stored -BALL_SPEED (= -2), and it is the copy
+     * that SURVIVES, because a caught ball is stuck and step_ball
+     * early-returns above the refresh. Behaviour is unchanged: both
+     * readers use the sign only — ball_lands_on_bat tests `ball.dy > 0`,
+     * and delta_to_dir picks its quadrant on `dy >= 0` and its angle on
+     * abs(dx). See known-bugs.md #14 for the part still open, which is
+     * whether the ORIGINAL wants a magnitude in dx at all. */
+    ball.dy             = -1;
     objects[OBJ_BALL_1].dir = 0x20;
     BALL_X = BAT_X + off;
     /* A caught ball rests 1 px lower than the launch rest: LAB1F_3 sets
@@ -4601,7 +4617,9 @@ static int deflect_ball_off_bat(int next_x, int *next_y) {
         catch_ball_on_bat(next_x);
         return 1;
     }
-    ball.dy = -BALL_SPEED;
+    /* No `ball.dy = -BALL_SPEED` here: the deflection below rewrites the
+     * direction and calls refresh_ball_motion_signs unconditionally, with
+     * no return in between, so that store was dead (known-bugs.md #14). */
     /* Exact LAB1F deflection: offset = ball_x + 3 - bat_x (the bat
      * object's left edge, the original's IY+$02); an enlarged bat
      * selects the LABFC table. Validated against captured ground

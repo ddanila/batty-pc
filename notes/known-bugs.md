@@ -490,7 +490,8 @@ it.
 
 ## #14 — `ball.dx`/`ball.dy` mix signs and speeds, and one reader cares
 
-**Found 2026-08-09, not fixed. Open.**
+**Found 2026-08-09. Units fixed 2026-08-09; the question the units
+raised is still open — see the end.**
 
 Found while fixing #13. The sign cache is documented as holding
 {-1, 0, +1}, and four of its six writers do exactly that. Two do not:
@@ -523,18 +524,45 @@ production never selects and skips the one production always selects.
 `test_delta_to_dir_sign_inputs` now pins the actual behaviour, so a
 change to either side is a decision rather than an accident.
 
-### Also here
+### The units are fixed
 
-`deflect_ball_off_bat`'s `ball.dy = -BALL_SPEED;` is a **dead store**:
-the deflection immediately below it rewrites the direction and calls
-`refresh_ball_motion_signs`, unconditionally, before returning. Only
-`catch_ball_on_bat`'s copy survives, because a caught ball is stuck and
-`step_ball` early-returns above the refresh on the next frame — which is
-precisely the state that makes #13's scenario reachable.
+Three separate things put non-signs into the cache. All three are gone:
 
-Left alone deliberately: deleting a store and changing a unit are two
-different changes, and the second needs ground truth this port does not
-have.
+  - `deflect_ball_off_bat`'s `ball.dy = -BALL_SPEED;` was a **dead
+    store** — the deflection immediately below rewrites the direction and
+    calls `refresh_ball_motion_signs` unconditionally, with no return in
+    between. Deleted.
+  - `catch_ball_on_bat`'s copy is the one that SURVIVES, because a caught
+    ball is stuck and `step_ball` early-returns above the refresh. Now
+    stores `-1`.
+  - `primary_ball_set_velocity` assigned its arguments straight through,
+    and two of its three callers pass `-BALL_SPEED`. It now routes them
+    through `refresh_ball_motion_signs`, which normalises. Fixing it in
+    the setter rather than at each call site means the third caller —
+    `BATTY_REPLAY_BALL_VEL`, where a gate can pass anything — cannot
+    reintroduce the problem.
+
+All behaviour-preserving, and provably so rather than by test: the sign
+is the only thing any reader uses. `ball_lands_on_bat` tests
+`ball.dy > 0`; `delta_to_dir` picks its quadrant on `dx >= 0` / `dy >= 0`
+and its angle on `abs(dx)`. Confirmed by the full suite, 57/57.
+
+Worth recording how the last one went: writing the normalisation inline
+in the setter tripped `test-ball-sign-cache-owner`, the #13 gate, which
+requires exactly one writer. It was right — that would have been a second
+one. Routing through the owner was the fix, and the gate found it before
+a human review would have.
+
+### Still open
+
+The units are consistent; the QUESTION they raised is not settled.
+`delta_to_dir` selects its angle with `abs(dx) >= BALL_SPEED`, and now
+that `dx` is provably always a sign, the `0x08` angle is unreachable from
+the only production caller — by construction rather than by accident.
+Whether the original derives the extras' launch angle from the ball's
+real velocity, in which case reducing to signs destroys the input it
+wants, needs the Spectrum. `test_delta_to_dir_sign_inputs` pins today's
+behaviour so a change would be a decision.
 
 ---
 

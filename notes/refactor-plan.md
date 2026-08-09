@@ -16,7 +16,7 @@ Gate count 51 → 57 this session: `test-blast-dirty-redraw`,
 `test-game-over-visual` and `test-name-entry-visual`, each covering
 something nothing reached before.
 
-`main.cpp`: 7,747 → 6,897 lines (-11.5%) across 14 modules. `make test-fast`
+`main.cpp`: 7,747 → 6,915 lines (-11.3%) across 14 modules. `make test-fast`
 runs every host test and source gate in seconds; `--full` is 57 gates
 in under six minutes.
 
@@ -106,7 +106,7 @@ happened, and `make test-video` caught it.
 | 1a | `replay_parse` — the BATTY_REPLAY_* value formats | 75 | **done** — 7 tests |
 | 1 | replay / probe scaffolding | ~430 | **last** — see below |
 
-`main.cpp`: 7,747 → 6,897 (`wc -l`; see the status block on why this is not Watcom's count).
+`main.cpp`: 7,747 → 6,915 (`wc -l`; see the status block on why this is not Watcom's count).
 100 host tests + source gates, all via `make test-fast` in seconds.
 
 ### Stage 5b: one destroyed-cell reset, not two
