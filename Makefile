@@ -1067,8 +1067,15 @@ test-rng: $(RNG_TEST) assets/random_seed.bin
 test-gate-greps:
 	python3 scripts/check_gate_greps.py
 
+# Does the plan's status block still state true numbers? The line count
+# and gate count there went stale three times; one of those times it was
+# quoting the compiler's line count instead of wc -l.
+test-notes-numbers:
+	python3 scripts/check_notes_numbers.py
+
 test-source-gates:
 	$(MAKE) test-gate-greps
+	$(MAKE) test-notes-numbers
 	$(MAKE) test-l3-replay-seed
 	$(MAKE) test-death-sparks
 	$(MAKE) test-rocket-bonus

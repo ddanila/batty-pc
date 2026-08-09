@@ -14,9 +14,18 @@ Gate count 51 → 55 this session: `test-blast-dirty-redraw`,
 and `test-invariant-owners`, each covering something nothing reached
 before.
 
-`main.cpp`: 7,746 → 6,858 lines (-11%) across 14 modules. `make test-fast`
-runs every host test and source gate in seconds; `--full` is 54 gates
+`main.cpp`: 7,747 → 6,762 lines (-12.7%) across 14 modules. `make test-fast`
+runs every host test and source gate in seconds; `--full` is 55 gates
 in under six minutes.
+
+Line counts here are `wc -l`, measured against `wc -l` at `e0bb447` (the
+C++ conversion, before any extraction). Earlier revisions of this file
+quoted Watcom's `N lines` report instead. The two agreed within 1 at the
+baseline and have since drifted apart by a constant 96 for this file —
+adding 10 lines moves both by 10, so it is an offset, not a scaling, and
+the cause is not established. Mixing the two understated the reduction.
+`scripts/check_notes_numbers.py` now pins this section's numbers to
+reality on every `make test-fast`.
 
 | finding | state |
 |---------|-------|
@@ -93,7 +102,8 @@ happened, and `make test-video` caught it.
 | 1a | `replay_parse` — the BATTY_REPLAY_* value formats | 75 | **done** — 7 tests |
 | 1 | replay / probe scaffolding | ~430 | **last** — see below |
 
-`main.cpp`: 7,746 → 6,916. 100 host tests + source gates, all via `make test-fast` in seconds.
+`main.cpp`: 7,747 → 6,762 (`wc -l`; see the status block on why this is not Watcom's count).
+100 host tests + source gates, all via `make test-fast` in seconds.
 
 ### Stage 5b: one destroyed-cell reset, not two
 
