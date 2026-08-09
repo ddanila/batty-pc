@@ -665,7 +665,44 @@ static void test_bounce_changes_direction() {
                 if (laffc_bounce(l, u8(d), 8, 7, x, y).dir == u8(d)) unchanged++;
             }
     check(unchanged == 0, "%d bounces returned the incoming direction\n", unchanged);
-    report("bounce_changes_direction", before, "full band sweep      ok");
+
+    /* ...and it must change on the RIGHT AXIS. Checking only that the
+     * direction changed let the left face reflect VERTICALLY: mutating
+     * its mask from $1F to $3F survived, which would send a ball hitting
+     * a brick's side away along the wrong axis entirely.
+     *
+     * Asserted as a property rather than by restating the formula: a
+     * horizontal face (left/right) must flip the sign of dx and keep the
+     * sign of dy, and a vertical face must do the opposite. Repeating
+     * `laffc_change_dir(dir, 0x1F)` here would only prove the test can
+     * copy the code.
+     *
+     * Signs come from dir_to_dxdy, the motion the BALL actually uses.
+     * dir_to_delta looks equivalent and is not: its quadrant convention
+     * is mirrored in two of four quadrants (known-bugs #8), and using it
+     * here reported all 19200 bounces as wrong. */
+    int wrong_axis = 0;
+    for (int x = 0; x < 250; x += 5)
+        for (int y = FIELD_Y0; y < FIELD_Y_END; y += 3)
+            for (int d = 0; d < 0x40; d += 4) {
+                if (d == 0x00 || d == 0x10 || d == 0x20 || d == 0x30) continue;
+                const LaffcHit l = laffc_sweep(field, u8(d), 8, 7, x, y);
+                if (!l.hit) continue;
+                const u8 nd = laffc_bounce(l, u8(d), 8, 7, x, y).dir;
+                int dx0, dy0, dx1, dy1;
+                dir_to_dxdy(u8(d), 2, &dx0, &dy0);
+                dir_to_dxdy(nd, 2, &dx1, &dy1);
+                /* Same precedence as the implementation walks the mask. */
+                const bool horizontal = (l.face_mask & 3) != 0;
+                const bool dx_flipped = (dx0 >= 0) != (dx1 >= 0);
+                const bool dy_flipped = (dy0 >= 0) != (dy1 >= 0);
+                if (horizontal ? (!dx_flipped || dy_flipped)
+                               : (!dy_flipped || dx_flipped)) wrong_axis++;
+            }
+    check(wrong_axis == 0,
+          "%d bounces reflected on the wrong axis for the face they hit\n",
+          wrong_axis);
+    report("bounce_changes_direction", before, "changed + right axis ok");
 }
 
 /* --- Bat steering ------------------------------------------------------ */

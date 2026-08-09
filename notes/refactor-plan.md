@@ -568,6 +568,30 @@ removed when they were added; a multiset diff confirmed zero lines
 lost.
 
 
+#### A bounce that changed direction, on any axis it liked
+
+`test_bounce_changes_direction` swept the whole band and asserted the
+direction CHANGED. It never asked on which axis — so mutating the LEFT
+face's reflect mask from `$1F` to `$3F` survived, which would send a
+ball hitting a brick's side away vertically. Third instance now of the
+same shape: a test that checks something happened rather than that it
+happened correctly.
+
+Extended in place, and as a PROPERTY rather than a restatement: a
+horizontal face must flip the sign of dx and preserve dy, a vertical
+face the reverse. Repeating `laffc_change_dir(dir, 0x1F)` in the test
+would only prove the test can copy the code.
+
+The first attempt reported all 19200 bounces wrong, which is a result
+about the test, not the code. It read the signs through `dir_to_delta`,
+whose quadrant convention is MIRRORED from the ball's in two of four
+quadrants — that is known-bugs #8, recorded in this very repo. Switching
+to `dir_to_dxdy`, the motion the ball actually uses, gives a clean pass
+and catches both the left-face and up-face mask swaps.
+
+Worth remembering: an assertion failing everywhere is usually the
+assertion. 19200 of 19200 was never going to be a real defect.
+
 #### Both straddle boundaries were off by an inclusive
 
 Sweeping the physics functions the earlier passes had not touched. The
