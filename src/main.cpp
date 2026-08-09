@@ -5061,6 +5061,8 @@ static void refresh_static_background(unsigned char level_idx) {
     }
 }
 
+static void compose_moving_objects(unsigned char bg_attr);
+
 static void redraw_full_with_ball(unsigned char level_idx) {
     unsigned char bg_attr = bg_attr_per_cycle[level_idx & 3];
     unsigned char cycle   = (unsigned char)(level_idx & 3);
@@ -5111,12 +5113,7 @@ static void redraw_full_with_ball(unsigned char level_idx) {
      * parent UFO the paths rendered different pixels (the f50 21px A/B
      * delta, notes/bird-render-parity.md). The enemy paints OVER the
      * bomb/bonus; the rocket paints over everything. */
-    render_extra_balls_to_buff(bg_attr);
-    render_bullet_to_buff();
-    mark_live_bullets_dirty();
-    render_bullet_blasts_to_buff_and_mark();
-    render_falling_objects_to_buff(bg_attr);
-    render_enemy_to_buff_and_mark(bg_attr);
+    compose_moving_objects(bg_attr);
     if (rocket.active) {
         unsigned int spr = current_rocket_spr();
         render_rocket_to_buff();
@@ -5229,6 +5226,34 @@ static void render_enemy_to_buff_and_mark(unsigned char bg_attr) {
                             spr_w_px, spr_h_px);
 }
 
+/* Every moving object, in the ORIGINAL's slot-paint order. Both redraw
+ * paths call this, which is the point: they used to hold their own
+ * copies of the sequence and drifted apart — the dirty path drew the
+ * enemy BEFORE the bomb, the full path after, so a fresh bomb still
+ * overlapping its parent UFO rendered differently on each. That was the
+ * f50 21 px A/B delta in notes/bird-render-parity.md.
+ *
+ * call_for_all_obj walks the $9AD0 table low to high, so later slots
+ * paint on top:
+ *   balls 1-3 < bullets < bats < bonus/bomb/pts400 (the shared $9B80
+ *   slot) < ENEMY ($9B96) < rocket ($9BAC)
+ * The enemy paints over the bomb and bonus; the rocket over everything,
+ * and it is the caller's job since only the full path draws it.
+ *
+ * The bullets are drawn unconditionally. That is safe only because
+ * render_bullet_to_buff no longer carries animation state — it did
+ * until known-bugs #10 was fixed, and a bare call would then have
+ * advanced the shared phase. */
+static void compose_moving_objects(unsigned char bg_attr) {
+    render_extra_balls_to_buff(bg_attr);
+    render_bullet_to_buff();
+    mark_live_bullets_dirty();
+    render_bullet_blasts_to_buff_and_mark();
+    render_falling_objects_to_buff(bg_attr);
+    render_enemy_to_buff_and_mark(bg_attr);
+}
+
+
 static void render_simple_objects_to_buff_and_mark(unsigned char bg_attr) {
     /* Same slot-paint ORDER as redraw_full_with_ball and the original's
      * $9AD0 object table (later slots paint on top): balls < bullets <
@@ -5237,18 +5262,7 @@ static void render_simple_objects_to_buff_and_mark(unsigned char bg_attr) {
      * overlapping its parent UFO rendered differently on the dirty path
      * vs the full path — the f50 21px A/B delta
      * (notes/bird-render-parity.md). */
-    render_extra_balls_to_buff(bg_attr);
-    /* Laser bullets + impact blasts: small fast sprites, redrawable on the
-     * dirty path like the ball. render_*_to_buff blit into scr_buff; mark
-     * each live slot's rect (the carry restores last frame's position, so
-     * the bullet's fast upward travel leaves no trail). */
-    if (any_bullet_active()) {
-        render_bullet_to_buff();
-        mark_live_bullets_dirty();
-    }
-    render_bullet_blasts_to_buff_and_mark();
-    render_falling_objects_to_buff(bg_attr);
-    render_enemy_to_buff_and_mark(bg_attr);
+    compose_moving_objects(bg_attr);
 }
 
 /* Repaint + flush the (non-moving) bat on a dirty-redraw frame. Normally

@@ -9,7 +9,7 @@ The full suite runs **54/54 green in 343s**, twice — the second run
 covering the three behaviour fixes in the table and everything since.
 All five defects this refactor surfaced are now closed.
 
-`main.cpp`: 7,746 → 6,898 lines across 14 modules. `make test-fast`
+`main.cpp`: 7,746 → 6,912 lines across 14 modules. `make test-fast`
 runs every host test and source gate in seconds; `--full` is 54 gates
 in under six minutes.
 
@@ -545,6 +545,20 @@ its own copy of the nine lines that centre the 16x13 blast, set
 sprite_set $0A, award 350 and queue the sound. Three of them now call
 `blast_active_alien`, which was extracted for the fourth back at stage
 6b-iv.
+
+`compose_moving_objects` was the third and best find. Both redraw paths
+held their own copy of the $9AD0 slot order, and that is precisely what
+drifted before: the dirty path drew the enemy BEFORE the bomb and the
+full path after, so a fresh bomb still overlapping its parent UFO
+rendered differently on each — the f50 21 px A/B delta in
+notes/bird-render-parity.md. One copy makes that drift structurally
+impossible rather than merely commented against.
+
+It was only unifiable because known-bugs #10 is fixed. The dirty path
+guarded its bullet draw with `if (any_bullet_active())`, and until the
+animation frame moved out of the renderer, dropping that guard would
+have advanced the shared phase on bulletless frames. Fixing the bug
+removed the reason the two copies had to differ.
 
 `place_rocket_on_bat` came from the same sweep. `attach_rocket_to_bat`
 and `apply_replay_rocket_override` share the placement exactly, and
