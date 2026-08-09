@@ -568,6 +568,32 @@ removed when they were added; a multiset diff confirmed zero lines
 lost.
 
 
+#### "margins_aim_inward" did not check that it aimed inward
+
+Fourth instance of the shape, and the most explicit promise of the four.
+`test_margins_aim_inward` asserted that the margin path was TAKEN
+(a counter went up) and that the result was 6-bit. Neither says where
+the alien is now pointed, so swapping the two left-edge escape angles
+survived — the alien would turn the WRONG WAY at an edge, which is the
+one thing this routine exists to prevent.
+
+The obvious fix — assert the target aims away from the wall by sign —
+was rejected after measuring. `dir_to_dxdy` gives `$38` a POSITIVE dx,
+yet `$38` is the RIGHT edge's upper-corner angle. Either the convention
+is subtler than it looks or something is off there; after the
+19200-bounce lesson, building an assertion on a convention I had not
+verified was the wrong move.
+
+So the escape angles are pinned as a VALUE TABLE, the way the bat
+deflection table is: six (edge, half) → angle pairs from LAA7D. Plus a
+bracketing pair for the threshold, since the existing cases sit at x=4
+and pass whether the margin is `x <= 8` or `x <= 9`. Three mutations
+caught: left angles swapped, top halves swapped, threshold moved.
+
+The `$38` oddity is left recorded rather than chased — it may be correct
+and merely counter-intuitive, and I have no ground truth to say
+otherwise.
+
 #### A bounce that changed direction, on any axis it liked
 
 `test_bounce_changes_direction` swept the whole band and asserted the
