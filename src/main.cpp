@@ -5934,27 +5934,23 @@ static void reset_level_state(unsigned char lvl_idx) {
     BALL_Y        = BAT_Y - BALL_H_PX;
     ball.stuck_ticks   = 0;                /* counts up while waiting for launch */
     primary_ball_set_velocity(+1, -BALL_SPEED);
-    bonus.active   = 0;
-    bomb.active        = 0;
-    bullet_active[0]      = 0;
-    bullet_active[1]      = 0;
-    bullet_blast_ticks[0] = 0;
-    bullet_blast_ticks[1] = 0;
-    bullet_cooldown       = 0;
-    probe.shots_fired       = 0;
-    rocket.active      = 0;
+    hide_extra_balls();
+
+    bonus.active = 0;
+    bomb.active  = 0;
+    pts_marker.active = 0;
+    bullets_clear();
+    bullet_cooldown   = 0;
+    probe.shots_fired = 0;
+    rocket.active = 0;
     rocket.clear_completed = 0;
     set_rocket_bonus_sprite_height(ROCKET_BONUS_H_PX);
-    brick_flash.ticks  = 0;
+    brick_flash.ticks = 0;
     reset_brick_hit_anim();
-    ball.extra2_active   = 0;
-    objects[OBJ_BALL_2].sprite_set = 0x82;
-    ball.extra3_active   = 0;
-    objects[OBJ_BALL_3].sprite_set = 0x82;
-    pts_marker.active = 0;
+
     ball.speed_ramp = 0;
-    bat.big_ticks  = 0;
-    ball.big_ticks = 0;
+    bat.big_ticks   = 0;
+    ball.big_ticks  = 0;
     /* flag_extra_life is NOT cleared at level entry in original —
      * only LBC10 (death path) clears it. So a LIFE bonus catch
      * blocks future LIFE drops for the rest of the player's life,

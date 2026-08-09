@@ -10,7 +10,7 @@ latest covering the compose-order unification, which merged the two
 redraw paths' copies of the `$9AD0` slot sequence. All five defects
 this refactor surfaced are closed.
 
-`main.cpp`: 7,746 → 6,810 lines (-12%) across 14 modules. `make test-fast`
+`main.cpp`: 7,746 → 6,806 lines (-12%) across 14 modules. `make test-fast`
 runs every host test and source gate in seconds; `--full` is 54 gates
 in under six minutes.
 
@@ -612,6 +612,17 @@ row-scoped — now live beside the primitives they drive. What is left in
 `main.cpp` is the two thin wrappers that turn a level index into
 `(cells, lattr, bg_attr)`, which is the only thing the module could not
 know.
+
+`reset_level_state` was re-implementing two helpers that already
+existed: it cleared the extra balls' flags and sprite bits by hand
+(`hide_extra_balls`) and the bullet slots by index (`bullets_clear`).
+The first is the extra-ball liveness invariant violated a SECOND time,
+after `finish_cleared_level` — which suggests the pattern to watch is
+not "did I write this twice" but "does a helper for this already exist".
+
+Using `bullets_clear` also means level entry now resets each bullet's
+animation frame, which the hand-rolled version did not — harmless, and
+consistent with what a fresh level should be.
 
 `enemy_spawn_allowed` split `enemy_prepare` into the question and the
 act. Six reasons a natural spawn might not happen, and the first is a
