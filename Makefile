@@ -657,6 +657,7 @@ parity-check:
 	$(MAKE) test-bonus-codes
 	$(MAKE) test-scoring
 	$(MAKE) test-replay-parse
+	$(MAKE) test-replay
 	$(MAKE) test-source-gates
 	$(MAKE) test
 	$(MAKE) test-laffc-ball-frame1
@@ -1138,8 +1139,15 @@ test-frozen-clock:
 test-module-ownership:
 	python3 scripts/check_module_ownership.py
 
+# Does every tests/test_*.cpp actually run under test-fast?
+# test_replay_parse.cpp had 7 tests and a working target and was reachable
+# only from parity-check, so it ran once every six minutes, not seconds.
+test-host-tests-wired:
+	python3 scripts/check_host_tests_wired.py
+
 test-source-gates:
 	$(MAKE) test-gate-greps
+	$(MAKE) test-host-tests-wired
 	$(MAKE) test-notes-numbers
 	$(MAKE) test-ball-sign-cache-owner
 	$(MAKE) test-env-passthrough
@@ -1153,7 +1161,8 @@ test-source-gates:
 # gates. Seconds, and it is what CI checks.
 test-fast: test-video test-rng test-physics test-assets test-bricks \
            test-sound test-hud-unit test-objects test-weapons test-enemies \
-           test-bonus-codes test-scoring test-replay test-source-gates
+           test-bonus-codes test-scoring test-replay test-replay-parse \
+           test-source-gates
 	@echo "test-fast: all host tests and source gates green"
 
 test-hud: $(FLOPPY_OUT)

@@ -670,6 +670,29 @@ the letter row to change, since placement alone would look identical
 whether `step_name_letter` worked or not. Mutation-checked by making the
 LEFT arm a no-op.
 
+`tests/test_replay_parse.cpp` had seven tests, a working make target,
+and never ran under `make test-fast`. It was reachable only from
+`parity-check`, the full QEMU suite — so the tests guarding the
+`BATTY_REPLAY_*` value formats ran once every six minutes instead of
+once every few seconds.
+
+The cause is two hand-maintained lists of the same thing that drifted:
+`test-fast`'s prerequisites and `parity-check`'s recipe. `test_replay`
+went into the first and not the second; `test_replay_parse` was in the
+second and not the first. Each list looked complete on its own, which is
+why neither looked wrong.
+
+A suite that exists but does not run is the same defect as a knob that
+never reaches DOS: nothing errors, the green tick still appears, and the
+coverage silently is not there. `check_host_tests_wired.py` now checks
+every `tests/test_*.cpp` resolves to a target that is a `test-fast`
+prerequisite. The suite-name-to-target mapping is not mechanical
+(`test_zxvga.cpp` is `make test-video`), so the two aliases are explicit
+and anything unresolvable is reported rather than assumed fine.
+
+Mutation-checked both ways: removing a suite from `test-fast`, and
+adding a suite with no target at all.
+
 The falling bonus and the falling bomb each carried their own copy of
 the bat-overlap test AND their own explanation of why it uses body
 extents rather than sprite extents. `overlaps_bat_body(x, y, w, h)` now
