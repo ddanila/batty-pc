@@ -569,6 +569,39 @@ removed when they were added; a multiset diff confirmed zero lines
 lost.
 
 
+#### My own hypothesis for #16, refuted from the repo
+
+I had written that `$38` looked like a transcription slip for `$18` out
+of LAA7D — one bit apart, and the symmetry fits. Before going near the
+emulator I checked what the decode actually says, and
+`notes/enemy-movement.md` lists in its own open items:
+
+> **Margins.** The original's `check_margins` vs the port's
+> `enemy_target_away_from_margins` is still an approximation.
+
+There is nothing to have slipped from. These six angles are the PORT's
+invention.
+
+That makes the finding sharper rather than weaker. The routine exists to
+aim an alien away from a wall — its header says "so it cannot grind
+along an edge" — and two of its six cases aim into one. It is
+self-inconsistent on its own terms, provable without a capture. And
+since the routine runs immediately AFTER the bounce reflects `dir` off
+that wall, at the top-right the alien is moving left while being steered
+up-right, back into the corner it just left.
+
+Still not fixed, and the reason changed with the diagnosis. It is no
+longer "the original might do this"; it is that swapping `$38` for `$18`
+trades one approximation for another. More self-consistent is not closer
+to the original, nothing here measures the original's margin behaviour,
+and the port has no gate that would notice either way.
+
+Also checked, since #16 said it needed hardware: `tools/zesarux/src/zesarux`
+IS built and present, the replays support `write_memory` setup ops, and
+`capture_enemy_flight.py` already frame-steps `object_enemy`. So this is
+bounded work, not blocked work — #16 now says so instead of implying a
+wall.
+
 #### The $38 oddity, run down
 
 Last entry left "the `$38` escape angle looks wrong" as an aside. It is

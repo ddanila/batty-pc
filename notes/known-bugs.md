@@ -702,21 +702,42 @@ At the right edge, aiming right is outward. At the top edge, aiming up
 is outward. The top-right case is both at once.
 
 `$18` (down-left) would be inward for both, and differs from `$38` by
-one bit ($20). That is the shape of a transcription slip — but it is
-also exactly the kind of guess this repo has been burned by, so it stays
-a hypothesis.
+one bit ($20).
 
-### Why it is not fixed
+### It is NOT a transcription slip — there is nothing to slip from
 
-I have no capture of the original at a right-edge or top-right alien.
-The routine mirrors LAA7D, and the original may genuinely do this; a
-1980s routine that lets an alien clip a corner before recovering is
-entirely plausible. Changing it on symmetry alone would be replacing
-measured behaviour with a guess.
+My first reading was that someone mis-copied `$18` as `$38` out of
+LAA7D. `notes/enemy-movement.md` says otherwise, in its own open-items
+list:
 
-Settling it needs a ZEsarUX capture of an alien driven into the right
-margin — `scripts/capture_enemy_flight.py` already does the equivalent
-for the descend phase.
+> **Margins.** The original's `check_margins` vs the port's
+> `enemy_target_away_from_margins` is still an approximation.
+
+So these six angles are the PORT's invention, not the original's table.
+That makes the finding sharper, not weaker: the routine exists to aim
+the alien away from a wall — its own header says "so it cannot grind
+along an edge" — and two of its six cases aim into one. It is
+self-inconsistent on its own terms, provable without any capture.
+
+It also means the bounce that precedes it has just reflected the alien's
+`dir` off that wall, so at the top-right the alien is moving left while
+being steered up-right: back into the corner it just hit.
+
+### Why it is still not fixed
+
+Changing `$38` to `$18` would swap one approximation for another. It
+would be more self-consistent, but "more sensible" is not "closer to the
+original", and nothing here measures the original's margin behaviour at
+all. The port has no gate pinning what the original does at an edge, so
+the change would be unverifiable in the direction that matters.
+
+Settling it needs a ZEsarUX capture of an alien at the right margin.
+`scripts/capture_enemy_flight.py` already frame-steps the original's
+`object_enemy` from the L3 state, and `replays/*.json` support
+`write_memory` setup ops, so the alien could be poked to `x = x_max`
+and its chosen target read back from `$9B96+$14`. The emulator binary
+is present at `tools/zesarux/src/zesarux`. This is a bounded piece of
+work rather than a blocked one — it is simply not a small one.
 
 ### What is in place meanwhile
 
