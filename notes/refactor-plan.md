@@ -9,7 +9,7 @@ The full suite runs **54/54 green in 343s**, twice — the second run
 covering the three behaviour fixes in the table and everything since.
 All five defects this refactor surfaced are now closed.
 
-`main.cpp`: 7,746 → 6,912 lines across 14 modules. `make test-fast`
+`main.cpp`: 7,746 → 6,900 lines across 14 modules. `make test-fast`
 runs every host test and source gate in seconds; `--full` is 54 gates
 in under six minutes.
 
@@ -545,6 +545,17 @@ its own copy of the nine lines that centre the 16x13 blast, set
 sprite_set $0A, award 350 and queue the sound. Three of them now call
 `blast_active_alien`, which was extracted for the fourth back at stage
 6b-iv.
+
+Re-running the sweep across every module, at a 4-line window, found the
+two kill functions still shared their HEADS — the targetable guard and
+the alien's extents — after only their tails had been unified. The bat's
+kill zone is just a rect, so `kill_enemy_by_bat` collapsed into a call
+to what is now `kill_enemy_in_rect`, used by the bat, all three balls
+and the KILL_ALIENS path alike.
+
+Worth re-running a detector after acting on it: fixing the tails made
+the heads the largest remaining duplicate, and they had been invisible
+underneath.
 
 `compose_moving_objects` was the third and best find. Both redraw paths
 held their own copy of the $9AD0 slot order, and that is precisely what

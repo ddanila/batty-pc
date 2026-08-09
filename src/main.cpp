@@ -4034,41 +4034,15 @@ static void enemy_prepare(void) {
     e->bonus_applied = 0x10;   /* LD (IX+$14),$10 — initial target */
 }
 
-/* Port of kill_enemy_by_bat at $A4B8 / kill_enemy at $A4C4. AABB check
- * between the alien body rect and the bat; on overlap, deactivate the
- * alien, award 350 BCD points (LD BC, $0350 at $A4E0), and push the
- * alien-blast sound. Full blast animation via sprite_set = $0A and
- * handling_blast is deferred - we just mark inactive for now. */
-static void kill_enemy_by_bat(void) {
-    Object *e = &objects[OBJ_ENEMY];
-    int ex_l, ex_r, ey_t, ey_b;
-    int bx_l, bx_r, by_t, by_b;
-    if ((e->sprite_set & 0x7F) == 0) return;        /* slot empty */
-    if (e->sprite_set & 0x80)       return;        /* inactive */
-    if ((e->sprite_set & 0x7F) == 0x0A) return;    /* already exploding */
-    ex_l = e->x_coord;
-    ex_r = e->x_coord + e->w_body_px;
-    ey_t = e->y_coord;
-    ey_b = e->y_coord + e->h_body_px;
-    /* Use effective bat extents so BIG_BAT widens the kill zone too —
-     * the original uses obj_compare_2pix with (IY+\$0C) = current bat
-     * body width, which grows with the BIG_BAT bonus. */
-    bx_l = eff_bat_left();
-    bx_r = eff_bat_right();
-    by_t = BAT_Y;
-    by_b = BAT_Y + 10;                /* h_body_px = \$0A per object_bat_1 init */
-    if (ex_r <= bx_l || ex_l >= bx_r) return;
-    if (ey_b <= by_t || ey_t >= by_b) return;
-    blast_active_alien();
-}
 
-/* Mirror of kill_enemy_by_bat for the ball — original
- * kill_enemy_by_bat at $A4B8 is called from BOTH handling_bat AND
+/* Does this rect reach a live alien? If so it becomes its blast. The
+ * bat and every ball share this: the original's kill_enemy_by_bat at
+ * $A4B8 is called from BOTH handling_bat AND
  * handling_ball (see the cross-reference at line 2745 of the disasm),
  * so a ball plunking down on an alien destroys it the same way a bat
  * crashing into one does. AABB between the ball body (8x7) and the
  * alien body. */
-static void kill_enemy_by_ball_rect(int bx_l, int by_t, int bw, int bh) {
+static void kill_enemy_in_rect(int bx_l, int by_t, int bw, int bh) {
     Object *e = &objects[OBJ_ENEMY];
     int ex_l, ex_r, ey_t, ey_b;
     int bx_r = bx_l + bw;
@@ -4083,6 +4057,20 @@ static void kill_enemy_by_ball_rect(int bx_l, int by_t, int bw, int bh) {
     if (ex_r <= bx_l || ex_l >= bx_r) return;
     if (ey_b <= by_t || ey_t >= by_b) return;
     blast_active_alien();
+}
+
+/* Port of kill_enemy_by_bat at $A4B8 / kill_enemy at $A4C4. AABB check
+ * between the alien body rect and the bat; on overlap, deactivate the
+ * alien, award 350 BCD points (LD BC, $0350 at $A4E0), and push the
+ * alien-blast sound. Full blast animation via sprite_set = $0A and
+ * handling_blast is deferred - we just mark inactive for now. */
+static void kill_enemy_by_bat(void) {
+    /* Effective extents, so BIG_BAT widens the kill zone: the original
+     * uses obj_compare_2pix with (IY+$0C) = the current bat body width,
+     * which grows with the bonus. Height is $0A per object_bat_1's
+     * init, i.e. the body band without the shadow rows. */
+    kill_enemy_in_rect(eff_bat_left(), BAT_Y,
+                       eff_bat_right() - eff_bat_left(), 10);
 }
 
 /* Port of bomb_appear at $A977 - called per alien tick. Probability
@@ -6304,7 +6292,7 @@ static bool entities_need_redraw(void) {
 }
 
 static void kill_enemy_by_ball_slot(unsigned char slot) {
-    kill_enemy_by_ball_rect((int)objects[slot].x_coord,
+    kill_enemy_in_rect((int)objects[slot].x_coord,
                             (int)objects[slot].y_coord,
                             BALL_W_PX, BALL_H_PX);
 }
