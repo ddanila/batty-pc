@@ -236,3 +236,47 @@ Two earlier parts:
   into the slots. So a faithful multi-ball capture must replay that spawn
   sequence, not just poke a descriptor. That replication is the next
   investment to unblock secondary-ball validation.
+
+
+## Sizing the stuck-ball split (2026-08-09)
+
+PLAN.md WS6 item 2 defers the MAGNET catch for secondary balls as "the
+primary-ball stuck system spans ~32 sites". Counted: **24 real sites**
+(26 matches, two of them comments) across 15 functions, and they are not
+all equal.
+
+    3  fields    ball.stuck, ball.stuck_offset_x, ball.stuck_ticks
+
+**Primary by construction — no ball index needed (10 sites).** An extra
+ball is spawned in flight and is never stuck, so these are about the
+primary whatever happens to the others:
+
+| function | sites | why |
+|---|---|---|
+| `reset_level_state` | 3 | the level starts with the primary on the bat |
+| `respawn_primary_ball` | 3 | in its name |
+| `apply_replay_ball_motion_override` | 2 | `BATTY_REPLAY_BALL_STUCK` seeds the primary |
+| `apply_replay_rocket_override` | 1 | harness |
+| `hide_objects_for_rocket_clear` | 1 | clears the primary before the tally |
+
+**Need a ball index (14 sites).** These are the refactor:
+
+| function | sites | what it does |
+|---|---|---|
+| `catch_ball_on_bat` | 3 | the catch itself — sets all three fields |
+| `ride_stuck_ball_on_bat` | 3 | dwell counter and auto-launch |
+| `launch_or_fire` | 3 | FIRE releases the held ball |
+| `rest_ball_on_bat` | 1 | positions it from `stuck_offset_x` |
+| `primary_ball_launch_from_bat` | 1 | reads `stuck_offset_x` for the angle |
+| `step_ball`, `step_primary_ball` | 2 | early-out while held |
+| `deflect_ball_off_bat` | 1 | decides catch vs deflect |
+| `steer_bat_from_keys`, `draw_bottom_sprites` | 2 | a held ball follows the bat |
+
+So the shape is: make the three fields per-ball, thread an index through
+eight functions, and leave ten sites alone. That is a real change but a
+bounded one — and rather smaller than "~32 sites" suggests, which is
+probably why it has stayed deferred.
+
+It is also the same refactor bat 2's catch needs (notes/double-play.md):
+`catch_ball_on_bat` reads `BAT_X` directly, so the index has to name a
+BAT as well as a ball. Doing it once serves both.

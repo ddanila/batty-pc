@@ -556,10 +556,23 @@ In priority order (all pre-scoped in `parity-gaps.md` / notes):
    `test-enemy-margin-clamp`. **This item is closed**; the only residue
    is the original's 8-bit overflow in `check_right_margin`, reproduced
    and documented rather than fixed. See notes/enemy-movement.md.
-2. **MAGNET catch for secondary balls:** the primary-ball stuck system
-   spans ~32 sites; catching the unified secondaries means mirroring it
-   per-ball. Deliberately deferred as substantial new code for the
-   niche MAGNET+TRIPLE case — schedule it, don't ignore it.
+2. **MAGNET catch for secondary balls:** catching the unified
+   secondaries means making the stuck state per-ball. Deliberately
+   deferred as substantial new code for the niche MAGNET+TRIPLE case —
+   schedule it, don't ignore it.
+
+   *Sized 2026-08-09.* "~32 sites" is **24**, across 15 functions, and
+   ten of those are primary-by-construction — an extra ball spawns in
+   flight and is never stuck, so `reset_level_state`,
+   `respawn_primary_ball` and the replay overrides need no index at all.
+   **14 sites in 8 functions** are the actual refactor: the catch, the
+   ride/auto-launch, the FIRE release, the two step early-outs, and the
+   held ball following the bat. Breakdown in notes/bat-deflection.md.
+
+   It is the same refactor bat 2's catch needs (WS3): `catch_ball_on_bat`
+   reads `BAT_X` directly, so the index has to name a BAT as well as a
+   ball. Doing it once serves both, which makes it better value than its
+   "niche" framing suggests.
 3. ~~**Seeded destroyed-cell mismatch**~~ — **CLOSED 2026-08-09, and it
    had already fixed itself.** This entry said the port and original
    destroy different *cells* on `replay-l3-brick-flash-both`. They do
