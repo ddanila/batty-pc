@@ -20,7 +20,7 @@ So the port reproduces the model rather than rendering sprites in their
 
 | | writes pixels | writes attrs |
 |---|---|---|
-| `blit_masked_to_scr_buff_ptr` | yes | **never** — this is what clashes |
+| `blit_masked_to_scr_buff` | yes | **never** — this is what clashes |
 | `blit_sprite_attrs_to_buff_clipped` | no | yes, in whole 8x8 cells |
 
 The "never" is the invariant that known-bugs #7 and the enemy fly-over

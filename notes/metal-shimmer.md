@@ -55,10 +55,10 @@ see CORRECTION 2026-06-11].
 
 ## Port status — FIXED (was: stopped after one pass) [THIS "FIX" WAS WRONG — see CORRECTION 2026-06-11]
 
-The port already had the system (`brick_hit_anim`: 5 slots, the
+The port already had the system (the `brick_hit_anim_*` family: 5 slots, the
 `{2,6,3,7,4,5,5,1}` `anim_brik` order, per-frame render into `scr_buff`,
 registered from the undestructible/multi-hit paths in `brick_hit_resolve`)
-— so it was NOT a no-op (the no-op `render_brick_flash` is the separate
+— so it was NOT a no-op (the no-op `render_brick_flash_to_buff` is the separate
 destruction marker). The bug was **timing**: `step_brick_hit_anim` freed
 the slot once `tick > BRICK_HIT_ANIM_TICKS` (16), so the shimmer played a
 single 8-frame pass and stopped. The original never stops: the counter
@@ -130,7 +130,7 @@ tile) is missing the cracks/black the original shows.
   NOT a simple step-order off-by-one.
 - Most likely remaining cause: the shimmer COUNTER PHASE is unsynced
   between port and original because the L3 seed does not capture the
-  `briks_data` / `brick_hit_anim` state — the bricks were hit at
+  `briks_data` / the brick-hit anim state — the bricks were hit at
   different relative times before/within the window, so each side's
   shimmer counter sits at a different point in the 8-frame cycle. Syncing
   that would require seeding the shimmer slots + counters, which the seed

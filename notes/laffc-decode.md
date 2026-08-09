@@ -253,7 +253,7 @@ fraction), direction, hit cell, and bounce axis all match the Spectrum
 (verified by `--probe-ball` + `PROBE.TXT`). The "two-cell straddle" port
 is NOT needed for this trajectory (same cell hit). The only residual is
 the **brick-hit shimmer animation**, and it is **shared by both
-collision paths** (both go through `brick_hit_anim` via
+collision paths** (both go through `brick_hit_anim_spawn` via
 `brick_hit_resolve`), so it is orthogonal to the LAFFC work.
 
 **Root of the shimmer mismatch.** The original per-hit shimmer
@@ -261,7 +261,7 @@ collision paths** (both go through `brick_hit_anim` via
 `anim_brik` buffer**, advanced **2 bytes per frame** by a per-slot
 counter at `briks_data IY+$00` that increments (`INC A; AND $0F`) every
 frame (`fill_briks_data` calls it per active slot). The port's
-`brick_hit_anim` instead picks **discrete frames** from
+the brick-hit anim instead picks **discrete frames** from
 `brik_anim_sprites[]` via `brik_anim_order = {1,5,2,6,3,4,4,0}` (that
 order is the *level-entry reveal* `play_brik_anim` sequence, not the
 per-hit one) indexed by `(tick-1)>>1`. Different sprite mechanism →

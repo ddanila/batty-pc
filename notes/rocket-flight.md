@@ -117,10 +117,22 @@ on screen through the score tally; the subsequent `increment_round_number`
 | Part | Original | Port | Verdict |
 |---|---|---|---|
 | Rocket motion (accel, bat-attach) | `handling_rocket` $A89A | `step_rocket` accel block | **FAITHFUL** ✔ (byte-equiv; counter reset at launch confirmed) |
-| Brick destruction during flight | **none** — flies over intact bricks | bbox sweep carves a tunnel (`step_rocket` cell loop) | **DIVERGENT** ✗ |
-| End-of-flight award | sequential tick-up, pause+sound/brick, bricks NOT cleared | `award_left_bricks`: instant, all at once, clears cells | **DIVERGENT** ✗ |
+| Brick destruction during flight | **none** — flies over intact bricks | none — `step_rocket` has no cell loop | **FAITHFUL** ✔ |
+| End-of-flight award | sequential tick-up, pause+sound/brick, bricks NOT cleared | `play_rocket_award_tally`: one brick per PIT tick, bricks stay visible | **FAITHFUL** ✔ |
 
-## The two divergences — deliberate sub-project, NOT an autonomous flip
+**Both rows said DIVERGENT until 2026-08-09**, long after the work was
+done. `award_left_bricks` — the instant clear-and-award they named — no
+longer exists; the port sweeps row-major one brick per PIT tick with the
+bricks on screen (`play_rocket_award_tally`), and clears the cells only
+after the whole tally, which is what keeps the level advancing. The
+in-flight bbox sweep is gone too: `step_rocket` touches no cells.
+
+Found by `scripts/notes_symbols.py`, which lists identifiers the notes
+cite and the tree no longer defines. A parity table that claims a
+divergence which has been fixed is worse than one that is merely out of
+date — it invites someone to "fix" it again.
+
+## The two divergences — DONE (kept as the record of how they were planned)
 
 Both divergences are long-standing port design choices (the tunnel sweep
 predates the recent `a433417` "rocket clear" commit, which only reworked
@@ -129,7 +141,7 @@ the brick-flash *render*). Fixing them to match the original means:
 1. **Remove the in-flight bbox sweep** so the rocket flies over intact
    bricks (drawn on top), matching `handling_rocket` + the destruction-free
    `LBB97` loop.
-2. **Replace `award_left_bricks`** (instant clear) with a port of
+2. **Replace the instant clear-and-award** with a port of
    `add_points_for_left_briks`: a sequential per-brick score tally with a
    short pause + sound each, leaving the bricks on screen until the level
    transition.
@@ -166,7 +178,7 @@ After this the rocket sprite simply draws over the still-rendered bricks
 
 ### Change B — end: SEQUENTIAL tally, don't clear (port add_points_for_left_briks $AF0D)
 
-Replace `award_left_bricks`'s instant clear-and-award with a frame-paced
+Replace the instant clear-and-award with a frame-paced
 sweep of the 15x12 grid (row-major, the original's `C=$0C` rows x `B=$0F`
 cols):
 - for each cell: if `!(cell & $A0)` (live, destructible) add
@@ -179,7 +191,7 @@ cols):
 
 ### THE RISK — level-advance gating
 
-`award_left_bricks` currently `|= $80`s every brick, which is likely what
+The instant award `|= $80`s every brick, which is likely what
 drives the port's "round complete -> advance" (bricks_remaining hits 0)
 and/or avoids the no-ball-death branch during the rocket sequence. If
 Change B stops clearing, the advance may not fire (level hangs) or

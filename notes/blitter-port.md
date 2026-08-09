@@ -17,7 +17,7 @@ case (bat shadow band) work uniformly across every renderer.
 
 ## The masked-blit primitive
 
-Our C-side `blit_masked_to_scr_buff_ptr` uses:
+Our C-side `blit_masked_to_scr_buff` (the pointer overload) uses:
 
 ```c
 screen' = (~mask & screen) | (mask & pix)
@@ -39,7 +39,7 @@ so its `OR`/`XOR` operands are transformed — the **output** matches
 our direct-bitops formula, the intermediate operands don't. Verified
 empirically against per-level GTs.
 
-`blit_masked_to_scr_buff_ptr` in `src/zxvga.cpp` handles non-byte-aligned
+`blit_masked_to_scr_buff` in `src/zxvga.cpp` handles non-byte-aligned
 x with a per-row shift across two destination bytes — same shape as
 the original's table-driven path, computed at runtime in C.
 

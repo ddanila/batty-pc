@@ -97,8 +97,9 @@ Two fixes made this testable:
   into the DOS `AUTOEXEC`, so the flag NEVER reached the build — every
   earlier "flag-on" test actually ran flag-OFF (no tick). Fixed the
   passthrough. (This invalidates the earlier flag-on enemy "divergence".)
-- Added `BATTY_REPLAY_RANDOM_SEED` to seed `random_seed_addr` (the ROM-walk
-  position = the original's `random_seed` at `$8D4A`).
+- Added `BATTY_REPLAY_RANDOM_SEED` to seed the ROM-walk position
+  (`rng_seed_addr()`; the
+  original's `random_seed` at `$8D4A`).
 
 Offline, `next_random` against the shipped ROM window (`random_seed.bin`,
 8 KB, `& $1FFF`) reproduces the original's `$8D48` sequence EXACTLY from
@@ -262,7 +263,7 @@ snapshot value at the f0 $BA83 boundary is **$962A** (NOT `2A96` — that is
 the byte pair printed lo-then-hi). It increments **+1/frame**
 ($962A→$962B→$962C ...), walking the $8000-$9FFF region. So seed the port
 with `BATTY_REPLAY_RANDOM_SEED=962A` and random_number with
-`BATTY_REPLAY_RANDOM=9337` (the f0 values). (`apply_replay_random_override`
+`BATTY_REPLAY_RANDOM=9337` (the f0 values). (`replay_apply_random`
 masks `& 0x9FFF | 0x8000`, which is a no-op for a valid $962A.)
 
 **Walk still diverges** (seed + random_number both seeded to f0):

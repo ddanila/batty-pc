@@ -549,6 +549,13 @@ right).
    New tool from it: `scripts/notes_symbols.py` lists identifiers the
    notes cite and the tree no longer defines. A report, not a gate —
    see notes/testing.md for why.
+   *Fully triaged 2026-08-09.* 41 candidates, 6 real. The one that
+   mattered was not a rename: `rocket-flight.md`'s parity table still
+   listed BOTH rocket divergences as `DIVERGENT ✗` — the in-flight brick
+   tunnel and the instant end-of-flight award — long after both were
+   fixed. `step_rocket` has no cell loop, and `play_rocket_award_tally`
+   ticks one brick per PIT frame with the bricks left on screen. A table
+   claiming a fixed divergence invites someone to fix it again.
 3. **Distribution decision (user call, before any publicity):** Elite
    Systems still actively monetizes Batty (official iOS/macOS app) and
    historically denied archive distribution; the CityAceE disasm repo

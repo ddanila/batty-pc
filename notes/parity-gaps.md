@@ -219,7 +219,7 @@ wrong here for weeks after the code was right.
   the bricks behind the rocket from `scr_buff`). Verified by
   `make test-rocket-flight-redraw` (redraw == full flush),
   `test-rocket-completion-no-ball`, and `test-rocket-bonus` — all green
-  (level still advances at fly-off via `award_left_bricks`).
+  (level still advances at fly-off via the end-of-flight tally).
   **(2) End-award — DONE (2026-06-05, user-greenlit).** Replaced the
   instant `award_left_bricks` with `play_rocket_award_tally` (port of
   `add_points_for_left_briks` $AF0D): it sweeps the grid row-major and ticks

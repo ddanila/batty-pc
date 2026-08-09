@@ -134,8 +134,8 @@ and `laffc-decode.md` for the detailed trail.
 - **Enemy bomb drop** (`bomb_appear` $A989, shared by `handling_bird` and
   `handling_ufo`) — byte-exact gate. Mirrors the original: (1) returns if a
   bonus/bomb is already falling — the original shares the single
-  `object_bonus` slot for both, the port checks both `bomb_active` and
-  `bonus_active`; (2) the **1/64 drop gate** `(random_number_lo +
+  `object_bonus` slot for both, the port checks both `bomb.active` and
+  `bonus.active`; (2) the **1/64 drop gate** `(random_number_lo +
   random_number_hi) & $3F == 0` (ADD, not XOR — the port matches the ADD)
   read via `rng_sample` (no RNG advance, matching the per-frame-tick RNG
   model); (3) the `enemy_y + 8 >= $C0` cutoff; (4) spawn at (enemy_x + 8,
@@ -476,7 +476,7 @@ drive.
 `parity-check-full`) verifies the held-fire shot period. The fire path was
 extracted into `try_fire_laser()` and a `BATTY_AUTO_FIRE` test hook calls
 it every frame (simulating held SPACE — which the capture harness can't
-drive via keyboard), with a `dbg_shots_fired` counter in a new
+drive via keyboard), with a `probe.shots_fired` counter in a new
 `laser_fire_state` probe line. With the bat baked into LASER mode
 (bonus_applied=0x01) it asserts shots 1/1/2 at f1/12/13 — the 12-frame
 cadence from the 0x18 cooldown reset (a regression to 0x16 fires shot 2 at

@@ -6,7 +6,7 @@ the technique notes that survive each iteration.
 
 ## Iter 3: blit formula — `(~mask & screen) | (mask & pix)`
 
-`blit_masked_to_scr_buff_ptr` originally used `(mask | screen) ^ pix`,
+`blit_masked_to_scr_buff` originally used `(mask | screen) ^ pix`,
 read from the disasm at `byte_put_width_2`. Empirical check against
 four `(mask, pix, screen → output)` triples from the L1 GT showed
 the correct formula is the standard masked blit:

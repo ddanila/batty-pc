@@ -543,7 +543,7 @@ lists every backticked `snake_case` identifier in `notes/*.md` that
 nothing in `src/`, `tests/`, `scripts/`, the Makefile or the
 disassembly defines.
 
-**It is a report, not a gate, on purpose.** It currently names ~42
+**It is a report, not a gate, on purpose.** It currently names ~35
 identifiers and most are legitimate: past-tense history this repo
 deliberately keeps (the sentence describing `static_bg_dirty`'s rename
 to `static_bg_cache_dirty` has to name both), partial names
@@ -553,6 +553,25 @@ from a rotted present-tense claim needs a reader. Making it fail the
 build would mean either an allowlist that goes stale exactly the way the
 notes do, or pressure to delete history to get green — so the judgement
 stays with whoever runs it, during a hygiene pass.
+
+**First full triage, 2026-08-09.** 41 candidates, 6 of them real rot,
+and one of those was not a naming problem at all: `rocket-flight.md`'s
+parity table still listed BOTH rocket divergences as `DIVERGENT ✗` —
+the in-flight brick tunnel and the instant end-of-flight award — long
+after both were fixed. `step_rocket` has no cell loop and
+`play_rocket_award_tally` ticks one brick per PIT frame with the bricks
+left on screen. A table claiming a divergence that has been fixed is
+worse than one merely out of date: it invites someone to fix it again.
+The rest were renames: award_left_bricks, blit_masked_to_scr_buff_ptr,
+apply_replay_random_override, score_to_codes, bomb_active and
+bonus_active. The 35 that remain are past-tense history, partial names,
+and probe-field values.
+
+Those six are written WITHOUT backticks on purpose. A retired name in
+backticks is a citation as far as this tool is concerned, so writing up
+the triage in the obvious way added six fresh findings to the next run.
+Same convention `check_doc_links` already uses for removed FILES — name
+them plainly and they read as history rather than as live pointers.
 
 ## CI (`.github/workflows/parity-check.yml`)
 
