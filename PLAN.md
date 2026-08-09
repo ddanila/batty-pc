@@ -247,6 +247,13 @@ original artifact:
    computed; port the writer for frame-strip columns and pre-dimmed
    shadow attrs. This is also the root of the accepted 4px frame-step
    residual, which may fall out for free.
+   *Measured 2026-08-09, before porting anything else:* the live-brick
+   cells — 2412 bytes, 20.9% of the blob — are reproduced EXACTLY by
+   `briks_colors` + `print_border_shadow`'s left arm, and
+   `test-level-attrs-derivable` now holds that. The rest is empty
+   brick-zone cells (26.0%) and the HUD/side/bottom rows (53.1%), so the
+   blob cannot go yet. What is settled is that the rule is exact rather
+   than approximate. See notes/levels.md.
 3. **Menu / hi-score screens** — `main_menu.bin`/`hi_score.bin` are
    full-screen snapshot dumps; the markup+font pipeline
    (`notes/menu.md`, `notes/encoding.md`) already decodes these —

@@ -1205,6 +1205,7 @@ test-source-gates:
 	$(MAKE) test-rocket-bonus
 	$(MAKE) test-menu-start
 	$(MAKE) test-kinnock
+	$(MAKE) test-level-attrs-derivable
 
 # Everything that needs no emulator: the host module tests plus the source
 # gates. Seconds, and it is what CI checks.
@@ -1285,6 +1286,11 @@ test-menu-start:
 # parsed from the tape's own txt_kinnock.asm, not copied.
 test-kinnock:
 	python3 scripts/check_kinnock.py
+
+# Proof for WS7: every live brick's attr byte in the captured
+# level_attrs.bin is reproduced by briks_colors + print_border_shadow.
+test-level-attrs-derivable:
+	python3 scripts/check_level_attrs_derivable.py
 
 test-rocket-flight-redraw:
 	python3 scripts/test_rocket_flight_redraw.py

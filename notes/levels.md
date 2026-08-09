@@ -98,3 +98,48 @@ Three categories:
   destroys).
 - `$2B..$2E` (low nibble 11..14, bit 5 set) = **undestructible metal**.
 - `$C0` = empty (no brick here in this level layout).
+
+
+## How much of `level_attrs.bin` is actually data (2026-08-09)
+
+`assets/level_attrs.bin` is 15 x 768 = 11520 bytes of ZX attribute
+cells, extracted from emulator captures. PLAN.md WS7 wants it gone.
+Measured, before porting any of the writer:
+
+| region | bytes | share | status |
+|---|---|---|---|
+| live-brick cells | 2412 | 20.9% | **derivable exactly** |
+| rest of the brick zone (empty cells) | 2988 | 26.0% | side-strip / bg colours, not yet derived |
+| HUD rows, side strips, bottom | 6120 | 53.1% | not yet derived |
+
+The derivation for the first row of that table is two rules:
+
+    attr = briks_colors[cell & 0x0F]      both halves of the cell
+    attr &= 0xBF  at char column 1        the border's drop shadow
+
+`briks_colors` is the 16-byte table at `$AEEC`. The second rule is
+`print_border_shadow` ($BFCF), which `game_screen_draw_to_buffer` calls
+AFTER `print_briks`:
+
+    print_border_shadow:
+      LD HL,attr_buff+$21 / LD B,$17 / LD DE,$0020
+      LBFCF_0: RES 6,(HL) / ADD HL,DE / DJNZ LBFCF_0   ; col 1, rows 1..23
+      LD HL,attr_buff+$22 / LD B,$1D
+      LBFCF_1: RES 6,(HL) / INC L / DJNZ LBFCF_1       ; row 1, cols 2..30
+
+Running after the bricks is the whole point: a brick in field column 0
+gets the bright bit taken back off its LEFT char. Without that rule the
+match is 2374/2412, and every one of the 38 misses differs by exactly
+$40. With it, 2412/2412.
+
+I went looking for that discrepancy expecting a runtime bug — that
+`repaint_row_attrs` re-brightens char column 1 and loses the shadow.
+It does write there, but `render_brick_band_rows` calls
+`dim_border_shadow_column(cr0, cr1)` afterwards, and `cr1` is exactly
+row `r1+1`'s cell row, so the repaint is always covered. No bug; the
+port had `print_border_shadow_c` all along.
+
+`test-level-attrs-derivable` locks this in. It is not only WS7 evidence:
+the extraction is manual and off the build graph (see the Makefile note
+on `frame_l1.bin`'s twin problem), so nothing else would notice a
+re-extraction that no longer matches `assets/levels.bin`.

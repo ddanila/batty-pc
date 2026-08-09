@@ -1,7 +1,7 @@
 # Visual regression test
 
 > **`make test-fast` needs no emulator and runs in seconds** — 14 host
-> test suites plus 18 source gates. Start there; it is also exactly what
+> test suites plus 19 source gates. Start there; it is also exactly what
 > CI runs. `make test-video` is one of those suites: it compiles the
 > video engine (`src/zxvga.cpp`) with the host compiler and checks the
 > ZX attribute/colour-clash model exhaustively — every attr x every byte
@@ -359,6 +359,7 @@ mentioned nowhere in this file, including several of the oldest.
 - `test-multiball-source` — the multiball spawn reads the primary's dir
 - `test-menu-start` — key 0 in the menu starts a game; ENTER still walks the attract chain.
 - `test-kinnock` — the easter egg's text, coordinates and placement.
+- `test-level-attrs-derivable` — the live-brick fifth of level_attrs.bin is computed, not captured.
   byte, and `delta_to_dir` has no production caller (known-bugs #14).
 - `test-doc-links` — every file path cited in a comment or note exists.
 - `test-host-tests-wired` — every host suite runs under `make test-fast`.
