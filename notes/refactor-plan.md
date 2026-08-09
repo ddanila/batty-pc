@@ -568,6 +568,30 @@ removed when they were added; a multiset diff confirmed zero lines
 lost.
 
 
+#### Both straddle boundaries were off by an inclusive
+
+Sweeping the physics functions the earlier passes had not touched. The
+direction gate and `change_dir` are caught; the two straddle boundaries
+were not.
+
+When the ball's own cell is gone, LAFFC_5-6 tries the neighbour if the
+body reaches into it: `(x_pen_in_cell + ball_w) >= BRICK_W_PX`. The `>=`
+is the whole question — with `>`, a ball whose body ends EXACTLY on the
+cell edge stops straddling, misses the standing brick next door and
+passes through it. That is the same failure family as known-bugs #6, and
+neither the horizontal nor the vertical form was pinned.
+
+Both bracketed by measurement rather than argument. Horizontal, 8px
+ball, own cell col 2 destroyed and col 3 standing: penetration 6 and 7
+miss, 8 and 9 straddle. Vertical, 4px-tall ball, r2c2 gone and r3c2
+standing: 3 misses, 4 straddles. So 7/8 and 3/4 bracket the two
+boundaries exactly, and the test asserts both sides of each — a test
+that only checked the hit would pass with the boundary moved either way.
+
+My first probe of the vertical case started its range past the boundary
+and showed six identical hits, which says nothing. Widening it to
+straddle the value is what made it a measurement.
+
 #### A test named for the property it did not check
 
 Closing the laffc question. It turned out `test_physics` already had a

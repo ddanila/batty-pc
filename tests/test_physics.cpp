@@ -469,6 +469,65 @@ static void test_hit_origin_matches_cell() {
 /* known-bugs #6: a brick against a playfield boundary keeps that boundary
  * face OPEN, so a ball arriving along it bounces instead of passing
  * through. Inverting this let balls fall through row-0 metal bricks. */
+/* The straddle boundary is INCLUSIVE, and that matters at exactly one
+ * pixel offset.
+ *
+ * When the ball's own cell is gone, LAFFC_5-6 tries the cell to the
+ * right if the ball's body reaches into it:
+ * `(x_pen_in_cell + ball_w) >= BRICK_W_PX`. The `>=` is the whole
+ * question — with `>` the ball whose body ENDS exactly on the cell edge
+ * stops straddling, misses the standing brick next door, and passes
+ * through it. That is the same failure family as known-bugs #6.
+ *
+ * Nothing pinned it: mutating `>=` to `>` survived this suite.
+ *
+ * Measured with an 8px-wide ball whose own cell (col 2) is destroyed and
+ * col 3 standing — penetration 6 and 7 miss, 8 and 9 straddle to col 3.
+ * So 7 and 8 bracket the boundary exactly. The vertical straddle is
+ * checked the same way below; both `>=` were unpinned. */
+static void test_straddle_boundary_is_inclusive() {
+    const int before = failures;
+    u8 cells[FIELD_ROWS * FIELD_COLS];
+    memset(cells, 0x80, sizeof(cells));           /* every brick gone... */
+    cells[0 * FIELD_COLS + 3] = 0x01;             /* ...except col 3 */
+    const BrickField field(cells);
+    const int cell_x = FIELD_X0 + 2 * BRICK_W_PX; /* own cell: col 2, gone */
+
+    const LaffcHit just_short = laffc_sweep(field, 0x08, 8, 7,
+                                            cell_x + 7, FIELD_Y0);
+    check(!just_short.hit,
+          "a ball one pixel short of the cell edge straddled anyway "
+          "(col %d)\n", just_short.col);
+
+    const LaffcHit exact = laffc_sweep(field, 0x08, 8, 7,
+                                       cell_x + 8, FIELD_Y0);
+    check(exact.hit && exact.col == 3,
+          "a ball whose body ends EXACTLY on the cell edge did not "
+          "straddle into the standing brick (hit=%d col=%d) — it would "
+          "pass straight through\n", (int)exact.hit, exact.col);
+    /* The VERTICAL straddle has the same inclusive boundary and was
+     * equally unpinned. Own cell r2c2 gone, r3c2 standing, ball 4 tall:
+     * penetration 3 misses, 4 straddles down to row 3. */
+    memset(cells, 0x80, sizeof(cells));
+    cells[3 * FIELD_COLS + 2] = 0x01;
+    const BrickField below(cells);
+    const int cy = FIELD_Y0 + 2 * BRICK_H_PX;
+
+    const LaffcHit y_short = laffc_sweep(below, 0x08, 8, 4, cell_x, cy + 3);
+    check(!y_short.hit,
+          "a ball one pixel short of the row edge straddled down anyway "
+          "(row %d)\n", y_short.row);
+
+    const LaffcHit y_exact = laffc_sweep(below, 0x08, 8, 4, cell_x, cy + 4);
+    check(y_exact.hit && y_exact.row == 3,
+          "a ball whose body ends EXACTLY on the row edge did not "
+          "straddle into the brick below (hit=%d row=%d)\n",
+          (int)y_exact.hit, y_exact.row);
+    report("straddle_boundary_inclusive", before,
+           "x 7/8 and y 3/4       ok");
+}
+
+
 /* A brick against a playfield boundary keeps that boundary face OPEN.
  *
  * This is the half of the open-face rule that known-bugs #6 had
@@ -744,6 +803,7 @@ int main() {
     test_sweeps_miss_empty_field();
     test_hits_name_a_standing_cell();
     test_hit_origin_matches_cell();
+    test_straddle_boundary_is_inclusive();
     test_boundary_faces_stay_open();
     test_bounce_clears_the_cell();
     test_reflection_fixed_points_are_unreachable();
