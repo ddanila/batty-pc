@@ -608,13 +608,34 @@ static const unsigned int points_table[12] = {
  * and the in-game digits at score_1up_in_game; the port uses a plain
  * integer. Milestone thresholds for live_adds_awarded live in
  * scoring.h. orig: $B9A0 game_restart sets lives to 3 */
+/* Per-player state. The original keeps two of each — `score_1up_in_game`
+ * / `score_2up_in_game`, `lives_1up` / `lives_2up` — and `game_restart`
+ * zeroes both, so a 2-player game alternates between them while the HUD
+ * shows both at once.
+ *
+ * The high score is deliberately NOT in here. It is one number for the
+ * machine (`hi_score_in_game`), shown in the middle HUD slot; keeping it
+ * per-player would have made the HI column change when the players
+ * swapped. It lived in this struct until 2026-08-09 and the mistake was
+ * invisible only because there was one player. */
 struct PlayerState {
     unsigned long score;
     int           lives;
-    unsigned long high_score;
     unsigned char live_adds_awarded;
 };
-static PlayerState player = {0, LIVES_INIT, 0, 0};
+static PlayerState players[2] = {{0, LIVES_INIT, 0}, {0, LIVES_INIT, 0}};
+
+/* Whose turn it is: 0 = 1UP, 1 = 2UP. Modes 2 and 3 are not wired yet
+ * (PLAN.md WS2/WS3), so nothing moves this off 0 and every gate sees
+ * exactly what it saw before. The HUD, though, now reads players[1]
+ * rather than printing a literal zero into the 2UP slot. */
+static unsigned char active_player = 0;
+
+/* Reads as it always did. Token-based, so `player_codes` and
+ * `players_swap` are untouched. */
+#define player players[active_player]
+
+static unsigned long high_score = 0;
 
 /* The replay harness's own state. None of this affects the game: every
  * field is driven by a BATTY_* environment variable and read back through
@@ -2064,7 +2085,14 @@ struct StaticCache {
     int full_flush;           /* push every row to VGA this frame */
     /* What the cache currently shows. The HUD skips its redraw while
      * these still match the live values. */
-    unsigned long drawn_score;
+    /* One entry per HUD score slot, in the order render_hud_to_buff
+     * draws them: 1UP, 2UP. The dirty test must cover what is DRAWN, not
+     * what the active player happens to hold — with two players the 2UP
+     * slot changes while `player` does not, and the HUD would silently
+     * keep showing a stale number. Nothing exercises that yet (WS2), but
+     * a cache keyed on less than it paints is a bug waiting for a
+     * feature. */
+    unsigned long drawn_score[2];
     unsigned long drawn_high_score;
     int drawn_lives;
 };
@@ -2459,7 +2487,8 @@ static void render_level_screen(unsigned char level_idx) {
     cache.bg_dirty = 1;
     cache.band_dirty = 0;
     clear_dirty_ranges(prev_dirty_min_byte, prev_dirty_max_byte);
-    cache.drawn_score = 0xFFFFFFFFUL;
+    cache.drawn_score[0] = 0xFFFFFFFFUL;
+    cache.drawn_score[1] = 0xFFFFFFFFUL;
     cache.drawn_high_score = 0xFFFFFFFFUL;
     cache.drawn_lives = -1;
 
@@ -5037,8 +5066,9 @@ static void compose_bat_full(unsigned char cycle, unsigned char bg_attr,
  * A lives change always forces one, because the indicators sit in the
  * bat band rather than the patchable strip. */
 static void refresh_static_background(unsigned char level_idx) {
-    const int score_dirty = (player.score != cache.drawn_score
-                          || player.high_score != cache.drawn_high_score);
+    const int score_dirty = (players[0].score != cache.drawn_score[0]
+                          || players[1].score != cache.drawn_score[1]
+                          || high_score != cache.drawn_high_score);
     const int lives_dirty = (player.lives != cache.drawn_lives);
     const int can_patch_hud = (magnets_per_level[level_idx][0] == 0);
 
@@ -5053,8 +5083,9 @@ static void refresh_static_background(unsigned char level_idx) {
     if (cache.bg_dirty) {
         build_static_background(level_idx);
         cache.bg_dirty = 0;
-        cache.drawn_score = player.score;
-        cache.drawn_high_score = player.high_score;
+        cache.drawn_score[0] = players[0].score;
+        cache.drawn_score[1] = players[1].score;
+        cache.drawn_high_score = high_score;
         cache.drawn_lives = player.lives;
         cache.full_flush = 1;
     } else {
@@ -5067,8 +5098,9 @@ static void refresh_static_background(unsigned char level_idx) {
      * the original code did and nothing proves the redundancy. */
     if (score_dirty && can_patch_hud) {
         update_static_hud_top(level_idx);
-        cache.drawn_score = player.score;
-        cache.drawn_high_score = player.high_score;
+        cache.drawn_score[0] = players[0].score;
+        cache.drawn_score[1] = players[1].score;
+        cache.drawn_high_score = high_score;
         mark_dirty_bytes(0, FRAME_TOP_H_PX, 0, 31);
     }
 }
@@ -5155,7 +5187,10 @@ static unsigned int ball_dirty_blockers(int bat_moved) {
      * MAGNET-hold + pre-launch states). */
     if (!BALL_VISIBLE) blockers |= BALL_DIRTY_BLOCK_BALLS;
     if (cache.bg_dirty || cache.band_dirty || cache.full_flush) blockers |= BALL_DIRTY_BLOCK_STATIC;
-    if (player.score != cache.drawn_score || player.high_score != cache.drawn_high_score || player.lives != cache.drawn_lives) blockers |= BALL_DIRTY_BLOCK_HUD;
+    if (players[0].score != cache.drawn_score[0]
+        || players[1].score != cache.drawn_score[1]
+        || high_score != cache.drawn_high_score
+        || player.lives != cache.drawn_lives) blockers |= BALL_DIRTY_BLOCK_HUD;
     if (bonus.active || pts_marker.active || bomb.active || rocket.active) blockers |= BALL_DIRTY_BLOCK_OBJECTS;
     if (objects[OBJ_ENEMY].sprite_set != 0) blockers |= BALL_DIRTY_BLOCK_OBJECTS;
     if (any_bullet_active() || any_bullet_blast()) blockers |= BALL_DIRTY_BLOCK_OBJECTS;
@@ -5388,9 +5423,9 @@ static void render_hud_to_buff(void) {
     blit_masked_to_scr_buff(hud_sprites + HUD_SPR_1UP, 0x1C, 0x0C);
     blit_masked_to_scr_buff(hud_sprites + HUD_SPR_2UP, 0xCC, 0x0C);
     blit_masked_to_scr_buff(hud_sprites + HUD_SPR_HI,  0x78, 0x0C);
-    draw_score_digits_original(0x10, 0x15, player.score);
-    draw_score_digits_original(0x68, 0x15, player.high_score);
-    draw_score_digits_original(0xC0, 0x15, 0);
+    draw_score_digits_original(0x10, 0x15, players[0].score);
+    draw_score_digits_original(0x68, 0x15, high_score);
+    draw_score_digits_original(0xC0, 0x15, players[1].score);
 }
 #else
 static void render_hud_to_buff(void) {
@@ -5412,7 +5447,7 @@ static void render_game_over(void) {
     score_to_digits(player.score, digits);
     draw_text(BORDER_X + 3 * 8,        BORDER_Y +  95, 15, sc_lbl, (int)sizeof(sc_lbl));
     draw_text(BORDER_X + 3 * 8 + 6*8,  BORDER_Y +  95, 15, digits, 6);
-    score_to_digits(player.high_score, digits);
+    score_to_digits(high_score, digits);
     draw_text(BORDER_X + 3 * 8,        BORDER_Y + 110, 15, hi_lbl, (int)sizeof(hi_lbl));
     draw_text(BORDER_X + 3 * 8 + 6*8,  BORDER_Y + 110, 15, digits, 6);
     /* Saved initials, painted to the right of the HI score line.
@@ -6351,8 +6386,8 @@ static void award_score_milestones(void) {
 /* The displayed HI rolls forward the moment it is passed; writing it to
  * disk still waits for game-over in save_high_score. */
 static void roll_high_score(void) {
-    if (player.score > player.high_score) {
-        player.high_score = player.score;
+    if (player.score > high_score) {
+        high_score = player.score;
         high_score_beaten_this_game = 1;
     }
 }
@@ -6466,9 +6501,18 @@ static void apply_player_seed_env(void) {
 }
 
 static void new_game_reset(void) {
-    player.score = 0;
-    player.lives = LIVES_INIT;
-    player.live_adds_awarded = 0;
+    /* game_restart zeroes BOTH players' scores and sets both life
+     * counts, then starts with 1UP — it does not reset only whoever
+     * happened to be active. Doing both here means a 2-player game
+     * cannot inherit the previous game's 2UP score, which is the sort
+     * of thing that only shows up two features later. */
+    int i;
+    for (i = 0; i < 2; i++) {
+        players[i].score = 0;
+        players[i].lives = LIVES_INIT;
+        players[i].live_adds_awarded = 0;
+    }
+    active_player = 0;
     bonus.active = 0;
     ball.speed_ramp = 0;
     bat.big_ticks = 0;
@@ -6565,8 +6609,8 @@ static bool finish_cleared_level(unsigned char lvl_idx) {
 static void play_game_over(void) {
     unsigned long start;
 
-    if (player.score > player.high_score) {
-        player.high_score = player.score;
+    if (player.score > high_score) {
+        high_score = player.score;
         high_score_beaten_this_game = 1;
     }
     sound_stop_all();
@@ -6593,7 +6637,7 @@ static void play_game_over(void) {
 
     if (high_score_beaten_this_game) {
         input_new_record_name();
-        high_score_save(player.high_score, high_score_name);
+        high_score_save(high_score, high_score_name);
     }
     sound_silence();
 }
@@ -6991,7 +7035,7 @@ int main(void) {
     set_rocket_bonus_sprite_height(ROCKET_BONUS_H_PX);
 
     high_score_name[0] = high_score_name[1] = high_score_name[2] = 0x0A;
-    high_score_load(&player.high_score, high_score_name);
+    high_score_load(&high_score, high_score_name);
     timer_install();
     kbd_install();
 

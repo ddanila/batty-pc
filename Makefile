@@ -1206,6 +1206,7 @@ test-source-gates:
 	$(MAKE) test-menu-start
 	$(MAKE) test-kinnock
 	$(MAKE) test-level-attrs-derivable
+	$(MAKE) test-two-player-state
 
 # Everything that needs no emulator: the host module tests plus the source
 # gates. Seconds, and it is what CI checks.
@@ -1291,6 +1292,12 @@ test-kinnock:
 # level_attrs.bin is reproduced by briks_colors + print_border_shadow.
 test-level-attrs-derivable:
 	python3 scripts/check_level_attrs_derivable.py
+
+# WS2 stage 1: per-player counters are real, the 2UP HUD slot reads
+# players[1] instead of a literal 0. Invisible to a screendump —
+# players[1].score is 0 in a 1-player game.
+test-two-player-state:
+	python3 scripts/check_two_player_state.py
 
 test-rocket-flight-redraw:
 	python3 scripts/test_rocket_flight_redraw.py

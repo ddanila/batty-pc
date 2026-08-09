@@ -101,6 +101,23 @@ input-device adaptation below is undone.
 
 ## WS2 — 2 Players mode (alternating)
 
+**Stage 1 done (2026-08-09): per-player state.** `PlayerState` is now
+`players[2]` with an `active_player` index, `new_game_reset` clears both
+and returns the turn to 1UP, and the HUD's 2UP slot reads
+`players[1].score` instead of the literal `0` it printed before. The
+high score moved OUT of `PlayerState` — there is one per machine
+(`hi_score_in_game`), and per-player it would have made the middle HUD
+column change when the players swapped. The static cache's dirty test is
+per-slot for the same class of reason: with two players the 2UP score
+changes while `player` does not, so a cache keyed on the active player
+would show a stale number.
+
+Nothing moves `active_player` off 0, so behaviour is byte-identical and
+all 61 QEMU gates are unchanged. `test-two-player-state` holds it: no
+screendump can tell a literal `0` from `players[1].score` in a 1-player
+game. Remaining stages: the swap on life loss, per-player level/round
+state, and the menu's mode-2 dispatch.
+
 **What:** Classic turn-taking (research-confirmed: on the Spectrum,
 2 PLAYERS alternates turns, unlike the C64 version). Per-player state
 swap on life loss — score, lives, round, brick field — plus 1UP/2UP HUD
