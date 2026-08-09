@@ -12,12 +12,12 @@ reason rather than for want of effort — see the end of this section.
 modules. The longest function is `run_level` at 113 lines, and it is an
 orchestrator of named phases, which is what it should be.
 
-**The tests.** 72 gates, indexed in `notes/testing.md` and kept complete
+**The tests.** 73 gates, indexed in `notes/testing.md` and kept complete
 by `test-gate-index`. They fall in three groups:
 
   - 59 QEMU gates — `make parity-check-parallel`, ~6 min, twelve clean
     runs, the latest covering the `handle_input` split.
-  - 13 emulator-free source gates plus 14 host suites — `make test-fast`,
+  - 14 emulator-free source gates plus 14 host suites — `make test-fast`,
     seconds. CI runs exactly this.
   - 3 ZEsarUX-oracle gates — `make parity-check-full`.
 
@@ -567,6 +567,28 @@ paragraph. Use the headings, not the order. Nothing was reordered or
 removed when they were added; a multiset diff confirmed zero lines
 lost.
 
+
+#### The stale-output class, encoded
+
+Last commit fixed one gate that could pass on a previous run's captures.
+`check_gate_freshness.py` now covers the class, in both shapes: a gate
+that reads or tests for files under its own `build/` directory must
+`rmtree` it first, and a gate that mcopies `PROBE.TXT` must guarantee a
+fresh one — by rebuilding the floppy image, which carries no probe, or
+by `mdel`ing it.
+
+The probe half finds nothing today, and writing it down is the point. 20
+gates read `PROBE.TXT` with no `mdel`, which LOOKS wrong until you
+notice they unlink and rebuild the image first. I did that analysis to
+be sure none were at risk; without the gate the next person repeats it,
+or "fixes" 20 safe gates.
+
+The first version was too loose to catch its own case. It required an
+`unlink(missing_ok=True)` and a `make FLOPPY` anywhere in the file, so
+deleting a gate's floppy rebuild still passed — the LOCAL probe's unlink
+satisfied the first half. Both halves now have to be about the floppy.
+Two mutations, both caught: reverting the rmtree fix, and removing a
+rebuild.
 
 #### A gate that could pass on last run's captures
 

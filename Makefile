@@ -1166,8 +1166,14 @@ test-doc-links:
 test-switch-defaults:
 	python3 scripts/check_switch_defaults.py
 
+# No gate may be satisfied by a PREVIOUS run's output — stale captures
+# or a stale PROBE.TXT. test-visual-checkpoints was.
+test-gate-freshness:
+	python3 scripts/check_gate_freshness.py
+
 test-source-gates:
 	$(MAKE) test-gate-greps
+	$(MAKE) test-gate-freshness
 	$(MAKE) test-switch-defaults
 	$(MAKE) test-host-tests-wired
 	$(MAKE) test-gate-index
