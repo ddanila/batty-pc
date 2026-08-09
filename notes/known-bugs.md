@@ -611,6 +611,15 @@ Full suite 59/59 green after the change: no gate reached a multiball
 spawn from a primary whose low nibble was not `$04`, which is why this
 survived. `delta_to_dir` now has no production caller.
 
+Guarded by `test-multiball-source`, which is a SOURCE gate for that
+reason — the QEMU suite passed both before and after the fix, so no
+pixel or probe gate can protect it. It checks two things: that
+`extra_ball_dirs` is given `objects[OBJ_BALL_1].dir`, and that
+`delta_to_dir` has no production caller anywhere. The second is the
+sharper half — that function now exists only for its host tests, so a
+call to it reappearing in `src/` IS the round trip returning, whatever
+it is called from.
+
 ---
 
 ## #15 — `bios_ticks()` does not advance during gameplay

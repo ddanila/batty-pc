@@ -12,12 +12,12 @@ reason rather than for want of effort — see the end of this section.
 modules. The longest function is `run_level` at 113 lines, and it is an
 orchestrator of named phases, which is what it should be.
 
-**The tests.** 74 gates, indexed in `notes/testing.md` and kept complete
+**The tests.** 75 gates, indexed in `notes/testing.md` and kept complete
 by `test-gate-index`. They fall in three groups:
 
   - 59 QEMU gates — `make parity-check-parallel`, ~6 min, twelve clean
     runs, the latest covering the `handle_input` split.
-  - 15 emulator-free source gates plus 14 host suites — `make test-fast`,
+  - 16 emulator-free source gates plus 14 host suites — `make test-fast`,
     seconds. CI runs exactly this.
   - 3 ZEsarUX-oracle gates — `make parity-check-full`.
 
@@ -568,6 +568,28 @@ paragraph. Use the headings, not the order. Nothing was reordered or
 removed when they were added; a multiset diff confirmed zero lines
 lost.
 
+
+#### Guarding a fix no QEMU gate can see
+
+The #14 fix went in with the full suite green both before and after,
+which is precisely the problem: nothing there observes it. No scenario
+reaches a multiball spawn from a primary whose low nibble is not `$04`,
+so a revert would be invisible to all 59 gates — the same way the bug
+was.
+
+`test-multiball-source` guards it as source, checking two things. That
+`extra_ball_dirs` is given `objects[OBJ_BALL_1].dir`, and that
+`delta_to_dir` has no production caller anywhere in `src/`.
+
+The second is the sharper one, and the reason for writing it that way:
+`delta_to_dir` now exists only for its host tests, so a call to it
+reappearing in production IS the round trip coming back — whatever
+function it turns up in, and whatever it is passed. A gate naming only
+`apply_multi_ball_bonus` would miss the same mistake made somewhere
+else.
+
+Mutation-checked both ways: restoring the old expression, and sneaking
+`delta_to_dir` back in under a different guise.
 
 #### #14 fixed, applying #16's lesson straight away
 

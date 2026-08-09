@@ -1176,8 +1176,14 @@ test-gate-freshness:
 test-shimmer-one-pass:
 	python3 scripts/test_shimmer_one_pass.py
 
+# known-bugs #14: the multiball spawn must read the primary's dir byte.
+# The full QEMU suite passed both before and after that fix.
+test-multiball-source:
+	python3 scripts/check_multiball_source.py
+
 test-source-gates:
 	$(MAKE) test-gate-greps
+	$(MAKE) test-multiball-source
 	$(MAKE) test-shimmer-one-pass
 	$(MAKE) test-gate-freshness
 	$(MAKE) test-switch-defaults
