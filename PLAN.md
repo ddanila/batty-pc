@@ -16,7 +16,7 @@ The port is "100%" when all of the following hold:
 |---|-----------|-------|
 | 1 | All three game modes work: 1 Player, 2 Players (alternating), Double Play (simultaneous split-court co-op) | 1P and 2P done; Double Play has its court, both bats, ball physics, scoring and INPUT (2026-08-10); bonus ownership and bat-2 catch remain |
 | 2 | Menu semantics match the original (0 starts the selected game directly; A/B input-device cycling affects play) | Key 0 starts the game (`test-menu-start`); the device byte is per-player state but still selects nothing |
-| 3 | Core gameplay byte-exact where an oracle exists (ball, bat, collision, RNG, enemy, bonuses, scoring) | **Done** — regression-locked by 96 gates |
+| 3 | Core gameplay byte-exact where an oracle exists (ball, bat, collision, RNG, enemy, bonuses, scoring) | **Done** — regression-locked by 97 gates |
 | 4 | Full game FLOW gated end-to-end: level-clear → next, life-loss → respawn, game-over → initials, level wrap | **Done** — `test-level-advance`, `test-life-loss`, `test-game-over-visual`, `test-name-entry-visual` |
 | 5 | Sound faithful to the original's 5-slot beeper queue (envelope/timing, not just effect IDs) | ids, slot count, pitches and envelope ARITHMETIC faithful; durations still round to 20 ms because the sound clock is the 50 Hz frame counter |
 | 6 | All assets derived from the tape at build time; no captured emulator blobs | **Done** — all 13 loaded assets build from `original/blocks/`, held by `test-asset-provenance` |
@@ -632,10 +632,24 @@ In priority order (all pre-scoped in `parity-gaps.md` / notes):
    (`test-double-play-bat2-catch`), which was the point of doing the
    threading first.
 
-   What remains for this item is the MAGNET case it was opened for: a
-   SECONDARY ball being caught. The state is now shaped for it — the
-   fields are `[3]` and every function takes a slot — so what is left is
-   `step_extra_ball` reaching the catch at all.
+   **CLOSED 2026-08-10.** A MAGNET bat holds a secondary ball; the last
+   step was one branch in `step_extra_ball`, whose bat block read "No
+   catch". Gated by `test-secondary-ball-catch`, with FIRE releasing
+   every held ball and the auto-launch's probe bookkeeping guarded to
+   the primary. New knob `BATTY_REPLAY_MULTIBALL` seeds the spawn,
+   because MULTI_BALL ($02) and MAGNET ($03) share one bat byte and no
+   sequence of catches holds both.
+
+   Worth recording: the original needs none of this. It runs one
+   `handling_ball` per ball and `LAB1F` does not care which. The port's
+   split into `step_ball`/`step_extra_ball` is what made the catch
+   primary-only, so the item was repaying a port divergence, not porting
+   a mechanic.
+
+   **A different gap stays open:** `step_extra_ball` never consults bat
+   2, so in Double Play a secondary can be neither caught nor deflected
+   by it. Named in the gate's docstring; left whole rather than
+   half-done.
 3. ~~**Seeded destroyed-cell mismatch**~~ — **CLOSED 2026-08-09, and it
    had already fixed itself.** This entry said the port and original
    destroy different *cells* on `replay-l3-brick-flash-both`. They do
@@ -664,7 +678,7 @@ In priority order (all pre-scoped in `parity-gaps.md` / notes):
    which outcome happened, no phase normalisation is needed.
    known-bugs #17.
 
-**Exit:** items 1–3 gated; parity-gaps.md's "behavioral" section
+**Exit:** items 1–3 gated (all three now closed); parity-gaps.md's "behavioral" section
 reduced to the accepted-residuals list below.
 
 ## WS7 — Asset self-sufficiency (de-capture)

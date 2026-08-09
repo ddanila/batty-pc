@@ -5396,6 +5396,9 @@ static void step_ball(void) {
  * extra just deactivates off the bottom). Correct by construction (it
  * reuses the byte-exact primary path); validated by the liveness sweep
  * and the primary ball gate. */
+/* Defined with the other stuck-ball handling, further down. */
+static void ride_stuck_ball_on_bat(int b, int bat);
+
 static void step_extra_ball(unsigned char *in_active,
                              unsigned char obj_idx) {
     Object *o = &objects[obj_idx];
@@ -5407,6 +5410,16 @@ static void step_extra_ball(unsigned char *in_active,
     int ball_sz   = eff_ball_size();
     int x_max     = PLAYFIELD_W - 8 - ball_sz;
     if (!*in_active) return;
+    /* Held on a bat: ride it and count toward the auto-launch, exactly
+     * as the primary does. Before the magnet block for the same reason
+     * step_ball puts it there — a resting ball cannot overlap a magnet
+     * box, since the boxes end far above the bat. */
+    if (ball.stuck[obj_idx]) {
+        ride_stuck_ball_on_bat(obj_idx, ball.stuck_bat[obj_idx]);
+        o->x_coord_hi = 0;
+        o->y_coord_hi = 0;
+        return;
+    }
     /* Magnet capture/curve/release — the original runs ONE handling_ball
      * per ball, so extras share the exact same LA27E_0..11 block (their
      * own LA274/LA278 state). */
@@ -5420,12 +5433,24 @@ static void step_extra_ball(unsigned char *in_active,
     if (next_x < BALL_X_MIN)  { next_x = BALL_X_MIN; next_x_q8 = (long)next_x << 8; object_reflect(*(o), 1, 0); }
     else if (next_x > x_max)  { next_x = x_max;      next_x_q8 = (long)next_x << 8; object_reflect(*(o), 1, 0); }
     if (next_y < BALL_Y_TOP)  { next_y = BALL_Y_TOP; next_y_q8 = (long)next_y << 8; object_reflect(*(o), 0, 1); }
-    /* Bat: LAB1F contact (ball_y >= 167) + exact deflection. No catch. */
+    /* Bat: LAB1F contact (ball_y >= 167) + exact deflection, and since
+     * 2026-08-10 the CATCH branch too — the original runs one
+     * handling_ball per ball and LAB1F does not care which one it is,
+     * so a MAGNET bat holds a secondary exactly as it holds the primary
+     * (PLAN.md WS6 item 2, the case the item was opened for).
+     *
+     * Still bat 1 only. Extras are not tested against bat 2 at all —
+     * this whole block reads eff_bat_left/right — and that is a
+     * separate gap from this one, left alone rather than half-done. */
     if (dy_q8 > 0
         && next_y + BALL_H_PX > bat_top
         && next_y < bat_top
         && next_x + ball_sz > bat_left
         && next_x < bat_right) {
+        if (objects[OBJ_BAT_1].bonus_applied == 0x03 && bat.extra_px == 0) {
+            catch_ball_on_bat(obj_idx, OBJ_BAT_1, next_x);
+            return;                 /* held: it does not move this frame */
+        }
         next_y = bat_top - BALL_H_PX;
         o->dir = bat_deflect_dir(o->dir, next_x + 3 - BAT_X, bat.extra_px != 0);
         sound_queue(SND_BAT_BEAT);
@@ -6921,6 +6946,18 @@ static void apply_replay_overrides(void) {
     replay_apply_object("BATTY_REPLAY_BAT_OBJECT",  OBJ_BAT_1);
     replay_apply_object("BATTY_REPLAY_BALL_OBJECT", OBJ_BALL_1);
     apply_replay_ball_motion_override();
+    /* BATTY_REPLAY_MULTIBALL=1 spawns the two extras at level entry, as
+     * if a TRIPLE had just been caught, with their directions derived
+     * from the primary's SEEDED dir — so it must run after the ball
+     * override above.
+     *
+     * It exists because MULTI_BALL and MAGNET cannot both be reached by
+     * catching: the bat holds ONE bonus code ($02 vs $03) and a second
+     * catch overwrites the first. In play the pair arises the other way
+     * round — the extras outlive the code that spawned them, so a bat
+     * that picks up MAGNET afterwards can catch them. Seeding the
+     * spawn and catching the MAGNET reproduces that order. */
+    if (getenv("BATTY_REPLAY_MULTIBALL") != NULL) apply_multi_ball_bonus();
     replay_apply_object("BATTY_REPLAY_ENEMY_OBJECT", OBJ_ENEMY);
     apply_replay_bonus_override();
     replay_apply_bomb();
@@ -7041,6 +7078,20 @@ static void launch_or_fire(void) {
         ball_launch_from_bat(BALL_PRIMARY);
         record_primary_launch();
     }
+    /* Every held ball goes, not only the primary. The original has no
+     * "launch" routine to be selective with: the release lives inside
+     * handling_ball, which runs once per ball object, so one press frees
+     * whatever is resting. Leaving the extras behind would also strand
+     * them for the full STUCK_TIMEOUT with the player pressing FIRE. */
+    {
+        int i;
+        for (i = 1; i < 3; i++) {
+            if (!ball.stuck[i]) continue;
+            ball.stuck[i]       = 0;
+            ball.stuck_ticks[i] = 0;
+            ball_launch_from_bat(i);
+        }
+    }
     try_fire_laser();                  /* free_bullet_2 $A14C; see there */
 }
 
@@ -7078,7 +7129,11 @@ static void ride_stuck_ball_on_bat(int b, int bat) {
         ball.stuck[b] = 0;          /* auto-launch */
         sound_queue(SND_BALL_START);
         ball_launch_from_bat(b);
-        record_primary_launch();
+        /* Probe bookkeeping for the launch gates, and it reads the
+         * PRIMARY's coordinates — so it is guarded rather than indexed.
+         * A secondary's auto-launch recording itself as the primary's
+         * would corrupt exactly the gate that watches for it. */
+        if (b == BALL_PRIMARY) record_primary_launch();
     }
 }
 

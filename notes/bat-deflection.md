@@ -357,3 +357,64 @@ Gated by `test-double-play-bat2-catch`, which compares two probe frames
 rather than one: a single frame cannot tell a caught ball from one
 passing through the rest height. Two mutations caught — recording
 `OBJ_BAT_1` at the catch, and removing bat 2's catch branch.
+
+
+## WS6 item 2 is closed (2026-08-10)
+
+A MAGNET bat holds a SECONDARY ball. The case the item was opened for,
+and the one that kept it deferred as "substantial new code for the niche
+MAGNET+TRIPLE case".
+
+It was substantial, and it was four commits, none of them large:
+
+    fields -> [3]                   2026-08-09  no behaviour change
+    functions take a BALL           2026-08-10  no behaviour change
+    functions take a BAT            2026-08-10  no behaviour change
+    the two catches                 2026-08-10  bat 2, then the extras
+
+The final step in `step_extra_ball` is one branch, in a bat block whose
+comment used to end "No catch." Splitting it this way is why: each
+structural commit was verifiable by a green sweep alone, and the
+behaviour commits were small enough to read.
+
+### The original needs none of this
+
+It runs ONE `handling_ball` per ball object, and `LAB1F` does not care
+which one it is. The port's split into `step_ball` and
+`step_extra_ball` is what made the catch primary-only — so this whole
+item was the port repaying a divergence it had introduced, not porting a
+mechanic. Worth knowing before the next "the original must special-case
+this" hypothesis.
+
+### FIRE frees every held ball
+
+`launch_or_fire` releases the extras too. Same reasoning: the original
+has no launch routine to be selective with, the release lives inside
+`handling_ball`, and one press frees whatever is resting. Leaving them
+would also strand them for the full `STUCK_TIMEOUT` with the player
+pressing FIRE at them.
+
+The auto-launch's `record_primary_launch()` is guarded to the primary
+rather than indexed — it reads the primary's coordinates, so a
+secondary recording itself there would corrupt the launch gates.
+
+### Reproducing MAGNET + TRIPLE, which cannot be caught for
+
+The bat holds ONE bonus code at +$14: MULTI_BALL is $02, MAGNET is $03,
+and catching the second overwrites the first. No sequence of catches
+puts both in play.
+
+In the game the pair arises the other way round — the extras OUTLIVE the
+code that spawned them, so a bat picking up MAGNET while they fly can
+catch them. `BATTY_REPLAY_MULTIBALL=1` seeds the spawn at level entry
+(directions derived from the primary's seeded dir, so it runs after the
+ball override) and the seeded CATCH bonus supplies the code a frame or
+two later.
+
+### Still open, and deliberately not half-done
+
+`step_extra_ball`'s bat block reads `eff_bat_left`/`eff_bat_right` and
+never consults bat 2, so in Double Play a secondary cannot be caught OR
+deflected by bat 2. That is a different gap — extras vs bat 2 — and it
+is named in the gate's docstring so the gate is not mistaken for
+covering it.

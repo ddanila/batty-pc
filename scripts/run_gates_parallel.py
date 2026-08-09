@@ -81,6 +81,7 @@ FULL_EXTRA_GATES = [
     "test-enemy-brick-residue", "test-enemy-brick-walk", "test-enemy-margin-clamp",
     "test-two-player-turn", "test-double-play-court", "test-double-play-bat2", "test-double-play-input", "test-double-play-alien-kill",
     "test-double-play-bat2-catch",
+    "test-secondary-ball-catch",
     "test-stuck-auto-launch",
     "test-bat-redraw-window",
     "test-ball-left-wall-escape", "test-l3-replay-seed",

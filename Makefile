@@ -567,6 +567,9 @@ $(TEST_FLOPPY_OUT): $(FLOPPY_TEST_EXE) $(ASSETS) $(FLOPPY_SRC)
 	if [ -n "$$BATTY_HOLD_KEYS" ]; then \
 	    printf 'SET BATTY_HOLD_KEYS=%s\r\n' "$$BATTY_HOLD_KEYS" >> $(AUTOEXEC_T) ; \
 	fi; \
+	if [ -n "$$BATTY_REPLAY_MULTIBALL" ]; then \
+	    printf 'SET BATTY_REPLAY_MULTIBALL=%s\r\n' "$$BATTY_REPLAY_MULTIBALL" >> $(AUTOEXEC_T) ; \
+	fi; \
 	if [ -n "$$BATTY_REPLAY_LIVES_2UP" ]; then \
 	    printf 'SET BATTY_REPLAY_LIVES_2UP=%s\r\n' "$$BATTY_REPLAY_LIVES_2UP" >> $(AUTOEXEC_T) ; \
 	fi; \
@@ -809,6 +812,7 @@ parity-check-full:
 	$(MAKE) test-double-play-input
 	$(MAKE) test-double-play-alien-kill
 	$(MAKE) test-double-play-bat2-catch
+	$(MAKE) test-secondary-ball-catch
 	$(MAKE) test-stuck-auto-launch
 	$(MAKE) test-bat-redraw-window
 	$(MAKE) test-ball-left-wall-escape
@@ -1388,6 +1392,12 @@ test-double-play-alien-kill:
 # With MAGNET up, bat 2 catches and the ball rides BAT 2 (ball.stuck_bat).
 test-double-play-bat2-catch:
 	python3 scripts/test_double_play_bat2_catch.py
+
+# WS6.2's original case: a MAGNET bat holds a SECONDARY ball. Needs
+# MULTI_BALL and MAGNET at once, which no sequence of catches gives —
+# BATTY_REPLAY_MULTIBALL seeds the spawn, the bonus catch adds the code.
+test-secondary-ball-catch:
+	python3 scripts/test_secondary_ball_catch.py
 
 # A ball left on the bat launches itself after STUCK_TIMEOUT (192)
 # ticks. Nothing gated this: mutating the counter so it never fires

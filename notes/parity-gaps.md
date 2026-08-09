@@ -15,9 +15,15 @@ they are good next targets when tightening original fidelity.
 >     byte-identical between port and original and is now a required
 >     row. It had been equal for some time; the INFO tier is where it
 >     stayed because nothing re-ran the comparison.
->  1. **Multi-ball + MAGNET catch** — a MAGNET bat catches the primary ball
->     but not the unified secondaries; mirroring the ~32-site stuck system
->     per-ball is deferred feature work (see "bat-ball deflection").
+>  1. ~~**Multi-ball + MAGNET catch**~~ — CLOSED 2026-08-10. A MAGNET bat
+>     holds the secondaries too (`test-secondary-ball-catch`). The
+>     "~32-site stuck system" was 24 sites, 14 of them real, and it went
+>     in as three behaviour-neutral steps plus the catches. See
+>     notes/bat-deflection.md.
+>
+>     A NARROWER gap replaces it: `step_extra_ball` never consults bat 2,
+>     so in Double Play a secondary can be neither caught nor deflected
+>     by it. Not the same thing, and not a re-open of this one.
 >  2. **Cosmetic / timing**: big-bat resize timing is matched visually
 >     rather than being a literal port of the original's bit-gated state
 >     machine. Out of scope: sound.
