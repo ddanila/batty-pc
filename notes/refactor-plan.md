@@ -666,6 +666,22 @@ the letter row to change, since placement alone would look identical
 whether `step_name_letter` worked or not. Mutation-checked by making the
 LEFT arm a no-op.
 
+A scan for sentences repeated across comment blocks — the mechanical
+version of what the last two commits found by hand — turned up two in
+`bricks`, where the header's WHY had been copied into the `.cpp`.
+
+They had already partly diverged, which is the whole hazard: each copy
+carried a paragraph the other lacked, so neither was complete and a
+reader had to find both. The convention applied is the obvious one and
+is now visible in the file: the HEADER states the contract a caller
+needs, the `.cpp` states only what the implementation has to know, and
+where the reasoning is shared the `.cpp` points at the header. Nothing
+was dropped — the unique halves moved rather than being merged away.
+
+One cross-file repeat remains and is legitimate: `zxvga.cpp` and
+`zxvga.h` share a title line, and the `.cpp` already says "Read
+zxvga.h first".
+
 `handle_input` went 70 → 26 lines: `toggle_pause` and `launch_or_fire`
 came out, leaving a function that is just the key dispatch it claims to
 be.

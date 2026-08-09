@@ -191,11 +191,12 @@ void repaint_row_attrs(const u8 *cells, int row) {
     }
 }
 
-/* level_attrs.bin was captured with every brick alive, so it still
- * carries brick colour in cells whose brick is now destroyed. Reset
- * those to the band background, plus the shadow row beneath — a live
- * brick below repaints its own body attr afterwards, and where there is
- * none the stale dimmed shadow goes with the brick.
+/* Contract and the [cr0, cr1] / one-row-overshoot reasoning: bricks.h.
+ * What follows is what the implementation has to know, and only that.
+ *
+ * The shadow row beneath a reset cell goes too: a live brick below
+ * repaints its own body attr afterwards, and where there is none the
+ * stale dimmed shadow should leave with the brick.
  *
  * Only RUNTIME-destroyed cells reset: bit 7 set, bit 6 clear. The
  * empty-cell sentinel $C0 has both bits and must keep its level_attrs
@@ -207,11 +208,8 @@ void repaint_row_attrs(const u8 *cells, int row) {
  * char $05; with col 5 also gone it keeps the bright $45). The right
  * char is always bg_attr.
  *
- * Writes are clipped to [cr0, cr1], the char rows the caller just
- * re-based from level_attrs; rows outside it are already correct. The
- * row scan runs one brick row beyond [r0, r1] on each side because
- * cr0 doubles as row r0-1's shadow row and cr1 as row r1+1's cell row —
- * that overlap is what known-bugs #1/#2 were. */
+ * Writes are clipped to [cr0, cr1]; rows outside it are already
+ * correct. */
 void reset_destroyed_cell_attrs(const u8 *cells,
                                        u8 bg_attr,
                                        int r0, int r1, int cr0, int cr1) {
@@ -241,17 +239,12 @@ void reset_destroyed_cell_attrs(const u8 *cells,
     }
 }
 
-/* Put back what a row-scoped repaint disturbed at its edges.
+/* Why these repairs are needed at all: bricks.h.
  *
- * A full ascending paint gets these for free: each row's print
- * overwrites the previous row's edge bytes as it goes. Painting only
- * [r0, r1] stops short, so the boundary rows keep whatever the bg
- * repaint left. Getting this wrong is what known-bugs #1 and #2 were.
- *
- * The comments' numbers are the order these were FOUND, not the order
- * they run; they are applied bottom-edge first because each later one
- * overwrites part of the earlier one's output.
- */
+ * Here, only the ORDER matters. The numbers in the comments below are
+ * the order these were FOUND, not the order they run — they are applied
+ * bottom-edge first, because each later one overwrites part of the
+ * earlier one's output. */
 void repair_band_row_boundaries(const u8 *cells,
                                        int r0, int r1) {
     int col;
