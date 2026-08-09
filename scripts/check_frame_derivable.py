@@ -108,6 +108,8 @@ SEQUENCE = [
 ]
 BASE_Y = 0x07          # LD HL,$0700 — H is the y, L the x
 N_CYCLES = 4
+ASM = ROOT / "original/disasm/batty.asm"
+TILE = ROOT / "assets/bg_tile.bin"
 
 
 def block(asm: str, addr: str):
@@ -262,6 +264,59 @@ def main() -> int:
         aw, ah = rest[0], rest[1]
         return aw, ah, rest[2:2 + aw * ah]
 
+    # --- the HUD rows are ornament too -------------------------------
+    # frame_l1.bin's top block is 24 rows, and rows 8..23 are NOT just
+    # the HUD's background: byte columns 0 and 31 carry the side
+    # ornament down to y=8. That is LBE8B_1's SEVENTH placement — bold
+    # from y=$17 — which the first version of this gate skipped as
+    # "runs off the top and is covered by the top border". It is not
+    # covered; it fills the sides of the HUD band.
+    #
+    # Measured the hard way: blitting only rows 0..7 and letting the
+    # background show through moved 345 pixels in test-visual's
+    # state4_level1, which is pixel-identical otherwise.
+    hud_checked = 0
+    for cyc in range(N_CYCLES):
+        for r in range(bold_l[1]):
+            y = 0x17 - r
+            if not (8 <= y <= 23):
+                continue
+            for col, spr in ((0, bold_l), (31, bold_r)):
+                want = spr[2 + r]
+                got = frame[cyc * per + y * 32 + col]
+                hud_checked += 1
+                if got != want:
+                    bad.append((cyc, "hud-side", r, y, want, got))
+
+    # --- border_horizontal_addon -------------------------------------
+    # LBE8B's last pixel pass ANDs a 30-byte strip into scr_buff+$101,
+    # which is row 8, bytes 1..30 — an inner outline one pixel thick
+    # under the top border. AND, not copy, so the background shows
+    # through wherever the strip has a 1 bit.
+    addon_m = re.search(r"border_horizontal_addon:\n((?:\s*DEFB[^\n]*\n)+)",
+                        ASM.read_text())
+    if not addon_m:
+        raise SystemExit("FAIL: border_horizontal_addon is not in batty.asm")
+    addon = [int(h, 16)
+             for h in re.findall(r"\$([0-9A-Fa-f]{2})", addon_m.group(1))]
+    if len(addon) != 30:
+        raise SystemExit(f"FAIL: border_horizontal_addon is {len(addon)} "
+                         f"bytes, expected the $1E the loop counts")
+    tile = TILE.read_bytes()
+    tsz = len(tile) // N_CYCLES
+    addon_checked = 0
+    for cyc in range(N_CYCLES):
+        t = tile[cyc * tsz:(cyc + 1) * tsz]
+        t0, t1 = t[(8 & 15) * 2], t[(8 & 15) * 2 + 1]
+        for i in range(30):
+            bx = 1 + i
+            bg = t0 if bx % 2 == 0 else t1
+            want = addon[i] & bg
+            got = frame[cyc * per + 8 * 32 + bx]
+            addon_checked += 1
+            if got != want:
+                bad.append((cyc, "addon", 8, bx, want, got))
+
     # --- the attrs the PORT actually uses --------------------------
     # paint_frame_to_buff takes its pixels from frame_l1.bin but its
     # ATTRS from level_attrs.bin — all three paint_strip_to_buff calls
@@ -309,9 +364,10 @@ def main() -> int:
                   f"want {want:02X} got {got:02X}")
         return 1
 
-    total = checked + side_checked + used_checked
+    total = checked + side_checked + hud_checked + addon_checked + used_checked
     print(f"PASS frame_derivable: all {total} frame bytes "
           f"({checked} top px + {side_checked} side px + "
+          f"{hud_checked} HUD-band side px + {addon_checked} addon px + "
           f"{used_checked} level_attrs cells over "
           f"{N_LEVELS} levels) are set_border_horizontal and the "
           f"bold/thin side pair, drawn upward")

@@ -554,8 +554,27 @@ original artifact:
    sprites: 1110 bytes over 15 levels, verified. That takes
    `level_attrs.bin` to 6510 of 11520 derived, 56.5%.
 
-   Remaining unverified: the `border_horizontal_addon` AND-strip at
-   `scr_buff+$101`, which modifies pixels after the sprites land.
+   *The HUD rows are ornament too.* `frame_l1.bin`'s top block is 24
+   rows, and rows 8..23 are not just background: byte columns 0 and 31
+   carry the side ornament down to y=8. That is `LBE8B_1`'s SEVENTH
+   placement — bold from y=`$17` — which this list previously wrote off
+   as "runs off the top and is covered by the top border". It is not
+   covered. Measured the hard way: blitting only rows 0..7 and letting
+   the background show through moved 345 pixels in `test-visual`'s
+   `state4_level1`, which is pixel-identical otherwise.
+
+   *And the addon strip.* `LBE8B`'s last pixel pass ANDs a 30-byte
+   `border_horizontal_addon` into `scr_buff+$101` — row 8, bytes 1..30,
+   a one-pixel inner outline. AND, not copy, so the background shows
+   through. Verified against `bg_tile.bin`.
+
+   Generating the whole 24-row top block from background + sides + top
+   border + addon reaches **2986 of 3072**. The residue sits in byte
+   columns 1 and 30, which is `LBE8B_2`'s inner-outline pass
+   (`RES 7,(HL)` left, `RES 0,(HL)` right, 4 bands of 28 rows) — the one
+   piece of the ornament still unmodelled.
+
+   `test-frame-derivable` holds 3726 bytes across the two blobs.
 2. **`level_attrs.bin` residue** — brick-body attrs are already
    computed; port the writer for frame-strip columns and pre-dimmed
    shadow attrs. This is also the root of the accepted 4px frame-step
