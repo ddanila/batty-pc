@@ -1163,11 +1163,13 @@ static const unsigned int spr_spark_frames[5] = {
                                     * y=8..15 labels, y=16..23 scores */
 #define FRAME_SIDE_H_PX  168       /* y=24..191 below the HUD */
 #define FRAME_TOP_PX     (32 * FRAME_TOP_H_PX)
-#define FRAME_TOP_ATTRS  (32 * (FRAME_TOP_H_PX / 8))
 #define FRAME_SIDE_PX    (FRAME_SIDE_W * FRAME_SIDE_H_PX)
-#define FRAME_SIDE_ATTRS (FRAME_SIDE_W * (FRAME_SIDE_H_PX / 8))
-#define FRAME_SIZE  (FRAME_TOP_PX + FRAME_TOP_ATTRS + \
-                     2 * (FRAME_SIDE_PX + FRAME_SIDE_ATTRS))
+/* PIXELS ONLY. The blob used to carry attribute rows too — 138 bytes
+ * per cycle — and paint_frame_to_buff never read one of them: all three
+ * paint_strip_to_buff calls take their attrs from `lattr`, i.e.
+ * level_attrs.bin. Dropped 2026-08-09; the arithmetic that skipped past
+ * them was the only thing suggesting they mattered. */
+#define FRAME_SIZE  (FRAME_TOP_PX + 2 * FRAME_SIDE_PX)
 #define FRAME_CYCLES 4
 static unsigned char frame_l1[FRAME_CYCLES * FRAME_SIZE];
 
@@ -1396,8 +1398,8 @@ static void paint_strip_to_buff(const unsigned char *pixels,
 static void paint_frame_to_buff(unsigned char cycle, unsigned char level_idx) {
     const unsigned char *base     = frame_l1 + (unsigned int)cycle * FRAME_SIZE;
     const unsigned char *top_px   = base;
-    const unsigned char *left_px  = top_px  + FRAME_TOP_PX  + FRAME_TOP_ATTRS;
-    const unsigned char *right_px = left_px + FRAME_SIDE_PX + FRAME_SIDE_ATTRS;
+    const unsigned char *left_px  = top_px  + FRAME_TOP_PX;
+    const unsigned char *right_px = left_px + FRAME_SIDE_PX;
     const unsigned char *lattr = level_attrs + (unsigned int)level_idx * ATTR_BAND_SIZE;
     int right_col = 32 - FRAME_SIDE_W;
     paint_strip_to_buff(top_px,   lattr, 32, 32, FRAME_TOP_H_PX,

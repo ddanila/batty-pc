@@ -543,10 +543,11 @@ original artifact:
    *And the attrs the port actually uses.* `paint_frame_to_buff` takes
    its PIXELS from `frame_l1.bin` but its ATTRS from `level_attrs.bin` —
    all three `paint_strip_to_buff` calls pass `lattr`. The frame blob's
-   own attr sections are loaded and never read: **138 bytes per cycle,
-   552 in all, dead payload**, and their presence in the layout implies
-   the opposite. Worth removing, but it means editing a checked-in
-   binary and `extract_frame.py` together, so it is its own change.
+   own attr sections were loaded and never read: 138 bytes per cycle,
+   552 in all. **Removed 2026-08-09** — `extract_frame.py` no longer
+   emits them, `FRAME_SIZE` no longer skips past them, and the blob is
+   4416 B instead of 4968. The full pixel suite is the proof nothing
+   changed on screen.
 
    The cells that DO matter — `level_attrs.bin`'s char row 0 across the
    top, and columns 0 and 31 down char rows 3..23 — come from the same

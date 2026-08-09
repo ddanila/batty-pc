@@ -239,15 +239,21 @@ assets/bg_tile.bin: build/level_gt/level_01.scr scripts/extract_bg_tile.py
 	@echo "wrote $@ ($$(wc -c < $@) bytes)"
 
 # Bat + on-bat ball composite at level-1 start: 4 bytes x 16 rows
-# Perimeter frame (top HUD + left + right cyan strips). 3 strips
-# painted as raw pixels + per-char attrs; bottom edge has no frame
-# ornament, so we skip it. ~1.3 KB total.
-# assets/frame_l1.bin is a checked-in asset, NOT regenerated from the
-# current build/level_gt/ GT — because frame extraction needs a GT
-# captured with the L6853 lives-skip patch on (no lives in the side
-# strip), while the test GT needs lives present (so render_lives is
-# measured). Two contradictory requirements. The frame is re-extracted
-# manually when needed; see notes/state4-bat-band-triage.md.
+# Perimeter frame (top HUD + left + right cyan strips). Three strips of
+# raw PIXELS — no attrs; paint_frame_to_buff takes those from
+# level_attrs.bin. 4416 B for four colour cycles.
+#
+# Checked in rather than built, because a clean checkout has no
+# build/level_gt/ captures. It IS regenerable where they exist:
+# `python3 scripts/extract_frame.py assets/frame_l1.bin` reproduced the
+# committed file byte for byte on 2026-08-09.
+#
+# This note used to say regeneration was impossible — the frame needed a
+# GT captured with the L6853 lives-skip patch while the test GT needs
+# lives present, "two contradictory requirements". That stopped being
+# true when FRAME_SIDE_W narrowed to 1: the side strip is now the
+# ornament column alone, which the lives indicators never reach. See
+# notes/state4-bat-band-triage.md for the original problem.
 
 # Sprite block extracted verbatim from the original game's program at
 # $7A8C..$8D46 (offset $128c..$2546 within 03_DATA_headless.dat.bin,

@@ -64,9 +64,11 @@ the other.
 
 ### Scope
 
-y 0..7 across all 32 byte-columns (256/cycle), the two 1-byte side
-columns over y 24..191 (336/cycle), and the attribute cells those
-sprites carry (74/cycle): **2664 of `frame_l1.bin`'s 4968**.
+y 0..7 across all 32 byte-columns (256/cycle) and the two 1-byte side
+columns over y 24..191 (336/cycle): **2368 of `frame_l1.bin`'s 4416,
+53.6%** — the whole ornament. Plus the 1110 attribute cells in
+`level_attrs.bin` that those sprites' attr blocks produce, over all 15
+levels.
 
 The rest of that blob is not frame work at all. `extract_frame.py`'s own
 comment says so: of its 24 top pixel rows, y 0..7 are the ornament and
@@ -194,10 +196,19 @@ def main() -> int:
         return 1
 
     # --- the side strips ---------------------------------------------
-    # extract_frame.py's layout, per cycle: 768 top pixels, 96 top attrs,
-    # 168 left pixels (y 24..191, one byte wide), 21 left attrs, then the
-    # same for the right.
-    LEFT_OFF, RIGHT_OFF = 768 + 96, 768 + 96 + 168 + 21
+    # extract_frame.py's layout, per cycle, since the attrs were
+    # dropped: 768 top pixels, 168 left (y 24..191, one byte wide), 168
+    # right. Derived from the constants rather than written as literals,
+    # so a layout change shows up as a FAIL and not an IndexError — which
+    # is what the stale `768 + 96` gave when the attrs went.
+    TOP_PX, SIDE_PX = 24 * 32, 168
+    LEFT_OFF, RIGHT_OFF = TOP_PX, TOP_PX + SIDE_PX
+    if per != TOP_PX + 2 * SIDE_PX:
+        raise SystemExit(
+            f"FAIL: frame_l1.bin is {per} bytes per cycle, expected "
+            f"{TOP_PX + 2 * SIDE_PX} (24 top rows + two 168-row side "
+            f"columns, pixels only). If the layout changed, update this "
+            f"gate and extract_frame.py together.")
     bold_l, bold_r = block(asm, "6B3F"), block(asm, "6B67")
     thin_l, thin_r = block(asm, "6B8F"), block(asm, "6BAE")
     # LBE8B_1: bold from y=$BF, thin from y=$9F, each -56 per turn.
@@ -236,60 +247,20 @@ def main() -> int:
               "UPWARD from the given y.")
         return 1
 
-    # --- the attribute rows ------------------------------------------
+    # --- the attribute cells ------------------------------------------
     # Each sprite carries its own attr block after the pixels: (aw, ah)
     # then aw*ah bytes, written by print_sprite_attrib. Those stack
-    # UPWARD as well — laying them downward matches 48 of 168.
-    TOP_A = 768
-    LEFT_A = 768 + 96 + 168
-    RIGHT_A = 768 + 96 + 168 + 21 + 168
+    # UPWARD as well — laying them downward matched 48 of 168 when
+    # frame_l1.bin still carried its own copy.
+    #
+    # It no longer does: those 552 bytes were dead payload and were
+    # dropped on 2026-08-09. The recording that survives is the one the
+    # port actually reads.
     def attr_block(b):
         w, h = b[0], b[1]
         rest = b[2 + w * h:]
         aw, ah = rest[0], rest[1]
         return aw, ah, rest[2:2 + aw * ah]
-
-    attr_checked = 0
-    for cyc in range(N_CYCLES):
-        # Top: char row 0 only. Rows 1 and 2 of this block are the HUD's
-        # label and score-digit rows, which render_hud_to_buff draws —
-        # not frame work, and they do not match these sprites (26 and 13
-        # of 128).
-        # SEQUENCE, not a second list of addresses. The first version
-        # carried one, and mutating its last entry SURVIVED — because
-        # right_bold and right_edge happen to have identical attr blocks,
-        # so the duplicate list was both redundant AND unable to justify
-        # itself. The pixel pass above already names all eight.
-        x = 0
-        for name in SEQUENCE:
-            aw, _, av = attr_block(raw_sprite(asm, name))
-            for i in range(aw):
-                want = av[i]
-                got = frame[cyc * per + TOP_A + x + i]
-                attr_checked += 1
-                if got != want:
-                    bad.append((cyc, f"top-attr {addr}", 0, x + i, want, got))
-            x += aw
-        for base, ls, rs in placements:
-            _, ah, lav = attr_block(ls)
-            _, _, rav = attr_block(rs)
-            for i in range(ah):
-                cr = base // 8 - i
-                if not (3 <= cr <= 23):
-                    continue
-                for off, av in ((LEFT_A, lav), (RIGHT_A, rav)):
-                    want = av[i]
-                    got = frame[cyc * per + off + (cr - 3)]
-                    attr_checked += 1
-                    if got != want:
-                        bad.append((cyc, "side-attr", i, cr, want, got))
-
-    if bad:
-        print(f"FAIL: {len(bad)} frame attribute bytes do not match.\n")
-        for cyc, name, row, bx, want, got in bad[:12]:
-            print(f"  cycle {cyc} {name} row {row} byte {bx}: "
-                  f"want {want:02X} got {got:02X}")
-        return 1
 
     # --- the attrs the PORT actually uses --------------------------
     # paint_frame_to_buff takes its pixels from frame_l1.bin but its
@@ -338,10 +309,10 @@ def main() -> int:
                   f"want {want:02X} got {got:02X}")
         return 1
 
-    total = checked + side_checked + attr_checked + used_checked
+    total = checked + side_checked + used_checked
     print(f"PASS frame_derivable: all {total} frame bytes "
-          f"({checked} top px + {side_checked} side px + {attr_checked} "
-          f"blob attrs + {used_checked} level_attrs cells over "
+          f"({checked} top px + {side_checked} side px + "
+          f"{used_checked} level_attrs cells over "
           f"{N_LEVELS} levels) are set_border_horizontal and the "
           f"bold/thin side pair, drawn upward")
     return 0

@@ -8,14 +8,18 @@ different hex-tile bit pattern. Shipping a single L1-derived frame
 embedded L1's bg bits into all 15 levels; we now ship four frames
 keyed by (level_idx & 3).
 
-Per-cycle layout (1764 B each):
-    [0..511]    top pixels    (32 cols x 16 rows)
-    [512..575]  top attrs     (32 cols x  2 char-rows)
-    [576..1103] left pixels   ( 3 cols x 176 rows = 528 B)
-    [1104..1169] left attrs   ( 3 cols x  22 char-rows = 66 B)
-    [1170..1697] right pixels ( 3 cols x 176 rows = 528 B)
-    [1698..1763] right attrs  ( 3 cols x  22 char-rows = 66 B)
-Total blob: 4 cycles x 1764 = 7056 B.
+Per-cycle layout (1104 B each):
+    [0..767]     top pixels   (32 cols x 24 rows)
+    [768..935]   left pixels  ( 1 col  x 168 rows)
+    [936..1103]  right pixels ( 1 col  x 168 rows)
+Total blob: 4 cycles x 1104 = 4416 B.
+
+NO ATTRIBUTES. They used to be here — 96 top + 21 + 21 per cycle, 552
+bytes in all — and the port never read one of them:
+`paint_frame_to_buff` passes `lattr` (level_attrs.bin) to all three
+`paint_strip_to_buff` calls and uses this blob for PIXELS only. Carrying
+them made FRAME_SIZE's arithmetic imply otherwise, which is exactly the
+sort of thing that gets gated by mistake. Dropped 2026-08-09.
 """
 import sys
 from pathlib import Path
@@ -42,24 +46,16 @@ def extract_one(scr):
     for py in range(0, TOP_ROWS_PX):
         for bx in range(32):
             buf.append(scr[zx_byte_off(py, bx)])
-    # Top attrs: char-rows 0..(TOP_ROWS_PX/8 - 1)
     top_char_rows = TOP_ROWS_PX // 8
-    for cr in range(top_char_rows):
-        buf += scr[ATTR_BASE + cr * 32 : ATTR_BASE + cr * 32 + 32]
     # Left strip: y=TOP_ROWS_PX..(TOP_ROWS_PX + SIDE_ROWS_PX - 1)
     for py in range(TOP_ROWS_PX, TOP_ROWS_PX + SIDE_ROWS_PX):
         for bx in range(0, SIDE_BYTES_W):
             buf.append(scr[zx_byte_off(py, bx)])
-    side_char_rows = SIDE_ROWS_PX // 8
-    for cr in range(top_char_rows, top_char_rows + side_char_rows):
-        buf += scr[ATTR_BASE + cr * 32 : ATTR_BASE + cr * 32 + SIDE_BYTES_W]
     # Right strip
     right_start = 32 - SIDE_BYTES_W
     for py in range(TOP_ROWS_PX, TOP_ROWS_PX + SIDE_ROWS_PX):
         for bx in range(right_start, 32):
             buf.append(scr[zx_byte_off(py, bx)])
-    for cr in range(top_char_rows, top_char_rows + side_char_rows):
-        buf += scr[ATTR_BASE + cr * 32 + right_start : ATTR_BASE + cr * 32 + 32]
     return bytes(buf)
 
 
