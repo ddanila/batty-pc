@@ -742,6 +742,35 @@ static unsigned long high_score = 0;
  * points go to the wrong player. See PLAN.md WS3. */
 #define SIDE_ACTIVE (-1)
 
+/* The primary ball's OWNER side in Double Play — bit 7 of the original's
+ * `object_ball_1+$12`. Not a coordinate and not derived from one: the
+ * rest of that byte is a counter, and every operation on it preserves
+ * bit 7 deliberately —
+ *
+ *   LA27E_17:  LD A,(IX+$12) / AND $80 / LD (IX+$12),A   ; zero counter
+ *   LA27E_22:  ... INC A ... AND $7F / CP $7F ...        ; wrap counter
+ *              LD A,(IX+$12) / AND $80 / LD (IX+$12),A
+ *
+ * so nothing in flight ever changes it. It is set once, at
+ * `all_var_init`, from which side the ball STARTS on, and the start side
+ * alternates every entry:
+ *
+ *   LD A,(ball_x_coord+$01) / XOR $88 / LD (ball_x_coord+$01),A
+ *   ...
+ *   ball_x_coord: LD A,$48        ; self-modified: $48 <-> $C0
+ *   LD (object_ball_1+$02),A
+ *   CP $C0 / JR NZ,LB7F8_1
+ *   LD A,(object_ball_1+$12) / OR $80 / LD (object_ball_1+$12),A
+ *
+ * $48 XOR $88 = $C0 and back, so the ball starts left, right, left...
+ *
+ * The consequence is worth stating because it is not what "score by
+ * side" suggests: brick points go to whoever the BALL belongs to, for
+ * that ball's whole life, wherever the brick is. Only the bat, bullet
+ * and bonus sites are positional. */
+static unsigned char ball_owner_side = 0;      /* 0 = 1UP, 1 = 2UP */
+static unsigned char ball_start_right = 0;     /* the alternating flag */
+
 static void add_points_to_score(unsigned long pts, int side_x) {
     if (game_mode == 2 && side_x != SIDE_ACTIVE && (side_x & 0x80))
         players[1].score += pts;
@@ -3681,8 +3710,7 @@ static int brick_hit_resolve(int col, int row, int axis) {
         unsigned int idx = (unsigned int)((row < 12) ? row : 11);
         unsigned int pts = points_table[idx];
         if ((cell_val & 0x0F) >= 6) pts *= 2;     /* metal -> double */
-        add_points_to_score(pts, SIDE_ACTIVE);    /* needs the ball's
-                                                   * +$12 owner bit */
+        add_points_to_score(pts, ball_owner_side ? 0x80 : 0);
     }
     *cell |= 0x80;
     mark_brick_row_dirty(row);
@@ -4116,7 +4144,8 @@ static void write_replay_probe(void) {
     fprintf(f, "current_level=%02X\n", (unsigned)current_level_idx_var);
     fprintf(f, "bricks_quantity=%02X\n", (unsigned)live_bricks_remaining());
     fprintf(f, "score=%06lu\n", player.score);
-    fprintf(f, "scores=%06lu_%06lu\n", players[0].score, players[1].score);
+    fprintf(f, "scores=%06lu_%06lu_own%02X\n",
+            players[0].score, players[1].score, (unsigned)ball_owner_side);
     fprintf(f, "random_number=%04X\n", (unsigned)rng_current());
     fprintf(f, "random_seed=%04X\n", (unsigned)rng_seed_addr());
     fprintf(f, "enemy_repicks=arrival%u_turns%u\n",
@@ -4346,7 +4375,7 @@ static void step_bullet_one(int b) {
             unsigned int idx = (unsigned int)((hit.row < 12) ? hit.row : 11);
             unsigned int pts = points_table[idx];
             if ((*cell & 0x0F) >= 6) pts *= 2;    /* metal scores double */
-            add_points_to_score(pts, SIDE_ACTIVE);
+            add_points_to_score(pts, ball_owner_side ? 0x80 : 0);
             *cell |= 0x80;
             mark_brick_row_dirty(hit.row);
             brick_flash_spawn(hit.col, hit.row);
@@ -6377,6 +6406,12 @@ static void reset_level_state(unsigned char lvl_idx) {
     ball.stuck    = 1;
     ball.stuck_offset_x = BALL_X_OFFSET_ON_BAT;
     BALL_SHOW();                      /* visible from level entry; sits on the bat */
+    /* all_var_init's first act is the alternation, and it happens in
+     * every mode — only its effect on the ball's START X is mode-2
+     * specific, since outside Double Play the ball rests on the bat. */
+    ball_start_right = (unsigned char)(!ball_start_right);
+    ball_owner_side  = (unsigned char)((game_mode == 2 && ball_start_right)
+                                       ? 1 : 0);
     BALL_X        = BAT_X + BALL_X_OFFSET_ON_BAT;
     BALL_Y        = BAT_Y - BALL_H_PX;
     ball.stuck_ticks   = 0;                /* counts up while waiting for launch */

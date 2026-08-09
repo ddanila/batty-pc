@@ -238,6 +238,35 @@ def main() -> int:
             "need_change_player is always an `AND $80` of some object's "
             "coordinate.")
     print("PASS score_side_rule: it keys on game_mode $02 and the top bit")
+
+    # The BRICK sites take the ball's owner, not a position and not
+    # SIDE_ACTIVE. handling_ball's flag is (IX+$12) & $80, a persistent
+    # owner bit that nothing in flight changes — so brick points follow
+    # the BALL, wherever the brick is. Both mutations below SURVIVED
+    # until this check existed.
+    brick_owner = len(re.findall(
+        r"add_points_to_score\(pts, ball_owner_side \? 0x80 : 0\)", code))
+    if brick_owner < 2:
+        raise SystemExit(
+            f"FAIL: only {brick_owner} brick-scoring site(s) use "
+            f"ball_owner_side; expected the two that handling_ball covers "
+            f"(the LAFFC path and the sweep path). A brick score keyed on "
+            f"anything else — a coordinate, or SIDE_ACTIVE — credits the "
+            f"wrong player in Double Play. notes/double-play.md.")
+    print(f"PASS brick_score_owner: {brick_owner} brick sites take the "
+          f"ball's owner")
+
+    # The owner comes from an ALTERNATING start side, orig
+    # `LD A,(ball_x_coord+$01) / XOR $88 / LD (ball_x_coord+$01),A`.
+    # Pinned to a toggle: assigning a constant leaves every ball owned by
+    # player 1 and is invisible to everything else.
+    if "ball_start_right = (unsigned char)(!ball_start_right);" not in code:
+        raise SystemExit(
+            "FAIL: the ball's start side no longer alternates. The original "
+            "flips it at every all_var_init with `XOR $88` on the "
+            "self-modified start x ($48 <-> $C0); a fixed value leaves "
+            "every ball owned by the same player.")
+    print("PASS ball_start_alternates: the start side toggles each entry")
     return 0
 
 

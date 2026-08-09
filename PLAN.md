@@ -319,15 +319,23 @@ would bypass the side rule. Three of the five flag sites are ported (the
 alien kill and both bonus paths take the BAT's x; the bullet takes its
 own). Two are not, and pass an explicit `SIDE_ACTIVE`:
 
-- the ball's side is a persistent OWNER bit in `object_ball_1+$12`, set
-  at `all_var_init`, not its current x — the port has no such bit, so
-  brick scores are not side-attributed;
 - the end-of-round leftover bricks are split EVENLY by alternating the
-  flag, which needs a counter.
+  flag, which needs a counter. Still `SIDE_ACTIVE`.
 
-In Double Play those points therefore go to the active player. Stated,
-not silent. `PROBE.TXT` now carries `scores=<1up>_<2up>` so the next
-stage has something to assert against.
+**Stage 4 done (2026-08-09): the ball's owner bit.** `+$12` is a counter
+in bits 0..6 with bit 7 a separate flag that every counter operation
+preserves on purpose, so nothing in flight changes it. It is set once at
+`all_var_init` from which side the ball STARTS on, and the start side
+alternates every entry (`XOR $88` flips the self-modified `$48` <-> `$C0`).
+
+So **brick points go to whoever the BALL belongs to, for that ball's
+whole life, wherever the brick is** — only the bat, bullet and bonus
+sites are positional. This corrects what the entry above said when it
+was written; see notes/double-play.md.
+
+Not ported: the mode-2 start X itself. The alternation drives the owner
+either way, and moving the ball off the bat at Double Play entry is a
+visible change that belongs with bat 2's input.
 
 **Why after WS2:** WS2 builds the per-player state plumbing (HUD,
 banner, hi-score) that Double Play reuses; Double Play then adds the

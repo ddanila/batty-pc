@@ -65,10 +65,17 @@ bonus, the enemy kill). `add_points_to_score` then reads it:
       CALL score_update
       ... swap both blocks back ...
 
-So in Double Play **points are credited by WHERE the event happened, not
-by whose bat did it.** A brick broken on the right half scores for
-player 2 even if player 1's bat sent the ball there. Outside Double Play
-the whole block is skipped and everything scores to the active player.
+So in Double Play the score goes to whichever player the flag names.
+Outside Double Play the whole block is skipped and everything scores to
+the active player.
+
+**Correction (2026-08-09).** An earlier version of this file, and the
+commit that introduced it, said "points are credited by WHERE the event
+happened... a brick broken on the right half scores for player 2 even if
+player 1's bat sent the ball there". That is true for the BAT, BULLET
+and BONUS sites, whose flag comes from a live coordinate. It is NOT true
+for bricks: `handling_ball` sets the flag from `(IX+$12) & $80`, which
+is an OWNER bit, not a position. See below.
 
 The swap-add-swap idiom is the same one `players_swap` uses (see
 notes/menu.md): the game always operates on the "1up" block and moves
@@ -108,14 +115,41 @@ worth having written down:
 The first three are ported. The last two are not, and their call sites
 pass `SIDE_ACTIVE`, which credits the active player exactly as before:
 
-- the ball's side is a persistent owner bit in `+$12`, set at
-  `all_var_init` (`LD A,(object_ball_1+$12) / OR $80` in the mode-$02
-  branch when the ball starts at x=$C0), not derived from where the ball
-  currently is. The port has no such bit, so brick scores are not
-  side-attributed yet.
 - the end-of-round leftover bricks are split EVENLY between the players
   by alternating the flag ("Добавляет двум игрокам поровну очки"), which
-  needs a counter this does not have.
+  needs a counter this does not have. Its call site still passes
+  `SIDE_ACTIVE`.
 
-So in Double Play, brick points currently go to the active player rather
-than the side. A stated gap, not a silent one.
+## The ball's owner bit (2026-08-09)
+
+The fourth row is ported now, and it is the one that is easy to get
+wrong. `+$12` is a COUNTER in bits 0..6 with bit 7 as a separate flag,
+and every operation on the counter preserves that bit on purpose:
+
+    LA27E_17:  LD A,(IX+$12) / AND $80 / LD (IX+$12),A     ; zero counter
+    LA27E_22:  ... INC A ... AND $7F / CP $7F ...          ; wrap counter
+               LD A,(IX+$12) / AND $80 / LD (IX+$12),A
+
+So nothing in flight ever changes it. It is set once, at
+`all_var_init`, from which side the ball STARTS on — and the start side
+alternates on every entry:
+
+    LD A,(ball_x_coord+$01) / XOR $88 / LD (ball_x_coord+$01),A
+    ...
+    ball_x_coord: LD A,$48          ; self-modified: $48 <-> $C0
+    LD (object_ball_1+$02),A
+    CP $C0 / JR NZ,LB7F8_1
+    LD A,(object_ball_1+$12) / OR $80 / LD (object_ball_1+$12),A
+
+`$48 XOR $88 = $C0` and back, so the ball starts left, right, left...
+
+**Brick points therefore go to whoever the BALL belongs to, for that
+ball's whole life, wherever the brick is.** Only the bat, bullet and
+bonus sites are positional. Ported as `ball_owner_side`, with
+`ball_start_right` carrying the alternation; `PROBE.TXT` reports it as
+the `own` field of `scores=`.
+
+Not ported: the mode-2 START X itself ($48 / $C0 instead of resting on
+a bat). The alternation drives the owner either way, and moving the
+ball off the bat at level entry in Double Play is a visible change that
+belongs with bat 2's input rather than with scoring.
