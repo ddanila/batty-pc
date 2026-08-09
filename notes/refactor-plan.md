@@ -8,7 +8,7 @@ test. Started 2026-08-07.
 The stage table below is complete except stage 1, which is blocked for a
 reason rather than for want of effort — see the end of this section.
 
-**The code.** `main.cpp`: 7,747 → 6,831 lines (-11.8%) across 15
+**The code.** `main.cpp`: 7,747 → 6,834 lines (-11.8%) across 15
 modules. The longest function is `run_level` at 113 lines, and it is an
 orchestrator of named phases, which is what it should be.
 
@@ -130,7 +130,7 @@ happened, and `make test-video` caught it.
 | 1a | `replay_parse` — the BATTY_REPLAY_* value formats | 75 | **done** — 7 tests |
 | 1 | replay / probe scaffolding | ~430 | **as far as it should go** — 6 overrides out in `replay`, 6 host tests; the remaining 3 are blocked by design, see below |
 
-`main.cpp`: 7,747 → 6,831 (`wc -l`; see the status block on why this is not Watcom's count).
+`main.cpp`: 7,747 → 6,834 (`wc -l`; see the status block on why this is not Watcom's count).
 100 host tests + source gates, all via `make test-fast` in seconds.
 
 ### Stage 5b: one destroyed-cell reset, not two
@@ -567,6 +567,34 @@ paragraph. Use the headings, not the order. Nothing was reordered or
 removed when they were added; a multiset diff confirmed zero lines
 lost.
 
+
+#### The TOP-priority parity gap was closed too
+
+Having found one stale gap, I checked the one above it — priority 1,
+"Enemy RNG not byte-exact ... the last remaining motion approximation".
+
+`BATTY_RNG_PERFRAME` has DEFAULTED ON since 2026-06-05, implements the
+original's model (tick once per frame at the loop top, consumers read
+without advancing), and `make test-rng-walk` proves the port's
+`random_number` walk equals the original's byte for byte. The gap has
+been closed for two months.
+
+The source comment was contradicting itself: it opened "OFF by default:
+the port advances the RNG on demand" and then said "Now the DEFAULT
+(2026-06-05)" ten lines later, with the initialiser agreeing with the
+second. A reader who stopped at the first line — which is what an
+opening line is for — got the wrong answer.
+
+What actually remains of enemy motion is smaller and different: the bird
+runs `bounce_enemy_off_margins` rather than `LAFFC` and the exact
+`check_margins`. Verified by reading the call sites — only the balls
+take the `LAFFC` path. That is now what the entry says, instead of a
+claim about the RNG.
+
+Two stale gaps in two readings of the same file, both on items presented
+as open work. The lesson is not "check parity-gaps" — it is that a
+document nobody re-derives from the code drifts fastest exactly where it
+matters most, at the top of the priority list.
 
 #### A parity gap that had been closed for two months
 

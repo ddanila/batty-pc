@@ -7,10 +7,11 @@ they are good next targets when tightening original fidelity.
 
 > **Remaining gaps as of 2026-06-17** (after the #6/#7 fixes + the broadened
 > coverage in parity-status.md). In rough priority:
->  1. **Enemy RNG not byte-exact** — the port advances the RNG on demand
->     rather than the original's per-frame tick, so enemy *target* picks
->     (hence exact steered positions) drift from the original. The last
->     remaining motion approximation. (See "Some motion is approximate".)
+>  1. ~~**Enemy RNG not byte-exact**~~ — CLOSED. `BATTY_RNG_PERFRAME` is
+>     the default and is byte-exact (`make test-rng-walk`). What remains
+>     of enemy motion is that the bird uses `bounce_enemy_off_margins`
+>     instead of `LAFFC` + the exact `check_margins`. (See "Some motion
+>     is approximate".)
 >  2. **Multi-ball + MAGNET catch** — a MAGNET bat catches the primary ball
 >     but not the unified secondaries; mirroring the ~32-site stuck system
 >     per-ball is deferred feature work (see "bat-ball deflection").
@@ -34,13 +35,19 @@ they are good next targets when tightening original fidelity.
 
 Several paths use gameplay-equivalent but not byte-exact motion:
 
-- enemy movement: the `LAA7D` steering is now decoded and partly ported
-  (turn 1 dir-step toward target every 4 frames; repick a random target
-  *on arrival*, matching the original — the old 64-frame timer repick is
-  gone). Still approximate: the port advances the RNG on demand rather
-  than the original's per-frame tick (so enemy targets aren't byte-exact),
-  and the bird doesn't yet run `LAFFC` brick collision or the exact
-  `check_margins`. Ground truth + decode: `notes/enemy-movement.md`,
+- enemy movement: the `LAA7D` steering is decoded and ported (turn 1
+  dir-step toward target every 4 frames; repick a random target *on
+  arrival*, matching the original — the old 64-frame timer repick is
+  gone). The RNG half is **DONE**: `BATTY_RNG_PERFRAME` defaults ON and
+  is the original's model (tick once per frame at the loop top,
+  consumers read without advancing), proven byte-exact against the
+  original's `random_number` walk by `make test-rng-walk`. This entry
+  claimed the opposite — "the port advances the RNG on demand ... so
+  enemy targets aren't byte-exact" — for two months after the default
+  flipped on 2026-06-05.
+  Still approximate: the bird runs `bounce_enemy_off_margins` rather
+  than `LAFFC` brick collision and the exact `check_margins`; only the
+  balls take the `LAFFC` path. Ground truth + decode: `notes/enemy-movement.md`,
   capture via `scripts/capture_enemy_flight.py`. Enemy capture is
   unblocked (the L3 snapshot has a live enemy), unlike multi-ball.
 - **brick/ball collision** — DONE. The `LAFFC` port (cell-find incl. the

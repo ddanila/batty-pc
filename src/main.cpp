@@ -1045,8 +1045,11 @@ static RenderProfile prof;
  * brick through. BATTY_LEGACY_COLLISION=1 reverts to the old
  * brick_collision path. (Multi-ball secondaries still use brick_collision.) */
 
-/* RNG-model alignment (see notes/rng-model.md). OFF by default: the port
- * advances the RNG on demand at each consumer. ON (BATTY_RNG_PERFRAME=1):
+/* RNG-model alignment (see notes/rng-model.md). ON by default since
+ * 2026-06-05 — this opening line said "OFF by default" for two months
+ * while the paragraph below it, and the initialiser, said otherwise.
+ * OFF (BATTY_RNG_PERFRAME=0): the port advances the RNG on demand at
+ * each consumer. ON:
  * tick the RNG once per frame at the play-loop top (mirroring the
  * original's per-frame `CALL random_generate` at LB9E8_2) and let
  * read-current consumers sample without advancing — the original's model.
