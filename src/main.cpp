@@ -6019,6 +6019,28 @@ static void reset_level_state(unsigned char lvl_idx) {
 /* Seeded overrides from the replay harness. Applied after the level's
  * bricks are loaded and before anything reads them, so a seeded run and
  * the original start from the same state. */
+/* BATTY_REPLAY_CLEAR_BRICKS: mark every destructible cell destroyed, so
+ * live_bricks_remaining() is 0 on the first frame and run_level takes the
+ * level-clear branch immediately.
+ *
+ * This is what makes the level-clear -> next transition reachable from a
+ * gate. Clearing a level for real means destroying ~50 bricks with the
+ * ball, which is neither quick nor deterministic; the rocket-clear gates
+ * cover the ROCKET route to the same place, not the ordinary one.
+ *
+ * Bit 7 is the destroyed flag. live_bricks_remaining() counts a cell as
+ * live when `!(cell & 0xA0)`, so cells that already have bit 5 or bit 7
+ * set are not live and are left exactly as they are — an indestructible
+ * cell must stay indestructible, not become rubble. */
+static void apply_replay_clear_bricks(void) {
+    const char *p = getenv("BATTY_REPLAY_CLEAR_BRICKS");
+    int i;
+    if (p == NULL || *p == '\0' || *p == '0') return;
+    for (i = 0; i < LVL_CELLS; i++) {
+        if (!(live_level[i] & 0xA0)) live_level[i] |= 0x80;
+    }
+}
+
 static void apply_replay_overrides(void) {
     replay_apply_random();
     replay_apply_object("BATTY_REPLAY_BAT_OBJECT",  OBJ_BAT_1);
@@ -6036,6 +6058,8 @@ static void apply_replay_overrides(void) {
     apply_replay_multiball();
     apply_replay_bigball();
     apply_replay_rocket_override();
+    /* Last: it reads the grid every other override may have written. */
+    apply_replay_clear_bricks();
 }
 
 /* The round banner and the all-metal shimmer, plus the harness hooks that

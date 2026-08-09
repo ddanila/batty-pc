@@ -416,6 +416,9 @@ $(TEST_FLOPPY_OUT): $(FLOPPY_TEST_EXE) $(ASSETS) $(FLOPPY_SRC)
 	if [ -n "$$BATTY_REPLAY_SCORE" ]; then \
 	    printf 'SET BATTY_REPLAY_SCORE=%s\r\n' "$$BATTY_REPLAY_SCORE" >> $(AUTOEXEC_T) ; \
 	fi; \
+	if [ -n "$$BATTY_REPLAY_CLEAR_BRICKS" ]; then \
+	    printf 'SET BATTY_REPLAY_CLEAR_BRICKS=%s\r\n' "$$BATTY_REPLAY_CLEAR_BRICKS" >> $(AUTOEXEC_T) ; \
+	fi; \
 	if [ -n "$$BATTY_HOLD_GAME_OVER" ]; then \
 	    printf 'SET BATTY_HOLD_GAME_OVER=%s\r\n' "$$BATTY_HOLD_GAME_OVER" >> $(AUTOEXEC_T) ; \
 	fi; \
@@ -1267,6 +1270,11 @@ test-name-entry-visual:
 # BATTY_SUPPRESS_NO_BALL_DEATH, so the death is the only difference.
 test-life-loss:
 	python3 scripts/test_life_loss.py
+
+# Level-clear -> next, and the level index wrapping at N_LEVELS. Both
+# reachable only because BATTY_REPLAY_CLEAR_BRICKS empties the grid.
+test-level-advance:
+	python3 scripts/test_level_advance.py
 
 test-stuck-ball-offset:
 	python3 scripts/test_stuck_ball_offset.py

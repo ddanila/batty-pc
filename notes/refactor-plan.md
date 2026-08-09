@@ -5,19 +5,19 @@ test. Started 2026-08-07.
 
 ## Where this stands
 
-The full suite runs **58/58 green** — twelve clean runs now, the
+The full suite runs **59/59 green** — twelve clean runs now, the
 latest covering the name-entry decomposition.
 Six of the seven defects this refactor surfaced are closed; #14 is open
 because settling it needs ground truth the port does not have.
 
-Gate count 51 → 58 this session: `test-blast-dirty-redraw`,
+Gate count 51 → 59 this session: `test-blast-dirty-redraw`,
 `test-game-over`, `test-stuck-ball-offset`, `test-visual-checkpoints`
 `test-invariant-owners`, `test-ball-sign-cache-owner` and
 `test-game-over-visual` and `test-name-entry-visual`, each covering
 something nothing reached before.
 
-`main.cpp`: 7,747 → 6,815 lines (-12.7%) across 15 modules. `make test-fast`
-runs every host test and source gate in seconds; `--full` is 58 gates
+`main.cpp`: 7,747 → 6,839 lines (-11.7%) across 15 modules. `make test-fast`
+runs every host test and source gate in seconds; `--full` is 59 gates
 in under six minutes.
 
 Line counts here are `wc -l`, measured against `wc -l` at `e0bb447` (the
@@ -106,7 +106,7 @@ happened, and `make test-video` caught it.
 | 1a | `replay_parse` — the BATTY_REPLAY_* value formats | 75 | **done** — 7 tests |
 | 1 | replay / probe scaffolding | ~430 | **started** — 5 overrides out in `replay`, 6 host tests; the rest need the state first |
 
-`main.cpp`: 7,747 → 6,815 (`wc -l`; see the status block on why this is not Watcom's count).
+`main.cpp`: 7,747 → 6,839 (`wc -l`; see the status block on why this is not Watcom's count).
 100 host tests + source gates, all via `make test-fast` in seconds.
 
 ### Stage 5b: one destroyed-cell reset, not two
@@ -670,8 +670,27 @@ the letter row to change, since placement alone would look identical
 whether `step_name_letter` worked or not. Mutation-checked by making the
 LEFT arm a no-op.
 
-`parity-gaps.md` listed the game-FLOW transitions as ungated. Three of
-the five are now closed: game-over and name entry visually, and
+`parity-gaps.md` listed five game-FLOW transitions as ungated. **All
+five are now closed.** The last two — level-clear → next and the level
+wrap — needed a level that clears without destroying ~50 bricks with the
+ball, so `BATTY_REPLAY_CLEAR_BRICKS` marks every destructible cell
+destroyed at entry. It leaves cells that already carry bit 5 or bit 7
+alone, because `live_bricks_remaining` does not count those as live and
+an indestructible cell must not become rubble.
+
+With the grid empty the game runs through levels as fast as it can draw
+them — about one per 1.3 s — which is what makes the wrap reachable at
+all. `test-level-advance` asserts `current_level == round_number %
+N_LEVELS` past the boundary; that identity holds at every round, so an
+overshoot proves as much as landing exactly on 15. Observed: round 29 →
+level 14. Mutation-checked by changing the modulus to 16.
+
+The wrap half is load-sensitive and the gate says so in its own failure
+message rather than leaving someone to guess: reaching round 15 depends
+on host speed, and falling short is not a port regression unless the
+advance assertion failed too.
+
+The other three were closed earlier: game-over and name entry visually, and
 life-loss by `test-life-loss` — an A/B where BOTH runs seed 3 lives and
 hide the ball (so `handle_no_ball_death` is reached on frame 1) and the
 only difference is `BATTY_SUPPRESS_NO_BALL_DEATH`. Same level, same

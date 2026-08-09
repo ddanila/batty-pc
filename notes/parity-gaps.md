@@ -232,7 +232,8 @@ invariants (see notes/testing.md for the full list). Now covered:
 Remaining test gaps (see the priority list at the top of this file): of the
 game-FLOW transitions, game-over and the hi-score name entry are now gated
 visually (`test-game-over-visual`, `test-name-entry-visual`) and life-loss by
-an A/B on the death (`test-life-loss`). Still ungated end-to-end:
-level-clear -> next, and level wrap. and the byte-exact frame-step
+an A/B on the death (`test-life-loss`). Level-clear -> next and the level wrap are gated by `test-level-advance`,
+which uses `BATTY_REPLAY_CLEAR_BRICKS` to empty the grid at entry. All five
+game-FLOW transitions now have end-to-end coverage. and the byte-exact frame-step
 oracle is built for L3/L5 — the poke-`$B7EA`+`$BA24` recipe generalizes it
 to any level when more are wanted.
