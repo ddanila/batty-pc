@@ -4519,6 +4519,27 @@ static void rest_ball_on_bat(void) {
              (objects[OBJ_BAT_1].bonus_applied == 0x03 ? 1 : 0);
 }
 
+/* Is this step landing the descending ball on the bat?
+ *
+ * The Y test uses the ball's HEIGHT (7), not eff_ball_size (8), and a
+ * STRICT `>`. The original fires LAB1F when obj_compare reports Y
+ * overlap, which (LAC22: 166 - ball_y borrows) is exactly ball_y >= 167,
+ * i.e. next_y + 7 > bat_top of 173.
+ *
+ * Matching the fire FRAME is what makes the ball's x — and so the
+ * deflection zone derived from it — match the Spectrum. Firing at >=
+ * (y = 166), or using the width instead of the height, fires one frame
+ * early at a smaller x and shifts the zone on shallow descents: dir
+ * $08 left of centre came out $24 instead of $28.
+ * See notes/bat-deflection.md. */
+static bool ball_lands_on_bat(int next_x, int next_y, int ball_sz) {
+    return ball.dy > 0
+        && next_y + BALL_H_PX > BAT_Y
+        && next_y < BAT_Y
+        && next_x + ball_sz > eff_bat_left()
+        && next_x < eff_bat_right();
+}
+
 /* Side walls. The ball is snapped flush to the wall rather than left
  * where the step put it, and the sub-pixel fraction is dropped with it —
  * carrying a fraction past a snap would drift the ball off the wall.
@@ -4567,8 +4588,6 @@ static void step_ball(void) {
     int next_x, next_y;
     int dx_q8, dy_q8;
     long next_x_q8, next_y_q8;
-    int bat_left  = eff_bat_left();
-    int bat_right = eff_bat_right();
     int bat_top   = BAT_Y;
     int ball_sz   = eff_ball_size();
     if (ball.stuck) {
@@ -4593,23 +4612,8 @@ static void step_ball(void) {
     ball.dy = (dy_q8 < 0) ? -1 : (dy_q8 > 0 ? 1 : 0);
     bounce_ball_off_side_walls(&next_x, &next_x_q8, ball_sz);
     bounce_ball_off_ceiling(&next_y, &next_y_q8);
-    /* Bat top: the ball is descending and overlaps the bat in X. */
-    if (ball.dy > 0
-        && next_y + BALL_H_PX > bat_top
-        && next_y < bat_top
-        && next_x + ball_sz > bat_left
-        && next_x < bat_right) {
-        /* Y-dimension uses the ball HEIGHT (7), not the width (eff_ball_size
-         * = 8), and a STRICT `>`: the original fires LAB1F when obj_compare
-         * reports Y overlap, which (LAC22: 166 - ball_y borrows) is exactly
-         * ball_y >= 167, i.e. next_y + 7 > bat_top(173). Matching the fire
-         * frame is what makes the ball x - hence the deflection zone -
-         * match the Spectrum. Firing at >= (y=166) or using the width fired
-         * one frame early at a smaller x, shifting the zone on shallow
-         * descents (e.g. dir 0x08 left of centre gave 0x24 not 0x28). The
-         * resting ball then snaps to $A6 = bat_top - 7 = 166. See
-         * notes/bat-deflection.md. */
-        next_y  = bat_top - BALL_H_PX;
+    if (ball_lands_on_bat(next_x, next_y, ball_sz)) {
+        next_y = bat_top - BALL_H_PX;   /* rests at $A6 = 166 */
         /* MAGNET/CATCH bonus (original BAT+$14 == $03, LAB1F_1..3): the
          * ball sticks on contact and waits for FIRE to release. Only a
          * NORMAL-width bat catches (the original gates on width $1C; a

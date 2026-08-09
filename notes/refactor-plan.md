@@ -61,7 +61,7 @@ happened, and `make test-video` caught it.
 | 1a | `replay_parse` — the BATTY_REPLAY_* value formats | 75 | **done** — 7 tests |
 | 1 | replay / probe scaffolding | ~430 | **last** — see below |
 
-`main.cpp`: 7,746 → 6,866. 100 host tests + source gates, all via `make test-fast` in seconds.
+`main.cpp`: 7,746 → 6,870. 100 host tests + source gates, all via `make test-fast` in seconds.
 
 ### Stage 5b: one destroyed-cell reset, not two
 
@@ -511,6 +511,14 @@ to protect, violated three commits after naming it. Inert today, because
 the port's ball object handler is a stub, but `call_for_all_obj`
 dispatches on `sprite_set` and the probe dumps those objects. It uses
 the helper now.
+
+`ball_lands_on_bat` pulled the bat-hit test out of `step_ball` — five
+conditions whose rationale ran to eleven lines above them, so the
+condition and its justification were competing for the same space. It is
+the most-explained line in the port: the Y test uses the ball's HEIGHT,
+not its width, with a strict `>`, because matching the FRAME the
+original fires on is what makes the ball's x — and so the deflection
+zone derived from it — match the Spectrum.
 
 `apply_slow_bonus` and `apply_multi_ball_bonus` finished `bonus_apply`:
 every arm of the switch is now a named call or a two-liner, so the
