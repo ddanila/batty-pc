@@ -1015,5 +1015,36 @@ from 8 to 9 — the discriminator the gate exists for — is still caught.
 
 The general form: when a gate is flaky because the system has two legal
 outcomes, look for something already in the capture that says WHICH one
-happened. Asserting `A -> X, B -> Y` beats both pinning the phase (more
-machinery) and dropping the assertion (less coverage).
+happened. Asserting `A -> X, B -> Y` beats dropping the assertion, and
+it keeps holding no matter what the phase does.
+
+### Postscript, same day: the phase pin already existed
+
+"pinning the phase (more machinery)" was wrong, and worth recording
+because it is a research failure, not a coding one. `BATTY_REPLAY_COUNTER`
+has been in the port for months —
+
+    static void pin_replay_frame_counter(void) {
+        const char *pc = getenv("BATTY_REPLAY_COUNTER");
+        ...  pit_frame_counter = v;
+
+— called from `enter_level` right after the WAIT_KEY release, with a
+comment naming this exact failure ("a 4-frame steer turn can slide
+across a probe frame run-to-run (the test-enemy-steer flake)"). It was
+one env var away the whole time, and I diagnosed the mechanism correctly
+without checking whether the fix was already built.
+
+`BATTY_REPLAY_COUNTER=0` is now set by `test-enemy-descend`,
+`test-enemy-brick-walk` and `test-enemy-margin-clamp`. Measured: frame 8
+of the descend gate reports `turns=1 target=0x29` on 4 runs out of 4,
+where before it was a coin flip. The margin gate now asserts `dir`
+exactly rather than only bounding it.
+
+The implication assertions stay. They are not made redundant by the pin:
+they state WHY a value is the right one, they survive the pin being
+dropped, and `notes/lessons.md` records that the pin does NOT survive
+checkpoint halts — so any multi-checkpoint gate is back to needing them.
+
+PLAN.md's WS6 item 4 called a boot-phase-normalized harness "a known
+deferred test-infra effort". For the port side it is done and was
+already done.

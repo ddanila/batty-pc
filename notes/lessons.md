@@ -452,3 +452,21 @@ retry passed because it was a coin flip, not because it was alone. A
 runner that explains nondeterminism as contention hides exactly the
 gates worth finding. Treat "only passed on retry" as unexplained until
 measured. See known-bugs #17.
+
+Fifth instance, same day, and it is about me rather than the code:
+**check whether the fix already exists before designing around its
+absence.** Having worked out that `test-enemy-descend`'s flake was the
+free-running counter's phase, I wrote that pinning the phase would be
+"more machinery" and built an implication-based assertion instead.
+`BATTY_REPLAY_COUNTER` had been in the port for months, is applied by
+`pin_replay_frame_counter` at exactly the right moment, and its comment
+names this exact flake. One env var.
+
+The implication work was not wasted — it is the stronger assertion and
+it survives the pin being dropped — but it was presented as the only
+option when it was not. The tell was available: the third instance in
+this file already discusses `BATTY_REPLAY_COUNTER` by name. I had read
+that entry and did not connect it.
+
+So: when a mechanism is diagnosed, grep for it in `src/` and in these
+notes before deciding what to build.

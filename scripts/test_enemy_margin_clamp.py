@@ -20,15 +20,24 @@ The scenario seeds an alien at x=12, y=20 (above the brick band, so
 LAFFC cannot interfere) heading left with target == dir, and watches it
 arrive at the wall and stay there.
 
-PHASE. Steering is gated on `pit_frame_counter & 3`, whose phase depends
-on how long boot took (known-bugs #17), so `target` is never assertable
-and `dir` is only assertable RELATIVE to how many turns have run. Each
+PHASE. Steering is gated on `pit_frame_counter & 3`. That counter has
+been free-running since boot, so its phase here was wall-clock roulette
+(known-bugs #17) until `BATTY_REPLAY_COUNTER=0` was added to the env
+below — it pins the counter at the aligned start, which makes every
+counter-phase decision the same run to run.
+
+With it pinned, `dir` is assertable exactly. The relative form is kept
+alongside it because it says WHY those values are the right ones: each
 non-arrival turn moves dir by exactly one 6-bit step, so
 
     shortest_arc(dir, $20) <= turns - arrival
 
-is exact, phase-independent, and still catches a reflection: the old
-code flipped dir to $00 in a single frame, an arc of 32.
+holds whether or not the phase is pinned, and a reflection off the wall
+is an arc of 32 — 32 steps that no number of turns can explain.
+
+One caveat on the pin, from notes/lessons.md: it does NOT survive
+checkpoint halts, so only the FIRST checkpoint of a timeline is valid.
+Every case here is its own boot with a single checkpoint.
 """
 import os
 import re
@@ -52,7 +61,11 @@ EXP_Y = 20
 # then the clamp holds it. Frames past the clamp are the real assertion —
 # under the old reflect-and-re-aim, dir flipped to $00 and x climbed away
 # from the wall instead of resting on it.
-CASES = [(2, 10), (4, CLAMP_X), (6, CLAMP_X), (8, CLAMP_X)]
+# (frame, expected x, expected dir). dir is exact because the counter is
+# pinned; frame 8 is where the alien's own arrival re-pick has finally
+# turned it off the wall.
+CASES = [(2, 10, 0x20), (4, CLAMP_X, 0x20),
+         (6, CLAMP_X, 0x20), (8, CLAMP_X, 0x21)]
 
 
 def shortest_arc(a: int, b: int) -> int:
@@ -68,6 +81,7 @@ def probe(frame: int):
         f"BATTY_TEST_FLOPPY={FLOPPY} BATTY_LEVEL=3 BATTY_START_LEVEL=1 "
         f"BATTY_REPLAY_WAIT_KEY=1 BATTY_REPLAY_PROBE=1 "
         f"BATTY_REPLAY_RANDOM=3793 BATTY_REPLAY_RANDOM_SEED=962A "
+        f"BATTY_REPLAY_COUNTER=0 "
         f"BATTY_REPLAY_BAT_OBJECT={BAT} BATTY_REPLAY_BALL_STUCK=0 "
         f"BATTY_REPLAY_BALL_OBJECT={BALL} "
         f"BATTY_REPLAY_ENEMY_OBJECT={ENEMY} "
@@ -94,7 +108,7 @@ def probe(frame: int):
 
 def main() -> int:
     ok = True
-    for frame, exp_x in CASES:
+    for frame, exp_x, exp_dir in CASES:
         got = probe(frame)
         if got is None:
             print(f"  frame {frame}: NO enemy in PROBE.TXT [FAIL]")
@@ -104,7 +118,8 @@ def main() -> int:
         x, y, d = b[2], b[4], b[6]
         steps = turns - arrival           # turns that actually moved dir
         arc = shortest_arc(d, START_DIR)
-        good = (x == exp_x and y == EXP_Y and arc <= steps)
+        good = (x == exp_x and y == EXP_Y and d == exp_dir
+                and arc <= steps)
         ok = ok and good
         why = "" if arc <= steps else (
             f" — dir moved {arc} steps but only {steps} turns could have "
@@ -112,7 +127,7 @@ def main() -> int:
         print(f"  frame {frame}: x={x} y={y} dir=0x{d:02X} "
               f"arrival={arrival} turns={turns} arc={arc} "
               f"[{'PASS' if good else 'FAIL'}] (expect x={exp_x} "
-              f"y={EXP_Y} arc<={steps}){why}")
+              f"y={EXP_Y} dir=0x{exp_dir:02X} arc<={steps}){why}")
 
     if ok:
         print("PASS enemy_margin_clamp: the alien rests on the left clamp "

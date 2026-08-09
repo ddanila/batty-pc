@@ -88,6 +88,13 @@ EXP_X, EXP_DIR, EXP_SPD, EXP_TARGET = 168, 0x10, 1, 0x10
 # stronger than what it replaced, not weaker: it now pins BOTH outcomes,
 # and it pins that the slide frames cannot steer at all.
 #
+# Since 2026-08-09 the env also sets BATTY_REPLAY_COUNTER=0, which pins
+# the counter at the aligned start and makes the phase deterministic —
+# so in practice only the `turns == 1` arm is taken now, every run. The
+# implication is kept anyway: it is the reason the value is right, and
+# it keeps holding if the pin is ever dropped or a case is added that
+# the pin does not reach.
+#
 #   turns == 0  ->  target is untouched, still $10
 #   turns == 1  ->  dir has ARRIVED at target, so the turn re-picked; the
 #                   replay RNG is fixed (BATTY_REPLAY_RANDOM=8E49) and
@@ -105,6 +112,7 @@ def probe_enemy(frame: int):
     env = (
         f"BATTY_LEVEL=3 BATTY_START_LEVEL=1 BATTY_REPLAY_WAIT_KEY=1 "
         f"BATTY_REPLAY_PROBE=1 BATTY_REPLAY_RANDOM=8E49 "
+        f"BATTY_REPLAY_COUNTER=0 "
         f"BATTY_REPLAY_BAT_OBJECT={BAT_OBJECT} BATTY_REPLAY_BALL_STUCK=0 "
         f"BATTY_REPLAY_BALL_OBJECT={BALL_OBJECT} "
         f"BATTY_REPLAY_ENEMY_OBJECT={FRESH_ENEMY} "

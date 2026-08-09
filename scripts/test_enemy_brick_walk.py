@@ -24,13 +24,16 @@ The scenario seeds a fresh alien inside the L3 brick band (y=$3C) aimed
 straight down (dir=$10, target=$10 so nothing steers it away) at x=164,
 and reads four frames.
 
-WHAT IS AND IS NOT ASSERTED. `target` is deliberately not checked. The
-alien's first frame is ordinary flight, and a steer there is gated on
-`pit_frame_counter & 3` — a global counter whose phase depends on how
-long boot took (known-bugs #17). It happens to be stable over the three
-runs measured, but that is luck, not a property. x, y, dir and the
-latched word are phase-independent, because from frame 1 on the alien is
-homing and homing skips the steer entirely.
+PHASE. The alien's first frame is ordinary flight, and a steer there is
+gated on `pit_frame_counter & 3` — free-running since boot. The env
+below pins it with `BATTY_REPLAY_COUNTER=0`, so every counter-phase
+decision is the same run to run (known-bugs #17). x, y, dir and the
+latched word would hold anyway, because from frame 1 on the alien is
+homing and homing skips the steer entirely; `target` would not, and is
+still not asserted — it is not what this gate is about.
+
+The pin does not survive checkpoint halts (notes/lessons.md), so every
+case here is its own boot with a single checkpoint.
 """
 import os
 import re
@@ -56,8 +59,8 @@ BALL  = "02006C004E001F03020CEEF008076C4E020C0000008C"
 #            one pixel per frame: 165, 166, 167
 #   frame 5  x reaches $A8 and LAA44_4 clears the word, so frame 6 is
 #            ordinary flight again — and it re-latches, at ($A8,$34),
-#            with dir now reflected to $30. That frame is NOT asserted:
-#            it follows a normal-flight frame and so is phase-exposed.
+#            with dir now reflected to $30. Not asserted: one re-latch is
+#            enough to show the cycle, and the second adds no property.
 CASES = [
     (2, 165, 61, 0x10, "A83D"),
     (3, 166, 61, 0x10, "A83D"),
@@ -73,6 +76,7 @@ def probe(frame: int):
         f"BATTY_TEST_FLOPPY={FLOPPY} BATTY_LEVEL=3 BATTY_START_LEVEL=1 "
         f"BATTY_REPLAY_WAIT_KEY=1 BATTY_REPLAY_PROBE=1 "
         f"BATTY_REPLAY_RANDOM=3793 BATTY_REPLAY_RANDOM_SEED=962A "
+        f"BATTY_REPLAY_COUNTER=0 "
         f"BATTY_REPLAY_BAT_OBJECT={BAT} BATTY_REPLAY_BALL_STUCK=0 "
         f"BATTY_REPLAY_BALL_OBJECT={BALL} "
         f"BATTY_REPLAY_ENEMY_OBJECT={ENEMY} "

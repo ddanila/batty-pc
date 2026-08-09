@@ -276,8 +276,14 @@ right).
    scoped in `performance.md`: batch the small asset `fread`s (floppy
    load time — the one untouched perf lever) and optionally a single
    auto-dispatching binary (runtime 386 detect) instead of two EXEs.
-3. **Boot-phase-normalized harness** (unblocks WS6.4) — only if a
-   cheap design appears; it's a known deferred test-infra effort.
+3. ~~**Boot-phase-normalized harness**~~ — for the PORT side this was
+   already built and I had not noticed: `BATTY_REPLAY_COUNTER` pins
+   `pit_frame_counter` at the aligned start (`pin_replay_frame_counter`,
+   called from `enter_level`). Set it and every counter-phase decision is
+   deterministic. Now used by the three enemy gates. What remains for a
+   byte-exact comparison against the ORIGINAL is aligning the port's pin
+   with the original's `counter_misc` at the same moment — that part is
+   still open. known-bugs #17.
 
 ## WS9 — Polish, history, distribution
 
