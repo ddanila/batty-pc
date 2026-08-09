@@ -14,24 +14,32 @@ The port is "100%" when all of the following hold:
 
 | # | Criterion | Today |
 |---|-----------|-------|
-| 1 | All three game modes work: 1 Player, 2 Players (alternating), Double Play (simultaneous split-court co-op) | 1P only; modes 2/3 selectable but inert |
-| 2 | Menu semantics match the original (0/ENTER starts the selected game directly; A/B input-device cycling affects play) | Start routes through the attract chain; device choice unused |
-| 3 | Core gameplay byte-exact where an oracle exists (ball, bat, collision, RNG, enemy, bonuses, scoring) | **Done** — regression-locked by ~60 gates |
-| 4 | Full game FLOW gated end-to-end: level-clear → next, life-loss → respawn, game-over → initials, level wrap | Sustained-play soak only; transitions unverified |
+| 1 | All three game modes work: 1 Player, 2 Players (alternating), Double Play (simultaneous split-court co-op) | 1P and 2P done; Double Play has its court, both bats, ball physics and scoring but no bat-2 INPUT |
+| 2 | Menu semantics match the original (0 starts the selected game directly; A/B input-device cycling affects play) | Key 0 starts the game (`test-menu-start`); the device byte is per-player state but still selects nothing |
+| 3 | Core gameplay byte-exact where an oracle exists (ball, bat, collision, RNG, enemy, bonuses, scoring) | **Done** — regression-locked by 88 gates |
+| 4 | Full game FLOW gated end-to-end: level-clear → next, life-loss → respawn, game-over → initials, level wrap | **Done** — `test-level-advance`, `test-life-loss`, `test-game-over-visual`, `test-name-entry-visual` |
 | 5 | Sound faithful to the original's 4-slot beeper queue (envelope/timing, not just effect IDs) | PIT-tone approximation of 13 effect IDs |
-| 6 | All assets derived from the tape at build time; no captured emulator blobs | `frame_l1.bin`, parts of `level_attrs.bin`, menu/hi-score screens still captured |
+| 6 | All assets derived from the tape at build time; no captured emulator blobs | **Done** — all 13 loaded assets build from `original/blocks/`, held by `test-asset-provenance` |
 | 7 | Runs correctly on real-hardware-representative targets (XT-class + 386) | QEMU + 86Box `ibmxt` verified; real iron untested |
 | 8 | Historical completeness: Kinnock easter egg, pause semantics, hi-score behaviour | **Done** — pause, hi-score, and the easter egg (`BATTY_KINNOCK=1`) |
+
+*Table refreshed 2026-08-09. Four rows were stale, and two of them
+UNDERSTATED the state — criterion 4's transitions had been gated for
+weeks while this table still said "unverified", and criterion 6 was met
+during the WS7 work. A status table nobody re-reads is the same defect
+as a parity note nobody re-reads; `notes/testing.md` and
+`notes/parity-gaps.md` both had the transition gates listed.*
 
 Byte-exactness of the already-achieved core (criterion 3) is a floor,
 not a ceiling to re-litigate: every workstream below must keep
 `make parity-check` green, and milestone-level work runs
 `parity-check-full` before merge.
 
-## Where we are (July 2026)
+## Where we are (August 2026)
 
-Playable end-to-end in 1-player mode: title → menu → hi-score → all 15
-levels → game-over → initials → title. All 15 levels pixel-perfect at
+Playable end-to-end in 1- and 2-player mode: title → menu → hi-score →
+all 15 levels → game-over → initials → title, with 2-player handing the
+turn over on each life loss and on a player running out. All 15 levels pixel-perfect at
 entry; ball motion, LAFFC brick collision, bat deflection, RNG walk,
 enemy motion/steering/animation, bonus economy, scoring, and all
 per-frame animations are byte-exact vs the Spectrum and gate-locked.

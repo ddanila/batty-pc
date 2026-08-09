@@ -125,6 +125,29 @@ def main() -> int:
                        f"{counts['source']} source, {counts['oracle']} "
                        f"ZEsarUX-oracle, {counts['total']} total")
 
+    # PLAN.md's definition-of-done table is the THIRD place, and the
+    # one a reader meets first. Only the table is scanned, not the whole
+    # plan: the workstream sections are full of past-tense figures
+    # ("all 59 QEMU gates passed with it broken") that are correct as
+    # history, which is the same reason the status block above is read
+    # in isolation. The table is present tense by construction.
+    plan = (ROOT / "PLAN.md").read_text()
+    tm = re.search(r"^\| # \| Criterion \| Today \|\n(?:\|[^\n]*\n)+", plan,
+                   re.M)
+    if not tm:
+        bad.append("PLAN.md has no definition-of-done table; if it moved, "
+                   "point this gate at it")
+    else:
+        for n in set(int(x) for x in
+                     re.findall(r"(\d+)\s+(?:[A-Za-z-]+\s+){0,3}gates",
+                                tm.group(0))):
+            if n not in counts.values():
+                bad.append(f"PLAN.md's status table claims {n} gates, which "
+                           f"is none of the real counts: {counts['qemu']} "
+                           f"QEMU, {counts['source']} source, "
+                           f"{counts['oracle']} oracle, {counts['total']} "
+                           f"total")
+
     # notes/testing.md's opening blockquote is the other place a reader
     # meets these numbers, and it is the FIRST thing in the file. It
     # stated "make test-video is the one gate here that needs no
