@@ -629,11 +629,24 @@ difference is entirely in the attrs. Two reasons, both deliberate.
   painter no longer dims it either, and `main.cpp`'s wrapper calls
   `dim_border_shadow_column(cr0, cr1)` — the same split
   `restore_inner_border_line` got. Both painters now have one contract.
-- The row-scoped painter re-bases only `[cr0, cr1]`. In the game the
-  rows around it come from the static cache, so a standalone full paint
-  is not the right oracle for them.
+- The row-scoped painter re-bases only `[cr0, cr1]`, and its two
+  BOUNDARY attr rows are inherited rather than produced: `cr0` is row
+  `r0-1`'s shadow row and `cr1` is row `r1+1`'s cell row. In the game
+  both come from the static cache.
 
-That left one real asymmetry, since fixed, and one that is inherent.
+Measured exactly, after the shadow fix: comparing the two band painters
+leaves 106 of 150 pairs differing; excluding `cr1` alone still leaves
+106; excluding BOTH boundary rows passes. So the residue is entirely
+those two rows, which is what `repair_band_row_boundaries`' own comment
+predicts.
+
+A band-level test is therefore viable for pixels and for the INTERIOR
+attr rows — but excluding `cr1` would drop the mutation-verified
+coverage of `repaint_row_attrs`, which writes exactly there. The test
+stays at the primitive level for now; the trade is coverage against
+realism, and coverage wins while the cache fixture does not exist.
+
+One asymmetry was real and is fixed; the other is inherent.
 The test stays where it was — at the primitive level, where its attr
 comparison is mutation-verified to catch `repaint_row_attrs` going
 missing. Strengthening it properly would mean giving the test the cache
