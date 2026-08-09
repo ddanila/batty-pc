@@ -13,8 +13,12 @@ spawns at y=1 and descends y=1,2,3,... at +1/frame with x/dir/spd/target
 held at 168/$10/1/$10 until y>=8. See notes/enemy-movement.md.
 
 This bakes that exact fresh descriptor into the port replay
-(BATTY_REPLAY_ENEMY_OBJECT) and probes object_enemy at two descend frames,
-asserting x=168, dir=$10, spd=1, target=$10 and y advancing +1/frame.
+(BATTY_REPLAY_ENEMY_OBJECT) and probes object_enemy at three frames: two mid-slide, asserting
+x=168, dir=$10, spd=1, target=$10 and y advancing +1/frame, and one just
+after the slide ends, asserting it has STOPPED at y=8.
+
+The stop-frame case exists because the `y < 8` threshold was otherwise
+unguarded across the whole suite — see the comment on CASES.
 
 Note on frame numbering: BATTY_VISUAL_PROBE_FRAMES counts port frames from
 the replay start, which is offset by 1 from the original's $BA83 frame
@@ -43,7 +47,21 @@ BALL_OBJECT = "02006C004E001F03020CEEF008076C4E020C0000008C"
 
 # (port probe frame, expected y). x/dir/spd/target are frame-invariant
 # during the descend. y = probe_frame + 1 (the +1 numbering offset above).
-CASES = [(3, 4), (6, 7)]
+# (port frame, expected y). The first two are mid-slide and check the
+# +1/frame slope. The THIRD is the one that pins where the slide STOPS.
+#
+# `handling_bird` slides while y < 8. Nothing in the suite guarded that
+# 8: changing it to 9 left all 59 QEMU gates green, while making the
+# alien enter one pixel lower than the original. This gate passed too,
+# correctly — its docstring says it asserts the slope and the held
+# fields, not the threshold.
+#
+# Measured on correct code: frame 7 -> y=8 (the slide's last step),
+# frame 8 -> y=8 (STOPPED; the descriptor motion has not yet produced a
+# whole pixel), frame 9 -> y=9. So frame 8 holding at 8 is the
+# discriminator: with the threshold at 9 the slide runs one frame longer
+# and y is 9 there.
+CASES = [(3, 4), (6, 7), (8, 8)]
 EXP_X, EXP_DIR, EXP_SPD, EXP_TARGET = 168, 0x10, 1, 0x10
 
 

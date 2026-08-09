@@ -568,6 +568,34 @@ removed when they were added; a multiset diff confirmed zero lines
 lost.
 
 
+#### A ground-truth constant no gate guarded
+
+The 59 QEMU gates were the last unverified layer — mutation-testing them
+is expensive, so I sampled. The first sample found something.
+
+`handling_bird` slides a fresh alien down 1 px/frame `while y < 8`. That
+8 is ZEsarUX ground truth, quoted in `test-enemy-descend`'s own
+docstring. Changing it to 9 left **all 59 gates green**, while making the
+alien enter one pixel lower than the original.
+
+`test-enemy-descend` passing was CORRECT, not a defect: its docstring
+says it asserts the slope and the held fields, deliberately not the
+threshold. The gap was that nothing else did either — a constant can be
+documented as ground truth, quoted in a gate's own preamble, and still
+be unguarded.
+
+The fix is one more checkpoint, chosen by measurement rather than
+reasoning. Correct code gives frame 7 → y=8 (the slide's last step),
+frame 8 → y=8 (stopped; the descriptor motion has not yet produced a
+whole pixel) and frame 9 → y=9. Frame 8 holding at 8 is the
+discriminator: with the threshold at 9 the slide runs one frame longer
+and y is 9 there. Mutation now caught.
+
+Worth noting the cost: proving the constant was unguarded meant running
+the full suite against a mutated build, six minutes for one bit of
+information. That is why sampling the QEMU layer is the right approach
+and exhaustive mutation of it is not.
+
 #### The stale-output class, encoded
 
 Last commit fixed one gate that could pass on a previous run's captures.
