@@ -164,8 +164,12 @@ def main() -> int:
             "original's game_mode is 0-based (0 = 1 Player, 1 = 2 Players, "
             "2 = Double Play) while the menu's selected_mode comes from "
             "`k - '0'` and is 1..3. notes/menu.md.")
+    # `game_mode == 1` contains the substring "game_mode =", so an
+    # assignment test written that way flags every comparison. It did,
+    # the first time this ran against the turn-change code.
+    ASSIGN = re.compile(r"\bgame_mode\s*=(?!=)")
     users = [l for l in code.split("\n")
-             if "game_mode =" in l and "game_mode_from_selection" not in l
+             if ASSIGN.search(l) and "game_mode_from_selection" not in l
              and "static unsigned char game_mode" not in l]
     for line in users:
         if "BATTY_GAME_MODE" in code.split(line)[0][-400:]:

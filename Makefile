@@ -515,6 +515,9 @@ $(TEST_FLOPPY_OUT): $(FLOPPY_TEST_EXE) $(ASSETS) $(FLOPPY_SRC)
 	if [ -n "$$BATTY_GAME_MODE" ]; then \
 	    printf 'SET BATTY_GAME_MODE=%s\r\n' "$$BATTY_GAME_MODE" >> $(AUTOEXEC_T) ; \
 	fi; \
+	if [ -n "$$BATTY_REPLAY_LIVES_2UP" ]; then \
+	    printf 'SET BATTY_REPLAY_LIVES_2UP=%s\r\n' "$$BATTY_REPLAY_LIVES_2UP" >> $(AUTOEXEC_T) ; \
+	fi; \
 	if [ -n "$$BATTY_LEGACY_COLLISION" ]; then \
 	    printf 'SET BATTY_LEGACY_COLLISION=%s\r\n' "$$BATTY_LEGACY_COLLISION" >> $(AUTOEXEC_T) ; \
 	fi; \
@@ -748,6 +751,7 @@ parity-check-full:
 	$(MAKE) test-enemy-brick-residue
 	$(MAKE) test-enemy-brick-walk
 	$(MAKE) test-enemy-margin-clamp
+	$(MAKE) test-two-player-turn
 	$(MAKE) test-bat-redraw-window
 	$(MAKE) test-ball-left-wall-escape
 	$(MAKE) test-l3-replay-seed
@@ -1284,6 +1288,12 @@ test-enemy-margin-clamp:
 # ENTER and never presses 0.
 test-menu-start:
 	python3 scripts/check_menu_start.py
+
+# WS2 stage 4: a life loss hands the turn over in mode 1 and does not
+# in mode 0. A/B on BATTY_GAME_MODE, read from the probe — the only
+# on-screen trace is the round banner's PLAYER digit.
+test-two-player-turn:
+	python3 scripts/test_two_player_turn.py
 
 # The Kinnock easter egg (POKE 47475,0). Source-gated: it is up for
 # ~0.3 s, so a timed screendump would be luck. Its expected text is

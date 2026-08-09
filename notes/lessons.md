@@ -490,3 +490,16 @@ unconditional `RET`/`JP`/`JR`. Verified on both cases, silent on a
 
 The general rule: a Z80 routine boundary is a LABEL, not an end. Before
 concluding what a routine does, check how it leaves.
+
+**Two checks of one condition means one of them is untested.** WS2's
+turn change guarded "is the other player still in?" in two places: in
+`lose_a_life` before setting the pending flag, and in
+`two_player_turn_change` itself. Mutating the real guard from
+`lives <= 0` to `lives < 0` SURVIVED — the duplicate upstream stopped
+the mutant ever being asked. Adding a gate case that reached the guard
+(`BATTY_REPLAY_LIVES_2UP=0`) did not help either, for the same reason.
+
+The fix was to delete the duplicate, not to add more test cases. A
+condition tested in two places has one owner and one echo, and mutation
+testing cannot tell you which is which — it just reports the echo as
+covered.

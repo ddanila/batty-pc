@@ -234,6 +234,27 @@ static unsigned char levels[LVL_SIZE];
  * destroyed by the ball get bit 7 set here, making print_briks_c skip
  * them on the next repaint. */
 static unsigned char live_level[LVL_CELLS];
+
+/* Each player's brick grid, saved across their turn.
+ *
+ * The original has no separate save area: current_level_2up_copier
+ * exchanges `current_level_copy` with the arriving player's slot in the
+ * LEVEL TABLE itself, 180 bytes at a time. The port keeps the level
+ * table immutable and holds the two grids here instead — same effect,
+ * and it does not need the table to be writable.
+ *
+ * `valid` is port bookkeeping the original does not need: its level
+ * table always holds a playable grid, whereas player_grid[1] is zeroed
+ * until player 2 has actually had a turn, and restoring zeros would read
+ * as "every brick destroyed" and clear the level instantly. */
+static unsigned char player_grid[2][LVL_CELLS];
+static unsigned char player_grid_valid[2] = { 0, 0 };
+static unsigned char resume_player_grid = 0;
+
+/* Set by lose_a_life, acted on by run_level: the frame loop has to
+ * unwind to the level-entry point before the turn can change, because
+ * the arriving player may be on a different level. */
+static unsigned char pending_turn_change = 0;
 static unsigned char level_attrs[ATTR_TOTAL_SIZE];
 
 /* Ported brick compositor (was: shortcut #1 in notes/shortcuts.md).
@@ -4559,10 +4580,53 @@ static void catch_ball_on_bat(int contact_x) {
 /* Blow up the bat, take a life, and put a new ball on it. The two
  * checks are separate: with the last life gone there is nothing to
  * respawn onto, and game-over fires on the next frame. */
+/* Hand over to the other player. orig: current_level_2up_copier
+ * ($BE0C), which exchanges the live grid with the arriving player's
+ * level slot and then FALLS THROUGH into players_swap — one call does
+ * the grid, the counters and the turn toggle. The port's counters are
+ * indexed rather than swapped, so only the grid moves here.
+ *
+ * The original's `LD A,(lives_2up) / AND A / RET Z` guard covers both
+ * halves, which is how a solo player keeps playing; the same guard is
+ * the `lives <= 0` test below. */
+static int two_player_turn_change(void) {
+    const unsigned char other = (unsigned char)(1 - active_player);
+    if (game_mode != 1) return 0;                /* 1 = 2 Players */
+    if (players[other].lives <= 0) return 0;
+    memcpy(player_grid[active_player], live_level, LVL_CELLS);
+    player_grid_valid[active_player] = 1;
+    active_player = other;
+    resume_player_grid = player_grid_valid[other];
+    return 1;
+}
+
+/* Blow up the bat, take a life, and put a new ball on it. The two
+ * checks are separate: with the last life gone there is nothing to
+ * respawn onto, and game-over fires on the next frame.
+ *
+ * In 2-player mode a life loss ALSO ends the turn — the original's
+ * life-loss path is `DEC lives / JR Z,LBC10_6 / CALL Z,
+ * current_level_2up_copier / JP LB9E8_1`, so with lives left it swaps
+ * and re-enters the level rather than respawning in place. Respawning
+ * is skipped here for that reason: run_level re-enters the level, which
+ * puts a fresh ball on the bat anyway. */
 static void lose_a_life(void) {
     play_bat_explosion(current_level_idx_var);
     if (player.lives > 0) player.lives--;
-    if (player.lives > 0) respawn_primary_ball();
+    if (player.lives > 0) {
+        /* In 2-player mode the turn may end here — but whether it
+         * actually does is two_player_turn_change's decision, and
+         * run_level respawns instead if it declines. An earlier version
+         * re-tested `players[other].lives > 0` here as well, and that
+         * duplicate made a mutation of the REAL guard survive: with two
+         * checks of one condition, one of them is untested by
+         * construction. */
+        if (game_mode == 1) {
+            pending_turn_change = 1;
+            return;
+        }
+        respawn_primary_ball();
+    }
 }
 
 /* The primary ball has fallen past the bat. The original deactivates it
@@ -6528,6 +6592,19 @@ static void apply_player_seed_env(void) {
             && want >= 1 && want <= LIVES_INIT)
             player.lives = (int)want;
     }
+    /* BATTY_REPLAY_LIVES_2UP: the OTHER player's life count, 0 allowed.
+     * Zero is the point of it — two_player_turn_change's `lives <= 0`
+     * guard is what makes a solo player keep playing, and without a way
+     * to empty player 2 no gate can reach it. Mutating that guard to
+     * `< 0` SURVIVED the first version of test-two-player-turn, whose
+     * every case had player 2 on a full three lives. */
+    {
+        const char *lv = getenv("BATTY_REPLAY_LIVES_2UP");
+        long want;
+        if (lv != NULL && replay_parse_ints(lv, &want, 1)
+            && want >= 0 && want <= LIVES_INIT)
+            players[1].lives = (int)want;
+    }
     /* BATTY_REPLAY_SCORE: start with a score already on the clock. The
      * name-entry screen only runs when the score BEATS the stored high
      * score, so with score 0 a gate reaches game over and stops there.
@@ -6871,6 +6948,15 @@ static void print_kinnock(void) {
 static bool enter_level(unsigned char lvl_idx) {
     current_level_idx_var = lvl_idx;
     reset_level_state(lvl_idx);
+    /* reset_level_state has just loaded a pristine grid. A player
+     * resuming their turn gets theirs back instead — destroyed bricks
+     * stay destroyed, which is what the original's 180-byte exchange
+     * achieves. Before apply_replay_overrides, so a seeded gate still
+     * wins. */
+    if (resume_player_grid) {
+        memcpy(live_level, player_grid[active_player], LVL_CELLS);
+        resume_player_grid = 0;
+    }
     apply_replay_overrides();
     /* After the RNG seed override, so the magnets' ON/OFF coins consume
      * the seeded walk exactly as print_magnets does; before
@@ -6903,6 +6989,10 @@ static state_t run_level(void) {
     round_number = initial_round_number();
     for (;;) {
         unsigned char lvl_idx = (unsigned char)(round_number % N_LEVELS);
+        /* A turn change re-enters the level for the ARRIVING player, who
+         * is on their own round — so the round must not advance. Only a
+         * cleared level advances it. */
+        int turn_changed = 0;
 
         if (!enter_level(lvl_idx)) return ST_QUIT;
 
@@ -6984,6 +7074,21 @@ static state_t run_level(void) {
                 return ST_QUIT;
             }
 
+            /* A life was lost and the other player is waiting. The
+             * frame loop has to unwind to the level-entry point first:
+             * the arriving player may be on a different level, and the
+             * grid swap has to happen before it is painted. */
+            if (pending_turn_change) {
+                pending_turn_change = 0;
+                if (two_player_turn_change()) {
+                    turn_changed = 1;
+                    break;
+                }
+                /* The other player turned out to have no lives after
+                 * all; carry on as a solo game. */
+                respawn_primary_ball();
+            }
+
             /* End-of-life conditions. */
             if (player.lives == 0) {
                 play_game_over();
@@ -6999,7 +7104,7 @@ static state_t run_level(void) {
                 break;
             }
         }
-        round_number++;       /* increment_round_number at $BBE0 */
+        if (!turn_changed) round_number++;   /* increment_round_number $BBE0 */
     }
 }
 

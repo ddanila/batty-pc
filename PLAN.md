@@ -161,12 +161,29 @@ in once the 2-player wiring landed. It reads `active_player + 1` now,
 which is the original's `LD A,(player_number) / INC A`, and renders
 identically while nothing moves the turn off 0.
 
-Remaining: the swap itself — a per-player copy of the 180-cell grid
-exchanged with `live_level` at the same moment the counters swap, plus
-the level re-entry it implies. The port's `lose_a_life` respawns in
-place where the original does `JP LB9E8_1`, so this stage needs a
-control-flow change in `run_level` and is deliberately not bundled with
-the plumbing above. See notes/menu.md.
+**Stage 4 done (2026-08-09): the hand-over.** A life loss in mode 1 ends
+the turn. `two_player_turn_change` saves the live 180-cell grid into
+`player_grid[active]`, toggles `active_player`, and marks the arriving
+player's grid for restore; `enter_level` puts it back over the pristine
+copy `reset_level_state` has just loaded, so destroyed bricks stay
+destroyed. `run_level` unwinds the frame loop to the level-entry point —
+the arriving player may be on a different level — and does NOT advance
+the round, since only a cleared level does that.
+
+`player_grid_valid` is port bookkeeping the original does not need: its
+level table always holds a playable grid, whereas `player_grid[1]` is
+zeroed until player 2 has had a turn and restoring zeros would read as
+"every brick destroyed".
+
+Gated by `test-two-player-turn`, an A/B on `BATTY_GAME_MODE` with a
+third case (`BATTY_REPLAY_LIVES_2UP=0`) for the guard that lets a solo
+player keep playing.
+
+**Still open, and it is the last piece of WS2:** `LBC10_7` — when one
+player runs out of lives but the other has some left, the original shows
+GAME OVER for that player and continues with the other. The port still
+returns to the title. That needs the game-over/name-entry flow to become
+per-player, which is a bigger change than the hand-over was.
 
 **What:** Classic turn-taking (research-confirmed: on the Spectrum,
 2 PLAYERS alternates turns, unlike the C64 version). Per-player state
