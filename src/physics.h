@@ -77,6 +77,43 @@ const int BAT_MARGIN_RIGHT = 0xF8;
  * `extra_px` on each side and the clamp tightens by that much. */
 int bat_step_x(int bat_x, int extra_px, bool move_left, bool move_right);
 
+/* --- The Double Play court divider ------------------------------------
+ *
+ * In mode $02 the screen is split at x = $80 and each bat is confined to
+ * its own half. `bat_step_x` alone is not enough: it clamps to the
+ * PLAYFIELD, so without these bat 1 walks straight through the
+ * separator and across bat 2's court.
+ *
+ * The original runs them AFTER both bats have been handled, once each:
+ *
+ *     LD IX,object_bat_1 / CALL LACCE      ; $ACCE, the left court
+ *     LD IX,object_bat_2 / CALL LACAD      ; $ACAD, the right court
+ *
+ * ### The half that is deliberately NOT ported
+ *
+ * Each original clamp also pokes BIT0 of the bat's sprite_num (IX+$01):
+ * LACCE sets it, LACAD clears it. That bit picks a copy of the bat
+ * sprite pre-shifted by 4 px, because ZX bitmaps are byte-aligned and
+ * the bat moves in steps of 4 — `bat_resize_ready` normally derives it
+ * from BIT2 of x, and a bat whose x has just been overwritten by a
+ * clamp would otherwise carry a stale one.
+ *
+ * Mode 13h blits at any pixel column, so the port has no shifted
+ * variant and nothing reads bat sprite_num at all. Reproducing the
+ * pokes would write state no reader consumes. Recorded here instead.
+ *
+ * (LACCE's own guard — set the bit only for width $1C or $2C, settled
+ * normal or settled wide, since `bat_resize` recomputes sprite_num on
+ * the frames in between — falls out with it.) */
+
+/* orig: LACCE $ACCE. Left court — bat 1's RIGHT edge stops at $80.
+ * `bat_x` is the bat's LEFT edge (the original's IX+$02), so a grown
+ * bat passes eff_bat_left(), not the port's centre-ish BAT_X. */
+int bat_court_clamp_1(int bat_x, int w_body_px);
+
+/* orig: LACAD $ACAD. Right court — bat 2's LEFT edge stops at $80. */
+int bat_court_clamp_2(int bat_x);
+
 /* --- Sweep: the rectangle-overlap path (secondary balls, fallback) ---- */
 
 struct BrickHit {

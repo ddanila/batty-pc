@@ -760,6 +760,75 @@ static void test_bat_opposing_keys_cancel() {
     report("bat_opposing_keys_cancel", before, "160 positions        ok");
 }
 
+/* Double Play splits the court at $80 and neither bat may cross.
+ *
+ * The two clamps are asymmetric on purpose: bat 1's RIGHT edge is what
+ * stops (LACCE compares x + width), bat 2's LEFT edge is (LACAD
+ * compares x alone). Written symmetrically, one bat would overlap the
+ * separator by its own width. */
+static void test_double_play_court_clamps() {
+    const int before = failures;
+    int bad = 0;
+
+    /* Bat 1, at both settled widths: free below the divider, pinned so
+     * its right edge lands exactly on $80 above it. */
+    const int widths[2] = { 0x1C, 0x2C };
+    for (int w = 0; w < 2; w++) {
+        const int width = widths[w];
+        for (int x = BAT_MARGIN_LEFT; x + width <= BAT_MARGIN_RIGHT; x++) {
+            const int got  = bat_court_clamp_1(x, width);
+            const int want = (x + width < 0x80) ? x : 0x80 - width;
+            if (got != want) bad++;
+        }
+    }
+    check(bad == 0, "%d bat-1 positions clamped wrong\n", bad);
+
+    /* The pinned bat's right edge is ON the divider, never through it. */
+    for (int w = 0; w < 2; w++)
+        check(bat_court_clamp_1(0xD0, widths[w]) + widths[w] == 0x80,
+              "pinned bat 1 (w=%d) does not end on the divider\n", widths[w]);
+
+    /* Bat 2: pinned below $80, free at and above it. */
+    bad = 0;
+    for (int x = 0; x <= BAT_MARGIN_RIGHT; x++) {
+        const int want = (x < 0x80) ? 0x80 : x;
+        if (bat_court_clamp_2(x) != want) bad++;
+    }
+    check(bad == 0, "%d bat-2 positions clamped wrong\n", bad);
+
+    /* The two courts touch and do not overlap: bat 1 pinned right and
+     * bat 2 pinned left share the divider column and nothing more. */
+    check(bat_court_clamp_1(0xDC, 0x1C) + 0x1C == bat_court_clamp_2(0),
+          "the pinned bats do not meet flush at the divider\n");
+
+    /* CHARACTERISATION of LACCE's 8-bit sum, which DOES wrap — the first
+     * draft of the check above passed x=$FF and watched the clamp let a
+     * bat straight through, because u8($1C + $FF) = $1B < $80.
+     *
+     * It is unreachable in play and the two halves of that are worth
+     * separating. bat_step_x caps the right edge at $F8, so the sum
+     * tops out there for both settled widths — 8 short of the wrap.
+     * That is the caller's clamp doing the work, not the arithmetic,
+     * which is why the u8 stays in bat_court_clamp_1: an invented
+     * 16-bit sum would be a silent deviation, and the enemy's copy of
+     * this idiom overflows for real (notes/known-bugs.md). */
+    for (int w = 0; w < 2; w++) {
+        const int extra = (w == 0) ? 0 : 8;
+        const int width = widths[w];
+        const int x_max = bat_step_x(0xFF, extra, false, true) - extra;
+        check(x_max + width == BAT_MARGIN_RIGHT,
+              "widest reachable bat (w=%d) ends at %d, not $F8\n",
+              width, x_max + width);
+        check(u8(x_max + width) == BAT_MARGIN_RIGHT,
+              "the reachable sum wrapped — the clamp would leak\n");
+    }
+    check(bat_court_clamp_1(0xFF, 0x1C) == 0xFF,
+          "the unreachable wrap has been papered over; if that was "
+          "deliberate, this characterisation should have changed with it\n");
+
+    report("double_play_court_clamps", before, "both bats, 2 widths  ok");
+}
+
 /* A step is 4 px, which at 50 Hz is the original's 200 px/s. */
 static void test_bat_step_is_four_pixels() {
     const int before = failures;
@@ -849,6 +918,7 @@ int main() {
     test_bat_settles_on_the_margin();
     test_bat_opposing_keys_cancel();
     test_bat_step_is_four_pixels();
+    test_double_play_court_clamps();
     test_extra_balls_keep_the_quadrant();
     test_extra_ball_dirs_split_three_ways();
     printf("\n%d tests, %d failed\n", tests_run, failures);

@@ -4,10 +4,16 @@
 halves with a divider, each bat confined to its half", and named
 "per-bat margin clamps at the divider" as one of the things to port.
 
-**Both halves of that are wrong.** Traced 2026-08-09, before building
-anything on it.
+**On 2026-08-09 this file said both halves of that were wrong. The
+first half was: the bats ARE confined, by exactly the per-bat clamps
+the plan named.** Corrected 2026-08-10, and see
+"How the wrong conclusion was reached" below — the mistake is a
+repeatable one, not a slip.
 
-## The bats are not confined
+The half that stands: the divider is nothing to the BALL, and the
+halves' real job is scoring.
+
+## The bats ARE confined — by LACCE and LACAD, not by handling_bat
 
 `handling_bat` moves the bat by ±4 from the control word and then, in
 `handling_bat_no_transform`, clamps it:
@@ -21,8 +27,58 @@ Those are the same two routines the alien uses (`notes/enemy-movement.md`):
 playfield, no divider term. The resize path calls `check_margins`, which
 is those two plus the top clamp — again no divider.
 
-Both bats go through the same `handling_bat` with the same clamps; the
-only difference is which object and which control word:
+All of that is true, and it is not the whole story. The divider clamps
+are a SEPARATE pair of routines, run once per frame after BOTH bats have
+been handled:
+
+    LD IX,object_bat_1 / CALL LACCE       ; $ACCE
+    LD IX,object_bat_2 / CALL LACAD       ; $ACAD
+
+    LACCE:  A = (IX+$0C) + (IX+$02)       ; width + x, 8-bit
+            CP $80 / RET C                ; below the divider, nothing to do
+            (IX+$02) = $80 - (IX+$0C)     ; right edge pinned ON $80
+            if width == $1C or $2C: SET 0,(IX+$01)
+
+    LACAD:  CP $80 / RET NC               ; at or above it, nothing to do
+            (IX+$02) = $80                ; left edge pinned ON $80
+            RES 0,(IX+$01)
+
+They are asymmetric, and that is the point: bat 1's RIGHT edge stops at
+the divider (the comparison includes the width), bat 2's LEFT edge does
+(it does not). Written symmetrically, bat 1 would overlap the separator
+by its own 28 px.
+
+The `(IX+$01)` pokes are the 4-px sub-character sprite shift, normally
+derived from BIT2 of x by `bat_resize_ready`. A bat whose x has just
+been overwritten carries a stale one, so the clamp sets it by hand.
+
+### How the wrong conclusion was reached
+
+The 2026-08-09 trace quoted the caller and stopped here:
+
+    LD IX,object_bat_2 / CALL handling_bat
+    POP AF / LD (ctrl_btns_pressed),A
+
+The next four instructions are the two clamps. The quote ended one
+instruction early, and the conclusion — "nothing stops either bat
+crossing the middle" — was drawn from the truncation rather than from
+the code.
+
+This is the same shape as the LAFFC_30 "teleport" and the ball-owner
+"never changes in flight": a routine read to its apparent end, a
+conclusion published, the missing tail found later. `scripts/disasm.py`
+now prints a FALLS THROUGH warning for the first of those. It cannot
+help here, because nothing was falling through — the reader simply
+stopped scrolling. **Quote to the next RET or the next label, and if a
+claim is "X never happens", grep for X before writing it down.**
+
+`grep -n 'CALL LACCE' original/disasm/batty.asm` would have taken
+seconds and would have prevented it.
+
+## What the divider is NOT: a wall for the ball
+
+Both bats go through the same `handling_bat`; the only difference is
+which object and which control word:
 
     LD A,(ctrl_btns_pressed) / PUSH AF
     LD A,(ctrl_type_2up)
@@ -31,13 +87,15 @@ only difference is which object and which control word:
     LD IX,object_bat_2 / CALL handling_bat
     POP AF / LD (ctrl_btns_pressed),A
 
-So player 2's device drives `object_bat_2`, and nothing stops either bat
-crossing the middle. Both can occupy the same half.
-
-## The divider is a marker, not a wall
+So player 2's device drives `object_bat_2`, and bat 1's control word is
+saved and restored around it — `handling_bat` reads one global, so the
+two bats take turns owning it.
 
 `spr_separator` is 16 px wide and 24 rows tall at (125, 169) — down in
-the bat band, not spanning the court. Nothing tests the ball against it.
+the bat band, not spanning the court. **Nothing tests the BALL against
+it**, and that part of the original note stands: a ball crosses freely,
+which is what makes the mode co-operative rather than two solo games.
+The divider is a wall for the bats and a marker for everything else.
 See PLAN.md WS3 stage 1.
 
 ## What the halves ARE for: scoring
@@ -315,3 +373,103 @@ Splitting those is the work. Recording the divergence is not a
 substitute for doing it, but an inaccurate comment claiming bat 2's
 byte was unmaintained WAS worse than nothing — it pointed at the wrong
 end of the problem.
+
+## Ported: bat 2's input and the court clamps (2026-08-10)
+
+The two halves landed together because neither is worth anything alone.
+Input without the clamps lets bat 1 walk through the separator and
+across bat 2's court; the clamps without input leave bat 2 parked on
+$B0 forever, which is where it had been sitting since stage 1.
+
+### The split keyboard
+
+The original seats two players at one Spectrum by cutting the keyboard
+down the middle:
+
+    $FDFE  A S D F G     AND $05 -> A,D = LEFT    AND $0A -> S,F = RIGHT
+    $BFFE  Ent L K J H   AND $0A -> J,L = LEFT    AND $05 -> K,Ent = RIGHT
+
+The interleaving is not a transcription error. Each direction gets two
+keys straddling the other direction's, so the cluster works whichever
+way a player rests their hand.
+
+These are LETTERS, so unlike the device list in WS1 — Kempston,
+Sinclair and cursor joysticks, which are Spectrum hardware and have to
+be adapted — they transcribe to PC scancodes unchanged. `SC_A`, `SC_S`,
+`SC_D`, `SC_F`, `SC_J`, `SC_K`, `SC_L`, `SC_ENTER` in `src/main.cpp`.
+
+**One deliberate addition:** player 1's arrow keys keep working in
+Double Play. The original takes them away — mode $02 forces both players
+onto the split keyboard — but on a PC the arrows sit next to the numpad,
+a long way from HJKL, so leaving them live costs player 2 nothing and
+spares player 1 a control scheme that changes with the mode. A superset,
+gated as such (`test-double-play-input` has a row for it).
+
+**Not ported:** both original readers bail to the standard per-device
+poll unless BOTH players are on `ctrl_type` 0. Nothing selects a device
+yet (WS1), so `ctrl_type` is 0 for both by construction and the gate has
+nothing to gate. It goes in with the device selection.
+
+### The clamps
+
+`bat_court_clamp_1` / `bat_court_clamp_2` in `src/physics.cpp`, pure and
+host-tested (`double_play_court_clamps` in `tests/test_physics.cpp`).
+They take the ORIGINAL's (left edge, width) pair, so a grown bat 1
+passes `eff_bat_left()` rather than the port's centre-ish `BAT_X`.
+
+The `(IX+$01)` sprite-shift pokes are deliberately NOT ported. That bit
+picks a copy of the bat sprite pre-shifted by 4 px, because ZX bitmaps
+are byte-aligned; mode 13h blits at any pixel column, so the port has no
+shifted variant and nothing reads bat `sprite_num` at all. Reproducing
+the pokes would write state no reader consumes. Recorded in physics.h
+instead of implemented.
+
+### LACCE's 8-bit sum wraps, and it does not matter here
+
+`LD A,(IX+$0C) / ADD A,(IX+$02) / CP $80 / RET C` is an 8-bit add, and
+the port keeps it as one. Feed it x=$FF, w=$1C and the sum is $1B, below
+$80, so the clamp lets the bat straight through.
+
+It is unreachable in play, and the two halves of that are worth keeping
+apart: `bat_step_x` has already capped the right edge at $F8, eight
+short of the wrap, for both settled widths. The arithmetic is not safe —
+the CALLER makes it safe. That is why the u8 stays rather than being
+quietly widened, and why the host test characterises the wrap instead of
+pretending it is absent. The enemy's copy of this same idiom does
+overflow for real; see notes/known-bugs.md.
+
+The first draft of the host test found this by accident, passing $FF as
+"a big x" and watching the clamp do nothing.
+
+### BATTY_HOLD_KEYS
+
+New harness knob: `BATTY_HOLD_KEYS=1F,24` seeds `key_state[]` with
+scancodes that are then never released. The capture harness runs
+headless, so INT 9 never fires and the seeded bits survive the whole
+run — a held key is the only kind this harness can express, and steering
+is the only thing that needs one.
+
+Two traps it walked into, both worth remembering:
+
+- **It has to be in the Makefile's AUTOEXEC passthrough list.** It was
+  not, so the first gate run read no keys at all — and still showed bat
+  1 at $64, because that is where the court clamp puts a bat seeded at
+  the stock $74. A green-looking number produced by the wrong mechanism.
+  `check_env_passthrough` catches exactly this and was not run first.
+- **The seeded bat has to start inside its own court.** With the stock
+  `BATTY_REPLAY_BAT_OBJECT` x of $74, bat 1's right edge is already at
+  $90, past the divider, so it arrives pinned at $64 whether or not a
+  key was ever read. The gate seeds $38 — `new_game_reset`'s own mode-2
+  placement — so every row distinguishes a working key from a dead one.
+
+### ENTER is bat 2's right, and the harness presses ENTER
+
+$BFFE bit 0 is the Enter key, so in Double Play ENTER steers bat 2
+right. It is also what `capture_frame_timeline.py --wait-key` presses to
+start a capture, so the harness's own keystroke can nudge bat 2 one step
+before its key-up lands.
+
+Whether the step falls inside the gate's 20-frame window is a race, and
+it was measured going both ways on consecutive runs ($B4, then $B0). The
+gate allows either. It was nearly pinned at $B4 on one observation; the
+re-run after tightening is what caught it.

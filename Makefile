@@ -564,6 +564,9 @@ $(TEST_FLOPPY_OUT): $(FLOPPY_TEST_EXE) $(ASSETS) $(FLOPPY_SRC)
 	if [ -n "$$BATTY_FAST_HOLDS" ]; then \
 	    printf 'SET BATTY_FAST_HOLDS=%s\r\n' "$$BATTY_FAST_HOLDS" >> $(AUTOEXEC_T) ; \
 	fi; \
+	if [ -n "$$BATTY_HOLD_KEYS" ]; then \
+	    printf 'SET BATTY_HOLD_KEYS=%s\r\n' "$$BATTY_HOLD_KEYS" >> $(AUTOEXEC_T) ; \
+	fi; \
 	if [ -n "$$BATTY_REPLAY_LIVES_2UP" ]; then \
 	    printf 'SET BATTY_REPLAY_LIVES_2UP=%s\r\n' "$$BATTY_REPLAY_LIVES_2UP" >> $(AUTOEXEC_T) ; \
 	fi; \
@@ -803,6 +806,7 @@ parity-check-full:
 	$(MAKE) test-two-player-turn
 	$(MAKE) test-double-play-court
 	$(MAKE) test-double-play-bat2
+	$(MAKE) test-double-play-input
 	$(MAKE) test-stuck-auto-launch
 	$(MAKE) test-bat-redraw-window
 	$(MAKE) test-ball-left-wall-escape
@@ -1365,6 +1369,12 @@ test-double-play-court:
 # the ball seeded straight at bat 2.
 test-double-play-bat2:
 	python3 scripts/test_double_play_bat2.py
+
+# WS3: the split keyboard ($A161 ASDFG / $A19E HJKL+Enter) steers one bat
+# each, and the court clamps (LACCE $ACCE / LACAD $ACAD) stop either from
+# crossing the divider at $80. Keys held via BATTY_HOLD_KEYS.
+test-double-play-input:
+	python3 scripts/test_double_play_input.py
 
 # A ball left on the bat launches itself after STUCK_TIMEOUT (192)
 # ticks. Nothing gated this: mutating the counter so it never fires

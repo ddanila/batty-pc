@@ -621,3 +621,31 @@ searching, which is what `phase_sweep` already does for the same reason.
 
 The rule: when a checker's haystack includes documentation, decide
 explicitly whether a MENTION is a USE. Usually it is not.
+
+
+## A quote that stops early is a claim you did not check (2026-08-10)
+
+`notes/double-play.md` said, in bold, that PLAN.md was wrong and the
+Double Play bats were not confined to their halves. It quoted the caller
+to prove it and stopped one instruction before `CALL LACCE` / `CALL
+LACAD` — the two routines that confine them. The plan had been right,
+and had been "corrected" away on the strength of a truncated listing.
+
+This is the fourth time this shape has cost a wrong conclusion: LAFFC_30
+"teleports" (missed the LB1C3 fallthrough), the ball owner "never
+changes in flight" (missed the RES/SET bit ops), an 11-row sound table
+(a regex that carried `LD DE` across a routine boundary), and now this.
+
+`scripts/disasm.py` warns on FALLS THROUGH, which covers the first.
+It cannot cover this one — nothing was falling through, the reader
+simply stopped scrolling.
+
+**The rule that would have caught all four:** a claim of the form "X
+never happens" is a claim about the WHOLE binary, so grep the whole
+binary before writing it down. `grep -n 'CALL LACCE' batty.asm` is
+seconds. Quoting a routine to its apparent end proves nothing about
+what its caller does next.
+
+The cost is not just the wrong note. Everything built on it inherits the
+error, and here the note was the stated reason a plan item had been
+struck out — so the work would not have been done at all.

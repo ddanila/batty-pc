@@ -3103,6 +3103,41 @@ static volatile unsigned char key_state[128];
 #define SC_LEFT     0x4B    /* arrow / keypad 4 */
 #define SC_RIGHT    0x4D    /* arrow / keypad 6 */
 
+/* --- Double Play: two players, one keyboard ---------------------------
+ *
+ * The original splits the keyboard down the middle so two people can sit
+ * at one Spectrum. `get_left_player_ctrl_state` ($A161) reads the ASDFG
+ * half-row for player 1 and `get_right_player_ctrl_state` ($A19E) reads
+ * the HJKL+Enter half-row for player 2:
+ *
+ *     $FDFE  A S D F G    AND $05 -> A,D = LEFT   AND $0A -> S,F = RIGHT
+ *     $BFFE  Ent L K J H  AND $0A -> J,L = LEFT   AND $05 -> K,Ent = RIGHT
+ *
+ * The interleaving is not a typo. Each direction gets two keys either
+ * side of the other direction's, so the cluster works whichever way a
+ * player rests their hand.
+ *
+ * These are LETTERS, so they transcribe to a PC keyboard unchanged —
+ * unlike the device list in WS1, which is Spectrum hardware and has to
+ * be adapted rather than ported. The one addition is that P1's arrow
+ * keys keep working in Double Play. The original takes them away (mode
+ * $02 forces both players onto the split keyboard); on a PC the arrows
+ * sit next to the numpad, far from HJKL, so leaving them live costs
+ * player 2 nothing and spares player 1 a mode-dependent control change.
+ * A superset, and a deliberate one.
+ *
+ * Both readers bail to the standard per-device poll unless BOTH players
+ * are on ctrl_type 0. That gate is not reproduced yet: nothing selects a
+ * device (WS1), so ctrl_type is 0 for both by construction. */
+#define SC_A        0x1E
+#define SC_S        0x1F
+#define SC_D        0x20
+#define SC_F        0x21
+#define SC_J        0x24
+#define SC_K        0x25
+#define SC_L        0x26
+#define SC_ENTER    0x1C
+
 static void __interrupt new_int9(void) {
     unsigned char sc = (unsigned char)inp(0x60);
     if (sc != 0xE0) {                       /* skip the extended-key prefix */
@@ -4397,6 +4432,10 @@ static void write_replay_probe(void) {
             (unsigned)ball.mag_exit[0], (unsigned)ball.mag_idx[0]);
     probe_write_object(f, "ball_1", OBJ_BALL_1);
     probe_write_object(f, "bat_1", OBJ_BAT_1);
+    /* Bat 2 only moves in Double Play, and a gate on its steering has
+     * nothing else to read: it leaves no mark a screendump can tell from
+     * bat 1's, both being the same sprite on the same row. */
+    probe_write_object(f, "bat_2", OBJ_BAT_2);
     probe_write_object(f, "enemy", OBJ_ENEMY);
     /* Extra balls (multiball) — so the collision-invariant sweep can probe
      * step_extra_ball's path (no-tunnel) the same way it probes the primary. */
@@ -7346,10 +7385,41 @@ static void tick_frame_rng(void) {
  * 200 px/s, as the original's get_left_player_ctrl_state does. A rocket
  * in flight carries the bat, so the player cannot steer. */
 static void steer_bat_from_keys(void) {
+    int left  = key_state[SC_LEFT];
+    int right = key_state[SC_RIGHT];
+
+    /* In Double Play player 1 also has the ASDFG cluster, so both
+     * players can reach a key without fighting over the arrows. */
+    if (game_mode == 2) {
+        left  = left  || key_state[SC_A] || key_state[SC_D];
+        right = right || key_state[SC_S] || key_state[SC_F];
+    }
+
     BAT_X = (unsigned char)bat_step_x(
         BAT_X, bat.extra_px,
-        !rocket.active && key_state[SC_LEFT],
-        !rocket.active && key_state[SC_RIGHT]);
+        !rocket.active && left, !rocket.active && right);
+
+    if (game_mode != 2) return;
+
+    /* Mirror of LB9E8_2's mode-$02 tail: bat 2 is handled with the same
+     * movement code, then each bat is confined to its own court.
+     *
+     * Bat 2 has no rocket of its own — `rocket` is bat 1's, and a
+     * WS3 residual — so nothing suspends its steering. */
+    Object &b2 = objects[OBJ_BAT_2];
+    const int b2_left  = key_state[SC_J] || key_state[SC_L];
+    const int b2_right = key_state[SC_K] || key_state[SC_ENTER];
+    b2.x_coord = (unsigned char)bat_step_x((int)b2.x_coord, 0,
+                                           b2_left != 0, b2_right != 0);
+
+    /* The clamps take the original's (left edge, body width). A grown
+     * bat 1 straddles BAT_X by extra_px on each side, so it is
+     * eff_bat_left() that goes in and the offset that comes back off. */
+    const int w1 = BAT_BODY_W + 2 * bat.extra_px;
+    BAT_X = (unsigned char)(bat_court_clamp_1(eff_bat_left(), w1)
+                            + bat.extra_px);
+
+    b2.x_coord = (unsigned char)bat_court_clamp_2((int)b2.x_coord);
 }
 
 /* Pick this frame's redraw path and run it, cheapest first: the ball
@@ -7653,6 +7723,36 @@ static state_t apply_env_switches(void) {
     if (getenv("BATTY_LAFFC") != NULL)                      dbg.use_laffc = 1;
     if (getenv("BATTY_KINNOCK") != NULL)                    dbg.kinnock = 1;
     if (getenv("BATTY_FAST_HOLDS") != NULL)                 dbg.fast_holds = 1;
+    {
+        /* BATTY_HOLD_KEYS=1E,24 seeds key_state[] with scancodes that
+         * are then never released. The capture harness runs headless
+         * with nobody at the keyboard, so INT 9 never fires and the
+         * seeded bits survive for the whole run — which is exactly what
+         * a gate on "does holding LEFT move the bat" needs.
+         *
+         * BATTY_AUTO_FIRE is the older, narrower version of this idea
+         * (hold SPACE) and stays: it drives try_fire_laser directly
+         * rather than the key, so it also works where the fire path is
+         * not read from key_state. */
+        const char *hk = getenv("BATTY_HOLD_KEYS");
+        if (hk != NULL) {
+            unsigned int sc = 0;
+            int digits = 0;
+            for (;; hk++) {
+                const char c = *hk;
+                int v = -1;
+                if (c >= '0' && c <= '9')      v = c - '0';
+                else if (c >= 'A' && c <= 'F') v = c - 'A' + 10;
+                else if (c >= 'a' && c <= 'f') v = c - 'a' + 10;
+                if (v >= 0) { sc = sc * 16 + (unsigned int)v; digits++; }
+                else {
+                    if (digits && sc < 128) key_state[sc] = 1;
+                    sc = 0; digits = 0;
+                    if (c == '\0') break;
+                }
+            }
+        }
+    }
     {
         /* BATTY_GAME_MODE takes the ORIGINAL's 0-based value, not the
          * menu's 1..3 — a gate that wants 2-player writes 1. Gates reach

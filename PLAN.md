@@ -14,9 +14,9 @@ The port is "100%" when all of the following hold:
 
 | # | Criterion | Today |
 |---|-----------|-------|
-| 1 | All three game modes work: 1 Player, 2 Players (alternating), Double Play (simultaneous split-court co-op) | 1P and 2P done; Double Play has its court, both bats, ball physics and scoring but no bat-2 INPUT |
+| 1 | All three game modes work: 1 Player, 2 Players (alternating), Double Play (simultaneous split-court co-op) | 1P and 2P done; Double Play has its court, both bats, ball physics, scoring and INPUT (2026-08-10); bonus ownership and bat-2 catch remain |
 | 2 | Menu semantics match the original (0 starts the selected game directly; A/B input-device cycling affects play) | Key 0 starts the game (`test-menu-start`); the device byte is per-player state but still selects nothing |
-| 3 | Core gameplay byte-exact where an oracle exists (ball, bat, collision, RNG, enemy, bonuses, scoring) | **Done** — regression-locked by 93 gates |
+| 3 | Core gameplay byte-exact where an oracle exists (ball, bat, collision, RNG, enemy, bonuses, scoring) | **Done** — regression-locked by 94 gates |
 | 4 | Full game FLOW gated end-to-end: level-clear → next, life-loss → respawn, game-over → initials, level wrap | **Done** — `test-level-advance`, `test-life-loss`, `test-game-over-visual`, `test-name-entry-visual` |
 | 5 | Sound faithful to the original's 5-slot beeper queue (envelope/timing, not just effect IDs) | ids, slot count, pitches and envelope ARITHMETIC faithful; durations still round to 20 ms because the sound clock is the 50 Hz frame counter |
 | 6 | All assets derived from the tape at build time; no captured emulator blobs | **Done** — all 13 loaded assets build from `original/blocks/`, held by `test-asset-provenance` |
@@ -113,8 +113,14 @@ device travels with their lives, level and score. As two loose bytes it
 would have drifted the first time a turn changed.
 
 The menu still only CYCLES it. Nothing reads it to choose an input
-source, and `get_right_player_ctrl_state` — the original's bat-2 reader —
-has no port equivalent.
+source.
+
+`get_right_player_ctrl_state` — the original's bat-2 reader — now HAS a
+port equivalent (WS3, 2026-08-10), but only its keyboard arm. Both
+original readers bail to the standard per-device poll unless BOTH
+players are on `ctrl_type` 0, and that gate is not ported: with nothing
+selecting a device, `ctrl_type` is 0 for both by construction. It goes
+in with the selection.
 
 **The blocker I described here was wrong** (2026-08-09). I said the
 labels could not be relabelled honestly because the menu screen is a
@@ -324,18 +330,20 @@ paths already partially maintained in the port), and the `LBC10_4`
 death-spark branch (shift 5 sparks by `bat_2.x - bat_1.x`) that
 `parity-status.md` explicitly parked as "out of scope (port is 1P)".
 
-**Two things this section used to say, both wrong** (traced 2026-08-09,
-before anything was built on them — see notes/double-play.md):
+**One thing this section missed, and one it was wrongly told it got
+wrong** (see notes/double-play.md):
 
 - *"each bat confined to its half"* and *"per-bat margin clamps at the
-  divider"*. There are no such clamps. `handling_bat_no_transform` calls
-  `check_left_margin` and `check_right_margin`, the same two the alien
-  uses, over the full playfield; both bats run through the same
-  `handling_bat` and differ only in which object and control word. Both
-  can cross the middle and occupy the same half. Adding confinement
-  would have been an invented mechanic — the same mistake as the enemy's
-  reflect-and-re-aim, which sat in the port for months.
-- The halves are a SCORING rule, which this section missed entirely.
+  divider"* were struck out on 2026-08-09 as an invented mechanic.
+  **That strike-out was itself the error, and it is restored.** The
+  clamps exist: `LACCE` ($ACCE) pins bat 1's RIGHT edge to $80 and
+  `LACAD` ($ACAD) pins bat 2's LEFT edge to $80, called once per frame
+  in the mode-$02 branch after both bats have been handled. The 2026-08-
+  09 trace was right that `handling_bat_no_transform` has no divider
+  term and wrong that this settled the question — it quoted the caller
+  and stopped one instruction before the two `CALL`s. Ported 2026-08-10;
+  see notes/lessons.md on quoting to the next RET.
+- The halves are ALSO a SCORING rule, which this section did miss.
   `handling_bat` (and four other sites) records `need_change_player` from
   the object's `x AND $80`, and `add_points_to_score` swaps the two
   score blocks around `score_update` when it is set. So in Double Play
@@ -413,6 +421,33 @@ simultaneous-play mechanics on top.
 (bat confinement to halves, shared-lives accounting) + the spark-shift
 branch gated; ideally one oracle capture of a Double Play frame for a
 static checkpoint.
+
+**Stage 8 done (2026-08-10): bat 2's input, and the court clamps.** The
+two landed together because neither works alone — input without clamps
+walks bat 1 through the separator, clamps without input leave bat 2
+parked on $B0.
+
+The split keyboard transcribes directly, unlike WS1's device list: A/D
+left and S/F right for player 1 ($FDFE), J/L left and K/Enter right for
+player 2 ($BFFE). One deliberate addition — player 1's arrows keep
+working in Double Play, which the original does not allow, because on a
+PC they sit far from HJKL and a mode-dependent control scheme is worse
+than a superset.
+
+The clamps are `LACCE` / `LACAD`, restored to this plan after being
+wrongly struck out; see the corrected bullet above and notes/lessons.md.
+They are asymmetric on purpose — bat 1's RIGHT edge stops at $80, bat
+2's LEFT edge does — and the ZX sprite-shift pokes that go with them are
+deliberately not ported, mode 13h having no shifted sprite variant.
+
+Gated by `test-double-play-input` (4 rows) and the host-side
+`double_play_court_clamps`. New harness knob `BATTY_HOLD_KEYS` seeds
+held keys into `key_state[]`.
+
+**What remains in WS3:** bonus ownership (`set_bat_bonus` writes both
+bats; the original owns per catching bat, and the width/laser state is
+bat-1 globals with nowhere to put bat 2's) and the bat-2 CATCH, which
+needs the per-ball stuck refactor in WS6 item 2.
 
 ## WS4 — Game-flow transition gates
 

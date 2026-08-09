@@ -300,6 +300,22 @@ int bat_step_x(int bat_x, int extra_px, bool move_left, bool move_right) {
     return bat_x;
 }
 
+int bat_court_clamp_1(int bat_x, int w_body_px) {
+    /* `LD A,(IX+$0C) / ADD A,(IX+$02) / CP $80 / RET C` — an 8-bit sum,
+     * and it is deliberately reproduced as one. It cannot actually wrap
+     * for a BAT: bat_step_x has already capped the right edge at $F8, so
+     * the sum tops out there. The enemy's check_right_margin overflows
+     * on this same idiom (notes/known-bugs.md); this one is safe by the
+     * caller's clamp, not by the arithmetic, so the u8 stays. */
+    if (u8(w_body_px + bat_x) < 0x80) return bat_x;
+    return 0x80 - w_body_px;
+}
+
+int bat_court_clamp_2(int bat_x) {
+    if (bat_x >= 0x80) return bat_x;
+    return 0x80;
+}
+
 ExtraBallDirs extra_ball_dirs(u8 base_dir) {
     const u8 quadrant = (u8)(base_dir & 0x30);
     const u8 low      = (u8)(base_dir & 0x0F);
