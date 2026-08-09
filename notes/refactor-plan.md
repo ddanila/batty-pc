@@ -568,6 +568,34 @@ removed when they were added; a multiset diff confirmed zero lines
 lost.
 
 
+#### A gate that could pass on last run's captures
+
+Mutation-testing `test-visual-checkpoints` — the one fast gate never
+verified — found that it does NOT clear its output directory before
+running. It asserts each checkpoint PPM `exists()`, so PPMs left by any
+previous run satisfied it. On a clean checkout it works; on a developer
+machine that has run it once, it could report green while the port
+produced nothing. That is the wrong way round: it tells the truth only
+where nobody runs it interactively.
+
+Fixed with `shutil.rmtree(OUT)` at the top, which the newer visual gates
+already do. `test-brick-flash` reads captures back out of the same kind
+of directory and got the same fix.
+
+Then the mutations themselves taught something. Two of my first three
+SURVIVED and I nearly wrote them up as gate defects. They were misaimed:
+`probe_checkpoint_due` drives the PROBE.TXT writes, not the visual
+capture, which is `visual_checkpoint_tick`. A substitution can apply
+cleanly and still touch code the gate never exercises — the silent no-op
+in a subtler form, and one `mutate.py` cannot detect, since the text
+really was there.
+
+Aimed correctly, the gate comes out honest: "stop after the first
+checkpoint" is CAUGHT, and the one that survives — treating the
+countdown delta as an absolute — is exactly the hole its own docstring
+declares. A gate that states its limits and then demonstrably has
+precisely those limits is the good case.
+
 #### Making a default impossible to misdocument
 
 Six stale claims in six readings is a pattern, not luck, so this closes

@@ -10,6 +10,7 @@ The stale-flash check is anchored to the original-captured L3 render
 (`build/level_gt/level_03.scr`). A few bright pixels are normal in brick
 art; a full-cell white block is not.
 """
+import shutil
 import argparse
 import sys
 from pathlib import Path
@@ -139,6 +140,10 @@ def changed_cells_by_cell(before_idx, after_idx):
 
 
 def main():
+    # Clear the captures FIRST: this gate reads PPMs back out of OUT, so
+    # without this a run that produced nothing would silently grade the
+    # PREVIOUS run's images. Same hazard as test_visual_checkpoints.
+    shutil.rmtree(OUT, ignore_errors=True)
     ap = argparse.ArgumentParser()
     ap.add_argument("--expected-original", default="build/level_gt/level_03.scr",
                     help="original-captured L3 reference screen")

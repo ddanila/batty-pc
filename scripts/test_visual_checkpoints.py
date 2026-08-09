@@ -29,6 +29,7 @@ test-bat-redraw-window, notes/testing.md).
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -57,6 +58,12 @@ def build_floppy() -> None:
 
 
 def main() -> int:
+    # Clear the captures FIRST. This gate asserts that each checkpoint
+    # PPM exists, and it used to run without clearing — so PPMs left by
+    # any previous run satisfied it. Mutating probe_checkpoint_due to
+    # never fire at all still passed. It only told the truth on a clean
+    # checkout, which is the one place nobody runs it interactively.
+    shutil.rmtree(OUT, ignore_errors=True)
     build_floppy()
     proc = subprocess.run(
         [sys.executable, "scripts/capture_frame_timeline.py",
