@@ -569,6 +569,31 @@ removed when they were added; a multiset diff confirmed zero lines
 lost.
 
 
+#### handling_bird decoded, so the last enemy gap is specified
+
+`parity-gaps.md` said "the bird doesn't yet run LAFFC brick collision or
+the exact check_margins" — true, but not enough to act on. The
+disassembly gives the whole sequence:
+
+    entry slide (y < 8)  ->  bomb_appear  ->  steer every 4 frames
+    ->  LAD69 (move)  ->  LAFFC (brick collision)  ->  check_margins
+    ->  deactivate below y=$C0
+
+The port matches five of those seven and diverges at exactly two
+CONSECUTIVE calls: it runs no brick collision for the bird, and it
+substitutes a reflect-and-re-aim for what is only a clamp.
+
+Two things that a future implementation needs and that "doesn't yet run
+LAFFC" did not say. The ORDER matters — brick collision before margins,
+because LAFFC can move the alien into one. And the port's
+`laffc_collision` also calls `brick_hit_resolve`, which destroys and
+scores the cell; that is right for a ball and unverified for an alien.
+Wiring it in naively would have aliens eating the level.
+
+Recorded rather than implemented. The change is small in lines and not
+small in consequence, and the brick-damage question needs settling
+first — which is a capture, not an opinion.
+
 #### A class I decided NOT to gate
 
 Four times now a duplicated comment has drifted and misled: the bricks

@@ -45,9 +45,12 @@ Several paths use gameplay-equivalent but not byte-exact motion:
   claimed the opposite — "the port advances the RNG on demand ... so
   enemy targets aren't byte-exact" — for two months after the default
   flipped on 2026-06-05.
-  Still approximate: the bird runs `bounce_enemy_off_margins` rather
-  than `LAFFC` brick collision and the exact `check_margins`; only the
-  balls take the `LAFFC` path. Ground truth + decode: `notes/enemy-movement.md`,
+  Still approximate, and now decoded precisely — `handling_bird` calls
+  `LAA7D` (steer, every 4 frames), `LAD69` (move), `LAFFC` (brick
+  collision), then `check_margins` (clamp), in that order. The port
+  matches the steer and the move, runs NO brick collision for the bird,
+  and substitutes a reflect-and-re-aim for the clamp. Full call sequence
+  and the ordering caveat in `notes/enemy-movement.md`. Ground truth + decode: `notes/enemy-movement.md`,
   capture via `scripts/capture_enemy_flight.py`. Enemy capture is
   unblocked (the L3 snapshot has a live enemy), unlike multi-ball.
 - **brick/ball collision** — DONE. The `LAFFC` port (cell-find incl. the

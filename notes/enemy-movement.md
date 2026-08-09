@@ -307,7 +307,48 @@ flying the wrong axis in normal play.
   bird (it bounces off bricks); the port's bird steering doesn't yet run
   the brick collision. Next step once the RNG tick is aligned.
 - **Margins.** The original's `check_margins` vs the port's
-  `enemy_target_away_from_margins` is still an approximation.
+  `enemy_target_away_from_margins` is still an approximation — and
+  measured against the original it is more than that. See
+  `known-bugs.md` #16: `check_margins` is three CLAMPS and nothing else,
+  while `bounce_wall` (the one that also calls `change_direction`)
+  belongs to the ball and the sparks. The port gives the enemy a
+  reflect and a re-aim the original never performs.
+
+### handling_bird's call sequence, decoded (2026-08-09)
+
+Straight from `original/disasm/batty.asm`, because it settles exactly
+which parts of the bird the port matches:
+
+    handling_bird:
+      LD A,(IX+$04) / CP $08 / JR NC / INC (IX+$04) / RET   ; entry slide
+      CALL bomb_appear
+      ...                                                   ; LAA02 patch
+      LD B,$01
+      LD A,(counter_misc) / AND $03 / CALL Z,LAA7D          ; steer every 4
+      CALL LAD69                                            ; move
+      CALL LAFFC                                            ; BRICK collision
+      CALL check_margins                                    ; clamp only
+      LD A,(IX+$04) / CP $C0 / ... / SET 7,(IX+$00)          ; die below 192
+
+The port's `handling_bird_obj` matches the entry slide (`y < 8`), the
+bomb drop, the 4-frame steer gate, the `dir_to_dxdy` move and the
+`y >= 192` deactivate.
+
+It diverges at exactly two consecutive calls:
+
+  - `CALL LAFFC` — the port runs NO brick collision for the bird, so an
+    alien flies through bricks where the original bounces off them.
+  - `CALL check_margins` — the port substitutes a bounce that reflects
+    `dir` and re-aims the target.
+
+Note the ORDER: brick collision first, margins after. Any port of this
+must keep that, since LAFFC can move the alien into a margin.
+
+A caution for whoever wires LAFFC in: the port's `laffc_collision` also
+calls `brick_hit_resolve`, which DESTROYS and SCORES the cell. That is
+right for a ball and needs checking for an alien — whether the original's
+LAFFC damages a brick when the caller is the bird is not established
+here.
 
 ## Ground-truth capture — FIRST enemy GT validation (2026-06-05)
 
