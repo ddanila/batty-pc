@@ -403,6 +403,37 @@ false result, so the script handles all three:
   clean, the test passes, and it reads as "not caught" — the worst
   outcome, because it looks like a finding.
 
+### One class that is NOT gated, and why
+
+Comments that duplicate an explanation and then drift have caused four
+real problems: the bricks header copied into its `.cpp`, two blocks in
+front of the SPACE handler, the RNG default saying OFF after it flipped,
+and a bat-resize note claiming "roughly matches" long after the gate
+that made it exact. The last one cost an afternoon chasing a bug that
+was not there.
+
+That looks gateable. It is not, and the reasons are worth recording so
+the next person does not build the gate and trust it:
+
+- **Exact-sentence matching finds nothing.** A scan for identical
+  sentences across and within `src/*.{cpp,h}` currently reports ZERO.
+  The four real cases were PARAPHRASES — "roughly matches the original's
+  2-px-every-other-frame" versus "every-2-ticks gives the original's
+  1 px/frame". A sentence gate would have been green for every one of
+  them while feeling like coverage.
+
+- **Provenance-address co-citation is too noisy.** 47 original
+  addresses are cited from two or more comment blocks. Nearly all are
+  legitimate: a declaration summary plus an implementation detail, or
+  several call sites naming the routine they port. `$A67B` alone appears
+  in four places, all correct. A gate here would fire constantly and be
+  switched off inside a week.
+
+What actually catches these is reading the code near what you are
+changing, and noticing when two explanations of one thing disagree.
+`test-switch-defaults` gates the one sub-case that IS mechanical — a
+documented default versus the initialiser.
+
 ### Known equivalent mutants
 
 Survive by design. Do not re-investigate; if one of these starts being

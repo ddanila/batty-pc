@@ -569,6 +569,38 @@ removed when they were added; a multiset diff confirmed zero lines
 lost.
 
 
+#### A class I decided NOT to gate
+
+Four times now a duplicated comment has drifted and misled: the bricks
+header copied into its `.cpp`, two blocks in front of the SPACE handler,
+the RNG default saying OFF after it flipped, and the bat-resize note
+still saying "roughly matches" long after the gate that made it exact.
+The last cost an afternoon chasing a bug that was not there. Every other
+recurring class this month became a gate, so this should too.
+
+It should not, and finding out why was the work:
+
+- An exact-sentence scan over `src/*.{cpp,h}`, within files as well as
+  across them, reports ZERO duplicates. All four real cases were
+  PARAPHRASES. A sentence gate would have been green for every one of
+  them — a gate that cannot catch any of its own motivating examples.
+
+- Provenance-address co-citation is the better signal and still too
+  noisy: 47 original addresses are cited from two or more comment
+  blocks, and nearly all are legitimate — a declaration summary plus an
+  implementation detail, or several call sites naming the routine they
+  port. `$A67B` appears four times, all correct. I checked those by hand
+  rather than assuming, including the two I had just written.
+
+So `notes/testing.md` now records the class as deliberately un-gated,
+with both failed approaches. A gate here would fire constantly, get
+switched off, and leave everyone worse off than an honest note. The one
+mechanical sub-case — a documented default versus the initialiser — is
+already `test-switch-defaults`.
+
+Worth saying plainly after a month of adding gates: the answer is not
+always another gate.
+
 #### The bat resize was more faithful than its own notes said
 
 Taking the disassembly to the next parity gap — "big-bat resize timing
