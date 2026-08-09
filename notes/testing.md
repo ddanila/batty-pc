@@ -383,6 +383,13 @@ false result, so the script handles all three:
 - **Stale binary, same second.** Restoring a source within the same
   second as the last build leaves the timestamp unchanged, `make` reruns
   the OLD binary, and the mutation looks caught.
+- **Stale DOS EXE.** The QEMU gates boot `build/batty-test.exe`. A
+  module change rebuilds its own `.obj`, but if the link lands inside
+  the same filesystem second the EXE is left alone — mutating
+  `src/physics.cpp` changed `physics-test.obj` (md5-verified) and left
+  `batty-test.exe` byte-identical, so the gates ran the ORIGINAL code.
+  Every QEMU-gate result from that run was meaningless. `mutate.py`
+  deletes `build/*.obj` and `build/batty*.exe` too.
 - **Stale binary, wrong name.** `make test-video` builds
   `build/test_zxvga`. Deleting `build/test_video` deletes nothing. Every
   run then used a stale binary and a REAL gap was reported as caught;

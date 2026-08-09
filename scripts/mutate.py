@@ -43,14 +43,34 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 def clear_test_binaries() -> int:
+    """Remove every build artefact a test target could reuse.
+
+    Three kinds, and missing any one produces a confident false result:
+
+      build/test_*        the HOST suites' binaries.
+      build/*.obj         the DOS objects. A module change rebuilds its
+                          own .obj, but if the link happens inside the
+                          same filesystem second the EXE is left alone.
+      build/batty*.exe    the DOS EXEs the QEMU gates boot. This was
+                          missing, and it is the one that matters most:
+                          mutating src/physics.cpp changed
+                          physics-test.obj (verified by md5) and left
+                          batty-test.exe byte-identical, so the gates ran
+                          the ORIGINAL code and every result was
+                          meaningless.
+
+    Directories are left alone — the QEMU gates keep captures there, and
+    test-gate-freshness makes each gate clear its own.
+    """
     build = ROOT / "build"
     if not build.is_dir():
         return 0
     n = 0
-    for p in build.glob("test_*"):
-        if p.is_file():
-            p.unlink()
-            n += 1
+    for pattern in ("test_*", "*.obj", "batty*.exe"):
+        for p in build.glob(pattern):
+            if p.is_file():
+                p.unlink()
+                n += 1
     return n
 
 

@@ -568,6 +568,38 @@ removed when they were added; a multiset diff confirmed zero lines
 lost.
 
 
+#### mutate.py was reporting on stale DOS builds
+
+Sampling further into the QEMU layer, a mutation of `src/physics.cpp`
+came back SURVIVED. Before writing it up I checked whether it had
+reached the binary. It had not: `physics-test.obj` changed (md5-verified)
+while `build/batty-test.exe` stayed byte-identical, because the relink
+landed inside the same filesystem second. The gates had run the ORIGINAL
+code.
+
+`mutate.py` deleted `build/test_*` — the HOST suites' binaries — and
+nothing else. For a QEMU gate the artefact that matters is the DOS EXE,
+and it was never cleared. It now removes `build/*.obj` and
+`build/batty*.exe` as well.
+
+So the two findings already committed needed re-checking, not assuming.
+Both hold: the entry-slide mutation is caught by the new descend
+checkpoint, and the shimmer wrap by the new source gate (which touches
+no EXE at all, so it was never at risk). Re-ran both against the fixed
+tool rather than reasoning about whether they could have been affected.
+
+What is NOT established is the physics result. With a guaranteed-fresh
+build, inverting `laffc_sweep`'s left-boundary term still survives
+`test-laffc-ball-frame1` — but that is one trajectory, and it may simply
+never decide a left-boundary cell. Recorded as unverified rather than
+claimed as a gap; proving it needs the full suite, which is six minutes
+for one bit.
+
+This is the third distinct form of the stale-artefact trap, after the
+same-second host binary and the wrong binary NAME. Each time it produced
+a confident wrong answer, and each time only an impossible result — a
+restored source still failing, an EXE that would not change — exposed it.
+
 #### A ground-truth constant no gate guarded
 
 The 59 QEMU gates were the last unverified layer — mutation-testing them
