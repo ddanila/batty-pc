@@ -863,6 +863,11 @@ struct BallState {
      * entry, respawn, the replay overrides — and stay [0] forever.
      * The other fourteen are the ones a catch feature has to thread. */
     unsigned char stuck[3];           /* resting on the bat, awaiting launch */
+    /* WHICH bat is holding it. In Double Play either can, and a held
+     * ball rides the bat that caught it — so this has to be state, not
+     * a derivation: bat 2 is not "the bat on the right half" once a
+     * court clamp has moved it, and the ball's own x is the bat's. */
+    unsigned char stuck_bat[3];
     int          stuck_offset_x[3];   /* where on the bat it rests */
     unsigned int stuck_ticks[3];      /* counts up to the auto-launch */
     unsigned int speed_ramp;
@@ -890,7 +895,8 @@ struct BallState {
 
 static BallState ball = {
     +BALL_SPEED, -BALL_SPEED,
-    {1, 0, 0}, {BALL_X_OFFSET_ON_BAT, 0, 0}, {0, 0, 0},
+    {1, 0, 0}, {OBJ_BAT_1, OBJ_BAT_1, OBJ_BAT_1},
+    {BALL_X_OFFSET_ON_BAT, 0, 0}, {0, 0, 0},
     0, 0,
     0, 0,
     {0,0,0}, {0,0,0}, {0,0,0}, {0,0,0}
@@ -4997,8 +5003,9 @@ static void magnet_ball_state_clear(unsigned char si) {
  * the launch direction derived from it match the Spectrum — probed,
  * ball_x 133 gives offset 0x10 and rest x 132.
  * orig: LAB1F_1..3 */
-static void catch_ball_on_bat(int b, int contact_x) {
-    int off = contact_x - BAT_X;
+static void catch_ball_on_bat(int b, int bat, int contact_x) {
+    const int bat_x = objects[bat].x_coord;
+    int off = contact_x - bat_x;
     if (off < 0) off = 0;
     off &= 0xFC;
     if (off >= 0x19) off = 0x18;
@@ -5006,6 +5013,7 @@ static void catch_ball_on_bat(int b, int contact_x) {
     ball.stuck_offset_x[b] = off;
     ball.stuck[b]          = 1;
     ball.stuck_ticks[b]    = 0;
+    ball.stuck_bat[b]      = (unsigned char)bat;
     /* A SIGN, not a speed. Every other writer of this cache stores
      * {-1,0,+1}; this one stored -BALL_SPEED (= -2), and it is the copy
      * that SURVIVES, because a caught ball is stuck and step_ball
@@ -5014,14 +5022,18 @@ static void catch_ball_on_bat(int b, int contact_x) {
      * and delta_to_dir picks its quadrant on `dy >= 0` and its angle on
      * abs(dx). See known-bugs.md #14 for the part still open, which is
      * whether the ORIGINAL wants a magnitude in dx at all. */
-    ball.dy             = -1;
-    objects[OBJ_BALL_1].dir = 0x20;
-    BALL_X = BAT_X + off;
+    /* The sign cache is the PRIMARY's alone (known-bugs #13), so this
+     * write is guarded rather than indexed — the same rule
+     * refresh_ball_motion_signs enforces for its own callers. dx is
+     * deliberately left as it is; see the note above. */
+    if (b == BALL_PRIMARY) ball.dy = -1;
+    objects[b].dir = 0x20;
+    objects[b].x_coord = (unsigned char)(bat_x + off);
     /* A caught ball rests 1 px lower than the launch rest: LAB1F_3 sets
      * $A7 = 167, against $A6 = 166 for level start and launch. */
-    BALL_Y = BAT_Y - BALL_H_PX + 1;
-    objects[OBJ_BALL_1].x_coord_hi = 0;
-    objects[OBJ_BALL_1].y_coord_hi = 0;
+    objects[b].y_coord = (unsigned char)(BAT_Y - BALL_H_PX + 1);
+    objects[b].x_coord_hi = 0;
+    objects[b].y_coord_hi = 0;
     sound_queue(SND_BAT_BEAT);
 }
 
@@ -5100,10 +5112,11 @@ static void lose_primary_ball(void) {
  *
  * BALL_H_PX, not the effective ball size: using the latter put the ball
  * at 165 every frame, silently clobbering respawn_primary_ball's $A6. */
-static void rest_ball_on_bat(int b) {
-    objects[b].x_coord = (unsigned char)(BAT_X + ball.stuck_offset_x[b]);
+static void rest_ball_on_bat(int b, int bat) {
+    objects[b].x_coord =
+        (unsigned char)(objects[bat].x_coord + ball.stuck_offset_x[b]);
     objects[b].y_coord = (unsigned char)(BAT_Y - BALL_H_PX +
-             (objects[OBJ_BAT_1].bonus_applied == 0x03 ? 1 : 0));
+             (objects[bat].bonus_applied == 0x03 ? 1 : 0));
 }
 
 /* Is this step landing the descending ball on the bat?
@@ -5239,7 +5252,7 @@ static int deflect_ball_off_bat(int next_x, int *next_y) {
      * match the Spectrum (probed: ball_x 133 -> offset 0x10 -> rest
      * x 132). The original then snaps the ball to y=$A7=167. */
     if (objects[OBJ_BAT_1].bonus_applied == 0x03 && bat.extra_px == 0) {
-        catch_ball_on_bat(BALL_PRIMARY, next_x);
+        catch_ball_on_bat(BALL_PRIMARY, OBJ_BAT_1, next_x);
         return 1;
     }
     /* No `ball.dy = -BALL_SPEED` here: the deflection below rewrites the
@@ -5287,10 +5300,23 @@ static int deflect_ball_off_bat(int next_x, int *next_y) {
  * with IY the bat that caught it, and wraps the bat-2 branch in
  * `bonus_flag_swap`. The port shares bonuses between the two. See
  * notes/double-play.md. */
-static void deflect_ball_off_bat_2(int next_x, int *next_y) {
+static int deflect_ball_off_bat_2(int next_x, int *next_y) {
     const Object &b2 = objects[OBJ_BAT_2];
     int dx_q8, dy_q8;
     *next_y = (int)b2.y_coord - BALL_H_PX;
+    /* Bat 2's catch, the mirror of bat 1's above. It reads bat 2's own
+     * bonus byte — which `set_bat_bonus` currently keeps in step with
+     * bat 1's, so in practice both bats hold the MAGNET at once. That
+     * sharing is the open divergence (the original applies a bonus to
+     * the CATCHING bat only); it is not this branch's doing, and this
+     * branch will be correct unchanged once ownership splits.
+     *
+     * No `extra_px` term: bat 2 is always the plain 28-wide sprite,
+     * because the width bonuses are bat-1 globals. */
+    if (b2.bonus_applied == 0x03) {
+        catch_ball_on_bat(BALL_PRIMARY, OBJ_BAT_2, next_x);
+        return 1;
+    }
     /* LAB1F_0 again: the owner follows the bat that hit it. */
     ball_owner_side = (unsigned char)((b2.x_coord & 0x80) ? 1 : 0);
     objects[OBJ_BALL_1].dir =
@@ -5300,6 +5326,7 @@ static void deflect_ball_off_bat_2(int next_x, int *next_y) {
                       &dx_q8, &dy_q8);
     refresh_ball_motion_signs(&objects[OBJ_BALL_1], dx_q8, dy_q8);
     sound_queue(SND_BAT_BEAT);
+    return 0;
 }
 
 static void step_ball(void) {
@@ -5308,7 +5335,7 @@ static void step_ball(void) {
     long next_x_q8, next_y_q8;
     int ball_sz   = eff_ball_size();
     if (ball.stuck[BALL_PRIMARY]) {
-        rest_ball_on_bat(BALL_PRIMARY);
+        rest_ball_on_bat(BALL_PRIMARY, ball.stuck_bat[BALL_PRIMARY]);
         objects[OBJ_BALL_1].x_coord_hi = 0;
         objects[OBJ_BALL_1].y_coord_hi = 0;
         return;
@@ -5331,7 +5358,7 @@ static void step_ball(void) {
     if (ball_lands_on_bat(next_x, next_y, ball_sz)) {
         if (deflect_ball_off_bat(next_x, &next_y)) return;
     } else if (ball_lands_on_bat_2(next_x, next_y, ball_sz)) {
-        deflect_ball_off_bat_2(next_x, &next_y);
+        if (deflect_ball_off_bat_2(next_x, &next_y)) return;
     }
     /* Past the bat (= primary ball lost). Original at LA27E_25 ($A4xx)
      * checks Y >= $C0 (= 192). It deactivates the ball and decrements
@@ -6610,6 +6637,11 @@ static void respawn_primary_ball(void) {
     ball.stuck[BALL_PRIMARY]     = 1;
     ball.stuck_ticks[BALL_PRIMARY]    = 0;
     ball.stuck_offset_x[BALL_PRIMARY] = BALL_X_OFFSET_ON_BAT;
+    /* Always bat 1: a respawn or a level entry puts the ball on the
+     * player's own bat, whichever bat happened to be holding it
+     * when the life was lost. Without this a ball caught by bat 2
+     * would come back held by bat 2. */
+    ball.stuck_bat[BALL_PRIMARY] = OBJ_BAT_1;
     BALL_SHOW();
     BALL_X = BAT_X + BALL_X_OFFSET_ON_BAT;
     /* Ball sits at BAT_Y_PX - BALL_H_PX = 166 (= $A6) so its bottom
@@ -6810,6 +6842,11 @@ static void reset_level_state(unsigned char lvl_idx) {
     }
     ball.stuck[BALL_PRIMARY]    = 1;
     ball.stuck_offset_x[BALL_PRIMARY] = BALL_X_OFFSET_ON_BAT;
+    /* Always bat 1: a respawn or a level entry puts the ball on the
+     * player's own bat, whichever bat happened to be holding it
+     * when the life was lost. Without this a ball caught by bat 2
+     * would come back held by bat 2. */
+    ball.stuck_bat[BALL_PRIMARY] = OBJ_BAT_1;
     BALL_SHOW();                      /* visible from level entry; sits on the bat */
     /* all_var_init's first act is the alternation, and it happens in
      * every mode — only its effect on the ball's START X is mode-2
@@ -7034,8 +7071,8 @@ static InputAction handle_input(int &ball_moved, int &bat_moved) {
     return INPUT_NONE;
 }
 
-static void ride_stuck_ball_on_bat(int b) {
-    rest_ball_on_bat(b);
+static void ride_stuck_ball_on_bat(int b, int bat) {
+    rest_ball_on_bat(b, bat);
     ball.stuck_ticks[b]++;
     if (ball.stuck_ticks[b] >= STUCK_TIMEOUT) {
         ball.stuck[b] = 0;          /* auto-launch */
@@ -7396,7 +7433,7 @@ static bool visual_checkpoint_tick(void) {
  * run should end. */
 static bool step_primary_ball(int *ball_moved) {
     if (ball.stuck[BALL_PRIMARY]) {
-        ride_stuck_ball_on_bat(BALL_PRIMARY);
+        ride_stuck_ball_on_bat(BALL_PRIMARY, ball.stuck_bat[BALL_PRIMARY]);
         *ball_moved = 1;
         return true;
     }
@@ -7507,7 +7544,7 @@ static void redraw_frame(unsigned char lvl_idx, unsigned char cycle,
     if (!bat_moved) return;
     redraw_bat(cycle, bg_attr);
     if (BALL_VISIBLE && ball.stuck[BALL_PRIMARY]) {
-        rest_ball_on_bat(BALL_PRIMARY);
+        rest_ball_on_bat(BALL_PRIMARY, ball.stuck_bat[BALL_PRIMARY]);
         render_ball(BALL_X, BALL_Y, bg_attr);
     }
 }

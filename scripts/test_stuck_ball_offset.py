@@ -49,14 +49,14 @@ def body_of(src: str, signature: str) -> str:
 def main() -> int:
     src = SRC.read_text()
 
-    if "static void rest_ball_on_bat(int b)" not in src:
+    if "static void rest_ball_on_bat(int b, int bat)" not in src:
         raise SystemExit("FAIL: rest_ball_on_bat is gone; update this gate")
 
     body = body_of(src, "static void redraw_frame(")
     if "ball.stuck" not in body:
         raise SystemExit("FAIL: redraw_frame no longer repositions a stuck ball; "
                          "update this gate")
-    if "rest_ball_on_bat(BALL_PRIMARY);" not in body:
+    if "rest_ball_on_bat(BALL_PRIMARY, ball.stuck_bat[BALL_PRIMARY]);" not in body:
         raise SystemExit(
             "FAIL: redraw_frame places a stuck ball without rest_ball_on_bat — "
             "known-bugs #12. It must not hardcode an offset; the catch offset "
@@ -69,7 +69,7 @@ def main() -> int:
     print("PASS stuck_ball_offset: redraw_frame defers to rest_ball_on_bat")
 
     # rest_ball_on_bat itself must keep using the recorded offset.
-    rest = body_of(src, "static void rest_ball_on_bat(int b)")
+    rest = body_of(src, "static void rest_ball_on_bat(int b, int bat)")
     if "ball.stuck_offset_x" not in rest:
         raise SystemExit("FAIL: rest_ball_on_bat no longer uses the recorded "
                          "catch offset")

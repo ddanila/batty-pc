@@ -808,6 +808,7 @@ parity-check-full:
 	$(MAKE) test-double-play-bat2
 	$(MAKE) test-double-play-input
 	$(MAKE) test-double-play-alien-kill
+	$(MAKE) test-double-play-bat2-catch
 	$(MAKE) test-stuck-auto-launch
 	$(MAKE) test-bat-redraw-window
 	$(MAKE) test-ball-left-wall-escape
@@ -1382,6 +1383,11 @@ test-double-play-input:
 # own side. A/B on BATTY_GAME_MODE with the alien parked on bat 2.
 test-double-play-alien-kill:
 	python3 scripts/test_double_play_alien_kill.py
+
+# WS3/WS6.2: LAB1F's catch branch belongs to whichever bat the ball met.
+# With MAGNET up, bat 2 catches and the ball rides BAT 2 (ball.stuck_bat).
+test-double-play-bat2-catch:
+	python3 scripts/test_double_play_bat2_catch.py
 
 # A ball left on the bat launches itself after STUCK_TIMEOUT (192)
 # ticks. Nothing gated this: mutating the counter so it never fires

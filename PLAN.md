@@ -16,7 +16,7 @@ The port is "100%" when all of the following hold:
 |---|-----------|-------|
 | 1 | All three game modes work: 1 Player, 2 Players (alternating), Double Play (simultaneous split-court co-op) | 1P and 2P done; Double Play has its court, both bats, ball physics, scoring and INPUT (2026-08-10); bonus ownership and bat-2 catch remain |
 | 2 | Menu semantics match the original (0 starts the selected game directly; A/B input-device cycling affects play) | Key 0 starts the game (`test-menu-start`); the device byte is per-player state but still selects nothing |
-| 3 | Core gameplay byte-exact where an oracle exists (ball, bat, collision, RNG, enemy, bonuses, scoring) | **Done** — regression-locked by 95 gates |
+| 3 | Core gameplay byte-exact where an oracle exists (ball, bat, collision, RNG, enemy, bonuses, scoring) | **Done** — regression-locked by 96 gates |
 | 4 | Full game FLOW gated end-to-end: level-clear → next, life-loss → respawn, game-over → initials, level wrap | **Done** — `test-level-advance`, `test-life-loss`, `test-game-over-visual`, `test-name-entry-visual` |
 | 5 | Sound faithful to the original's 5-slot beeper queue (envelope/timing, not just effect IDs) | ids, slot count, pitches and envelope ARITHMETIC faithful; durations still round to 20 ms because the sound clock is the 50 Hz frame counter |
 | 6 | All assets derived from the tape at build time; no captured emulator blobs | **Done** — all 13 loaded assets build from `original/blocks/`, held by `test-asset-provenance` |
@@ -624,8 +624,18 @@ In priority order (all pre-scoped in `parity-gaps.md` / notes):
    meaning "the only ball that can be here" were indistinguishable, and
    ten of the 24 sites are the second kind. See notes/bat-deflection.md.
 
-   What remains is `catch_ball_on_bat` learning which BAT — it still
-   reads `BAT_X` — and then a secondary ball actually being caught.
+   **The bat followed on 2026-08-10.** `catch_ball_on_bat`,
+   `rest_ball_on_bat` and `ride_stuck_ball_on_bat` take a bat too, and
+   one new field — `ball.stuck_bat[3]` — records which bat holds each
+   ball, because that cannot be derived once a court clamp has moved
+   either bat. Bat 2's catch landed on top of it in four lines
+   (`test-double-play-bat2-catch`), which was the point of doing the
+   threading first.
+
+   What remains for this item is the MAGNET case it was opened for: a
+   SECONDARY ball being caught. The state is now shaped for it — the
+   fields are `[3]` and every function takes a slot — so what is left is
+   `step_extra_ball` reaching the catch at all.
 3. ~~**Seeded destroyed-cell mismatch**~~ — **CLOSED 2026-08-09, and it
    had already fixed itself.** This entry said the port and original
    destroy different *cells* on `replay-l3-brick-flash-both`. They do

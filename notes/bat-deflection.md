@@ -335,10 +335,25 @@ not the primary — the dx/dy sign cache is the primary's alone
 (known-bugs #13). For `b > 0` that call is a no-op ON PURPOSE, and the
 comment says so, because a reader who did not know would "fix" it.
 
-### What is left
+### The bat followed, same day
 
-`catch_ball_on_bat` still reads `BAT_X` directly, so the index names a
-ball but not yet a BAT. That is the half bat 2's catch needs
-(notes/double-play.md), and it is the natural next step: the function
-takes a bat, the deflection site passes the bat that actually hit, and
-bat 2 can hold a ball.
+`catch_ball_on_bat`, `rest_ball_on_bat` and `ride_stuck_ball_on_bat` now
+take a BAT as well as a ball, and read `objects[bat].x_coord` instead of
+`BAT_X`. Still no behaviour change on its own — every caller passed
+`OBJ_BAT_1` — and then the feature was four lines.
+
+**One field had to be added: `ball.stuck_bat[3]`.** A held ball rides
+the bat that caught it, and which bat that is cannot be derived. "The
+bat on the right half" is not bat 2 once a court clamp has moved either
+of them, and the ball's own x IS the bat's, so it answers nothing.
+`catch_ball_on_bat` records it; `step_ball` and `redraw_frame` read it.
+
+`respawn_primary_ball` and the level-entry reset put it back to
+`OBJ_BAT_1` explicitly. Without that a ball caught by bat 2 comes back
+after a life loss still held by bat 2 — the state outlives the thing
+that justified it, which is the standard hazard of adding a field.
+
+Gated by `test-double-play-bat2-catch`, which compares two probe frames
+rather than one: a single frame cannot tell a caught ball from one
+passing through the rest height. Two mutations caught — recording
+`OBJ_BAT_1` at the catch, and removing bat 2's catch branch.

@@ -545,3 +545,36 @@ The other three attributions are NOT measured. Reaching them from a
 seeded scenario needs bonus ownership and a bat-2 laser, both open WS3
 items. They are a code fix with a source citation, and the gate's
 docstring says so rather than leaving it to be found later.
+
+
+## Ported: bat 2 catches the ball (2026-08-10)
+
+`LAB1F` tries bat 1 and falls through to bat 2 in mode $02, and the
+catch branch (`LAB1F_1..3`, bonus $03) belongs to whichever bat the ball
+actually met. The port had it on bat 1 only, so a ball arriving on bat
+2's half bounced off a magnet bat that should have held it.
+
+`deflect_ball_off_bat_2` gained the branch and now returns a flag like
+bat 1's, so `step_ball` stops the frame on a catch.
+
+The comment that used to sit on that function said the missing catch was
+blocked by the stuck system being written around the primary ball and
+bat 1. That was accurate, and it is now unblocked: the stuck fields
+became per-ball in `cce6483`, the stuck functions took a bat, and this
+is the four lines that follow. See notes/bat-deflection.md.
+
+No `extra_px` term on bat 2's branch: bat 2 is always the plain 28-wide
+sprite, because the width bonuses are bat-1 globals.
+
+### It depends on the bonus-sharing divergence, deliberately
+
+Bat 2's branch reads `objects[OBJ_BAT_2].bonus_applied`, which
+`set_bat_bonus` keeps in step with bat 1's — so in practice both bats
+hold the MAGNET at once. That sharing is the open divergence (the
+original applies a bonus to the CATCHING bat only, `DEC (IY+$14)` with
+IY the bat that caught it).
+
+The branch is correct either way and needs no change when ownership
+splits. The GATE does: it drops a CATCH bonus on bat 1 and relies on it
+reaching bat 2. Its docstring says so, so that day is a one-line edit
+rather than a mystery failure.

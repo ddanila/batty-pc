@@ -8,7 +8,7 @@
 > — in milliseconds. See [`video-engine.md`](video-engine.md).
 >
 > The QEMU gates below cost ~10 s per boot; `make parity-check-parallel`
-> runs all 67 QEMU gates in about six minutes.
+> runs all 68 QEMU gates in about six minutes.
 >
 > (This paragraph read "`make test-video` is the one gate here that
 > needs no emulator" until 2026-08-09. That was true when zxvga was the
@@ -376,6 +376,8 @@ mentioned nowhere in this file, including several of the oldest.
   the court clamps hold the divider.
 - `test-double-play-alien-kill` — bat 2 kills the alien; the 350 lands
   on 2UP.
+- `test-double-play-bat2-catch` — bat 2 catches the ball and holds it on
+  its own bat.
 - `test-stuck-auto-launch` — a held ball launches itself after 192 ticks.
   byte, and `delta_to_dir` has no production caller (known-bugs #14).
 - `test-doc-links` — every file path cited in a comment or note exists.
