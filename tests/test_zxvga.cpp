@@ -396,6 +396,47 @@ static Sprite make_sprite(int w, int h) {
     return Sprite(sprite_buf);
 }
 
+
+/* ===================================================================== */
+/* 12. A sprite lands at the x it was given, to the PIXEL                 */
+/* ===================================================================== */
+/* blit_masked_to_scr_buff takes x in pixels, not bytes: an odd x means
+ * every source byte straddles two destination bytes and is shifted into
+ * both. Nothing here checked WHERE it landed. test_blit_stays_in_playfield
+ * checks clipping, the clash test checks it does not touch attributes,
+ * and both hold if the shift is wrong — mutating `x_px & 7` to `x_px & 6`
+ * left the whole suite green while moving every odd-x sprite one pixel.
+ *
+ * The check: a single solid byte blitted at x, read back as a bit index,
+ * must start exactly at x. Run for every sub-byte offset and both sides
+ * of a byte boundary. */
+static void test_blit_lands_on_the_given_x(void) {
+    int x;
+    begin("blit_lands_on_given_x");
+    for (x = 0; x < 32; x++) {
+        int found = -1, bit, count = 0;
+        memset(scr_buff, 0, sizeof(scr_buff));
+        sprite_buf[0] = 1;                 /* 1 byte wide */
+        sprite_buf[1] = 1;                 /* 1 row tall  */
+        sprite_buf[2] = 0xFF;              /* mask: all   */
+        sprite_buf[3] = 0x80;              /* pixel: leftmost bit only */
+        {
+            Sprite spr(sprite_buf);
+            blit_masked_to_scr_buff(spr, x, 10);
+        }
+        for (bit = 0; bit < PLAYFIELD_W; bit++) {
+            const u8 byte = scr_buff[10 * BYTES_PER_ROW + (bit >> 3)];
+            if (byte & (0x80 >> (bit & 7))) {
+                if (found < 0) found = bit;
+                count++;
+            }
+        }
+        CHECK(found == x, "a sprite blitted at x=%d lit bit %d\n", x, found);
+        CHECK(count == 1, "x=%d lit %d bits, expected 1\n", x, count);
+    }
+    end("32 x offsets, exact");
+}
+
 /* ===================================================================== */
 /* 8. THE CLASH INVARIANT: pixel blits never touch attributes            */
 /* ===================================================================== */
@@ -591,6 +632,7 @@ int main(int argc, char **argv) {
     test_dirty_flush_equiv_full();
     test_dirty_cell_rect_rounding();
     test_sprite_blit_preserves_attrs();
+    test_blit_lands_on_the_given_x();
     test_clash_confines_to_cell_pair();
     test_attr_blit_recolours_cells();
     test_golden_original_scr(golden);

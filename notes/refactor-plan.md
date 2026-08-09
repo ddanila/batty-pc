@@ -560,6 +560,34 @@ removed when they were added; a multiset diff confirmed zero lines
 lost.
 
 
+#### zxvga never checked WHERE a sprite lands
+
+Finishing the host-suite audit: `bricks`, `hud`, `sound` and `assets`
+caught their mutations. `zxvga` did not catch `x_px & 7` → `x_px & 6`,
+nor `start_col = x_px >> 3` → `(x_px + 1) >> 3`. Both move every sprite
+at a non-byte-aligned x, and the suite stayed green — it checked
+clipping (`blit_stays_in_playfield`), the clash invariant, and
+flush-equivalence, none of which care about placement.
+
+`blit_lands_on_given_x` now blits a single-pixel sprite at all 32 x
+offsets and requires exactly one lit bit, at exactly x. Both mutations
+are caught.
+
+One mutation is deliberately NOT closed: `byte_hi = (x_end - 1) >> 3`
+→ `x_end >> 3` marks one extra dirty byte. The flush then copies a byte
+that is already correct, so the output is identical and the
+flush-equivalence tests pass BY DESIGN. It is an equivalent mutant, like
+`repaint_row_top_edge` earlier — recorded rather than chased.
+
+**The trap that nearly made all of this wrong.** The make target is
+`test-video`; the binary is `build/test_zxvga`. Every mutation run here
+deleted `build/test_video`, which does not exist, so each result came
+from a stale binary — and the first pass reported the shift mutation as
+"caught" when it was not. It surfaced only because a restored source
+still failed, which cannot happen and forced a real diagnosis. Deleting
+"the obvious binary name" is not enough; delete the one the rule
+actually builds.
+
 #### Two host suites tested the shape, not the value
 
 With all twelve source gates now mutation-verified, the same audit ran
