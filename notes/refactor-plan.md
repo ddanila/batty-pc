@@ -525,7 +525,22 @@ Order from here:
 3. game-state consolidation — the real prize
 4. replay, which falls out of 3
 
-### Stage 1a: the parsers came out first
+### Session log
+
+Each entry below is one commit's worth of reasoning. Until the headings
+were added this was a single 700-line block titled after ONE of its
+entries ("Stage 1a"), which is what made it unnavigable.
+
+Do not read position as chronology. Entries were mostly prepended, so
+the run from `BATTY_REPLAY_SCORE` down to `show_round_banner` is roughly
+newest-first — but `Stage 1a` and its neighbours at the top are among
+the OLDEST, and I got that wrong in the first draft of this very
+paragraph. Use the headings, not the order. Nothing was reordered or
+removed when they were added; a multiset diff confirmed zero lines
+lost.
+
+
+#### Stage 1a: the parsers came out first
 
 The replay scaffolding is still blocked on game-state ownership, but its
 *parsers* never were. `replay_parse_ints` and `replay_parse_hex_bytes`
@@ -543,6 +558,8 @@ That is worth more than the line count: a half-seeded replay value puts
 the game in a state nobody asked for, and the gate then reports a game
 bug.
 
+#### One level-clear tail, and an invariant broken three commits after naming it
+
 `finish_cleared_level` took the level-clear tail, and the new-game bat
 reset folded into `new_game_reset` where the rest of the new-game state
 already lives.
@@ -554,12 +571,16 @@ the port's ball object handler is a stub, but `call_for_all_obj`
 dispatches on `sprite_set` and the probe dumps those objects. It uses
 the helper now.
 
+#### The alien-to-blast transition existed four times
+
 The alien-to-blast transition existed **four** times — killed by the
 bat, by a ball, by a bullet, and by the KILL_ALIENS bonus — each with
 its own copy of the nine lines that centre the 16x13 blast, set
 sprite_set $0A, award 350 and queue the sound. Three of them now call
 `blast_active_alien`, which was extracted for the fourth back at stage
 6b-iv.
+
+#### reset_destroyed_cell_attrs into bricks, and what testing it exposed
 
 `reset_destroyed_cell_attrs` moved into `src/bricks.cpp`, the first
 piece of stage 5b to leave `main.cpp` rather than merely be named there.
@@ -627,6 +648,8 @@ row-scoped — now live beside the primitives they drive. What is left in
 `(cells, lattr, bg_attr)`, which is the only thing the module could not
 know.
 
+#### BATTY_REPLAY_SCORE reaches the other half of the game-over screen
+
 `BATTY_REPLAY_SCORE` seeds a score, which reaches the other side of
 `render_game_over`'s `if (high_score_beaten_this_game)` — the NEW HIGH
 line and the saved initials. `test-game-over-visual` now runs both, and
@@ -647,6 +670,8 @@ so a reset added later cannot clobber them. That is the same ordering
 mistake as the PlayerState rename earlier in this refactor: inserting
 code above a line that resets what it just set.
 
+#### Every screen in the game now has visual coverage
+
 **Every screen in the game now has visual coverage.** Name entry was the
 last, and reaching it took a stack: one life, no ball (death on frame 1),
 a seeded score to beat the high score — and then one key, because of the
@@ -666,6 +691,8 @@ the letter row to change, since placement alone would look identical
 whether `step_name_letter` worked or not. Mutation-checked by making the
 LEFT arm a no-op.
 
+#### bricks kept its header's reasoning in the .cpp too
+
 A scan for sentences repeated across comment blocks — the mechanical
 version of what the last two commits found by hand — turned up two in
 `bricks`, where the header's WHY had been copied into the `.cpp`.
@@ -682,6 +709,8 @@ One cross-file repeat remains and is legitimate: `zxvga.cpp` and
 `zxvga.h` share a title line, and the `.cpp` already says "Read
 zxvga.h first".
 
+#### handle_input split; one explanation of the SPACE key
+
 `handle_input` went 70 → 26 lines: `toggle_pause` and `launch_or_fire`
 came out, leaving a function that is just the key dispatch it claims to
 be.
@@ -694,6 +723,8 @@ moved into `try_fire_laser` when that was extracted; the block stayed
 behind. `launch_or_fire` now states the property once — the launch is
 conditional on a WAITING ball, the laser is not — because that
 independence is the whole reason the two live in one branch.
+
+#### make help named 13 gates and omitted test-fast
 
 `make help` was the SEVENTH stale list, and the one a newcomer meets
 first. It named 13 individual gates from an earlier era and omitted the
@@ -712,6 +743,8 @@ useful in the checked index, not in a one-line orientation. Adding an
 eighth checked location for it would be exactly the over-engineering
 these notes keep warning about.
 
+#### known-bugs.md said there were none; there is one
+
 `notes/known-bugs.md` opened with "user-reported, unfixed" and "(none
 currently)". Neither had been true for a while: #8-#15 were surfaced by
 this refactor rather than reported, and #14 is open. Someone scanning
@@ -724,6 +757,8 @@ That made SIX duplicated lists: this file kept its own copy of the same
 findings table, and that copy was already missing #15. Replaced with a
 pointer rather than synced, per the rule the fourth one taught — derive
 or point, do not duplicate.
+
+#### Three rotted file citations, and a gate for the other 240
 
 Three file citations had rotted (named below without paths, per the
 convention this turned into). A `magnets-missing` note was folded into
@@ -750,6 +785,8 @@ index, this gate's own docstring, and this very paragraph, which named
 all three dead paths and failed the check I had just written. Worth
 expecting rather than rediscovering.
 
+#### A comment block that had been wrong for a long time
+
 A comment block in `main.cpp` listed the gun, triple-ball, rocket and
 kill-aliens bonuses as "deferred" and claimed the port supported four
 effects. All TEN are implemented, each with an arm in `bonus_apply` and
@@ -765,6 +802,8 @@ reader knows the block has been checked rather than merely reformatted.
 
 Comment-only, and provably so: build, `git stash`, rebuild, `cmp` —
 byte-identical EXEs.
+
+#### .PHONY derived instead of hand-listed
 
 `.PHONY` was the fourth hand-maintained list found out of sync: 85 of
 109 task targets, with everything added in the last stretch missing —
@@ -785,6 +824,8 @@ Four lists have now drifted (`test-fast` vs `parity-check` vs CI, the
 naming: this repo keeps growing parallel lists of the same set, and each
 looks complete on its own. Derive where possible, gate where not.
 
+#### Indexing every gate in testing.md
+
 `notes/testing.md` had no index. It grew as a narrative of how
 particular gates came to be — worth keeping — but 30 of 59 gates were
 mentioned nowhere in it, including several of the oldest, so "what
@@ -803,6 +844,8 @@ would satisfy it. That is the honest limit: what it buys is that adding
 a gate without saying what it is for becomes a failing build rather than
 a silent omission — the failure that already happened 30 times.
 
+#### CI was running 1 of 14 host suites
+
 That drift had a THIRD copy, and it was the worst of them: the CI
 workflow named `test-video` and three source gates by hand, so CI ran
 **1 of 14 host suites and 3 of 10 source gates** while showing a green
@@ -815,6 +858,8 @@ two things a fresh CI checkout lacks — `make test-fast` regenerates the
 asset from the tracked tape data (8192 bytes), `test_bricks` SKIPs its
 golden half cleanly, and all 14 suites pass. That is a better check than
 linting the YAML, which is all that was available locally.
+
+#### A host suite that existed but never ran
 
 `tests/test_replay_parse.cpp` had seven tests, a working make target,
 and never ran under `make test-fast`. It was reachable only from
@@ -839,6 +884,8 @@ and anything unresolvable is reported rather than assumed fine.
 Mutation-checked both ways: removing a suite from `test-fast`, and
 adding a suite with no target at all.
 
+#### One bat-overlap test for falling objects
+
 The falling bonus and the falling bomb each carried their own copy of
 the bat-overlap test AND their own explanation of why it uses body
 extents rather than sprite extents. `overlaps_bat_body(x, y, w, h)` now
@@ -861,6 +908,8 @@ left alone rather than forced through this.
 
 Watcom caught all five orphaned locals the extraction left behind.
 
+#### The shared fall accelerator moved into physics
+
 The shared fall accelerator (`motion_acc_t` + `motion_accel_step`, the
 original's LA55A_0) moved to `physics` with three host tests. It is pure
 arithmetic with no state, shared by falling bonuses, enemy bombs and the
@@ -882,6 +931,8 @@ Both of the curve tests failed on their first run because I guessed the
 frame counts. `de=$0008` needs 64 steps to reach a cap of `$02`, not the
 40 I assumed, and the fast variant needs 820, not 200. Measured, then
 written down next to the numbers.
+
+#### Two 'is this brick there' rules, both correct
 
 Writing the clear-bricks knob surfaced that this codebase has TWO
 "is this brick there" rules, and both are correct:
@@ -908,6 +959,8 @@ override` calls `bomb_launch`, `apply_replay_force_bonus` calls
 state rather than compositor state and belongs where it is. So the next
 increment is a real move, not another easy slice, and the plan should
 stop implying otherwise.
+
+#### All five game-FLOW transitions closed
 
 `parity-gaps.md` listed five game-FLOW transitions as ungated. **All
 five are now closed.** The last two — level-clear → next and the level
@@ -945,6 +998,8 @@ first version counted four icons where there are two. Density works, and
 the gap is an order of magnitude: icons measure 74 and 46 non-background
 pixels per 16×6 cell, empty cells exactly 6.
 
+#### The one module the QEMU suite cannot cover
+
 `sound` is the one module the QEMU suite structurally CANNOT cover:
 every gate runs with sound off, so its 366 lines are guarded by host
 tests alone. Three contracts had none.
@@ -968,6 +1023,8 @@ The suite also could not count. `test_sound` printed the LITERAL string
 "7 tests, 0 failed" on success, so it never reflected reality and could
 not; `test_replay` and `test_replay_parse` hardcoded their totals.
 All three now count in `report()`.
+
+#### Module state ownership, and a gate that classified nothing
 
 `objects[]` turned out to be the ONLY module declaring state it did not
 own — a full scan of every `extern` in `src/*.h` against the matching
@@ -1006,6 +1063,8 @@ test expected verbatim storage and was wrong. The comment carried into
 window is 8 KB and the mask is not a bit-width truncation at all. Both
 the test and the comment now say what actually happens.
 
+#### Stage 1's first real slice
+
 Stage 1 has a first real slice. `src/replay.{cpp,h}` holds the five
 `BATTY_REPLAY_*` seeders that depend ONLY on state other modules already
 own — `objects` (objects.h), the bullet and blast arrays (weapons.h) and
@@ -1026,6 +1085,8 @@ literals, so moving them moved what it sees. Had it scanned `getenv(`
 call sites it would simply have gone quiet, which is the same reason it
 reported nine false orphans the first time and had to be built this way.
 
+#### What was left on the frozen clock
+
 Auditing what was LEFT on the frozen clock found `run_level`'s `start`:
 seeded from `bios_ticks()`, threaded into `handle_input` by reference so
 it could be assigned twice more, and read by nothing at all. Its only
@@ -1044,6 +1105,8 @@ is **never compute with it**: a bare assignment is inert, an arithmetic
 or comparison is a live dependency on a clock that does not move, which
 is exactly the shape #15 was. Mutation-checked by restoring the old
 65-BIOS-tick hold, which is reported by line and text.
+
+#### known-bugs #15, and two wrong conclusions on the way
 
 known-bugs #15 is fixed, and the route to it is worth more than the fix.
 `bios_ticks()` does not advance during gameplay. I concluded that,
@@ -1071,6 +1134,8 @@ is `TIMED_OUT`, which `auto_advance` keeps permanently false.**Superseded, kept 
 game-over hold does not expire; a gate presses one key instead. The
 cause is still open — see known-bugs.md #15 for what was measured and
 what was refuted.
+
+#### The game-over screen's first visual coverage
 
 The game-over screen had no visual coverage at all, and `test-game-over`
 said so in its own docstring. The blocker was never the assertions — it
@@ -1113,6 +1178,8 @@ and failed against a perfectly correct capture.
 Mutation-checked: moving the SCORE line two pixels up is reported as
 `text bands are [(70,75),(93,100),(110,115)], expected [...(95,100)...]`.
 
+#### known-bugs #14: signs and speeds in one cache
+
 Fixing that ownership bug (#13) turned up another (#14). Two writers
 store `-BALL_SPEED` (= -2) into `ball.dy` where the other four store a
 sign, and `delta_to_dir` — whose single production caller is the
@@ -1124,6 +1191,8 @@ host test of that function passes ±2 — exercising the angle production
 never selects, skipping the one it always does. Pinned by
 `test_delta_to_dir_sign_inputs`; whether the ORIGINAL wants a magnitude
 there needs the Spectrum, so it is recorded, not guessed at.
+
+#### known-bugs #13: extra balls writing the primary's cache
 
 Deduplicating the ball's sign cache turned up an ownership bug that the
 line count alone would never have flagged — `notes/known-bugs.md` #13.
@@ -1145,6 +1214,8 @@ The duplicate-block scan that found it now reports ZERO six-line
 duplicates across `src/*.cpp`. At a four-line window the only non-table
 hit was this one.
 
+#### One explanation of the slot-paint order
+
 The slot-paint order had THREE explanations of itself. Once the two
 compose paths were unified behind `compose_moving_objects`, each caller
 kept its own copy of the $9AD0 provenance and the f50 21px A/B delta
@@ -1165,6 +1236,8 @@ rebuild, `cmp` the two EXEs. Byte-identical is proof the emitted code
 did not move, which is stronger than reading the diff and stronger than
 any gate could be.
 
+#### step_ball's bat contact and brick resolution
+
 `step_ball` went 101 → 52 lines by lifting out its two self-contained
 blocks: `deflect_ball_off_bat` (snap to rest height, then CATCH or
 deflect — it returns 1 for a catch, which fully handles the frame) and
@@ -1175,6 +1248,8 @@ floor, bricks, commit. The provenance moved with the code — LAB1F's
 deflection table and the quantised catch offset now sit in the function
 that implements them, and LAFFC's "keep the moved low byte" note sits in
 the brick resolver.
+
+#### show_round_banner: drawing and holding
 
 `show_round_banner` split into `draw_round_banner` and
 `hold_round_banner`, which separates a long provenance note from a
