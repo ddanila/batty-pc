@@ -771,12 +771,49 @@ So the question "does the original pick `$38` or `$18` at the right
 edge?" has no answer at these coordinates, because the original picks
 NOTHING here. The port re-aims where the original does not.
 
-That makes #16 larger than an angle table: the port clamps the alien at
-`x_max = 256 - 8 - w` and re-aims on the bounce, and at the same
-coordinates the original does neither. Which of the two behaviours is
-right needs the original's own margin threshold, which this capture has
-not found — x=255 is the last value a byte holds, so whatever the
-original does next happens off the end of this measurement.
+### What the original does at the edge, measured
+
+Stepping past x=255 answers it:
+
+    frame 29  x=254  dir=$3C   target=$2C
+    frame 30  x=255  dir=$3C   target=$2C
+    frame 31  x=8    dir=$3C   target=$2C
+    frame 32  x=9    dir=$3C   target=$2C
+
+The alien runs off the right, its x byte overflows past 255, and the
+original's own LEFT clamp catches it at 8. Then it carries on rightward.
+
+Three things the original did NOT do, across the whole run:
+
+  - it never re-aimed: `target` is `$2C` from frame 10 to frame 44;
+  - it never reflected `dir`: `$3C` across the wrap, unchanged;
+  - it never clamped at the RIGHT edge at all.
+
+The port does all three. `bounce_enemy_off_margins` clamps to
+`x_max = 256 - 8 - w`, reflects `dir` with `(0x20 - dir) & 0x3F`, and
+calls `enemy_target_away_from_margins`. None of that has a counterpart
+here, which is consistent with `notes/enemy-movement.md` calling the
+margin handling an approximation.
+
+So #16's original question — `$38` or `$18`? — is the wrong question.
+The angle table belongs to a re-aim the original does not perform.
+
+### Why it is STILL not fixed
+
+The measurement is one artificial scenario: the alien was poked to
+x=240, y=4, dir=`$00` and driven into the edge. It shows what the
+original does there. It does not show that the original NEVER re-aims —
+`check_margins` exists in the disassembly and may fire under conditions
+this run did not reach.
+
+And the port's clamp is not obviously wrong to have: an alien whose x
+wraps to the far side of the screen is startling, and the port may have
+added the clamp deliberately. That decision is not recorded anywhere,
+which is the real gap.
+
+What is now certain is that the port and the original differ at an
+alien's right margin in three separate ways, and only one of them (the
+angle table) was previously noticed.
 
 Still not fixed, and now for a better reason: changing `$38` to `$18`
 would refine a re-aim the original may not perform at all.

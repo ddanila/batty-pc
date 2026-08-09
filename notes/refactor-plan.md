@@ -569,6 +569,38 @@ removed when they were added; a multiset diff confirmed zero lines
 lost.
 
 
+#### What the original actually does at an alien's right edge
+
+One more run past x=255 settled the shape of #16, and it is not the
+shape I started with.
+
+    frame 29  x=254  dir=$3C  target=$2C
+    frame 30  x=255  dir=$3C  target=$2C
+    frame 31  x=8    dir=$3C  target=$2C
+
+The alien runs off the right, its x byte overflows, and the original's
+own LEFT clamp catches it at 8. Across the entire run it never re-aimed
+(`target` is `$2C` from frame 10 to 44), never reflected `dir` (`$3C`
+straight through the wrap), and never clamped at the right edge at all.
+
+The port does all three: clamp to `x_max`, reflect with
+`(0x20 - dir) & 0x3F`, and call `enemy_target_away_from_margins`.
+
+So the question #16 opened with — is the escape angle `$38` or `$18`? —
+is the wrong question. That angle table belongs to a re-aim the original
+does not perform. Two of six entries aiming outward is real and
+self-inconsistent, but it is a detail of a port invention.
+
+Still not fixed, and the reason has improved again. One artificial
+scenario shows what the original does THERE; it does not show that
+`check_margins` never fires anywhere. And the port's clamp may well have
+been added deliberately — an alien whose x wraps to the far side of the
+screen is startling. That reasoning is recorded nowhere, which is the
+actual gap.
+
+Three measured differences at an alien's right margin, where one
+suspicious constant was previously noticed. Worth the four emulator runs.
+
 #### The capture tool gained a mid-run poke, and #16 got bigger
 
 The blocker from last entry was precise, so it was fixable:
