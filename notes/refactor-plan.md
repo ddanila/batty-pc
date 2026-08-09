@@ -569,6 +569,32 @@ removed when they were added; a multiset diff confirmed zero lines
 lost.
 
 
+#### Does the original's alien eat bricks? Measured: no
+
+Last entry flagged the risk in wiring `LAFFC` into the bird: the port's
+`laffc_collision` also calls `brick_hit_resolve`, which destroys and
+scores the cell. Settled it by capture rather than leaving it as a
+caution.
+
+`--poke-at-frame` puts the alien at (24, 40) — brick row 1 column 1,
+solid `$06` in the L3 grid — and `--probe-grid 0x6E43` dumps all 180
+cells per checkpoint. Over frames 10..26 the alien drifts y 40 -> 28,
+straight up through brick rows 1 and 0, and the grid is IDENTICAL at
+every capture. Not one cell changed.
+
+So the original's alien passes through standing bricks: no damage, no
+score, no visible bounce here either. Whatever `CALL LAFFC` does for the
+bird, it is not the ball's destroy-and-score path — and a ported bird
+must not call `brick_hit_resolve`.
+
+I verified the alien's POSITION separately before believing the grid.
+An unchanged grid means nothing if the poke silently failed, which is
+exactly how the first right-margin capture went wrong three entries ago.
+
+Stated limit: one scenario, one direction. It establishes that the alien
+does not destroy bricks. It does not establish that LAFFC never deflects
+it, and what the bird should do on contact is still open.
+
 #### handling_bird decoded, so the last enemy gap is specified
 
 `parity-gaps.md` said "the bird doesn't yet run LAFFC brick collision or

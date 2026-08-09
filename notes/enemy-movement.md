@@ -344,11 +344,35 @@ It diverges at exactly two consecutive calls:
 Note the ORDER: brick collision first, margins after. Any port of this
 must keep that, since LAFFC can move the alien into a margin.
 
-A caution for whoever wires LAFFC in: the port's `laffc_collision` also
-calls `brick_hit_resolve`, which DESTROYS and SCORES the cell. That is
-right for a ball and needs checking for an alien — whether the original's
-LAFFC damages a brick when the caller is the bird is not established
-here.
+#### Does the original's alien damage bricks? Measured: NO
+
+The port's `laffc_collision` also calls `brick_hit_resolve`, which
+DESTROYS and SCORES the cell. Right for a ball; wiring it into the bird
+unchanged would have aliens eating the level. Settled by capture rather
+than by argument.
+
+Method: `--poke-at-frame` puts the alien at (24, 40) — brick row 1,
+column 1, which is solid `$06` in the L3 grid — and `--probe-grid
+0x6E43` dumps the 180-byte grid at each checkpoint.
+
+Result over frames 10..26, with the alien confirmed at x=24 and drifting
+y 40 -> 39 -> 33 -> 28 (up through brick rows 1 and 0, toward its `$2C`
+target):
+
+    grid identical at every capture — not one cell changed
+
+So the original's alien passes THROUGH standing bricks: no damage, no
+score, and no visible bounce in this scenario either. Whatever `CALL
+LAFFC` does for the bird, it is not the ball's destroy-and-score path.
+
+The position was verified separately before believing the grid result —
+an unchanged grid means nothing if the poke silently failed, which is how
+the first attempt at the right-margin capture went wrong.
+
+Limit: one scenario, one direction of travel. It establishes that the
+alien does NOT destroy bricks; it does not establish that LAFFC never
+deflects it. A ported bird must not call `brick_hit_resolve`, and what
+it SHOULD do on contact is still open.
 
 ## Ground-truth capture — FIRST enemy GT validation (2026-06-05)
 
