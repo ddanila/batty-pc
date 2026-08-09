@@ -717,15 +717,15 @@ invariant — one function decides where a stuck ball sits.
 
 ## Where this stands
 
-The full suite runs **54/54 green in 343s** (2026-08-09) — the first
-time it has been entirely green. Two of the three defects this refactor
-surfaced are fixed and gated; the third needs an oracle capture.
+The full suite runs **54/54 green in 343s**, twice — the second run
+covering the three behaviour fixes below and everything since. All five
+defects this refactor surfaced are now closed.
 
 | finding | state |
 |---------|-------|
 | #8 multiball direction convention | no gameplay effect — the mirrored values were written to fields nothing read |
 | #9 blast dirty rect 16x8 vs 16x12 | fixed; settled by measuring the sprite, gated by `test-blast-dirty-redraw` |
-| #10 bullet animation phase | open — both ways to unify change behaviour, needs the original |
+| #10 bullet animation phase | fixed; direction settled from the snapshot, gated by host tests |
 | #11 narrow redraw loses the border line | fixed; gated by `test-bat-redraw-window`, which is deterministic now |
 | #12 stuck ball snapped to the default offset | fixed; gated by `test-stuck-ball-offset` |
 
