@@ -252,7 +252,15 @@ void repair_band_row_boundaries(const u8 *cells,
     if (r1 + 1 < FIELD_ROWS) repaint_row_body_top(cells, r1 + 1);
     /* Edge fix-up 4: row r1's body row 7 (pixel row 39+8*r1, bg-erased
      * and re-painted above) is canonically overwritten by row r1+1's
-     * TOP-edge zeros where that brick is live — re-apply them. */
+     * TOP-edge zeros where that brick is live — re-apply them.
+     *
+     * MEASURED REDUNDANT (2026-08-09): over 15 levels x 10 windows this
+     * changes 0 bytes, because fix-up 1 above already writes those rows.
+     * Kept as defence in depth — it is one pass over 15 columns, and the
+     * redundancy holds only while repaint_row_body_top keeps covering
+     * the same bytes. Removing it is safe today and silently unsafe if
+     * that changes, which is why the note is here rather than the
+     * deletion. */
     if (r1 + 1 < FIELD_ROWS) repaint_row_top_edge(cells, r1 + 1);
     /* Edge fix-up 3: print's brik_shadow_c(r1) dimmed char row 5+r1,
      * which is row r1+1's CELL row — in the full ascending paint, row

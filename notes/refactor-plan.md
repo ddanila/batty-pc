@@ -584,11 +584,18 @@ dropping `repaint_row_attrs`, but only after the comparison was extended
 to attributes as well as pixels — comparing pixels alone left it
 unguarded.
 
-`repaint_row_top_edge` remains unguarded, and looks equivalent rather
-than untested: it writes zeros over bytes the window paint has already
-zeroed, so its removal is invisible by construction here. Either it is
-redundant or it matters in a configuration these windows do not reach.
-Recorded rather than assumed either way.
+`repaint_row_top_edge` remains unguarded, and the reason turned out to
+be measurable rather than speculative. Instrumenting the same 15 levels
+x 10 windows: **135 calls, 0 bytes changed**. Fix-up 1
+(`repaint_row_body_top`), which runs immediately before it, already
+writes those rows.
+
+So it is an equivalent mutant, not a coverage gap — no test can catch
+its removal because its removal changes nothing. It is kept anyway: one
+pass over 15 columns, and the redundancy holds only while
+`repaint_row_body_top` keeps covering the same bytes. Deleting it is
+safe today and silently unsafe if that changes. The measurement is
+recorded at the call site so the next person does not re-derive it.
 
 `release_brick_hit_anim_if_gone` came from the same pass: the stepper
 and the renderer both freed a slot whose brick had been destroyed. Note
