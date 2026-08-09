@@ -569,6 +569,34 @@ removed when they were added; a multiset diff confirmed zero lines
 lost.
 
 
+#### Checking my own capture was on the right code path
+
+An anomaly in a follow-up run nearly retracted the previous entry.
+Driving the alien with `dir` pinned to `$00` moved it UPWARD, which
+`dir_to_dxdy` says is impossible — `$00` is straight right. The obvious
+worry: `handling_bird` branches on `LD HL,(LAA7B) / LD A,H / AND A`, and
+a non-zero high byte diverts to `LAA44`, a HOMING routine that never
+reaches `LAFFC`. If the brick capture had run down that branch, its
+result would have been about a path that cannot damage bricks anyway.
+
+Read `$AA7B` in the L3 state: `HL = $0000`. The Z branch is taken,
+`LAFFC` IS called, and the previous finding stands. Worth the one
+capture — the alternative was a published result resting on an
+assumption I had not tested.
+
+The anomaly is real though, and now recorded as an open observation
+rather than explained away. `handling_bird` does
+`LD A,(IX+$06) / SUB $10 / AND $3F` and patches the result into
+`LAA02+$01` before moving, so the original's enemy motion may be driven
+by `(dir - $10) & $3F` — and `$00 - $10` is `$30`, which is up. The port
+passes the raw `dir` to `dir_to_dxdy`. If that offset is real, the
+enemy's direction byte and the ball's are read with a `$10` rotation
+between them.
+
+Not chased further: `LAA02` is self-modifying code and what consumes it
+has not been traced. Guessing at it is how the `$38` hypothesis went
+wrong.
+
 #### Does the original's alien eat bricks? Measured: no
 
 Last entry flagged the risk in wiring `LAFFC` into the bird: the port's

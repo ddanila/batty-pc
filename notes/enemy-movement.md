@@ -374,6 +374,32 @@ alien does NOT destroy bricks; it does not establish that LAFFC never
 deflects it. A ported bird must not call `brick_hit_resolve`, and what
 it SHOULD do on contact is still open.
 
+**Checked afterwards that the capture was on the right code path.**
+`handling_bird` branches on `LD HL,(LAA7B) / LD A,H / AND A / JR Z`: a
+non-zero high byte sends it to `LAA44`, a HOMING routine that walks x
+toward a target and never reaches `LAFFC` at all. Reading `$AA7B` in
+the L3 state gives `HL = $0000`, so the Z branch is taken and `LAFFC`
+IS called. Without that check the grid result would have been about a
+code path that cannot damage bricks anyway.
+
+#### An open puzzle: dir $00 moved the alien UP
+
+In the same capture, with `dir` poked to `$00` and the target pinned to
+`$00`, the alien moved UPWARD (y 40 -> 28) while x barely changed.
+Under the port's `dir_to_dxdy`, `$00` is straight RIGHT (dx=+510, dy=0).
+
+`handling_bird` does `LD A,(IX+$06) / SUB $10 / AND $3F` and patches
+that into `LAA02+$01` before the move, so the original's motion may be
+driven by `(dir - $10) & $3F` rather than `dir` — and `$00 - $10` is
+`$30`, which IS up. The port calls `dir_to_dxdy(o->dir, ...)` with the
+raw dir.
+
+Recorded as an observation, not a conclusion: `LAA02` is patched
+self-modifying code and what consumes it has not been traced here. If
+the offset is real it would mean the enemy's direction byte and the
+ball's are read with a `$10` rotation between them, which is worth
+knowing before anyone ports the bird's motion further.
+
 ## Ground-truth capture — FIRST enemy GT validation (2026-06-05)
 
 Ran `scripts/capture_enemy_flight.py` (ZEsarUX frame-step probing
