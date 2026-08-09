@@ -670,6 +670,24 @@ the letter row to change, since placement alone would look identical
 whether `step_name_letter` worked or not. Mutation-checked by making the
 LEFT arm a no-op.
 
+`objects[]` turned out to be the ONLY module declaring state it did not
+own — a full scan of every `extern` in `src/*.h` against the matching
+`.cpp` found nothing else, and `check_module_ownership.py` now keeps it
+that way. The scan is worth having because this class of defect is
+invisible to the DOS build: `main.cpp` is always in the link, so the
+header looks right and nothing fails. It only shows up when a module
+gets a host test that links it WITHOUT `main.cpp`.
+
+The gate's own history is the caution. Three versions produced wrong
+answers before one worked: the first could not parse multi-word types
+(`unsigned char *vga`), the second could not see uninitialised scalars
+(`unsigned markup_len;`), and the third compiled its pattern without
+`re.M`, so `^` matched only the file start and all 25 declarations came
+back "unclassifiable" — printing PASS, and still printing PASS when the
+real `objects[]` bug was restored. A gate that classifies nothing passes
+everything. It now reports its unknowns out loud, and a growing unknown
+list is documented as a broken matcher rather than a curiosity.
+
 Testing that slice found two things the extraction alone would not
 have.
 

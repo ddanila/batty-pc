@@ -1129,12 +1129,19 @@ test-env-passthrough:
 test-frozen-clock:
 	python3 scripts/check_frozen_clock.py
 
+# A module that declares state must define it. objects[] was extern in
+# objects.h but defined in main.cpp for eleven stages, which is only
+# visible once something links the module without main.cpp.
+test-module-ownership:
+	python3 scripts/check_module_ownership.py
+
 test-source-gates:
 	$(MAKE) test-gate-greps
 	$(MAKE) test-notes-numbers
 	$(MAKE) test-ball-sign-cache-owner
 	$(MAKE) test-env-passthrough
 	$(MAKE) test-frozen-clock
+	$(MAKE) test-module-ownership
 	$(MAKE) test-l3-replay-seed
 	$(MAKE) test-death-sparks
 	$(MAKE) test-rocket-bonus
