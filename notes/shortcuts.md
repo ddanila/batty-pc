@@ -37,3 +37,52 @@ body attrs at runtime; destroyed cells reset to bg_attr. The
 non-brick cells (frame strips, shadow rows in between bricks)
 still use the captured values.
 
+
+## `BATTY_KINNOCK=1` — the easter egg
+
+The original hides a message behind a single byte:
+
+    kinnock:
+      DEFB $01   ; "если сюда записать ноль, то перед игрой будет
+                 ;  надпись про Киннока"
+
+`POKE 47475,0` ($B973) and `print_kinnock` fires:
+
+    print_kinnock:
+      LD A,(kinnock) / AND A / RET NZ
+      LD DE,txt_kinnock / LD B,$02 / CALL print_message
+      LD D,$00 / CALL pause_short
+      JP clear_screen_attrib
+
+"KINNOCK COULDNT RUN / A YOUTH CLUB." — a 1987 dig at Neil Kinnock, then
+Leader of the Opposition.
+
+Two things about it are not what you would guess:
+
+**It is not once per game.** `print_kinnock` is called from `LB9E8_1`,
+which is the per-LEVEL entry (reached from `LBBFB`/`LBC10` as well as
+from `game_restart`), so with the byte poked it shows at the start of
+every level.
+
+**It is up for about a third of a second.** `pause_short` with `D=0` is
+256 iterations of a 255-step inner loop, ~1.05M T-states, ~0.30 s at
+3.5 MHz. The disassembly's own arithmetic agrees — `LD B,$04 / CALL
+pause_long` is annotated "Пауза 1,2 сек. (4*0.3)". It is a flash, not a
+screen you read.
+
+It also runs at a specific moment: after the level has been drawn into
+the BUFFER and the attributes cleared, but before `buff_to_screen_pixs`
+flushes it. So it appears over a blank screen, and the level arrives
+immediately after.
+
+The port reproduces all of that behind `BATTY_KINNOCK=1`, off by
+default. Coordinates come from `txt_kinnock`'s own headers — `($38,$37)`
+and `($50,$47)` — with the bottom-anchor conversion (`y - 5`), the same
+one the round banner needs.
+
+`test-kinnock` gates it, and PARSES the expected text out of
+`original/disasm/txt/txt_kinnock.asm` rather than carrying a copy: a
+gate with its own transcription agrees with a wrong transcription in the
+port as long as both are wrong the same way. It is a source gate because
+a timed QEMU screendump would have to land inside a 0.3 s window, and a
+gate that depends on luck is worse than none (known-bugs #17).

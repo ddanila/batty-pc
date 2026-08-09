@@ -509,6 +509,9 @@ $(TEST_FLOPPY_OUT): $(FLOPPY_TEST_EXE) $(ASSETS) $(FLOPPY_SRC)
 	if [ -n "$$BATTY_LAFFC" ]; then \
 	    printf 'SET BATTY_LAFFC=%s\r\n' "$$BATTY_LAFFC" >> $(AUTOEXEC_T) ; \
 	fi; \
+	if [ -n "$$BATTY_KINNOCK" ]; then \
+	    printf 'SET BATTY_KINNOCK=%s\r\n' "$$BATTY_KINNOCK" >> $(AUTOEXEC_T) ; \
+	fi; \
 	if [ -n "$$BATTY_LEGACY_COLLISION" ]; then \
 	    printf 'SET BATTY_LEGACY_COLLISION=%s\r\n' "$$BATTY_LEGACY_COLLISION" >> $(AUTOEXEC_T) ; \
 	fi; \
@@ -1201,6 +1204,7 @@ test-source-gates:
 	$(MAKE) test-death-sparks
 	$(MAKE) test-rocket-bonus
 	$(MAKE) test-menu-start
+	$(MAKE) test-kinnock
 
 # Everything that needs no emulator: the host module tests plus the source
 # gates. Seconds, and it is what CI checks.
@@ -1275,6 +1279,12 @@ test-enemy-margin-clamp:
 # ENTER and never presses 0.
 test-menu-start:
 	python3 scripts/check_menu_start.py
+
+# The Kinnock easter egg (POKE 47475,0). Source-gated: it is up for
+# ~0.3 s, so a timed screendump would be luck. Its expected text is
+# parsed from the tape's own txt_kinnock.asm, not copied.
+test-kinnock:
+	python3 scripts/check_kinnock.py
 
 test-rocket-flight-redraw:
 	python3 scripts/test_rocket_flight_redraw.py

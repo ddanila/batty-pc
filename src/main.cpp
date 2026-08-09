@@ -1085,8 +1085,9 @@ struct DebugSwitches {
     unsigned char use_laffc;              /* BATTY_LEGACY_COLLISION clears it, default=1 */
     unsigned char rng_perframe;           /* BATTY_RNG_PERFRAME, default=1 */
     unsigned long profile_auto_frames;    /* BATTY_PROFILE_AUTO_FRAMES, default=0 */
+    unsigned char kinnock;                /* BATTY_KINNOCK, default=0 */
 };
-static DebugSwitches dbg = { 0, 0, 0, 0, 0, 0, 1, 1, 0 };
+static DebugSwitches dbg = { 0, 0, 0, 0, 0, 0, 1, 1, 0, 0 };
 
 /* While set the frame body does no physics; only P (toggle), ESC
  * (quit) and ENTER (advance) are acted on. */
@@ -6711,6 +6712,68 @@ static void redraw_frame(unsigned char lvl_idx, unsigned char cycle,
     }
 }
 
+/* The Kinnock easter egg. `kinnock` is a single byte at $B973 holding
+ * $01, and the disassembly's own comment says what it is for: "если сюда
+ * записать ноль, то перед игрой будет надпись про Киннока" — POKE
+ * 47475,0 and you get the message. Then:
+ *
+ *   print_kinnock:
+ *     LD A,(kinnock) / AND A / RET NZ
+ *     LD DE,txt_kinnock / LD B,$02 / CALL print_message
+ *     LD D,$00 / CALL pause_short
+ *     JP clear_screen_attrib
+ *
+ * Two lines, a pause, and the attributes cleared. It is called from
+ * LB9E8_1 — after the level has been drawn INTO THE BUFFER and the
+ * attributes cleared, but before `buff_to_screen_pixs` flushes it — so
+ * it appears over a blank screen at the start of EVERY level, not once
+ * per game.
+ *
+ * The pause is much shorter than it sounds. `pause_short` with D=0 is
+ * 256 outer iterations of a 255-step inner loop, about 1.05M T-states,
+ * which at 3.5 MHz is ~0.30 s. The disassembly agrees with that
+ * arithmetic elsewhere: `LD B,$04 / CALL pause_long` is annotated
+ * "Пауза 1,2 сек. (4*0.3)". So it is a third of a second — a blink, not
+ * a screen you read.
+ *
+ * Coordinates come straight from txt_kinnock's headers, (x, y, attr,
+ * len): ($38,$37,$47,$13) and ($50,$47,$47,$0D). The y bytes are
+ * BOTTOM-anchored — screen_addr_calc takes them as the glyph's lowest
+ * row and print_line draws upward — and the ink is 6px tall, so the top
+ * row is y-5, the same conversion the round banner uses. Attr $47 is
+ * bright white on black.
+ *
+ * Off by default; BATTY_KINNOCK turns it on. */
+static void print_kinnock(void) {
+    /* KINNOCK COULDNT RUN */
+    static const unsigned char line1[] = {
+        0x14, 0x12, 0x17, 0x17, 0x18, 0x0C, 0x14, 0x26,
+        0x0C, 0x18, 0x1E, 0x15, 0x0D, 0x17, 0x1D, 0x26,
+        0x1B, 0x1E, 0x17 };
+    /* A YOUTH CLUB. */
+    static const unsigned char line2[] = {
+        0x0A, 0x26, 0x22, 0x18, 0x1E, 0x1D, 0x11, 0x26,
+        0x0C, 0x15, 0x1E, 0x0B, 0x24 };
+    unsigned long until;
+
+    if (!dbg.kinnock) return;
+
+    fill(0, 0, SCREEN_W, SCREEN_H, 0);
+    draw_text(BORDER_X + 0x38, BORDER_Y + 0x37 - 5, 15,
+              line1, (int)sizeof(line1));
+    draw_text(BORDER_X + 0x50, BORDER_Y + 0x47 - 5, 15,
+              line2, (int)sizeof(line2));
+
+    /* ~0.30 s: 15 PIT frames at the port's 50 Hz. pit_ticks(), not
+     * bios_ticks() — the BIOS counter does not advance here
+     * (known-bugs #15). */
+    until = pit_ticks() + 15UL;
+    while (pit_ticks() < until) {
+        if (kbhit()) { getch(); break; }
+    }
+    fill(0, 0, SCREEN_W, SCREEN_H, 0);        /* clear_screen_attrib */
+}
+
 /* Set up a level and show its intro. False means the player quit during
  * the intro. */
 static bool enter_level(unsigned char lvl_idx) {
@@ -6724,6 +6787,10 @@ static bool enter_level(unsigned char lvl_idx) {
 
     probe.from_gameplay = 0;         /* the pre-gameplay seed write */
     write_replay_probe();
+    /* LB9E8_1 order: the level is in the buffer and the attributes are
+     * cleared, print_kinnock runs over the blank screen, and only then
+     * does buff_to_screen_pixs flush the level. */
+    print_kinnock();
     render_level_screen(lvl_idx);
     if (!show_level_intro((unsigned int)round_number)) return false;
     pin_replay_frame_counter();
@@ -6864,6 +6931,7 @@ static state_t apply_env_switches(void) {
     if (getenv("BATTY_SUPPRESS_NO_BALL_DEATH") != NULL)     dbg.suppress_no_ball_death = 1;
     if (getenv("BATTY_AUTO_FIRE") != NULL)                  dbg.auto_fire = 1;
     if (getenv("BATTY_LAFFC") != NULL)                      dbg.use_laffc = 1;
+    if (getenv("BATTY_KINNOCK") != NULL)                    dbg.kinnock = 1;
     if (getenv("BATTY_LEGACY_COLLISION") != NULL)           dbg.use_laffc = 0;
 
     /* Unlike the rest, this one can force EITHER state: it defaults on,

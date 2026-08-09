@@ -21,7 +21,7 @@ The port is "100%" when all of the following hold:
 | 5 | Sound faithful to the original's 4-slot beeper queue (envelope/timing, not just effect IDs) | PIT-tone approximation of 13 effect IDs |
 | 6 | All assets derived from the tape at build time; no captured emulator blobs | `frame_l1.bin`, parts of `level_attrs.bin`, menu/hi-score screens still captured |
 | 7 | Runs correctly on real-hardware-representative targets (XT-class + 386) | QEMU + 86Box `ibmxt` verified; real iron untested |
-| 8 | Historical completeness: Kinnock easter egg, pause semantics, hi-score behaviour | Pause + hi-score done; easter egg absent |
+| 8 | Historical completeness: Kinnock easter egg, pause semantics, hi-score behaviour | **Done** — pause, hi-score, and the easter egg (`BATTY_KINNOCK=1`) |
 
 Byte-exactness of the already-achieved core (criterion 3) is a floor,
 not a ceiling to re-litigate: every workstream below must keep
@@ -281,10 +281,13 @@ right).
 
 ## WS9 — Polish, history, distribution
 
-1. **Kinnock easter egg:** the original hides "KINNOCK COULDNT RUN A
-   YOUTH CLUB." behind `POKE 47475,0` (`txt/txt_kinnock.asm`). Port the
-   text + trigger behind an env var / debug key for historical
-   completeness (criterion 8 — cheap and delightful).
+1. **Kinnock easter egg: DONE (2026-08-09).** Behind `BATTY_KINNOCK=1`,
+   off by default; gated by `test-kinnock`, which parses the expected
+   text out of `txt/txt_kinnock.asm` instead of copying it. Two
+   surprises worth recording: it fires at the start of every LEVEL, not
+   once per game (`print_kinnock` is called from the per-level entry
+   `LB9E8_1`), and it is up for only ~0.3 s (`pause_short` with D=0 is
+   ~1.05M T-states). See notes/shortcuts.md.
 2. **Docs hygiene:** reconcile stale notes — `parity-gaps.md` still
    leads with "enemy RNG not per-frame" (fixed 2026-06-05, default
    flipped) and `rng-model.md` mentions the stale L3 `8E49` seed
