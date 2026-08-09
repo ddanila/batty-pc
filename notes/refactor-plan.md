@@ -568,6 +568,28 @@ removed when they were added; a multiset diff confirmed zero lines
 lost.
 
 
+#### A parity gap that had been closed for two months
+
+With the refactor stages finished, the remaining work lives in
+`notes/parity-gaps.md`. Reading it for something small turned up a claim
+that was wrong rather than a gap that was open.
+
+It said the metal-brick shimmer "currently loops it forever — that is
+known-bugs.md #3, pending fix". The port does not: `step_brick_hit_anim`
+does exactly the original's `(c + 1) & $0F`, so the slot frees itself
+after one ~15-tick pass, `test-brik-anim-pace` gates the cadence, and
+`known-bugs.md` records #3 resolved on **2026-06-11** — two months
+before. Someone reading the gaps file for a target would have gone to
+fix something already right.
+
+Corrected in both places it appeared: the entry itself and the priority
+list at the top, which is the second time that file's summary and its
+body have disagreed.
+
+Checked the siblings rather than fixing one and leaving them: #4 and #5
+are correctly reflected, and the MAGNET-plus-multiball item is genuinely
+open. One stale claim, not a pattern.
+
 #### Stage 1's blocker, taken on rather than worked around
 
 The remaining replay seeders were blocked on main.cpp FUNCTIONS, not on

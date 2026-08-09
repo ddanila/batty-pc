@@ -20,8 +20,10 @@ they are good next targets when tightening original fidelity.
 >     `test-name-entry-visual`. See "Test coverage gaps" below — which is
 >     where this was first marked closed, while this priority list kept
 >     saying otherwise for several commits.
->  4. **Cosmetic / timing**: metal-brick shimmer phase, big-bat resize
->     timing — visually matched, not literal ports. Out of scope: sound.
+>  4. **Cosmetic / timing**: big-bat resize timing is matched visually
+>     rather than being a literal port of the original's bit-gated state
+>     machine. (The metal-brick shimmer was also listed here; it is a
+>     literal port now — see below.) Out of scope: sound.
 >  5. **Infra**: QEMU-on-CI needs a KVM/self-hosted runner (hosted TCG is
 >     too slow even with the deterministic serial harness — calibrated dead
 >     end). The full QEMU suite runs locally (`make parity-check-parallel`).
@@ -87,9 +89,13 @@ Several paths use gameplay-equivalent but not byte-exact motion:
   it in one of 5 `briks_data` slots (`LAFFC_34`), and `fill_briks_data`/
   `metal_brik_anim` ($B6A9) cycle it through `anim_brik`'s 8 brick
   sprites ({2,6,3,7,4,5,5,1}, 2 ticks each) for ONE ~15-tick pass — the
-  `(c+1)&$0F` wrap to 0 frees the slot (0 = free marker). The port has the
-  system (`brick_hit_anim`) but currently loops it forever — that is
-  known-bugs.md #3, pending fix. Cosmetic (no gameplay effect).
+  `(c+1)&$0F` wrap to 0 frees the slot (0 = free marker). **The port
+  matches this** — `step_brick_hit_anim` does exactly
+  `(ticks + 1) & 0x0F`, so the slot frees itself after one ~15-tick
+  pass, and `test-brik-anim-pace` gates the cadence. This entry said
+  "currently loops it forever — known-bugs.md #3, pending fix" for two
+  months after #3 was resolved (2026-06-11); the resolution is recorded
+  in known-bugs.md and the code has been right since.
 - big-bat resize timing is matched visually but not a literal port of
   the original bit-gated state machine.
 - **alien-explosion cadence** — FIXED (2026-06-05). GT capture (poke the
