@@ -222,6 +222,41 @@ static void test_delta_roundtrip_quadrants() {
     report("delta_roundtrip_quadrants", before, "4 quadrants           ok");
 }
 
+/* The ONE production caller of delta_to_dir is apply_multi_ball_bonus,
+ * and it passes ball.dx/ball.dy — which are SIGNS, always in {-1,0,+1}.
+ * delta_to_dir picks its angle with `abs(dx) >= BALL_SPEED` (= 2), so
+ * from that caller the 0x08 angle is unreachable and every multiball
+ * spawn gets 0x04. See notes/known-bugs.md #14.
+ *
+ * test_delta_roundtrip_quadrants above passes +-2, which exercises the
+ * angle production never selects and skips the one it always does. This
+ * pins the actual behaviour so that changing either side is a decision
+ * rather than an accident. */
+static void test_delta_to_dir_sign_inputs() {
+    const int before = failures;
+    const int deltas[8][2] = { {1,1}, {1,-1}, {-1,-1}, {-1,1},
+                               {0,1}, {0,-1}, {1,0}, {-1,0} };
+    int wrong_angle = 0;
+    for (int i = 0; i < 8; i++) {
+        const u8 dir = delta_to_dir(deltas[i][0], deltas[i][1]);
+        if ((dir & 0x0F) != 0x04) wrong_angle++;
+    }
+    check(wrong_angle == 0,
+          "%d of 8 sign inputs did not select angle 0x04\n", wrong_angle);
+
+    /* and the quadrant still has to survive the round trip at magnitude 1 */
+    int bad = 0;
+    for (int i = 0; i < 4; i++) {
+        const u8 dir = delta_to_dir(deltas[i][0], deltas[i][1]);
+        int dx, dy;
+        dir_to_delta(dir, &dx, &dy);
+        if ((dx >= 0) != (deltas[i][0] >= 0)) bad++;
+        if ((dy >= 0) != (deltas[i][1] >= 0)) bad++;
+    }
+    check(bad == 0, "%d sign mismatches round-tripping magnitude 1\n", bad);
+    report("delta_to_dir_sign_inputs", before, "8 sign inputs         ok");
+}
+
 /* --- Collision sweeps -------------------------------------------------- */
 
 /* A field with every cell standing, then knock individual ones out. */
@@ -534,6 +569,7 @@ int main() {
     test_delta_and_dxdy_conventions_differ();
     test_speed_scales_linearly();
     test_delta_roundtrip_quadrants();
+    test_delta_to_dir_sign_inputs();
     test_sweeps_miss_outside_the_band();
     test_sweeps_miss_empty_field();
     test_hits_name_a_standing_cell();

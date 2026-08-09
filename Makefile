@@ -1073,9 +1073,16 @@ test-gate-greps:
 test-notes-numbers:
 	python3 scripts/check_notes_numbers.py
 
+# known-bugs #13: an extra ball must not be able to write the primary
+# ball's sign cache. Structural, because no pixel gate reaches the
+# scenario that makes it observable.
+test-ball-sign-cache-owner:
+	python3 scripts/test_ball_sign_cache_owner.py
+
 test-source-gates:
 	$(MAKE) test-gate-greps
 	$(MAKE) test-notes-numbers
+	$(MAKE) test-ball-sign-cache-owner
 	$(MAKE) test-l3-replay-seed
 	$(MAKE) test-death-sparks
 	$(MAKE) test-rocket-bonus

@@ -5,17 +5,18 @@ test. Started 2026-08-07.
 
 ## Where this stands
 
-The full suite runs **55/55 green in 343s** — six clean runs now, the
-latest covering the ball sign-cache extraction (which the compiler did
-NOT inline identically, so the pixel gates were the only proof available).
-All five defects this refactor surfaced are closed.
+The full suite runs **55/55 green in 343s** — seven clean runs now, the
+latest covering the known-bugs #13 fix — unchanged by it, which is the
+expected result for a fix to a scenario no gate reaches.
+Six of the seven defects this refactor surfaced are closed; #14 is open
+because settling it needs ground truth the port does not have.
 
 Gate count 51 → 55 this session: `test-blast-dirty-redraw`,
 `test-game-over`, `test-stuck-ball-offset`, `test-visual-checkpoints`
 and `test-invariant-owners`, each covering something nothing reached
 before.
 
-`main.cpp`: 7,747 → 6,780 lines (-12.5%) across 14 modules. `make test-fast`
+`main.cpp`: 7,747 → 6,791 lines (-12.3%) across 14 modules. `make test-fast`
 runs every host test and source gate in seconds; `--full` is 55 gates
 in under six minutes.
 
@@ -35,6 +36,8 @@ reality on every `make test-fast`.
 | #10 bullet animation phase | fixed; direction settled from the snapshot, gated by host tests |
 | #11 narrow redraw loses the border line | fixed; gated by `test-bat-redraw-window`, which is deterministic now |
 | #12 stuck ball snapped to the default offset | fixed; gated by `test-stuck-ball-offset` |
+| #13 extra balls write the primary's sign cache | fixed; gated by `test-ball-sign-cache-owner` |
+| #14 sign cache mixes signs and speeds | open; pinned by `test_delta_to_dir_sign_inputs`, needs the Spectrum to settle |
 
 ## How to read this file
 
@@ -103,7 +106,7 @@ happened, and `make test-video` caught it.
 | 1a | `replay_parse` — the BATTY_REPLAY_* value formats | 75 | **done** — 7 tests |
 | 1 | replay / probe scaffolding | ~430 | **last** — see below |
 
-`main.cpp`: 7,747 → 6,780 (`wc -l`; see the status block on why this is not Watcom's count).
+`main.cpp`: 7,747 → 6,791 (`wc -l`; see the status block on why this is not Watcom's count).
 100 host tests + source gates, all via `make test-fast` in seconds.
 
 ### Stage 5b: one destroyed-cell reset, not two
@@ -627,6 +630,18 @@ row-scoped — now live beside the primitives they drive. What is left in
 `main.cpp` is the two thin wrappers that turn a level index into
 `(cells, lattr, bg_attr)`, which is the only thing the module could not
 know.
+
+Fixing that ownership bug (#13) turned up another (#14). Two writers
+store `-BALL_SPEED` (= -2) into `ball.dy` where the other four store a
+sign, and `delta_to_dir` — whose single production caller is the
+multiball spawn — selects its angle by MAGNITUDE (`abs(dx) >=
+BALL_SPEED`). The mixed units do not bite today only because the
+magnitude lands in `dy` and the test is on `dx`, so the `0x08` angle is
+unreachable and every multiball spawn gets `0x04`. Meanwhile the only
+host test of that function passes ±2 — exercising the angle production
+never selects, skipping the one it always does. Pinned by
+`test_delta_to_dir_sign_inputs`; whether the ORIGINAL wants a magnitude
+there needs the Spectrum, so it is recorded, not guessed at.
 
 Deduplicating the ball's sign cache turned up an ownership bug that the
 line count alone would never have flagged — `notes/known-bugs.md` #13.

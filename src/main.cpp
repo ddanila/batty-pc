@@ -1342,6 +1342,33 @@ Object objects[N_OBJECTS] = {
 #define BALL_HIDE()      (objects[OBJ_BALL_1].sprite_set = 0x82)
 
 
+/* ball.dx/ball.dy cache the PRIMARY ball's direction reduced to signs
+ * (-1/0/+1). They are not physics — the motion is q8.8 in the object
+ * descriptor — they are a summary two places read:
+ *
+ *   ball_lands_on_bat()      gates the bat hit on ball.dy > 0
+ *   apply_multi_ball_bonus() derives the extras' launch dirs from them
+ *
+ * so anything that rewrites the primary's direction must refresh them.
+ *
+ * Hence the `from` parameter, which is the whole point of it: two
+ * callers take an Object* that may be an EXTRA ball — laffc_collision
+ * (reached from step_extra_ball) and magnet_ball_frame (slots 1 and 2) —
+ * and used to refresh the PRIMARY's cache from the extra's direction
+ * regardless of which ball they were handed (known-bugs.md #13). Passing
+ * the object through and ignoring anything but the primary makes that
+ * unexpressible at a call site rather than merely absent from today's.
+ *
+ * It was unobservable before only by ordering: step_ball recomputes from
+ * the primary before ball_lands_on_bat reads ball.dy, and
+ * apply_multi_ball_bonus early-returns while extras are active. Neither
+ * was a property of this function. */
+static void refresh_ball_motion_signs(const Object *from, int dx_q8, int dy_q8) {
+    if (from != &objects[OBJ_BALL_1]) return;
+    ball.dx = (dx_q8 < 0) ? -1 : (dx_q8 > 0 ? 1 : 0);
+    ball.dy = (dy_q8 < 0) ? -1 : (dy_q8 > 0 ? 1 : 0);
+}
+
 static void primary_ball_set_velocity(int dx, int dy) {
     ball.dx = dx;
     ball.dy = dy;
@@ -1370,9 +1397,14 @@ static void primary_ball_launch_from_bat(void) {
      * the Spectrum behavior. */
     dir = (unsigned char)((launch_offset + 0x24) & 0x3F);
     if (dir == 0x30) dir = 0x34;
-    dir_to_dxdy(dir, BALL_SPEED, &ball.dx, &ball.dy);
-    ball.dx = (ball.dx < 0) ? -1 : (ball.dx > 0 ? 1 : 0);
-    ball.dy = (ball.dy < 0) ? -1 : (ball.dy > 0 ? 1 : 0);
+    {   /* Not written in place: dir_to_dxdy yields q8.8 deltas, so
+         * normalising ball.dx/ball.dy afterwards leaves the cache
+         * holding non-sign values in between. Go through the one
+         * function that owns it. */
+        int dx_q8, dy_q8;
+        dir_to_dxdy(dir, BALL_SPEED, &dx_q8, &dy_q8);
+        refresh_ball_motion_signs(&objects[OBJ_BALL_1], dx_q8, dy_q8);
+    }
     objects[OBJ_BALL_1].dir = dir;
     objects[OBJ_BALL_1].speed = BALL_SPEED;
     objects[OBJ_BALL_1].x_coord_hi = 0;
@@ -1474,34 +1506,13 @@ static void handling_400pts_obj(Object *o){ (void)o; }
 /* Wall reflect for ANY ball object: flip the 6-bit dir about the X and/or
  * Y axis (the original's wall-bounce dir mapping). Shared by the primary
  * and (once unified) the multi-ball secondaries. */
-/* ball.dx/ball.dy cache the PRIMARY ball's direction reduced to signs
- * (-1/0/+1). They are not physics — the motion is q8.8 in the object
- * descriptor — they are a summary two places read:
- *
- *   ball_lands_on_bat()      gates the bat hit on ball.dy > 0
- *   apply_multi_ball_bonus() derives the extras' launch dirs from them
- *
- * so anything that rewrites the primary's direction must refresh them.
- *
- * CAUTION, and see notes/known-bugs.md #13: two callers of this take an
- * Object* that may be an EXTRA ball — laffc_collision (from
- * step_extra_ball) and magnet_ball_frame (slots 1 and 2) — and refresh
- * the primary's cache from the extra's direction regardless. Nothing
- * observes it today, but only by ordering: step_ball recomputes these
- * from the primary before ball_lands_on_bat reads them, and
- * apply_multi_ball_bonus early-returns while extras are active. Neither
- * is a property of this function. */
-static void refresh_ball_motion_signs(int dx_q8, int dy_q8) {
-    ball.dx = (dx_q8 < 0) ? -1 : (dx_q8 > 0 ? 1 : 0);
-    ball.dy = (dy_q8 < 0) ? -1 : (dy_q8 > 0 ? 1 : 0);
-}
 
 static void ball_reflect_descriptor(int flip_x, int flip_y) {
     int dx_q8, dy_q8;
     object_reflect(*(&objects[OBJ_BALL_1]), flip_x, flip_y);
     dir_to_dxdy(objects[OBJ_BALL_1].dir, objects[OBJ_BALL_1].speed,
                       &dx_q8, &dy_q8);
-    refresh_ball_motion_signs(dx_q8, dy_q8);
+    refresh_ball_motion_signs(&objects[OBJ_BALL_1], dx_q8, dy_q8);
 }
 
 /* Port of LAA7D (called every 4 frames from handling_bird/ufo with the
@@ -3433,7 +3444,7 @@ static int laffc_collision(Object *o, int prev_x, int prev_y, int new_x, int new
 
     int dx_q8, dy_q8;
     dir_to_dxdy(o->dir, o->speed, &dx_q8, &dy_q8);
-    refresh_ball_motion_signs(dx_q8, dy_q8);
+    refresh_ball_motion_signs(o, dx_q8, dy_q8);
     return 3;   /* reflected and snapped; step_ball must not re-reflect */
 }
 
@@ -4577,7 +4588,7 @@ static int deflect_ball_off_bat(int next_x, int *next_y) {
                         next_x + 3 - BAT_X, bat.extra_px != 0);
     dir_to_dxdy(objects[OBJ_BALL_1].dir, objects[OBJ_BALL_1].speed,
                       &dx_q8, &dy_q8);
-    refresh_ball_motion_signs(dx_q8, dy_q8);
+    refresh_ball_motion_signs(&objects[OBJ_BALL_1], dx_q8, dy_q8);
     sound_queue(SND_BAT_BEAT);            /* ball-on-bat */
     return 0;
 }
@@ -4605,7 +4616,7 @@ static void step_ball(void) {
     next_y_q8 = ((long)BALL_Y << 8) + objects[OBJ_BALL_1].y_coord_hi + dy_q8;
     next_x = (int)(next_x_q8 >> 8);
     next_y = (int)(next_y_q8 >> 8);
-    refresh_ball_motion_signs(dx_q8, dy_q8);
+    refresh_ball_motion_signs(&objects[OBJ_BALL_1], dx_q8, dy_q8);
     bounce_ball_off_side_walls(&next_x, &next_x_q8, ball_sz);
     bounce_ball_off_ceiling(&next_y, &next_y_q8);
     if (ball_lands_on_bat(next_x, next_y, ball_sz)) {

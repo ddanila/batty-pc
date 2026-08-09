@@ -415,7 +415,7 @@ agree by construction.
 
 ## #13 — the primary ball's sign cache is written from extra balls
 
-**Found 2026-08-09, not fixed. Open.**
+**Found 2026-08-09. Fixed 2026-08-09.**
 
 `ball.dx` / `ball.dy` hold the PRIMARY ball's direction reduced to signs
 (-1/0/+1). They are not the physics — motion is q8.8 in the object
@@ -461,14 +461,77 @@ a magnet-handled frame. So:
 The new extras then launch from the dead extra ball's last direction
 rather than the primary's. Narrow, but not impossible.
 
-### Why it is recorded rather than fixed
+### The fix
 
-Making the write conditional on `o == &objects[OBJ_BALL_1]` changes
-behaviour in that scenario, and no gate covers it — `test-magnet-ball`
-and the multiball gates do not reach the stuck-primary-plus-dead-extras
-sequence. The fix needs the gate first, in that order, as with #12.
+`refresh_ball_motion_signs` now takes the object it is refreshing FROM
+and returns early for anything that is not `OBJ_BALL_1`. Passing the
+object through makes the bug unexpressible at a call site, rather than
+merely absent from today's call sites — `laffc_collision` and
+`magnet_ball_frame` hand it their own `o` and it does the right thing
+for either ball.
+
+The guard is `test-ball-sign-cache-owner`, written first and failed
+against the code at `d7daa83`, which is the evidence it guards what it
+claims to. It is structural for the reason above: no pixel gate reaches
+four coincident conditions. Extracting it also pulled in a second,
+separate in-place implementation of the same sign reduction inside
+`primary_ball_launch_from_bat`, which briefly left non-sign values in
+the cache; that now goes through the owner too.
+
+The full 55-gate suite is unchanged by the fix, which is the expected
+result — the scenario it corrects is one no gate reaches.
 
 This is the same shape as #8: a convention that writes state belonging to
 another object. #8 turned out to be harmless because nothing read the
 fields. Here something does read them, and only the frame ordering saves
 it.
+
+---
+
+## #14 — `ball.dx`/`ball.dy` mix signs and speeds, and one reader cares
+
+**Found 2026-08-09, not fixed. Open.**
+
+Found while fixing #13. The sign cache is documented as holding
+{-1, 0, +1}, and four of its six writers do exactly that. Two do not:
+
+```c
+ball.dy = -BALL_SPEED;      /* catch_ball_on_bat, deflect_ball_off_bat */
+```
+
+`BALL_SPEED` is 2, so those store -2.
+
+### Why that is not obviously harmless
+
+`delta_to_dir` — which has exactly ONE production caller,
+`apply_multi_ball_bonus(delta_to_dir(ball.dx, ball.dy))` — selects its
+angle by MAGNITUDE:
+
+```c
+const u8 angle = (abs(dx) >= BALL_SPEED) ? 0x08 : 0x04;
+```
+
+It reads `dx`, and no writer ever puts a magnitude in `ball.dx` — only
+`ball.dy` gets the -2. So today the angle is **always 0x04** and the
+0x08 branch is unreachable from the only caller. Whether the original
+derives the extras' launch angle from the ball's real velocity (in which
+case reducing to signs before calling this destroys the input it wants)
+is not established, and settling it needs the Spectrum, not the port.
+
+`test_delta_roundtrip_quadrants` passes +-2, so it exercises the angle
+production never selects and skips the one production always selects.
+`test_delta_to_dir_sign_inputs` now pins the actual behaviour, so a
+change to either side is a decision rather than an accident.
+
+### Also here
+
+`deflect_ball_off_bat`'s `ball.dy = -BALL_SPEED;` is a **dead store**:
+the deflection immediately below it rewrites the direction and calls
+`refresh_ball_motion_signs`, unconditionally, before returning. Only
+`catch_ball_on_bat`'s copy survives, because a caught ball is stuck and
+`step_ball` early-returns above the refresh on the next frame — which is
+precisely the state that makes #13's scenario reachable.
+
+Left alone deliberately: deleting a store and changing a unit are two
+different changes, and the second needs ground truth this port does not
+have.
