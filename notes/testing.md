@@ -1,10 +1,18 @@
 # Visual regression test
 
-> **`make test-video` is the one gate here that needs no emulator.** It
-> compiles the video engine (`src/zxvga.cpp`) with the host compiler and
-> checks the ZX attribute/colour-clash model exhaustively — every attr x
-> every byte — in milliseconds. See [`video-engine.md`](video-engine.md).
-> Everything below drives QEMU or ZEsarUX and costs ~10 s per boot.
+> **`make test-fast` needs no emulator and runs in seconds** — 14 host
+> test suites plus 12 source gates. Start there; it is also exactly what
+> CI runs. `make test-video` is one of those suites: it compiles the
+> video engine (`src/zxvga.cpp`) with the host compiler and checks the
+> ZX attribute/colour-clash model exhaustively — every attr x every byte
+> — in milliseconds. See [`video-engine.md`](video-engine.md).
+>
+> The QEMU gates below cost ~10 s per boot; `make parity-check-parallel`
+> runs all 59 QEMU gates in about six minutes.
+>
+> (This paragraph read "`make test-video` is the one gate here that
+> needs no emulator" until 2026-08-09. That was true when zxvga was the
+> only host suite, and became less true with every suite added since.)
 
 Once the original screen content is reproducible by *our* renderer, we
 lock it in as a pixel-identical regression test.
@@ -401,11 +409,17 @@ finished N frames when the capture fires, so EVERY QEMU gate lands on the
 wrong frame and "diverges" (calibration run 27697521157: bat-deflection
 14/14, laffc-ball 5/5, over a 21-min job). A bigger `BATTY_BOOT_WAIT` does
 not fix it; it needs a frame-completion-aware harness or a KVM/self-hosted
-runner. So CI runs only the fast, deterministic, emulator-free signal (build
-the EXE via the in-tree linux-amd64 OpenWatcom + the source-level gates
-l3-replay-seed / death-sparks / rocket-bonus, ~7 s). The QEMU suite runs
-locally via `make parity-check-parallel`; ZEsarUX-oracle gates via
-`make parity-check-full`.
+runner. So CI runs the fast, deterministic, emulator-free signal: build
+the EXE via the in-tree linux-amd64 OpenWatcom, then `make test-fast` —
+every host suite and every source gate, in seconds.
+
+It used to name `test-video` and three gates by hand, which meant CI ran
+1 of 14 suites and 3 of 10 gates while showing a green tick. Delegating
+to `test-fast` also removed the third copy of a list that had already
+drifted twice; `check_host_tests_wired.py` guards the one that is left.
+
+The QEMU suite runs locally via `make parity-check-parallel`;
+ZEsarUX-oracle gates via `make parity-check-full`.
 
 ## Running the suite in parallel (`make parity-check-parallel J=8`)
 

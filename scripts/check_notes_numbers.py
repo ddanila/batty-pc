@@ -26,6 +26,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 PLAN = ROOT / "notes" / "refactor-plan.md"
+TESTING = ROOT / "notes" / "testing.md"
+TESTS_DIR = ROOT / "tests"
 MAIN = ROOT / "src" / "main.cpp"
 RUNNER = ROOT / "scripts" / "run_gates_parallel.py"
 
@@ -123,8 +125,33 @@ def main() -> int:
                        f"{counts['source']} source, {counts['oracle']} "
                        f"ZEsarUX-oracle, {counts['total']} total")
 
+    # notes/testing.md's opening blockquote is the other place a reader
+    # meets these numbers, and it is the FIRST thing in the file. It
+    # stated "make test-video is the one gate here that needs no
+    # emulator" long after that stopped being true, so it gets the same
+    # treatment as the plan's status block.
+    # Fold the blockquote to one line before matching: the numbers wrap
+    # across lines behind "> " markers, and a line-oriented regex misses
+    # them. Two mutations passed before this was added.
+    intro_raw = TESTING.read_text().split("\n## ", 1)[0]
+    intro = " ".join(l.lstrip("> ").strip() for l in intro_raw.split("\n"))
+    suites = len(list(TESTS_DIR.glob("test_*.cpp")))
+    for n in set(int(x) for x in
+                 re.findall(r"(\d+)\s+(?:[A-Za-z-]+\s+){0,3}gates", intro)):
+        if n not in counts.values():
+            bad.append(f"notes/testing.md's intro claims {n} gates, which is "
+                       f"none of the real counts: {counts['qemu']} QEMU, "
+                       f"{counts['source']} source, {counts['oracle']} "
+                       f"oracle, {counts['total']} total")
+    for n in set(int(x) for x in
+                 re.findall(r"(\d+)\s+host\s+(?:[A-Za-z-]+\s+){0,2}suites",
+                            intro)):
+        if n != suites:
+            bad.append(f"notes/testing.md's intro claims {n} host suites; "
+                       f"tests/ has {suites}")
+
     if bad:
-        print("FAIL: the plan's status block has gone stale\n")
+        print("FAIL: a status/intro block has gone stale\n")
         for b in bad:
             print(f"  - {b}")
         print("\nFix the numbers in 'Where this stands'. Historical figures "
@@ -132,7 +159,7 @@ def main() -> int:
               "this gate deliberately does not read them.")
         return 1
 
-    print(f"PASS notes_numbers: status block agrees with reality "
+    print(f"PASS notes_numbers: plan + testing.md intro agree with reality "
           f"(main.cpp {real_lines:,} lines; {counts['qemu']} QEMU + "
           f"{counts['source']} source + {counts['oracle']} oracle = "
           f"{counts['total']} gates)")

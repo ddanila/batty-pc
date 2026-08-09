@@ -568,6 +568,33 @@ removed when they were added; a multiset diff confirmed zero lines
 lost.
 
 
+#### testing.md's first line, and one I broke myself
+
+`notes/testing.md` opened with "**`make test-fast`**... " — no, it
+opened with "`make test-video` is the one gate here that needs no
+emulator". That was true when zxvga was the only host suite. There are
+now 14 suites and 12 source gates that need no emulator, and every one I
+added made the first line of the file more wrong.
+
+The CI section was stale too, and that one is mine: it still described
+CI as running `test-video` plus three named gates, which I replaced with
+`make test-fast` a few commits ago. Changing a thing and not its
+description is how all of these start.
+
+Both fixed, and the numbers are now CHECKED rather than trusted —
+`check_notes_numbers.py` reads testing.md's opening blockquote the same
+way it reads the plan's status block. Adding numbers to a document
+without a gate is the trap `make help` taught; the right answer there
+was to delete them, and here it is to check them, because orientation is
+what this file is for.
+
+Getting that check right took two corrections of its own. The intro is a
+blockquote, so the numbers wrap across lines behind `> ` markers and a
+line-oriented regex missed them — a mutation of "14 host suites" to 13
+PASSED. And "runs all 59 in about six minutes" never says *gates*, so it
+was unmatchable; the doc now says "all 59 QEMU gates". All four
+mutations are caught.
+
 #### The TOP-priority parity gap was closed too
 
 Having found one stale gap, I checked the one above it — priority 1,
