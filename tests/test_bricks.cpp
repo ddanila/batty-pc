@@ -234,6 +234,58 @@ static void test_colour_and_shadow() {
     report("colour_and_shadow", before, "2 cells + shadow     ok");
 }
 
+/* level_attrs.bin holds the LIVE look of every cell, so a destroyed
+ * brick keeps its colour until this resets it. The empty-cell sentinel
+ * $C0 must survive: it carries the per-side-strip colours, and treating
+ * it as destroyed would repaint the frame's edge cells. */
+static void test_destroyed_cells_reset_but_sentinels_survive() {
+    const int before = failures;
+    const u8 BG = 0x45;
+    u8 field[FIELD_ROWS * FIELD_COLS];
+    for (int i = 0; i < FIELD_ROWS * FIELD_COLS; i++) field[i] = 0x05;
+    field[3 * FIELD_COLS + 4] = 0x80;   /* destroyed at runtime */
+    field[3 * FIELD_COLS + 9] = 0xC0;   /* empty-cell sentinel */
+
+    memset(attr_buff, 0x77, sizeof(attr_buff));
+    reset_destroyed_cell_attrs(field, BG, 0, FIELD_ROWS - 1, 3, 16);
+
+    const int cr = 4 + 3;
+    check(attr_buff[cr * ATTR_COLS + 1 + 2 * 4 + 1] == BG,
+          "destroyed cell's right char is %02X, expected the background %02X\n",
+          attr_buff[cr * ATTR_COLS + 1 + 2 * 4 + 1], BG);
+    check(attr_buff[cr * ATTR_COLS + 1 + 2 * 9] == 0x77,
+          "the $C0 sentinel was reset to %02X; it must keep its attrs\n",
+          attr_buff[cr * ATTR_COLS + 1 + 2 * 9]);
+    report("destroyed_cells_reset", before, "1 destroyed, $C0 kept ok");
+}
+
+/* A destroyed cell shows a NON-bright left char only when its left
+ * neighbour is still live — the original casts an inter-brick shadow
+ * rightwards. Ground truth: destroyed col 6 beside live col 5 gives
+ * $05; with col 5 also gone it keeps the bright $45. */
+static void test_destroyed_cell_shadow_follows_left_neighbour() {
+    const int before = failures;
+    const u8 BG = 0x45;
+    u8 field[FIELD_ROWS * FIELD_COLS];
+    const int cr = 4 + 2, cc = 1 + 2 * 6;
+
+    for (int i = 0; i < FIELD_ROWS * FIELD_COLS; i++) field[i] = 0x05;
+    field[2 * FIELD_COLS + 6] = 0x80;                 /* left neighbour live */
+    memset(attr_buff, 0x77, sizeof(attr_buff));
+    reset_destroyed_cell_attrs(field, BG, 0, FIELD_ROWS - 1, 3, 16);
+    check(attr_buff[cr * ATTR_COLS + cc] == u8(BG & 0xBF),
+          "with a live left neighbour the left char is %02X, expected %02X\n",
+          attr_buff[cr * ATTR_COLS + cc], u8(BG & 0xBF));
+
+    field[2 * FIELD_COLS + 5] = 0x80;                 /* left neighbour gone */
+    memset(attr_buff, 0x77, sizeof(attr_buff));
+    reset_destroyed_cell_attrs(field, BG, 0, FIELD_ROWS - 1, 3, 16);
+    check(attr_buff[cr * ATTR_COLS + cc] == BG,
+          "with the left neighbour gone the left char is %02X, expected %02X\n",
+          attr_buff[cr * ATTR_COLS + cc], BG);
+    report("destroyed_cell_shadow", before, "live/gone neighbour  ok");
+}
+
 int main(int argc, char **argv) {
     const char *levels_path = argc > 1 ? argv[1] : "assets/levels.bin";
     printf("bricks tests\n");
@@ -246,6 +298,8 @@ int main(int argc, char **argv) {
     test_destroyed_bricks_leave_nothing();
     test_painting_stays_in_the_band();
     test_colour_and_shadow();
-    printf("\n%s\n", failures ? "FAILED" : "5 tests, 0 failed");
+    test_destroyed_cells_reset_but_sentinels_survive();
+    test_destroyed_cell_shadow_follows_left_neighbour();
+    printf("\n%s\n", failures ? "FAILED" : "7 tests, 0 failed");
     return failures ? 1 : 0;
 }

@@ -10,7 +10,7 @@ latest covering the compose-order unification, which merged the two
 redraw paths' copies of the `$9AD0` slot sequence. All five defects
 this refactor surfaced are closed.
 
-`main.cpp`: 7,746 → 6,905 lines (-11%) across 14 modules. `make test-fast`
+`main.cpp`: 7,746 → 6,856 lines (-11%) across 14 modules. `make test-fast`
 runs every host test and source gate in seconds; `--full` is 54 gates
 in under six minutes.
 
@@ -76,7 +76,7 @@ happened, and `make test-video` caught it.
 | 3b | collision geometry/effects split | 166 | **done** — 7 more tests |
 | 4 | `assets` | 167 | **done** — 6 tests |
 | 5 | `bricks` — the compositor | 278 | **done** — 5 tests, byte-exact vs 15 captured screens |
-| 5b | level paint / band orchestration | ~250 | **started** — destroyed-cell reset, scene compose and edge repairs named |
+| 5b | level paint / band orchestration | ~200 | **started** — destroyed-cell reset moved to `bricks` with 2 tests; compose and edge repairs named |
 | 6a | `objects` — the 22-byte descriptor + slots | 60 | **done** — 5 tests |
 | 6b-i | `weapons` — bullets + blasts | 95 | **done** — 6 tests |
 | 6b-ii | `enemies` — steering | 145 | **done** — 5 tests |
@@ -546,6 +546,24 @@ its own copy of the nine lines that centre the 16x13 blast, set
 sprite_set $0A, award 350 and queue the sound. Three of them now call
 `blast_active_alien`, which was extracted for the fourth back at stage
 6b-iv.
+
+`reset_destroyed_cell_attrs` moved into `src/bricks.cpp`, the first
+piece of stage 5b to leave `main.cpp` rather than merely be named there.
+It needed nothing new: the module already writes `attr_buff`, and
+`level.h` already owns the field geometry.
+
+Being in a module means it can be host-tested, and two tests now pin the
+rules that were previously only assertable through a 267-second
+emulator sweep: the `$C0` empty-cell sentinel must SURVIVE the reset
+(treating it as destroyed would repaint the frame's edge cells), and a
+destroyed cell takes the non-bright left char only when its left
+neighbour is still live.
+
+Mutation-checking those found something about the guards, not the tests:
+of three mutations tried, two failed to COMPILE under `-Werror` (an
+unused parameter, an unused variable) and only the third reached the
+test. Worth knowing which guard is doing the work — `-Werror` is
+catching more of these than the tests are.
 
 `release_brick_hit_anim_if_gone` came from the same pass: the stepper
 and the renderer both freed a slot whose brick had been destroyed. Note

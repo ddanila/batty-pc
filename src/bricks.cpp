@@ -180,3 +180,53 @@ void repaint_row_attrs(const u8 *cells, int row) {
         attr_buff[(4 + row) * ATTR_COLS + 2 + 2 * col] = attr;
     }
 }
+
+/* level_attrs.bin was captured with every brick alive, so it still
+ * carries brick colour in cells whose brick is now destroyed. Reset
+ * those to the band background, plus the shadow row beneath — a live
+ * brick below repaints its own body attr afterwards, and where there is
+ * none the stale dimmed shadow goes with the brick.
+ *
+ * Only RUNTIME-destroyed cells reset: bit 7 set, bit 6 clear. The
+ * empty-cell sentinel $C0 has both bits and must keep its level_attrs
+ * value, which carries per-side-strip cell colours.
+ *
+ * A destroyed cell shows a non-bright LEFT char only when its left
+ * neighbour is still live, because the original casts an inter-brick
+ * shadow rightwards (GT: destroyed col 6 beside live col 5 gives left
+ * char $05; with col 5 also gone it keeps the bright $45). The right
+ * char is always bg_attr.
+ *
+ * Writes are clipped to [cr0, cr1], the char rows the caller just
+ * re-based from level_attrs; rows outside it are already correct. The
+ * row scan runs one brick row beyond [r0, r1] on each side because
+ * cr0 doubles as row r0-1's shadow row and cr1 as row r1+1's cell row —
+ * that overlap is what known-bugs #1/#2 were. */
+void reset_destroyed_cell_attrs(const u8 *cells,
+                                       u8 bg_attr,
+                                       int r0, int r1, int cr0, int cr1) {
+    int row, col;
+    for (row = r0 - 1; row <= r1 + 1; row++) {
+        if (row < 0 || row >= FIELD_ROWS) continue;
+        for (col = 0; col < FIELD_COLS; col++) {
+            int cr, cc1, cc2, left_live;
+            u8 latt;
+            if ((cells[row * FIELD_COLS + col] & 0xC0) != 0x80) continue;
+
+            cr  = 4 + row;
+            cc1 = 1 + 2 * col;
+            cc2 = cc1 + 1;
+            left_live = (col > 0) && !(cells[row * FIELD_COLS + col - 1] & 0x80);
+            latt = left_live ? u8(bg_attr & 0xBF) : bg_attr;
+
+            if (cr >= cr0 && cr <= cr1) {
+                attr_buff[cr * ATTR_COLS + cc1] = latt;
+                attr_buff[cr * ATTR_COLS + cc2] = bg_attr;
+            }
+            if (cr + 1 >= cr0 && cr + 1 <= cr1) {
+                attr_buff[(cr + 1) * ATTR_COLS + cc1] = latt;
+                attr_buff[(cr + 1) * ATTR_COLS + cc2] = bg_attr;
+            }
+        }
+    }
+}

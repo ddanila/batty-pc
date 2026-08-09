@@ -31,6 +31,17 @@ const int BRICK_BAND_Y_BOT = 128;
 /* Paint every standing brick in `cells` into scr_buff / attr_buff. */
 void paint_bricks(const u8 *cells);
 
+/* level_attrs.bin was captured with every brick alive, so it still
+ * carries brick colour in cells whose brick is now destroyed. Reset
+ * those to the band background across char rows [cr0, cr1] — the rows
+ * the caller just re-based from level_attrs.
+ *
+ * The row scan runs one brick row beyond [r0, r1] on each side, because
+ * cr0 doubles as row r0-1's shadow row and cr1 as row r1+1's cell row.
+ * That overlap is what known-bugs #1 and #2 were. */
+void reset_destroyed_cell_attrs(const u8 *cells, u8 bg_attr,
+                                int r0, int r1, int cr0, int cr1);
+
 /* The same, for brick rows [first_row, last_row] only. Callers must
  * repaint or otherwise account for the neighbouring rows' edges. */
 void paint_brick_rows(const u8 *cells, int first_row, int last_row);
