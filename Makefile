@@ -1270,6 +1270,7 @@ test-source-gates:
 	$(MAKE) test-bg-tile-derivable
 	$(MAKE) test-asset-provenance
 	$(MAKE) test-sound-ids
+	$(MAKE) test-known-bugs-table
 
 # Everything that needs no emulator: the host module tests plus the source
 # gates. Seconds, and it is what CI checks.
@@ -1393,6 +1394,11 @@ test-asset-provenance:
 # indexes the table with it. SND_MAGNET is deliberately past the end.
 test-sound-ids:
 	python3 scripts/check_sound_ids.py
+
+# known-bugs.md's status table must agree with its own sections: no
+# section without a row, no row claiming open over a recorded fix.
+test-known-bugs-table:
+	python3 scripts/check_known_bugs_table.py
 
 # Proof for WS7: every live brick's attr byte in the captured
 # level_attrs.bin is reproduced by briks_colors + print_border_shadow.

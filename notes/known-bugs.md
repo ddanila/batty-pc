@@ -13,14 +13,23 @@
 | #13 | extra balls write the primary's sign cache | fixed; `test-ball-sign-cache-owner` |
 | #14 | the sign cache mixed signs and speeds | **fixed** — the open half was the multiball spawn reading a reconstructed dir instead of the primary's dir byte; settled from the disassembly |
 | #15 | `bios_ticks()` frozen during gameplay | fixed; `test-frozen-clock` |
-| #16 | the port bounces and re-aims an alien at a wall; the original only clamps | **open by design decision**, not by unknown — measured against the original and the disassembly, see below |
+| #16 | the port bounces and re-aims an alien at a wall; the original only clamps | fixed 2026-08-09 — `check_margins` ported literally, the invented reflect-and-re-aim deleted; `test-enemy-margin-clamp` |
+| #17 | `test-enemy-descend` failed about two runs in three | fixed 2026-08-09 — the gate asserts the implication, and `BATTY_REPLAY_COUNTER` pins the phase |
 
-**#14 is the only open item**, and it is open for a reason that cannot be
-closed from the port: `delta_to_dir` selects its angle by MAGNITUDE, and
-now that the cache provably holds signs, the `0x08` angle is unreachable
+**Nothing here is open.** #14's port-side half is fixed and gated; what
+remains of it is a QUESTION about the original that cannot be answered
+from the port — `delta_to_dir` selects its angle by MAGNITUDE, and now
+that the cache provably holds signs, the `0x08` angle is unreachable
 from its only production caller. Whether the ORIGINAL derives the extra
-balls' launch angle from real velocity needs hardware. See the end of
-that section.
+balls' launch angle from real velocity needs hardware. That is an open
+question, not an open defect, and the row says fixed because the port
+is.
+
+*This paragraph said "#14 is the only open item" while #14's own row two
+lines above said fixed, and #16's row said "open by design decision"
+three weeks after it was ported and gated. A status table that
+contradicts its own prose is worse than no table: a reader takes
+whichever half they read first.*
 
 This file originally read "user-reported, unfixed" and "(none
 currently)". Both stopped being true: #8-#15 were surfaced by the
