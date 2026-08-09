@@ -3027,25 +3027,31 @@ static void set_bat_bonus(unsigned char code) {
     objects[OBJ_BAT_2].bonus_applied = code;
 }
 
-/* Start the level-clear flight: the rocket emerges from inside the bat
- * and step_rocket destroys every destructible cell it passes through,
- * so the level is visibly cleared rather than just dissolving.
- *
- * orig: get_rocket $AA9D. x = bat_x + 4, or + 12 when the bat is big;
- * y = bat_y + 6, inside the body. The sprite is masked, so the bat
- * shows through. No catch sound — get_rocket pushes none. */
-static void attach_rocket_to_bat(void) {
-    rocket.active = 1;
-    rocket.clear_completed = 0;
-    set_rocket_bonus_sprite_height(ROCKET_H_PX);
-    hide_objects_for_rocket_clear();
-
+/* Sit the rocket on the bat, ready to fly: x = bat_x + 4, or + 12 when
+ * the bat is big, and y = bat_y + 6 — inside the body, which works
+ * because the sprite is masked and the bat shows through.
+ * orig: get_rocket $AA9D */
+static void place_rocket_on_bat(void) {
     rocket.x = BAT_X + 4;
     if (bat.extra_px >= BAT_BIG_EXTRA_PX) rocket.x += 8;
     rocket.y = BAT_Y + 6;
     rocket.acc = 0;
     rocket.frac = 0;
     rocket.counter = 0;
+}
+
+/* Start the level-clear flight: the rocket emerges from inside the bat
+ * and step_rocket destroys every destructible cell it passes through,
+ * so the level is visibly cleared rather than just dissolving.
+ *
+ * No catch sound: get_rocket pushes none. */
+static void attach_rocket_to_bat(void) {
+    rocket.active = 1;
+    rocket.clear_completed = 0;
+    set_rocket_bonus_sprite_height(ROCKET_H_PX);
+    hide_objects_for_rocket_clear();
+
+    place_rocket_on_bat();
 
     /* INC (IY+$14) at $AA72: the ROCKET catch bumps bat.bonus_applied
      * by one, which silently cancels whatever bat-side bonus was
@@ -3767,12 +3773,7 @@ static void apply_replay_rocket_override(void) {
     rocket.active = 1;
     rocket.clear_completed = 0;
     set_rocket_bonus_sprite_height(ROCKET_H_PX);
-    rocket.x = BAT_X + 4;
-    if (bat.extra_px >= BAT_BIG_EXTRA_PX) rocket.x += 8;
-    rocket.y = BAT_Y + 6;
-    rocket.acc = 0;
-    rocket.frac = 0;
-    rocket.counter = 0;
+    place_rocket_on_bat();
     BALL_HIDE();
     ball.stuck = 0;
 }

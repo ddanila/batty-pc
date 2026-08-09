@@ -9,7 +9,7 @@ The full suite runs **54/54 green in 343s**, twice — the second run
 covering the three behaviour fixes in the table and everything since.
 All five defects this refactor surfaced are now closed.
 
-`main.cpp`: 7,746 → 6,897 lines across 14 modules. `make test-fast`
+`main.cpp`: 7,746 → 6,898 lines across 14 modules. `make test-fast`
 runs every host test and source gate in seconds; `--full` is 54 gates
 in under six minutes.
 
@@ -545,6 +545,14 @@ its own copy of the nine lines that centre the 16x13 blast, set
 sprite_set $0A, award 350 and queue the sound. Three of them now call
 `blast_active_alien`, which was extracted for the fourth back at stage
 6b-iv.
+
+`place_rocket_on_bat` came from the same sweep. `attach_rocket_to_bat`
+and `apply_replay_rocket_override` share the placement exactly, and
+differ in what else they clear — the real catch hides every object and
+bumps the bat's bonus byte, the replay seed only hides the primary ball.
+Only the geometry is shared; the divergence stays visible, since a
+replay hook that seeds MORE state than it used to would change what the
+gates capture.
 
 Found by a duplicate-block detector rather than by reading: normalise
 the source, hash every 5-line window, report the collisions. It also
