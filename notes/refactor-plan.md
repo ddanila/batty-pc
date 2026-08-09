@@ -5,8 +5,8 @@ test. Started 2026-08-07.
 
 ## Where this stands
 
-The full suite runs **57/57 green** — ten clean runs now, the
-latest adding the last screen that had no visual coverage.
+The full suite runs **57/57 green** — eleven clean runs now, the
+latest covering the #15 clock fix.
 Six of the seven defects this refactor surfaced are closed; #14 is open
 because settling it needs ground truth the port does not have.
 
@@ -16,7 +16,7 @@ Gate count 51 → 57 this session: `test-blast-dirty-redraw`,
 `test-game-over-visual` and `test-name-entry-visual`, each covering
 something nothing reached before.
 
-`main.cpp`: 7,747 → 6,848 lines (-11.8%) across 14 modules. `make test-fast`
+`main.cpp`: 7,747 → 6,875 lines (-11.7%) across 14 modules. `make test-fast`
 runs every host test and source gate in seconds; `--full` is 57 gates
 in under six minutes.
 
@@ -106,7 +106,7 @@ happened, and `make test-video` caught it.
 | 1a | `replay_parse` — the BATTY_REPLAY_* value formats | 75 | **done** — 7 tests |
 | 1 | replay / probe scaffolding | ~430 | **last** — see below |
 
-`main.cpp`: 7,747 → 6,848 (`wc -l`; see the status block on why this is not Watcom's count).
+`main.cpp`: 7,747 → 6,875 (`wc -l`; see the status block on why this is not Watcom's count).
 100 host tests + source gates, all via `make test-fast` in seconds.
 
 ### Stage 5b: one destroyed-cell reset, not two
@@ -656,22 +656,29 @@ last, and reaching it took a stack: one life, no ball (death on frame 1),
 a seeded score to beat the high score — and then one key, because of the
 hold below.
 
-A guess written into known-bugs #15 was REFUTED by measuring it. The
-entry claimed `bios_ticks()` returns a constant, reasoned from it being
-the only live user (every other `bios_ticks` timeout is behind
-`auto_advance`, never assigned). Adding `clocks=bios<N>_pit<N>` to
-PROBE.TXT showed it advancing across three runs. The instrument stays in
-the probe; the guess is deleted rather than quietly softened.
+known-bugs #15 is fixed, and the route to it is worth more than the fix.
+`bios_ticks()` does not advance during gameplay. I concluded that,
+then talked myself out of it with a bad measurement, then proved it.
 
-What survives is the observation, which is stronger than the guess ever
-was: the game-over screen is up by 8 s and pixel-identical at every 2 s
-sample through 40 s, where 65 BIOS ticks should be 3.6 s — but it yields
-to a keypress at once, and what follows is exactly the name-entry layout.
-Deriving a tick RATE from those three numbers is not possible, because
-they come from three separate boots and mix guest time with host time.
-Said in the entry rather than glossed.
+The bad measurement: `clocks=bios<N>` read from three separate runs
+showed the counter moving, so the guess was declared refuted. But three
+runs are three BOOTS, and QEMU seeds the BIOS tick count from the host
+clock at power-on — what moved was host wall time between runs, not the
+guest's counter. The entry even noted a rate could not be derived from
+those numbers, and then used them as proof anyway. Being explicit about
+a limitation is not the same as respecting it.
 
-**Superseded, kept for the record**: the
+What settled it was two readings inside ONE run: latch both clocks at
+the first gameplay frame, report them again at the probe checkpoint.
+`dbios0_dpit678` — 678 PIT frames, about 13.6 s, with the BIOS counter
+advancing by zero.
+
+Two visible bugs followed from that frozen clock and nobody had noticed
+either, because a player always presses a key: the game-over screen
+waited forever, and the name-entry cursor never blinked. Both live users
+now count PIT frames (178 for the 3.57 s hold, 6 for the 4.5 Hz blink
+half-period). The BIOS chaining is left alone — its only other consumer
+is `TIMED_OUT`, which `auto_advance` keeps permanently false.**Superseded, kept for the record**: the
 game-over hold does not expire; a gate presses one key instead. The
 cause is still open — see known-bugs.md #15 for what was measured and
 what was refuted.

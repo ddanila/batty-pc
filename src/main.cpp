@@ -651,6 +651,14 @@ static PlayerState player = {0, LIVES_INIT, 0, 0};
 struct ProbeState {
     unsigned long brik_anim_ticks;    /* intro shimmer duration, in PIT edges */
 
+    /* known-bugs #15. Both clocks latched at the first gameplay frame,
+     * so a probe write later in the SAME run yields two readings a known
+     * number of frames apart. Reading bios_ticks() once per run only
+     * ever compared separate boots, which mixes guest time with host
+     * time and cannot give a rate. */
+    unsigned long bios_at_frame1, pit_at_frame1;
+    unsigned char clocks_latched;
+
     /* The last primary-ball launch, read back by the launch gate. */
     struct LaunchCapture {
         unsigned char valid, x, y, dir, speed;
@@ -2693,7 +2701,14 @@ static int auto_advance = 0;   /* never assigned; see above */
  * bios_ticks so the user sees the actual blink. */
 static int blink_phase(void) {
     if (test_mode_pin_blink) return 0;
-    return (int)((bios_ticks() >> 1) & 1);   /* ~4.5 Hz half-period */
+    /* PIT, not BIOS. bios_ticks() does not advance during gameplay —
+     * measured, not assumed: a probe latching both clocks at frame 1 and
+     * again at the checkpoint reported dbios0 over dpit678, i.e. ~13.6 s
+     * of 50 Hz frames with the BIOS counter frozen (known-bugs.md #15).
+     * With BIOS frozen this returned a constant and nothing blinked.
+     * 2 BIOS ticks at 18.2 Hz is 0.110 s, so 6 PIT frames at ~50 Hz is
+     * the same 4.5 Hz half-period the original had. */
+    return (int)((pit_ticks() / 6UL) & 1UL);
 }
 static void render_hiscore_screen(void) {
     asset_load_variable("MARKUP.BIN", markup, MARKUP_MAX, &markup_len);
@@ -3886,8 +3901,10 @@ static void write_replay_probe(void) {
      * hold is the only live user of bios_ticks() and it never expires
      * under QEMU. If bios advances while pit does, the hold is not a
      * clock problem; if it stays put, blink_phase() is dead too. */
-    fprintf(f, "clocks=bios%lu_pit%lu\n",
-            bios_ticks(), (unsigned long)pit_frame_counter);
+    fprintf(f, "clocks=bios%lu_pit%lu_dbios%lu_dpit%lu\n",
+            bios_ticks(), pit_ticks(),
+            bios_ticks() - probe.bios_at_frame1,
+            pit_ticks() - probe.pit_at_frame1);
     fprintf(f, "magnet_state=count%02X_on%02X%02X%02X%02X_ball0_c%02X_d%02X_e%02X_i%02X\n",
             (unsigned)magnets.count,
             (unsigned)magnets.on_state[0], (unsigned)magnets.on_state[1],
@@ -6490,8 +6507,13 @@ static void play_game_over(void) {
         while (!kbhit()) sound_tick();
         getch();
     } else {
-        start = bios_ticks();
-        while (bios_ticks() - start < 65UL) {
+        /* 65 BIOS ticks at 18.2 Hz is 3.57 s = 178 PIT frames at ~50 Hz.
+         * Counted in PIT frames because bios_ticks() does not advance
+         * during gameplay (known-bugs.md #15) — this loop was therefore
+         * infinite except for the keypress, and the screen sat there
+         * unchanged for the full 40 s a capture watched it. */
+        start = pit_ticks();
+        while (pit_ticks() - start < 178UL) {
             sound_tick();
             if (kbhit()) { getch(); break; }
         }
@@ -6658,6 +6680,11 @@ static state_t run_level(void) {
         cycle     = (unsigned char)(lvl_idx & 3);
         bg_attr   = bg_attr_per_cycle[lvl_idx & 3];
         probe.from_gameplay = 1;         /* PROBE writes below are checkpoints */
+        if (!probe.clocks_latched) {
+            probe.bios_at_frame1 = bios_ticks();
+            probe.pit_at_frame1  = pit_ticks();
+            probe.clocks_latched = 1;
+        }
         start     = bios_ticks();
         last_tick = pit_ticks();
         for (;;) {

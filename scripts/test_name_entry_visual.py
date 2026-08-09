@@ -12,11 +12,12 @@ three things stacked:
 
 then one key to leave the game-over screen.
 
-That key is not a convenience — see notes/known-bugs.md #15. The
-game-over hold is written as 65 BIOS ticks (~3.6 s at 18.2 Hz) but does
-not expire within 32 s of the screen appearing; it does yield to a
-keypress. So this gate presses ENTER once and captures what follows,
-rather than waiting for a timeout that does not come.
+The ENTER press leaves the game-over screen promptly. It used to be
+mandatory: the hold counted BIOS ticks and bios_ticks() does not advance
+during gameplay, so the loop was infinite except for a keypress
+(known-bugs.md #15). That is fixed — the hold counts PIT frames now and
+expires on its own in ~3.6 s — but the key is kept, because a gate that
+does not depend on a timer is the more robust of the two.
 
 WHAT THIS CHECKS: that the screen is reached, that it is cleared, and
 that all four elements land where input_new_record_name draws them —

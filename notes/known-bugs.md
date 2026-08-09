@@ -538,69 +538,79 @@ have.
 
 ---
 
-## #15 — the game-over hold does not expire in any reasonable time
+## #15 — `bios_ticks()` does not advance during gameplay
 
-**Found 2026-08-09. Investigated 2026-08-09. Still open; cause not
-established. An earlier guess recorded here was REFUTED — see below.**
+**Found 2026-08-09. Fixed 2026-08-09.** Two wrong conclusions on the way,
+both recorded, because the way this was got wrong is the useful part.
 
-`play_game_over` shows the screen and then waits:
+`play_game_over` held the game-over screen for 65 BIOS ticks (~3.6 s at
+18.2 Hz), and `blink_phase()` was `(bios_ticks() >> 1) & 1`. The screen
+never gave way on its own — captures every 2 s from 8 s to 40 s were
+pixel-identical — but it yielded to a keypress instantly.
 
-```c
-start = bios_ticks();
-while (bios_ticks() - start < 65UL) {
-    sound_tick();
-    if (kbhit()) { getch(); break; }
-}
-```
+### First conclusion: right, but unproven
 
-65 BIOS ticks at 18.2 Hz is about 3.6 s.
+The original entry guessed `bios_ticks()` returns a constant, reasoning
+that this hold is its only live user (every other `bios_ticks` timeout
+goes through `TIMED_OUT`, gated on `auto_advance`, which is never
+assigned), so nothing else would notice.
 
-**Observed**: the game-over screen is up by 8 s into the run and is
-pixel-identical at every 2 s sample through 40 s. It does yield
-immediately to a keypress, and the screen that follows is exactly the
-name-entry layout `input_new_record_name` draws — so the code after the
-hold is fine and it really is the hold that sits there.
+### Second conclusion: wrong, and confidently so
 
-### The refuted guess
-
-This entry originally guessed that `bios_ticks()` returns a constant,
-reasoning that the hold is its only live user (every other `bios_ticks`
-timeout goes through `TIMED_OUT`, gated on `auto_advance`, which is never
-assigned) and so nothing else would notice.
-
-**That is wrong.** A `clocks=bios<N>_pit<N>` line was added to PROBE.TXT
-and read back from three separate runs:
+A `clocks=` line was added to PROBE.TXT and read from three runs:
 
 ```
-wait= 6s  clocks=bios275796_pit0
-wait=12s  clocks=bios275923_pit0
-wait=20s  clocks=bios276142_pit0
+wait= 6s  clocks=bios275796
+wait=12s  clocks=bios275923
+wait=20s  clocks=bios276142
 ```
 
-`bios_ticks()` advances. The guess is dead and the instrument stays in
-the probe.
+The counter moved, so the guess was declared refuted.
 
-(`pit0` is not a second bug — `pin_replay_frame_counter` pins that
-counter so replays are deterministic.)
+**It was not.** Those are three separate BOOTS. QEMU seeds the BIOS
+tick count from the host clock at power-on, so what those numbers
+measured was host wall time passing between three runs — a rebuild plus
+a boot each. The counter looked alive because a fresh one was handed out
+every time. The entry even said a rate could not be derived from them,
+and then treated them as proof anyway.
 
-### What is still not known
+### What actually settled it
 
-Those three numbers come from three separate boots, so the differences
-mix guest run time with host time between runs, and no honest tick RATE
-can be derived from them. What is solid: the counter moves, and 65 of
-its ticks take longer than 32 s of wall clock. Whether the rate the port
-sees is far below 18.2 Hz — the INT 8 chaining described above
-`bios_ticks` aims to keep the BIOS counter at 18.2 Hz while the PIT runs
-at 50 Hz — or whether something else holds the loop, needs a measurement
-INSIDE one run. The probe writes once per run, so that needs a second
-instrument.
+Two readings inside ONE run. Both clocks are now latched at the first
+gameplay frame and reported again at the probe checkpoint:
 
-### Consequences
+```
+FRAME_PROBE=200  probe_phase=play  clocks=bios289687_pit754_dbios0_dpit678
+```
 
-`blink_phase()` is `(bios_ticks() >> 1) & 1`, so the name-entry cursor
-blinks at whatever rate this actually is. Visible, minor, and nobody has
-compared it to the Spectrum.
+678 PIT frames — about 13.6 s at 50 Hz — with the BIOS counter advancing
+by **zero**. During gameplay `bios_ticks()` is frozen.
 
-For gates it is now a non-issue: `test-name-entry-visual` presses one key
-instead of waiting for a timeout that does not come, and that key is
-documented there as deliberate rather than incidental.
+The port reprograms PIT timer 0 to ~50 Hz and chains the original INT 8
+on an accumulator overflow, specifically to keep the BIOS time-of-day at
+$0040:$006C ticking at 18.2 Hz. That chaining is not working. Why it is
+not is a separate question and is NOT answered here.
+
+### The fix
+
+Both live users now count PIT frames, which demonstrably advance:
+
+  - the game-over hold: 65 BIOS ticks at 18.2 Hz = 3.57 s = 178 PIT
+    frames at ~50 Hz
+  - `blink_phase()`: 2 BIOS ticks = 0.110 s = 6 PIT frames, preserving
+    the ~4.5 Hz half-period the original had
+
+Confirmed: with no key sent at all, the game-over screen now gives way and
+name entry is on screen by 9 s.
+
+The BIOS chaining itself is left alone. It has one remaining consumer,
+`TIMED_OUT`, which `auto_advance` keeps permanently false — so nothing
+depends on it, and fixing a timer chain nothing reads is not worth the
+risk to the 50 Hz frame clock everything else depends on.
+
+### What this cost
+
+The frozen clock made two things wrong that nobody had noticed: the
+game-over screen waited forever, and the name-entry cursor never blinked
+(`blink_phase()` returned a constant). Both are visible in normal play.
+Neither was caught, because a player always presses a key.

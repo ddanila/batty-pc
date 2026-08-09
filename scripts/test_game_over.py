@@ -14,8 +14,11 @@ apart anyway, all ported from LBC10_6:
     player's final score never reaches the name-entry save
   - the save happens AFTER name entry, so the file gets the score and
     the initials together
-  - the hold is ~65 BIOS ticks (pause_long B=$0C = 12 * 0.3 s at
-    18.2 Hz) and any key cuts it short
+  - the hold is ~3.6 s and any key cuts it short. The DURATION comes
+    from the original's pause_long B=$0C = 12 * 0.3 s at 18.2 Hz = 65
+    BIOS ticks; the port counts it in PIT frames (178 at ~50 Hz) because
+    bios_ticks() does not advance during gameplay — known-bugs.md #15,
+    where counting it in BIOS ticks made this loop infinite
   - no sound is played; the original's pause_clear_screen_attrib just
     drains the queue while the screen clears
 
@@ -27,6 +30,7 @@ BATTY_HOLD_GAME_OVER.
 
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 
@@ -54,7 +58,13 @@ def main() -> int:
     if "static void play_game_over(void)" not in src:
         raise SystemExit("FAIL: play_game_over is gone; update this gate")
     body = body_of(src, "static void play_game_over(void)")
-    compact = "".join(body.split())
+    # Comments are stripped BEFORE compacting. They must be: this gate
+    # asserts on the ABSENCE of things ("no sound_queue", "not back on
+    # bios_ticks"), and a comment explaining why something is absent
+    # would otherwise trip the check that guards it.
+    code = re.sub(r"/\*.*?\*/", " ", body, flags=re.S)
+    code = re.sub(r"//[^\n]*", " ", code)
+    compact = "".join(code.split())
 
     if "player.lives==0){play_game_over();" not in "".join(src.split()):
         raise SystemExit("FAIL: game over is no longer entered from lives == 0")
@@ -80,12 +90,17 @@ def main() -> int:
         raise SystemExit(f"FAIL: play_game_over runs {actual}; expected {wanted}")
     print("PASS game_over_order: capture high score -> draw -> initials -> save")
 
-    if "65UL" not in compact:
-        raise SystemExit("FAIL: GAME OVER hold is no longer 65 BIOS ticks "
+    if "178UL" not in compact:
+        raise SystemExit("FAIL: GAME OVER hold is no longer 178 PIT frames "
                          "(pause_long B=$0C = 12 * 0.3 s at 18.2 Hz)")
     if "if(kbhit()){getch();break;}" not in compact:
         raise SystemExit("FAIL: GAME OVER hold can no longer be cut short by a key")
-    print("PASS game_over_hold: ~65 BIOS ticks, any key cuts it short")
+    if "bios_ticks" in compact:
+        raise SystemExit(
+            "FAIL: play_game_over is back on bios_ticks, which does not "
+            "advance during gameplay (known-bugs.md #15) — the hold would "
+            "never expire and the screen would sit there until a keypress")
+    print("PASS game_over_hold: ~178 PIT frames (= 3.6 s), any key cuts it short")
 
     if "sound_queue(" in compact:
         raise SystemExit("FAIL: play_game_over queues a sound; LBC10_6 plays none")
