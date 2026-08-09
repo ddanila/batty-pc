@@ -102,11 +102,61 @@ static void draw_frame(unsigned char colour) {
     }
 }
 
-/* Player input-device state — mirrors the original's bytes at
- * 0xB7EF (A toggles, player 1) and 0xB7F7 (B toggles, player 2).
- * Range 0..3 = KEYBOARD / KEMPSTON / CURSOR / INTERFACE II. */
-static unsigned char p1_dev = 0;
-static unsigned char p2_dev = 0;
+#define LIVES_INIT          3
+/* Declared up here, ahead of the p1_dev/p2_dev aliases below: those are
+ * members of this array, and the HUD's player indicators read them long
+ * before the rest of the player state is needed. */
+/* Per-player state. The original keeps two of each — `score_1up_in_game`
+ * / `score_2up_in_game`, `lives_1up` / `lives_2up` — and `game_restart`
+ * zeroes both, so a 2-player game alternates between them while the HUD
+ * shows both at once.
+ *
+ * The high score is deliberately NOT in here. It is one number for the
+ * machine (`hi_score_in_game`), shown in the middle HUD slot; keeping it
+ * per-player would have made the HI column change when the players
+ * swapped. It lived in this struct until 2026-08-09 and the mistake was
+ * invisible only because there was one player. */
+struct PlayerState {
+    unsigned long score;
+    int           lives;
+    unsigned char live_adds_awarded;
+    /* The original's per-player block is eight bytes at `lives_1up`,
+     * and `players_swap` exchanges it wholesale with `lives_2up`:
+     *
+     *   +0  lives
+     *   +1  briks_quantity        bricks left on THAT player's level
+     *   +2  current_level_number  0..14
+     *   +3  round_number          may exceed 15; the level wraps, this
+     *                             does not
+     *   +4..6 current_score       three BCD cells
+     *   +7  ctrl_type             the input device, PER PLAYER
+     *
+     * So a player resumes their own round and level, not a shared one.
+     * `ctrl_type` is where WS1's device selection belongs, and `p1_dev`
+     * / `p2_dev` are aliases onto it rather than separate bytes. */
+    unsigned char level_number;
+    unsigned char round_number;
+    unsigned char ctrl_type;
+};
+static PlayerState players[2] = {{0, LIVES_INIT, 0, 0, 0, 0},
+                                {0, LIVES_INIT, 0, 0, 0, 0}};
+
+
+/* Player input-device state. The menu's A and B keys cycle it (the
+ * original's handlers at $94BD and $9502), range 0..3 =
+ * KEYBOARD / KEMPSTON / CURSOR / INTERFACE II.
+ *
+ * It is NOT two standalone bytes: the original keeps it as `ctrl_type`,
+ * byte +7 of the eight-byte per-player block at `lives_1up` that
+ * `players_swap` exchanges wholesale — so a player's device travels
+ * with their lives, level and score. Held in PlayerState for that
+ * reason; see the block layout there.
+ *
+ * The menu still only CYCLES it. Nothing reads it to choose an input
+ * source yet, and `get_right_player_ctrl_state` — the original's bat-2
+ * reader — has no port equivalent. PLAN.md WS1. */
+#define p1_dev (players[0].ctrl_type)
+#define p2_dev (players[1].ctrl_type)
 
 /* Player indicators 32×16 each: P1 at blob 0x92C1, P2 at 0x9303.
  * Stored on disk as one 132 B blob: P1 header+body (66) then P2 (66). */
@@ -638,46 +688,11 @@ static RocketState rocket = {0, 0, 0, 0, 0, 0, 0};
 static const unsigned int points_table[12] = {
     120, 110, 100, 90, 80, 70, 60, 50, 40, 30, 20, 10
 };
-#define LIVES_INIT          3
 
 /* The original keeps the score as 3-byte BCD across current_score_1up
  * and the in-game digits at score_1up_in_game; the port uses a plain
  * integer. Milestone thresholds for live_adds_awarded live in
  * scoring.h. orig: $B9A0 game_restart sets lives to 3 */
-/* Per-player state. The original keeps two of each — `score_1up_in_game`
- * / `score_2up_in_game`, `lives_1up` / `lives_2up` — and `game_restart`
- * zeroes both, so a 2-player game alternates between them while the HUD
- * shows both at once.
- *
- * The high score is deliberately NOT in here. It is one number for the
- * machine (`hi_score_in_game`), shown in the middle HUD slot; keeping it
- * per-player would have made the HI column change when the players
- * swapped. It lived in this struct until 2026-08-09 and the mistake was
- * invisible only because there was one player. */
-struct PlayerState {
-    unsigned long score;
-    int           lives;
-    unsigned char live_adds_awarded;
-    /* The original's per-player block is eight bytes at `lives_1up`,
-     * and `players_swap` exchanges it wholesale with `lives_2up`:
-     *
-     *   +0  lives
-     *   +1  briks_quantity        bricks left on THAT player's level
-     *   +2  current_level_number  0..14
-     *   +3  round_number          may exceed 15; the level wraps, this
-     *                             does not
-     *   +4..6 current_score       three BCD cells
-     *   +7  ctrl_type             the input device, PER PLAYER
-     *
-     * So a player resumes their own round and level, not a shared one.
-     * `ctrl_type` living here is also the answer to where WS1's device
-     * selection belongs — `p1_dev`/`p2_dev` are the menu's copy of it. */
-    unsigned char level_number;
-    unsigned char round_number;
-};
-static PlayerState players[2] = {{0, LIVES_INIT, 0, 0, 0},
-                                {0, LIVES_INIT, 0, 0, 0}};
-
 /* The original's `game_mode`, and it is 0-BASED:
  *
  *   0  1 Player

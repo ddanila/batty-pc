@@ -283,6 +283,28 @@ def main() -> int:
             "wrong player for the rest of the ball. notes/double-play.md.")
     print("PASS ball_owner_on_deflect: a bat hit re-owns the ball")
 
+    # The device byte is per-player state, not two loose globals. The
+    # original keeps it as ctrl_type, byte +7 of the block players_swap
+    # exchanges, so a player's device travels with their lives, level
+    # and score.
+    if "unsigned char ctrl_type;" not in struct:
+        raise SystemExit(
+            "FAIL: PlayerState has no ctrl_type. The original's device "
+            "byte is +7 of the eight-byte per-player block at lives_1up; "
+            "as two standalone globals it would not follow a player "
+            "through players_swap. PLAN.md WS1.")
+    for macro, target in (("p1_dev", "players[0].ctrl_type"),
+                          ("p2_dev", "players[1].ctrl_type")):
+        line = [l for l in code.split("\n")
+                if l.startswith(f"#define {macro}")]
+        if not line or "".join(target.split()) not in "".join(line[0].split()):
+            raise SystemExit(
+                f"FAIL: {macro} is not an alias onto {target}. Separate "
+                f"storage would drift from the per-player block the "
+                f"original swaps.")
+    print("PASS ctrl_type_per_player: the device byte lives in "
+          "PlayerState")
+
     # The rocket-clear tally is the odd one out: it splits the surviving
     # bricks EVENLY rather than by side. orig zeroes the flag before the
     # sweep and XORs it after every award.

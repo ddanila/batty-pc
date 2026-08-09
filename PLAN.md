@@ -96,8 +96,26 @@ Two corrections to what this section said:
   Modes 2 and 3 are still inert, so picking one and pressing 0 starts a
   1-player game. Recorded here rather than papered over in the code.
 
-Still open in WS1: `p1_dev`/`p2_dev` select nothing, and the
-input-device adaptation below is undone.
+**Device STATE done (2026-08-09), selection still open.** `p1_dev` and
+`p2_dev` are no longer standalone globals: they alias
+`players[0].ctrl_type` / `players[1].ctrl_type`, because the original
+keeps the device byte as `ctrl_type`, +7 of the eight-byte per-player
+block at `lives_1up` that `players_swap` exchanges wholesale. A player's
+device travels with their lives, level and score. As two loose bytes it
+would have drifted the first time a turn changed.
+
+The menu still only CYCLES it. Nothing reads it to choose an input
+source, and `get_right_player_ctrl_state` — the original's bat-2 reader —
+has no port equivalent.
+
+**The open decision is the menu strings, and it is not mine to make.**
+The adaptation below (keyboard set 1 / set 2 / game-port joystick)
+changes what the four options MEAN, and the menu screen is a captured
+blob (`main_menu.bin`) — so the labels cannot be relabelled honestly
+until WS7 item 3 generates that screen from the markup pipeline. Until
+then, wiring devices would mean either silently mapping PC clusters onto
+"KEMPSTON"/"CURSOR" — fake parity, which this section already argued
+against — or shipping a menu whose text contradicts its behaviour.
 
 ## WS2 — 2 Players mode (alternating)
 
