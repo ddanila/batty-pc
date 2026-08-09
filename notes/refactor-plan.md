@@ -9,7 +9,7 @@ The full suite runs **54/54 green in 343s**, twice — the second run
 covering the three behaviour fixes in the table and everything since.
 All five defects this refactor surfaced are now closed.
 
-`main.cpp`: 7,746 → 6,916 lines across 14 modules. `make test-fast`
+`main.cpp`: 7,746 → 6,925 lines across 14 modules. `make test-fast`
 runs every host test and source gate in seconds; `--full` is 54 gates
 in under six minutes.
 
@@ -538,6 +538,13 @@ to protect, violated three commits after naming it. Inert today, because
 the port's ball object handler is a stub, but `call_for_all_obj`
 dispatches on `sprite_set` and the probe dumps those objects. It uses
 the helper now.
+
+`bat_body_sprite` and `fill_bat_resize_sides` split `render_bat` into
+what it draws and the gap it has to fill. The second is the one worth
+naming: mid-resize the bat is wider than any sprite, so solid bits are
+stuffed into the gaps on each side for `buff_to_vga` to light in the
+background's ink. There is no sprite for the in-between widths — only
+the normal and big bodies — and that is why the code exists at all.
 
 `advance_run_dot` split the bat dot's state advance out of its render.
 The split is the point: `render_running_dot` mutates animation state

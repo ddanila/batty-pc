@@ -1635,6 +1635,43 @@ static void call_for_all_obj(obj_handler_t fn) {
     }
 }
 
+/* The bat's body sprite while it is normal width: the gun-mounted one
+ * when LASER is up, stepping through four fire frames at two ticks each
+ * off the countdown, and the plain body otherwise. All share
+ * spr_bat_normal's 32 x 13 footprint. */
+static unsigned int bat_body_sprite(void) {
+    if (objects[OBJ_BAT_1].bonus_applied != 0x01) return SPR_BAT_NORMAL;
+    if (bat.fire_anim_ticks >= 7) return SPR_BAT_GUN_1;
+    if (bat.fire_anim_ticks >= 5) return SPR_BAT_GUN_2;
+    if (bat.fire_anim_ticks >= 3) return SPR_BAT_GUN_3;
+    if (bat.fire_anim_ticks >= 1) return SPR_BAT_GUN_4;
+    return SPR_BAT_GUN;
+}
+
+/* Mid-resize, the bat is wider than its sprite. Stuff solid bits into
+ * the gap on each side so buff_to_vga lights them in the background's
+ * ink — there is no sprite for the in-between widths, only the normal
+ * and big bodies. */
+static void fill_bat_resize_sides(void) {
+    const int side_w = bat.extra_px;
+    int row;
+    if (side_w <= 0) return;
+    for (row = 0; row < 8; row++) {
+        const int yy = BAT_Y + 1 + row;
+        int bx;
+        if (yy < 0 || yy >= PLAYFIELD_H) continue;
+        for (bx = BAT_X - side_w; bx < BAT_X; bx++) {
+            if (bx >= 0 && bx < PLAYFIELD_W)
+                scr_buff[yy * 32 + (bx >> 3)] |= (unsigned char)(0x80 >> (bx & 7));
+        }
+        for (bx = BAT_X + BAT_W_BYTES * 8;
+             bx < BAT_X + BAT_W_BYTES * 8 + side_w; bx++) {
+            if (bx >= 0 && bx < PLAYFIELD_W)
+                scr_buff[yy * 32 + (bx >> 3)] |= (unsigned char)(0x80 >> (bx & 7));
+        }
+    }
+}
+
 /* Bat sprite layout (both spr_bat_normal and spr_bat_big):
  *   rows 0..9  - body (mask=1 = bat colour, pixel=1 = paper for
  *                internal texture).
@@ -1656,38 +1693,10 @@ static void render_bat(unsigned char cycle, unsigned char attr) {
          * fire-animation counter is non-zero, cycle through the four
          * spr_bat_gun_1..4 frames (2 ticks per frame, picked off the
          * countdown). Same 32 x 13 footprint as spr_bat_normal. */
-        if (objects[OBJ_BAT_1].bonus_applied == 0x01) {
-            if (bat.fire_anim_ticks >= 7)      spr = SPR_BAT_GUN_1;
-            else if (bat.fire_anim_ticks >= 5) spr = SPR_BAT_GUN_2;
-            else if (bat.fire_anim_ticks >= 3) spr = SPR_BAT_GUN_3;
-            else if (bat.fire_anim_ticks >= 1) spr = SPR_BAT_GUN_4;
-            else                               spr = SPR_BAT_GUN;
-        } else {
-            spr = SPR_BAT_NORMAL;
-        }
+        spr = bat_body_sprite();
         x   = BAT_X;
         sprite_w = BAT_W_BYTES * 8 + 2 * bat.extra_px;
-        if (bat.extra_px > 0) {
-            /* Resize ramp side-fillers: stuff solid bits into scr_buff
-             * so buff_to_vga lights them with bg's ink. */
-            int side_w = bat.extra_px;
-            int row;
-            for (row = 0; row < 8; row++) {
-                int yy = BAT_Y + 1 + row;
-                int bx;
-                if (yy < 0 || yy >= PLAYFIELD_H) continue;
-                for (bx = BAT_X - side_w; bx < BAT_X; bx++) {
-                    if (bx >= 0 && bx < PLAYFIELD_W) {
-                        scr_buff[yy * 32 + (bx >> 3)] |= (unsigned char)(0x80 >> (bx & 7));
-                    }
-                }
-                for (bx = BAT_X + BAT_W_BYTES * 8; bx < BAT_X + BAT_W_BYTES * 8 + side_w; bx++) {
-                    if (bx >= 0 && bx < PLAYFIELD_W) {
-                        scr_buff[yy * 32 + (bx >> 3)] |= (unsigned char)(0x80 >> (bx & 7));
-                    }
-                }
-            }
-        }
+        fill_bat_resize_sides();
     }
     y = BAT_Y;
     /* Force bg attr on the interior playfield cells the bat covers, but
