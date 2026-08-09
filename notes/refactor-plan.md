@@ -670,6 +670,24 @@ the letter row to change, since placement alone would look identical
 whether `step_name_letter` worked or not. Mutation-checked by making the
 LEFT arm a no-op.
 
+`notes/testing.md` had no index. It grew as a narrative of how
+particular gates came to be — worth keeping — but 30 of 59 gates were
+mentioned nowhere in it, including several of the oldest, so "what
+covers this behaviour?" had no answer short of reading the runner.
+There is an index now, kept complete by `check_gate_index.py`.
+
+Building it turned up that gates are defined in THREE places, not one:
+`run_gates_parallel.py` (the QEMU suite), the `test-source-gates` recipe
+(emulator-free), and `parity-check-full` (the ZEsarUX oracle). The first
+version of the checker knew only the first and reported ten false stale
+entries. The index is worth having precisely BECAUSE the definitions are
+scattered.
+
+The checker cannot judge a description, only a name, so a one-word entry
+would satisfy it. That is the honest limit: what it buys is that adding
+a gate without saying what it is for becomes a failing build rather than
+a silent omission — the failure that already happened 30 times.
+
 That drift had a THIRD copy, and it was the worst of them: the CI
 workflow named `test-video` and three source gates by hand, so CI ran
 **1 of 14 host suites and 3 of 10 source gates** while showing a green

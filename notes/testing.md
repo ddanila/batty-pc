@@ -273,6 +273,81 @@ its 20 concurrent per-case boots oversubscribe cores, which the old
 wall-clock waits couldn't survive (they read the pre-gameplay seed state and
 produced false "bricks rose / score fell" violations).
 
+## Every gate, and what it is for
+
+Kept complete by `scripts/check_gate_index.py`, which fails if any of
+the THREE places gates are defined — `run_gates_parallel.py`, the
+`test-source-gates` recipe, and `parity-check-full` — names one this
+section does not. A gate nobody can find
+is a gate nobody reasons about — before this list existed, 30 of 59 were
+mentioned nowhere in this file, including several of the oldest.
+
+**The four-state cycle and the levels**
+- `test` — the MENU/TITLE/HISCORE/LEVEL screens against captured originals.
+- `test-levels-sweep` — the same state-4 check for each of the 15 levels.
+- `test-laffc-levels-sane` — every level's grid loads and paints sanely.
+- `test-level-advance` — clearing a level advances the round; the index wraps at 15.
+- `test-hud` — score, lives and round digits in the HUD band.
+
+**Ball physics**
+- `test-normal-ball-launch` — the launch trajectory from the bat.
+- `test-wall-bounce`, `test-ball-left-wall-escape` — side walls, including the clamp.
+- `test-bat-deflection` — the LAB1F deflection table against captured ground truth.
+- `test-ball-speed-ramp` — the speed-up over a rally.
+- `test-ball-no-tunnel`, `test-ball-paths-no-tunnel` — the ball never passes through a brick.
+- `test-laffc-ball-frame1`, `test-laffc-ball-l5-metal` — byte-exact ball-vs-brick, oracle-confirmed.
+- `test-magnet-ball` — capture, curve and release.
+- `test-stuck-ball-offset` — one function decides where a held ball rests (#12).
+- `test-ball-sign-cache-owner` — only the primary ball writes its own sign cache (#13).
+
+**Bricks and scoring**
+- `test-brick-scoring` — points per row, doubled for metal.
+- `test-brick-flash`, `test-brik-anim-pace` — the hard-brick shimmer and its cadence.
+- `test-midgame-brick-replay` — a mid-game grid against the original.
+- `test-l3-replay-seed` — the L3 seed the oracle gates depend on.
+- `test-midgame-brick-replay` — a mid-game grid against the original (ZEsarUX oracle).
+- `test-frame-step` — the byte-exact frame-step oracle (ZEsarUX).
+- `test-gameplay-soak` — a long multi-level run holding every invariant.
+
+**Enemies**
+- `test-enemy-descend`, `test-enemy-steer` — the entry slide and the turn cadence.
+- `test-enemy-anim` — the LAAD2 sprite walk.
+- `test-enemy-attr-parity` — the alien's attribute cells.
+- `test-enemy-flyover-redraw`, `test-enemy-brick-residue` — no residue when it passes over.
+
+**Weapons, bonuses, the rocket**
+- `test-bullet-fly`, `test-laser-cadence`, `test-bullet-blast` — the laser and its hit.
+- `test-bomb-fall`, `test-pts400-fall`, `test-bonus-fall` — the three falling objects.
+- `test-bonus-drop`, `test-bonus-typepick` — when a bonus drops and which one.
+- `test-bonus-effects`, `test-bonus-effects2` — every bonus effect.
+- `test-rocket-bonus`, `test-rocket-flight-redraw`, `test-rocket-completion-no-ball` — the level-clear rocket.
+- `test-death-sparks` — the bat explosion.
+- `test-round-banner-border` — the PLAYER/ROUND window's top band.
+
+**Dirty-redraw A/B (narrow path must equal full path)**
+- `test-ball-dirty-redraw`, `test-ball-object-dirty-redraw`, `test-stuck-ball-dirty-redraw`
+- `test-bat-redraw-window`, `test-bat-fire-dirty-redraw`
+- `test-bullet-dirty-redraw`, `test-bomb-dirty-redraw`, `test-blast-dirty-redraw`
+- `test-multiball-dirty-redraw`, `test-bigball-dirty-redraw`
+- `test-sprite-attr-parity` — no sprite corrupts an attribute cell.
+- `test-visual-checkpoints` — the multi-checkpoint capture path itself.
+
+**Game flow**
+- `test-life-loss` — losing a life removes exactly one indicator.
+- `test-game-over`, `test-game-over-visual` — the sequence's order, and the screen.
+- `test-name-entry-visual` — the NEW HIGH SCORE name entry.
+
+**Structural (no emulator)**
+- `test-gate-greps` — the gates' source needles still match the source.
+- `test-gate-index` — every gate is named in this section.
+- `test-host-tests-wired` — every host suite runs under `make test-fast`.
+- `test-notes-numbers` — the plan's status block still states true numbers.
+- `test-env-passthrough` — every `BATTY_*` knob reaches DOS on the test floppy.
+- `test-frozen-clock` — nothing times anything with `bios_ticks()` (#15).
+- `test-module-ownership` — a module that declares state defines it.
+- `test-invariant-owners` — two-place state changes have one writer each.
+- `test-rng-walk` — the RNG walk matches the original's sequence.
+
 ## CI (`.github/workflows/parity-check.yml`)
 
 Hosted GitHub runners have no KVM, so QEMU runs under TCG emulation that is

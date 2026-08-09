@@ -1137,9 +1137,15 @@ test-module-ownership:
 test-host-tests-wired:
 	python3 scripts/check_host_tests_wired.py
 
+# Is every gate named in notes/testing.md's index? Before that index
+# existed, 30 of 59 gates were mentioned nowhere in it.
+test-gate-index:
+	python3 scripts/check_gate_index.py
+
 test-source-gates:
 	$(MAKE) test-gate-greps
 	$(MAKE) test-host-tests-wired
+	$(MAKE) test-gate-index
 	$(MAKE) test-notes-numbers
 	$(MAKE) test-ball-sign-cache-owner
 	$(MAKE) test-env-passthrough
