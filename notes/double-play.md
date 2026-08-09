@@ -674,3 +674,56 @@ Finding the frame took a measurement rather than a guess: the three
 balls spawn together and spread out on their derived directions, so
 there is a window where one has bounced and the others have not. Frames
 6 through 16 all show `010001`.
+
+
+## Ported: bat 2 catches falling bonuses (2026-08-10)
+
+`get_bonus` ($A67B) has the same fall-through shape as LAB1F:
+
+    LD IY,object_bat_1 / CALL obj_compare_2pix / JR C,LA67B_0
+    LD A,(game_mode) / CP $02 / RET NZ
+    LD IY,object_bat_2 / CALL obj_compare / RET NC
+    CALL bonus_flag_swap / CALL LA67B_0 / JP bonus_flag_swap
+
+bat 1 first, bat 2 only in mode $02 and only when bat 1 missed. The port
+tested bat 1 alone, so a bonus falling on player 2's half was caught by
+nobody — it went straight through the bat and off the bottom.
+
+`bonus_catching_bat` is the fall-through, returning which bat or -1.
+
+`LA67B_1` sets `need_change_player` from the CATCHING bat's x, so the
+400 follows the bat that got it — as does SCORE_5K's 5000 and
+KILL_ALIENS' 350, both of which sat inside `bonus_apply` reading
+`BAT_X`. `bonus_apply` takes `catcher_x` now. The gate uses SCORE_5K
+precisely so both awards are on the same probe: 400 + 5000 = 5400, and
+all of it on 2UP.
+
+### What is still shared, and it is the bigger half
+
+The EFFECT. `set_bat_bonus` writes both `bonus_applied` bytes, and the
+width and laser state (`bat.extra_px`, `bat.extra_target`,
+`bat.big_ticks`) are bat-1 globals with nowhere to put bat 2's.
+
+The original keeps them apart with `bonus_flag_swap` around the bat-2
+call — it exchanges `bonus_flag` with `bonus_flag_copy`, so `LA67B_0`
+runs against the catching bat's state throughout and swaps back
+afterwards. The same trick wraps bat 2's `handling_bat` and its LASER
+branch (`LA67B_0` / `LA55A`).
+
+So the port now agrees with the original about WHO CATCHES and WHO IS
+PAID, and still differs about WHO GETS THE EFFECT. That is the open
+remainder of WS3, and it is a state-shape problem rather than a missing
+branch: `bonus_flag_swap` presupposes two copies of everything the
+bonus touches.
+
+### The seed had to be measured, twice
+
+Type 6 is ROCKET, which jumps out to `get_rocket` before the award — a
+bonus that is caught but pays nothing, so the first gate read 0 and
+looked like a missing catch. And the fall is SLOW (`motion_accel_step`
+from a standing start): a bonus seeded at y=150 had moved six pixels in
+twenty frames. Seeded at 158 with a 30-frame window it lands.
+
+Both were visible only because the gate prints `bonus_state` alongside
+the scores. A gate that printed the score alone would have said
+"not caught" in both cases and sent the next reader to the wrong code.

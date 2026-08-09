@@ -815,6 +815,7 @@ parity-check-full:
 	$(MAKE) test-secondary-ball-catch
 	$(MAKE) test-extra-ball-bat2
 	$(MAKE) test-extra-ball-owner
+	$(MAKE) test-double-play-bonus-catch
 	$(MAKE) test-stuck-auto-launch
 	$(MAKE) test-bat-redraw-window
 	$(MAKE) test-ball-left-wall-escape
@@ -1410,6 +1411,11 @@ test-extra-ball-bat2:
 # has one. A bat deflection must move that ball's bit and no other's.
 test-extra-ball-owner:
 	python3 scripts/test_extra_ball_owner.py
+
+# WS3: get_bonus falls through to bat 2 in mode $02, and LA67B_1 pays
+# the CATCHING bat. A/B on BATTY_GAME_MODE with the bonus over bat 2.
+test-double-play-bonus-catch:
+	python3 scripts/test_double_play_bonus_catch.py
 
 # A ball left on the bat launches itself after STUCK_TIMEOUT (192)
 # ticks. Nothing gated this: mutating the counter so it never fires

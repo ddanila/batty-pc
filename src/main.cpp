@@ -3645,7 +3645,7 @@ static void apply_multi_ball_bonus(void) {
 
 /* Apply the effect that comes with `type`. Catching the same type
  * while already active extends the duration. */
-static void bonus_apply(unsigned char type) {
+static void bonus_apply(unsigned char type, int catcher_x) {
     /* Original get_bonus at $A67B: every catch awards 400 points and
      * plays a sound — sound_live_add ($07) for the LIFE bonus, the
      * resize-2 beep ($0C) for everything else (push_resize_sound at
@@ -3673,10 +3673,9 @@ static void bonus_apply(unsigned char type) {
             /* bat.bonus_applied = \$09 is already set above; enemy_prepare
              * reads it to stop spawning. This only clears the alien
              * already on screen, for immediate visible effect. */
-            /* LA67B_1 sets the side from the CATCHING bat's x. Only
-             * bat 1 catches bonuses in the port (ownership is the open
-             * WS3 residual), so BAT_X is that bat. */
-            blast_active_alien(BAT_X);
+            /* LA67B_1 sets the side from the CATCHING bat's x, which
+             * bonus_apply now receives. */
+            blast_active_alien(catcher_x);
             break;
         case BONUS_TYPE_CATCH:
             /* bat.bonus_applied = \$03 has already been set above —
@@ -3688,7 +3687,7 @@ static void bonus_apply(unsigned char type) {
             break;
         case BONUS_TYPE_SCORE_5K:
             /* Pure score bonus. 5000 in BCD-equivalent decimal. */
-            add_points_to_score(5000, BAT_X);   /* LA67B_1: IY = bat */
+            add_points_to_score(5000, catcher_x);  /* LA67B_1: IY = bat */
             break;
         case BONUS_TYPE_LASER:
             /* bat.bonus_applied = \$01 has already been set above —
@@ -3827,16 +3826,48 @@ static int overlaps_bat_body(int x, int y, int w, int h) {
         && x + w > eff_bat_left() && x < eff_bat_right();
 }
 
+/* Which bat is catching this falling thing, or -1.
+ *
+ * orig: get_bonus $A67B, the same fall-through shape as LAB1F —
+ *
+ *     LD IY,object_bat_1 / CALL obj_compare_2pix / JR C,LA67B_0
+ *     LD A,(game_mode) / CP $02 / RET NZ
+ *     LD IY,object_bat_2 / CALL obj_compare / RET NC
+ *
+ * bat 1 first, and bat 2 only in mode $02 and only if bat 1 missed.
+ * The port tested bat 1 alone, so a bonus falling on player 2's half of
+ * the court was never caught by anyone. */
+static int bonus_catching_bat(int x, int y, int w, int h) {
+    if (overlaps_bat_body(x, y, w, h)) return OBJ_BAT_1;
+    if (game_mode == 2 && !(objects[OBJ_BAT_2].sprite_set & 0x80)) {
+        const Object &b2 = objects[OBJ_BAT_2];
+        /* Bat 2 is always the plain 28-wide sprite — the width bonuses
+         * are bat-1 globals — so no extra_px term, and its own y. */
+        if (y + h >= (int)b2.y_coord && y < (int)b2.y_coord + 10
+            && x + w > (int)b2.x_coord
+            && x < (int)b2.x_coord + BAT_BODY_W)
+            return OBJ_BAT_2;
+    }
+    return -1;
+}
+
 static void step_bonus(void) {
+    int caught_by;
 
     tick_bat_resize();
     tick_big_ball_timer();
     if (!bonus.active) return;
     bonus.y += motion_accel_step(&bonus.motion, FALL_DE_SLOW, FALL_CAP_SLOW);
-    if (overlaps_bat_body(bonus.x, bonus.y, BONUS_W_PX, BONUS_H_PX)) {
-        bonus_apply(bonus.type);          /* effect + catch sound */
+    caught_by = bonus_catching_bat(bonus.x, bonus.y, BONUS_W_PX, BONUS_H_PX);
+    if (caught_by >= 0) {
+        bonus_apply(bonus.type,           /* effect + catch sound */
+                    (int)objects[caught_by].x_coord);
         bonus.active = 0;
-        add_points_to_score(400, BAT_X);  /* LD BC,$0400 at $A67D */
+        /* LA67B_1 sets need_change_player from the CATCHING bat's x, so
+         * the 400 follows the bat that got it. It used to be BAT_X
+         * unconditionally, which was right only because bat 2 could
+         * never catch anything. */
+        add_points_to_score(400, (int)objects[caught_by].x_coord);
         spawn_pts_marker(bonus.x, bonus.y);
         return;
     }

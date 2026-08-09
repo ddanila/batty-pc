@@ -16,7 +16,7 @@ The port is "100%" when all of the following hold:
 |---|-----------|-------|
 | 1 | All three game modes work: 1 Player, 2 Players (alternating), Double Play (simultaneous split-court co-op) | 1P and 2P done; Double Play has its court, both bats, ball physics, scoring and INPUT (2026-08-10); bonus ownership and bat-2 catch remain |
 | 2 | Menu semantics match the original (0 starts the selected game directly; A/B input-device cycling affects play) | Key 0 starts the game (`test-menu-start`); the device byte is per-player state but still selects nothing |
-| 3 | Core gameplay byte-exact where an oracle exists (ball, bat, collision, RNG, enemy, bonuses, scoring) | **Done** — regression-locked by 99 gates |
+| 3 | Core gameplay byte-exact where an oracle exists (ball, bat, collision, RNG, enemy, bonuses, scoring) | **Done** — regression-locked by 100 gates |
 | 4 | Full game FLOW gated end-to-end: level-clear → next, life-loss → respawn, game-over → initials, level wrap | **Done** — `test-level-advance`, `test-life-loss`, `test-game-over-visual`, `test-name-entry-visual` |
 | 5 | Sound faithful to the original's 5-slot beeper queue (envelope/timing, not just effect IDs) | ids, slot count, pitches and envelope ARITHMETIC faithful; durations still round to 20 ms because the sound clock is the 50 Hz frame counter |
 | 6 | All assets derived from the tape at build time; no captured emulator blobs | **Done** — all 13 loaded assets build from `original/blocks/`, held by `test-asset-provenance` |
@@ -444,10 +444,19 @@ Gated by `test-double-play-input` (4 rows) and the host-side
 `double_play_court_clamps`. New harness knob `BATTY_HOLD_KEYS` seeds
 held keys into `key_state[]`.
 
-**What remains in WS3:** bonus ownership (`set_bat_bonus` writes both
-bats; the original owns per catching bat, and the width/laser state is
-bat-1 globals with nowhere to put bat 2's) and the bat-2 CATCH, which
-needs the per-ball stuck refactor in WS6 item 2.
+**What remains in WS3:** the bonus EFFECT. Bat 2 now catches bonuses
+and is paid for them (`test-double-play-bonus-catch`, 2026-08-10), but
+`set_bat_bonus` still writes both `bonus_applied` bytes and the width
+and laser state are bat-1 globals.
+
+The original separates them with `bonus_flag_swap` — exchanging
+`bonus_flag` with `bonus_flag_copy` around every bat-2 call so the
+catching bat's state is the live one. That presupposes two copies of
+everything a bonus touches, so this is a state-shape problem rather
+than a missing branch, and it is the last item in the workstream.
+
+The bat-2 CATCH of the ball is done (2026-08-10), as is everything WS6
+item 2 was blocking.
 
 ## WS4 — Game-flow transition gates
 
