@@ -3,6 +3,33 @@
 Turning one 7,700-line file into modules that each have a fast, exhaustive
 test. Started 2026-08-07.
 
+## Where this stands
+
+The full suite runs **54/54 green in 343s**, twice — the second run
+covering the three behaviour fixes in the table and everything since.
+All five defects this refactor surfaced are now closed.
+
+`main.cpp`: 7,746 → 6,916 lines across 14 modules. `make test-fast`
+runs every host test and source gate in seconds; `--full` is 54 gates
+in under six minutes.
+
+| finding | state |
+|---------|-------|
+| #8 multiball direction convention | no gameplay effect — the mirrored values were written to fields nothing read |
+| #9 blast dirty rect 16x8 vs 16x12 | fixed; settled by measuring the sprite, gated by `test-blast-dirty-redraw` |
+| #10 bullet animation phase | fixed; direction settled from the snapshot, gated by host tests |
+| #11 narrow redraw loses the border line | fixed; gated by `test-bat-redraw-window`, which is deterministic now |
+| #12 stuck ball snapped to the default offset | fixed; gated by `test-stuck-ball-offset` |
+
+## How to read this file
+
+`Where this stands` first, then `Stages` for the table of modules.
+Everything after that is narrative kept for its reasoning, not its
+chronology: each section records WHY a change was made and, where a
+diagnosis turned out wrong, what refuted it. Sections were appended
+as the work happened, so a heading names where a thread STARTED, not
+everything under it.
+
 ## The method
 
 Extract a module → give it a host test → *then* refactor it → gates green
@@ -764,20 +791,6 @@ every other path uses the recorded catch offset. Fixed in the next commit, gate 
 written against the unfixed code, failed, and passed after the one-line
 change. A pixel gate cannot reach that branch, so the guard is the
 invariant — one function decides where a stuck ball sits.
-
-## Where this stands
-
-The full suite runs **54/54 green in 343s**, twice — the second run
-covering the three behaviour fixes below and everything since. All five
-defects this refactor surfaced are now closed.
-
-| finding | state |
-|---------|-------|
-| #8 multiball direction convention | no gameplay effect — the mirrored values were written to fields nothing read |
-| #9 blast dirty rect 16x8 vs 16x12 | fixed; settled by measuring the sprite, gated by `test-blast-dirty-redraw` |
-| #10 bullet animation phase | fixed; direction settled from the snapshot, gated by host tests |
-| #11 narrow redraw loses the border line | fixed; gated by `test-bat-redraw-window`, which is deterministic now |
-| #12 stuck ball snapped to the default offset | fixed; gated by `test-stuck-ball-offset` |
 
 ## What this has already found
 
