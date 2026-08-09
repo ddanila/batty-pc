@@ -5397,7 +5397,14 @@ static void render_game_over(void) {
  *
  * The current slot blinks via blink_phase() so the player can see
  * which one they're editing. */
-static void input_new_record_name(void) {
+/* The name-entry screen's furniture: everything that is drawn once and
+ * never repainted. Ink per line is deliberate and gated —
+ * test-name-entry-visual checks each band by ink, so a colour change
+ * here is caught even when the position is right. */
+#define NAME_ENTRY_X   (BORDER_X + 14 * 8)
+#define NAME_ENTRY_Y   (BORDER_Y + 90)
+
+static void draw_name_entry_screen(void) {
     static const unsigned char title[] = {
         0x17, 0x0E, 0x21, 0x26,                 /* NEW_ */
         0x11, 0x12, 0x10, 0x11, 0x26,           /* HIGH_ */
@@ -5413,39 +5420,54 @@ static void input_new_record_name(void) {
         0x1C, 0x0E, 0x15, 0x0E, 0x0C, 0x1D, 0x26, /* SELECT_ */
         0x0E, 0x17, 0x1D, 0x0E, 0x1B            /* ENTER */
     };
-    int pos = 0;
-    int name_x = BORDER_X + 14 * 8;
-    int name_y = BORDER_Y + 90;
-    /* Fresh canvas. */
     fill(0, 0, SCREEN_W, SCREEN_H, 0);
-    draw_text(BORDER_X + 7 * 8,  BORDER_Y + 50, 14, title,  (int)sizeof(title));
-    draw_text(BORDER_X + 6 * 8,  BORDER_Y + 70, 15, prompt, (int)sizeof(prompt));
-    draw_text(BORDER_X + 4 * 8,  BORDER_Y + 130, 13, hint,  (int)sizeof(hint));
+    draw_text(BORDER_X + 7 * 8,  BORDER_Y + 50,  14, title,  (int)sizeof(title));
+    draw_text(BORDER_X + 6 * 8,  BORDER_Y + 70,  15, prompt, (int)sizeof(prompt));
+    draw_text(BORDER_X + 4 * 8,  BORDER_Y + 130, 13, hint,   (int)sizeof(hint));
+}
+
+/* Repaint the three-letter row. The slot being edited alternates between
+ * normal and dim so the player can see which one the arrows move; the
+ * other two are always ink 15, which is why the gate can require the row
+ * to exist in ink 15 without depending on the blink phase. */
+static void draw_name_row(int pos) {
+    const unsigned char blink = (unsigned char)((blink_phase() == 0) ? 0 : 1);
+    int i;
+    fill(NAME_ENTRY_X - 2, NAME_ENTRY_Y - 2, 3 * 16 + 4, 12, 0);
+    for (i = 0; i < 3; i++) {
+        const unsigned char colour =
+            (i == pos && blink) ? 8 /* dim */ : 15;
+        draw_glyph(NAME_ENTRY_X + i * 16, NAME_ENTRY_Y, colour,
+                   high_score_name[i]);
+    }
+}
+
+/* Cycle one letter. The alphabet wraps between $0A and $23, so stepping
+ * off either end lands on the other — there is no clamp. */
+static void step_name_letter(int pos, int delta) {
+    unsigned char c = high_score_name[pos];
+    if (delta < 0) c = (c == 0x0A) ? 0x23 : (unsigned char)(c - 1);
+    else           c = (c == 0x23) ? 0x0A : (unsigned char)(c + 1);
+    high_score_name[pos] = c;
+}
+
+static void input_new_record_name(void) {
+    int pos = 0;
+
+    draw_name_entry_screen();
     high_score_name[0] = 0x0A;
     high_score_name[1] = 0x0A;
     high_score_name[2] = 0x0A;
+
     for (;;) {
-        /* Repaint the 3-letter row each pass. Current slot blinks. */
-        unsigned char blink = (unsigned char)((blink_phase() == 0) ? 0 : 1);
-        int i;
-        fill(name_x - 2, name_y - 2, 3 * 16 + 4, 12, 0);
-        for (i = 0; i < 3; i++) {
-            unsigned char code = high_score_name[i];
-            unsigned char colour = (i == pos && blink) ? 8 /* dim */ : 15;
-            draw_glyph(name_x + i * 16, name_y, colour, code);
-        }
+        draw_name_row(pos);
         if (kbhit()) {
             int k = getch();
             if (k == KEY_ESC) return;
             if (k == KEY_EXT_PREFIX) {
                 int ext = getch();
-                if (ext == KEY_LEFT) {
-                    high_score_name[pos] = (high_score_name[pos] == 0x0A)
-                                           ? 0x23 : (unsigned char)(high_score_name[pos] - 1);
-                } else if (ext == KEY_RIGHT) {
-                    high_score_name[pos] = (high_score_name[pos] == 0x23)
-                                           ? 0x0A : (unsigned char)(high_score_name[pos] + 1);
-                }
+                if (ext == KEY_LEFT)       step_name_letter(pos, -1);
+                else if (ext == KEY_RIGHT) step_name_letter(pos, +1);
                 continue;
             }
             if (k == KEY_ENTER || k == KEY_SPACE) {

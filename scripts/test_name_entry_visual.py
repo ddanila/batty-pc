@@ -102,23 +102,32 @@ def bands_of(idx, ink):
 
 
 def capture():
+    """Two shots: the screen as drawn, then after one LEFT.
+
+    The second is what covers step_name_letter. Everything else here is
+    static furniture that would look identical whether the arrow keys
+    worked or not."""
     OUT.mkdir(parents=True, exist_ok=True)
-    ppm = OUT / "name_entry.ppm"
+    first = OUT / "name_entry.ppm"
+    after = OUT / "name_entry_left.ppm"
     # 12 s covers boot, the round banner, the death and the bat explosion.
     # The single ENTER leaves the game-over screen; name entry then waits
-    # for keys of its own, so the capture cannot race anything.
+    # for keys of its own, so the captures cannot race anything.
     run_qemu(TEST_FLOPPY,
              ["SLEEP 12.0", "sendkey ret", "SLEEP 1.5",
-              f"screendump {ppm}", "sendkey ret", "SLEEP 0.3"],
+              f"screendump {first}",
+              "sendkey left", "SLEEP 1.0",
+              f"screendump {after}",
+              "sendkey ret", "SLEEP 0.3"],
              OUT / "qemu.log")
-    return ppm_inner_to_indices(ppm)
+    return ppm_inner_to_indices(first), ppm_inner_to_indices(after)
 
 
 def main() -> int:
     shutil.rmtree(OUT, ignore_errors=True)
     source_guard()
     build_floppy()
-    idx = capture()
+    idx, idx_left = capture()
 
     if len(idx) != 256 * 192:
         raise SystemExit(f"FAIL: captured {len(idx)} pixels, expected "
@@ -148,8 +157,29 @@ def main() -> int:
               "play_game_over.")
         return 1
 
+    # LEFT must change the first letter. high_score_name starts AAA
+    # ($0A), and $0A steps DOWN to $23 — the wrap, which is the one arm
+    # of step_name_letter a single keypress can reach from the initial
+    # state. Compare only the letter row: the rest of the screen is
+    # static, and the blink would make a whole-screen compare flap.
+    y0, y1 = 88, 102
+    row_before = [idx[y * 256 + x] for y in range(y0, y1) for x in range(256)]
+    row_after = [idx_left[y * 256 + x] for y in range(y0, y1) for x in range(256)]
+    if row_before == row_after:
+        raise SystemExit(
+            "FAIL: LEFT did not change the letter row. step_name_letter "
+            "should have stepped the first slot from $0A (A) round to $23. "
+            "The row is pixel-identical, so either the key never reached "
+            "the port or the arrow arm is broken.")
+
+    # ...and the rest of the screen must NOT have moved.
+    for ink, band, what in EXPECT:
+        if band != (90, 95) and band not in bands_of(idx_left, ink):
+            raise SystemExit(f"FAIL: after LEFT, {what} is gone — the arrow "
+                             f"key should only repaint the letter row")
+
     print(f"PASS name_entry_visual: cleared screen ({share:.1%} one colour), "
-          f"title/prompt/letters/hint all placed")
+          f"title/prompt/letters/hint all placed, LEFT cycles a letter")
     return 0
 
 
