@@ -239,6 +239,25 @@ exactly); 1P gates untouched.
 
 ## WS3 — Double Play mode (simultaneous co-op)
 
+**Stage 1 done (2026-08-09): the court divider.** `LBE8B_10` draws
+`object_separator` when `game_mode == $02`, immediately before the
+1UP/HI/2UP sprites. Ported: `assets/separator.bin` is a new 98-byte
+extraction (`spr_separator` at `$7A2A` — it sits just BELOW
+`sprites.bin`'s `$7A8C..$8F50` range, its body ending exactly where that
+blob begins, so widening the range would have shifted every existing
+offset), and `render_separator` blits it at the coordinates
+`object_separator` carries: x=`$7D`, y=`$A9`.
+
+Worth knowing before building the rest of the mode: the divider is
+**not a full-height wall**. It is 16 px wide and 24 rows tall at y=169,
+down in the bat band — a marker between the two bats' halves, not a
+barrier the ball interacts with. The per-bat margin clamps below are
+what actually confine the bats.
+
+Gated by `test-double-play-separator`, a whole-frame A/B on
+`BATTY_GAME_MODE`: 98 pixels differ, all inside the sprite's rectangle,
+and the gate fails both if none differ and if any differ outside it.
+
 **What:** The distinctive mode: both bats on screen at once, court
 split into halves with a divider, each bat confined to its half, one
 shared ball, shared pool of 3 lives. Needs: bat_2 render + input

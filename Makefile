@@ -61,7 +61,7 @@ ASSETS  = assets/loading.bin assets/hi_score.bin assets/main_menu.bin \
           assets/hud_sprites.bin \
           assets/levels.bin assets/level_attrs.bin \
           assets/bg_tile.bin assets/frame_l1.bin \
-          assets/sprites.bin assets/random_seed.bin
+          assets/sprites.bin assets/separator.bin assets/random_seed.bin
 HISCORE_SNAP      ?= build/snapshots/20260513T202038Z/screen.scr
 MAINMENU_SNAP     ?= build/snapshots/20260513T202041Z/screen.scr
 MAINMENU_SNAP_RAM ?= build/snapshots/20260513T202041Z/ram_4000_FFFF.bin
@@ -265,6 +265,16 @@ assets/bg_tile.bin: build/level_gt/level_01.scr scripts/extract_bg_tile.py
 # encoding-equivalent between tape data + the port blit and live data +
 # the original blit (verified byte-exhaustively over all 49 sprites
 # against the in-game snapshot).
+# The two-player court divider, spr_separator at $7A2A. It sits just
+# BELOW assets/sprites.bin's range ($7A8C..$8F50) — its 96-byte body
+# ends exactly where that blob begins — so it needs its own extraction
+# rather than a widened range, which would shift every existing offset.
+# 98 bytes: the (width=2 bytes, height=$18 rows) header plus the body.
+# File offset = Z80 addr - 0x6800 ($7A8C -> 0x128C).
+assets/separator.bin: original/blocks/03_DATA_headless.dat.bin Makefile
+	@python3 -c "open('$@','wb').write(open('$<','rb').read()[0x122A:0x128C])"
+	@echo "wrote $@ ($$(wc -c < $@) bytes, spr_separator)"
+
 assets/sprites.bin: original/blocks/03_DATA_headless.dat.bin Makefile
 	@python3 -c "import sys; b=bytearray(open('$<','rb').read()[0x128c:0x2546]); \
 		b[0x0CED]=0x11; b[0x0CEF]=0x30; \
@@ -319,6 +329,7 @@ $(FLOPPY_OUT): $(FLOPPY_EXE) $(ASSETS) $(FLOPPY_SRC)
 	mcopy -i $@ -o assets/bg_tile.bin ::BGTILE.BIN
 	mcopy -i $@ -o assets/frame_l1.bin ::FRAMEL1.BIN
 	mcopy -i $@ -o assets/sprites.bin ::SPRITES.BIN
+	mcopy -i $@ -o assets/separator.bin ::SEPARAT.BIN
 	mcopy -i $@ -o assets/random_seed.bin ::RANDOM.BIN
 	@printf '@ECHO OFF\r\n' > build/AUTOEXEC.BAT
 	@if [ -n "$$BATTY_NOSOUND" ]; then \
@@ -382,6 +393,7 @@ $(TEST_FLOPPY_OUT): $(FLOPPY_TEST_EXE) $(ASSETS) $(FLOPPY_SRC)
 	mcopy -i $@ -o assets/bg_tile.bin ::BGTILE.BIN
 	mcopy -i $@ -o assets/frame_l1.bin ::FRAMEL1.BIN
 	mcopy -i $@ -o assets/sprites.bin ::SPRITES.BIN
+	mcopy -i $@ -o assets/separator.bin ::SEPARAT.BIN
 	mcopy -i $@ -o assets/random_seed.bin ::RANDOM.BIN
 	@# BATTY_LEVEL env passthrough — without injecting `SET BATTY_LEVEL=N`
 	@# into the DOS boot AUTOEXEC.BAT, the C-side getenv() at run_level
@@ -755,6 +767,7 @@ parity-check-full:
 	$(MAKE) test-enemy-brick-walk
 	$(MAKE) test-enemy-margin-clamp
 	$(MAKE) test-two-player-turn
+	$(MAKE) test-double-play-separator
 	$(MAKE) test-bat-redraw-window
 	$(MAKE) test-ball-left-wall-escape
 	$(MAKE) test-l3-replay-seed
@@ -1297,6 +1310,11 @@ test-menu-start:
 # on-screen trace is the round banner's PLAYER digit.
 test-two-player-turn:
 	python3 scripts/test_two_player_turn.py
+
+# WS3 stage 1: game_mode $02 draws object_separator (LBE8B_10) and
+# changes nothing else. A/B on BATTY_GAME_MODE, whole-frame diff.
+test-double-play-separator:
+	python3 scripts/test_double_play_separator.py
 
 # The Kinnock easter egg (POKE 47475,0). Source-gated: it is up for
 # ~0.3 s, so a timed screendump would be luck. Its expected text is

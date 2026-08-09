@@ -1373,6 +1373,26 @@ static void mark_dirty_sprite_rect(unsigned int spr, int x, int y) {
  * 11-slot iteration. We'll add them when handling_object work makes
  * them load-bearing - for now they're rendered by the legacy paths. */
 
+/* spr_separator ($7A2A), the Double Play court divider: 2 bytes wide,
+ * $18 rows, loaded from its own asset because it sits just BELOW
+ * SPRITES.BIN's range. object_separator ($9BDC) carries its position:
+ *
+ *   DEFB $03,$05,$7D,$00,$A9,...
+ *         set  spr   x     y
+ *
+ * so sprite set 3 (gfx_screen_elements) index 5, at x=$7D=125,
+ * y=$A9=169 — down in the bat band, not a full-height wall.
+ *
+ * LBE8B_10 draws it only for game_mode $02, immediately before the
+ * 1UP/HI/2UP sprites, which is why this is called just above
+ * render_hud_to_buff at both full-scene composers. */
+static unsigned char separator_spr[98];
+
+static void render_separator(void) {
+    if (game_mode != 2) return;                 /* CP $02 / JR NZ */
+    blit_masked_to_scr_buff(separator_spr, 0x7D, 0xA9);
+}
+
 /* Sugar over the bat's descriptor fields so gameplay code reads
  * naturally. The bat is anchored by object_bat_1 (the original game's
  * 1P bat); object_bat_2 covers 2P mode. */
@@ -2344,6 +2364,7 @@ static void compose_level_scene(unsigned char level_idx, bool with_bat) {
     if (with_bat) render_bat(cycle, bg_attr);
     render_lives(cycle, bg_attr);
     if (with_bat) remember_bat_draw_state();
+    render_separator();
     render_hud_to_buff();
     render_magnets(level_idx);
     inner_border_line_c();
@@ -6006,6 +6027,7 @@ static void compose_scene_no_objects(unsigned char level_idx) {
     paint_bg_to_buff(bg_attr, cycle);
     paint_frame_to_buff(cycle, level_idx);
     render_lives(cycle, bg_attr);
+    render_separator();
     render_hud_to_buff();
     inner_border_line_c();
     render_brick_band(level_idx);
@@ -7245,6 +7267,7 @@ int main(void) {
         asset_load("BGTILE.BIN",  bg_tile,     sizeof(bg_tile)) &&
         asset_load("FRAMEL1.BIN", frame_l1,    sizeof(frame_l1)) &&
         asset_load("SPRITES.BIN", sprites_blob, sizeof(sprites_blob)) &&
+        asset_load("SEPARAT.BIN", separator_spr, sizeof(separator_spr)) &&
         asset_load("INDICAT.BIN", indicator_file, sizeof(indicator_file)) &&
         asset_load("BOTSPR.BIN",  bottom_file,    sizeof(bottom_file)) &&
         asset_load_chunked("RANDOM.BIN", random_rom, RANDOM_ROM_SIZE,
