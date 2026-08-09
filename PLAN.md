@@ -187,17 +187,27 @@ It reuses `two_player_turn_change`, whose guards already cover both of
 LBC10_7's conditions — asking them again at the call site is the
 duplicate-guard mistake stage 4 ran into.
 
-**It is not gated, and that is a real gap.** `test-two-player-turn`
-cannot reach it: with `BATTY_REPLAY_LIVES=1` the death fires on the
-FIRST frame, so `visual_checkpoint_tick` never reaches its count and the
-capture reads the level-ENTRY probe — the same value whether the
-hand-over happened or not. Measured both ways; both report `player00`.
+**It is still not gated, but the reason is now pinned rather than
+guessed.** The first diagnosis — "the probe is rewritten at every level
+entry, so a repeatedly-dying scenario reports whoever entered last" —
+was real, and fixed: `turn_changes_life` / `turn_changes_over` are
+counters, they accumulate, and they survive every later write. That is
+what `test-two-player-turn` asserts now, and it made the mode-1
+life-loss case robust instead of parity-dependent.
 
-Reaching it needs one of: a checkpoint that survives the game-over hold
-(the hold breaks on any key, and the harness sends one), or a knob that
-delays the first death so a checkpoint lands between entry and death.
-The second is probably a few lines. Until then this is behaviour with no
-regression cover, which is worth less than it looks.
+It did NOT make LBC10_7 reachable. `play_game_over` holds for 178 PIT
+frames (~3.5 s) and the capture window ends inside that hold, so
+PROBE.TXT keeps the level-ENTRY write from before the death. Measured
+with `BATTY_REPLAY_LIVES=1`: even `go`, a counter incremented on the
+line BEFORE `play_game_over`, reads 0 — while `BATTY_REPLAY_LIVES=2`
+(which hands over without a game over) reports `life=1` immediately.
+Adding a probe write before `return ST_TITLE` did not help, for the same
+reason.
+
+So it needs a way to cut the hold short under the harness, not another
+counter. `BATTY_HOLD_GAME_OVER` makes the hold wait for a key instead of
+a timer, which is the opposite of what is wanted; a `BATTY_SKIP_HOLDS`
+that zeroes it is the obvious next thing to try.
 
 **What:** Classic turn-taking (research-confirmed: on the Spectrum,
 2 PLAYERS alternates turns, unlike the C64 version). Per-player state

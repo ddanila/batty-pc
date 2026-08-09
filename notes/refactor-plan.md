@@ -8,7 +8,7 @@ test. Started 2026-08-07.
 The stage table below is complete except stage 1, which is blocked for a
 reason rather than for want of effort — see the end of this section.
 
-**The code.** `main.cpp`: 7,747 → 7,234 lines (-6.6%) across 15
+**The code.** `main.cpp`: 7,747 → 7,259 lines (-6.3%) across 15
 modules. The longest function is `run_level` at 113 lines, and it is an
 orchestrator of named phases, which is what it should be.
 
@@ -131,7 +131,7 @@ happened, and `make test-video` caught it.
 | 1a | `replay_parse` — the BATTY_REPLAY_* value formats | 75 | **done** — 7 tests |
 | 1 | replay / probe scaffolding | ~430 | **as far as it should go** — 6 overrides out in `replay`, 6 host tests; the remaining 3 are blocked by design, see below |
 
-`main.cpp`: 7,747 → 7,234 (`wc -l`; see the status block on why this is not Watcom's count).
+`main.cpp`: 7,747 → 7,259 (`wc -l`; see the status block on why this is not Watcom's count).
 100 host tests + source gates, all via `make test-fast` in seconds.
 
 ### Stage 5b: one destroyed-cell reset, not two

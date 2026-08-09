@@ -255,6 +255,21 @@ static unsigned char resume_player_grid = 0;
  * unwind to the level-entry point before the turn can change, because
  * the arriving player may be on a different level. */
 static unsigned char pending_turn_change = 0;
+
+/* How many hand-overs have happened, split by which path took them.
+ *
+ * These exist because active_player alone is not observable from a
+ * capture: PROBE.TXT is rewritten at every level entry, and a scenario
+ * that dies repeatedly re-enters repeatedly, so a probe read at any
+ * moment reports whoever happened to enter last. Counters accumulate
+ * instead and survive every later write — the same reason
+ * enemy_repicks exists. Without them the LBC10_7 path shipped ungated.
+ *
+ *   life   a life was lost with lives to spare (LBC10's DEC/JR Z else)
+ *   over   the player ran OUT and the other carried on (LBC10_7) */
+static unsigned long turn_changes_life = 0;
+static unsigned long turn_changes_over = 0;
+static unsigned long game_overs_reached = 0;
 static unsigned char level_attrs[ATTR_TOTAL_SIZE];
 
 /* Ported brick compositor (was: shortcut #1 in notes/shortcuts.md).
@@ -3989,8 +4004,9 @@ static void probe_write_harness_state(FILE *f) {
      * walking to the snapped position. Without this the whole reaction
      * is invisible to every capture — the bricks are untouched by
      * design, so there is nothing on screen that says it fired. */
-    fprintf(f, "\ngame_mode=%02X_player%02X",
-            (unsigned)game_mode, (unsigned)active_player);
+    fprintf(f, "\ngame_mode=%02X_player%02X_life%lu_over%lu_go%lu",
+            (unsigned)game_mode, (unsigned)active_player,
+            turn_changes_life, turn_changes_over, game_overs_reached);
     fprintf(f, "\nenemy_home=%02X%02X",
             (unsigned)enemy_home_target.x, (unsigned)enemy_home_target.y);
     fprintf(f, "\nbonus_pts_raw=%02X%02X%02X%02X%02X%04X",
@@ -4589,7 +4605,7 @@ static void catch_ball_on_bat(int contact_x) {
  * The original's `LD A,(lives_2up) / AND A / RET Z` guard covers both
  * halves, which is how a solo player keeps playing; the same guard is
  * the `lives <= 0` test below. */
-static int two_player_turn_change(void) {
+static int two_player_turn_change(int after_game_over) {
     const unsigned char other = (unsigned char)(1 - active_player);
     if (game_mode != 1) return 0;                /* 1 = 2 Players */
     if (players[other].lives <= 0) return 0;
@@ -4597,6 +4613,8 @@ static int two_player_turn_change(void) {
     player_grid_valid[active_player] = 1;
     active_player = other;
     resume_player_grid = player_grid_valid[other];
+    if (after_game_over) turn_changes_over++;
+    else                 turn_changes_life++;
     return 1;
 }
 
@@ -7080,7 +7098,7 @@ static state_t run_level(void) {
              * grid swap has to happen before it is painted. */
             if (pending_turn_change) {
                 pending_turn_change = 0;
-                if (two_player_turn_change()) {
+                if (two_player_turn_change(0)) {
                     turn_changed = 1;
                     break;
                 }
@@ -7103,11 +7121,18 @@ static state_t run_level(void) {
              * already — asking them again here is the duplicate-guard
              * mistake that made a mutation survive in stage 4. */
             if (player.lives == 0) {
+                game_overs_reached++;
                 play_game_over();
-                if (two_player_turn_change()) {
+                if (two_player_turn_change(1)) {
                     turn_changed = 1;
-                    break;
+                    break;      /* the re-entry writes the probe */
                 }
+                /* Nothing else does. Returning to the title leaves
+                 * PROBE.TXT holding the LEVEL-ENTRY write from before
+                 * the death, so every counter reads 0 and a working
+                 * build is indistinguishable from a broken one — which
+                 * is exactly how the LBC10_7 path came to ship ungated. */
+                write_replay_probe();
                 return ST_TITLE;
             }
             /* Mirror LBAED_0's exit conditions:

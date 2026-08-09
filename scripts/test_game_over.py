@@ -66,11 +66,12 @@ def main() -> int:
     code = re.sub(r"//[^\n]*", " ", code)
     compact = "".join(code.split())
 
-    if "player.lives==0){play_game_over();" not in "".join(src.split()):
+    if "player.lives==0){game_overs_reached++;play_game_over();" \
+            not in "".join(src.split()):
         raise SystemExit("FAIL: game over is no longer entered from lives == 0")
 
     order = [
-        ("player.score>player.high_score", "capture the high score"),
+        ("player.score>high_score", "capture the high score"),
         ("render_game_over();", "draw the screen"),
         ("input_new_record_name();", "ask for initials"),
         ("high_score_save(", "save"),
