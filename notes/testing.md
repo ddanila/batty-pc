@@ -360,7 +360,7 @@ mentioned nowhere in this file, including several of the oldest.
 - `test-menu-start` — key 0 in the menu starts a game; ENTER still walks the attract chain.
 - `test-kinnock` — the easter egg's text, coordinates and placement.
 - `test-floppy-assets` — the image carries exactly what the port loads.
-- `test-frame-top-derivable` — the frame's top strip is tape sprites, not capture.
+- `test-frame-derivable` — the frame's top and side strips are tape sprites, not capture.
 - `test-level-attrs-derivable` — the live-brick fifth of level_attrs.bin is computed, not captured.
 - `test-two-player-state` — two sets of counters, and the HUD/cache both read them.
 - `test-two-player-turn` — a life loss hands the turn over in mode 1, not in mode 0.

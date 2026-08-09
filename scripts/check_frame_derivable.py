@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The frame's top strip is eight tape sprites, not captured pixels.
+"""The frame's top and side strips are tape sprites, not captured pixels.
 
 `assets/frame_l1.bin` is the perimeter ornament, extracted from emulator
 screens (`scripts/extract_frame.py`), and PLAN.md WS7 item 1 wants it
@@ -38,11 +38,36 @@ Laying the same data out top-down instead matches 58 bytes of 256. That
 was the first attempt here, and it looked like the strip simply was not
 derivable.
 
+### The sides: two sprites, alternating, stepping up 56 rows
+
+    LD HL,$9F00 / LD DE,spr_bord_left_thin
+    EXX
+    LD HL,$BF00 / LD DE,spr_bord_left_bold / LD B,$07
+    LBE8B_1:
+      LD L,$00 / CALL print_sprite_pix / CALL print_sprite_attrib
+      LD L,$F8 / CALL print_sprite_pix / CALL print_sprite_attrib
+      LD A,$C8 / ADD A,H / LD H,A        ; -56 rows
+      EXX
+      DJNZ LBE8B_1
+
+Two register sets, swapped every iteration, so it alternates bold (32
+rows, from y=$BF) and thin (24 rows, from y=$9F), each stepping up 56.
+Seven iterations; the seventh runs off the top of the strip and is
+covered by the top border.
+
+The RIGHT-hand variant is never named. `print_sprite_pix` walks DE
+through the sprite it draws, and `print_sprite_attrib` walks it further,
+so by the second call DE points at the NEXT block in memory — which is
+why the disassembly says of each pair "следующие два спрайта должны идти
+строго друг за другом", these two sprites must come strictly one after
+the other.
+
 ### Scope
 
-The top strip only: y 0..7, all 32 byte-columns, 256 bytes per cycle,
-1024 of `frame_l1.bin`'s 4968. The side strips and the attribute rows
-are the rest of `LBE8B` and are not covered.
+y 0..7 across all 32 byte-columns (256/cycle) and the two 1-byte side
+columns over y 24..191 (336/cycle): 2368 of `frame_l1.bin`'s 4968, 47.7%.
+The attribute rows and the `border_horizontal_addon` AND-strip are the
+rest of `LBE8B` and are not covered.
 """
 
 from __future__ import annotations
@@ -67,6 +92,20 @@ SEQUENCE = [
 ]
 BASE_Y = 0x07          # LD HL,$0700 — H is the y, L the x
 N_CYCLES = 4
+
+
+def block(asm: str, addr: str):
+    """The sprite block whose `; Data block at NNNN` header says addr.
+
+    The right-hand side sprites carry no label of their own — the
+    original reaches them by letting DE walk off the end of the left
+    one — so they can only be named by address.
+    """
+    m = re.search(r"; Data block at " + addr + r"\n(?:;[^\n]*\n)*(?:\w+:\n)?"
+                  r"((?:\s*DEFB[^\n]*\n)+)", asm)
+    if not m:
+        raise SystemExit(f"FAIL: no data block at ${addr} in {GFX.name}")
+    return [int(h, 16) for h in re.findall(r"\$([0-9A-Fa-f]{2})", m.group(1))]
 
 
 def sprite(asm: str, name: str):
@@ -132,9 +171,54 @@ def main() -> int:
               "top-down matches 58 of 256.")
         return 1
 
-    print(f"PASS frame_top_derivable: all {checked} top-strip bytes "
-          f"({N_CYCLES} cycles x 256) are the eight set_border_horizontal "
-          f"sprites drawn upward from y=$07")
+    # --- the side strips ---------------------------------------------
+    # extract_frame.py's layout, per cycle: 768 top pixels, 96 top attrs,
+    # 168 left pixels (y 24..191, one byte wide), 21 left attrs, then the
+    # same for the right.
+    LEFT_OFF, RIGHT_OFF = 768 + 96, 768 + 96 + 168 + 21
+    bold_l, bold_r = block(asm, "6B3F"), block(asm, "6B67")
+    thin_l, thin_r = block(asm, "6B8F"), block(asm, "6BAE")
+    # LBE8B_1: bold from y=$BF, thin from y=$9F, each -56 per turn.
+    placements = []
+    y_bold, y_thin = 0xBF, 0x9F
+    for i in range(7):
+        if i % 2 == 0:
+            placements.append((y_bold, bold_l, bold_r)); y_bold -= 56
+        else:
+            placements.append((y_thin, thin_l, thin_r)); y_thin -= 56
+
+    side_checked = 0
+    for cyc in range(N_CYCLES):
+        for base, ls, rs in placements:
+            for r in range(ls[1]):
+                y = base - r
+                if not (24 <= y <= 191):
+                    continue          # the 7th placement runs off the top
+                for off, spr in ((LEFT_OFF, ls), (RIGHT_OFF, rs)):
+                    want = spr[2 + r]
+                    got = frame[cyc * per + off + (y - 24)]
+                    side_checked += 1
+                    if got != want:
+                        bad.append((cyc, "side", r, y, want, got))
+
+    if bad:
+        print(f"FAIL: {len(bad)} of {checked + side_checked} frame bytes do "
+              f"not match the tape's sprites.\n")
+        for cyc, name, row, bx, want, got in bad[:12]:
+            print(f"  cycle {cyc} {name} row {row} byte {bx}: "
+                  f"want {want:02X} got {got:02X}")
+        if len(bad) > 12:
+            print(f"  ... and {len(bad) - 12} more")
+        print("\nEither the sprite order changed, or frame_l1.bin was "
+              "re-extracted from a different capture. Note the rows go "
+              "UPWARD from the given y.")
+        return 1
+
+    total = checked + side_checked
+    print(f"PASS frame_derivable: all {total} frame bytes "
+          f"({checked} top + {side_checked} side, {N_CYCLES} cycles) are "
+          f"set_border_horizontal and the bold/thin side pair, drawn "
+          f"upward")
     return 0
 
 

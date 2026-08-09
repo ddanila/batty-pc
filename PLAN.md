@@ -497,7 +497,7 @@ original artifact:
    right_*` compositor (disasm ~L6940) and drop `frame_l1.bin`
    (also kills the manual L6853 re-extract procedure in
    `modded-batty.md`).
-   *Top arm proven 2026-08-09.* `test-frame-top-derivable` lays out the
+   *Top arm proven 2026-08-09.* `test-frame-derivable` lays out the
    eight sprites `set_border_horizontal` names and matches
    `frame_l1.bin` exactly — 1024 of its 4968 bytes, all four cycles.
 
@@ -512,8 +512,20 @@ original artifact:
    (`sprites.bin` starts at `$7A8C`), so porting this needs a new asset
    like `separator.bin` was.
 
-   Remaining for this item: the side strips and the attribute rows, plus
-   the `border_horizontal_addon` AND-strip at `scr_buff+$101`.
+   *Side arms proven too.* `LBE8B_1` holds two register sets and swaps
+   them every iteration, so it alternates `spr_bord_left_bold` (32 rows
+   from y=`$BF`) and `spr_bord_left_thin` (24 rows from y=`$9F`), each
+   stepping up 56. The RIGHT-hand variants are never named:
+   `print_sprite_pix` walks DE through the sprite it drew and
+   `print_sprite_attrib` walks it further, so the second call lands on
+   the next block in memory — which is why the disassembly says of each
+   pair "следующие два спрайта должны идти строго друг за другом".
+
+   Together: **2368 of `frame_l1.bin`'s 4968 bytes, 47.7%**, all four
+   cycles, held by `test-frame-derivable`.
+
+   Remaining for this item: the attribute rows, and the
+   `border_horizontal_addon` AND-strip at `scr_buff+$101`.
 2. **`level_attrs.bin` residue** — brick-body attrs are already
    computed; port the writer for frame-strip columns and pre-dimmed
    shadow attrs. This is also the root of the accepted 4px frame-step

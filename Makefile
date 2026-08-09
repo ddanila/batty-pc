@@ -1233,7 +1233,7 @@ test-source-gates:
 	$(MAKE) test-level-attrs-derivable
 	$(MAKE) test-two-player-state
 	$(MAKE) test-floppy-assets
-	$(MAKE) test-frame-top-derivable
+	$(MAKE) test-frame-derivable
 
 # Everything that needs no emulator: the host module tests plus the source
 # gates. Seconds, and it is what CI checks.
@@ -1337,11 +1337,10 @@ test-kinnock:
 test-floppy-assets:
 	python3 scripts/check_floppy_assets.py
 
-# WS7 item 1 evidence: the frame's top strip is the eight
-# set_border_horizontal sprites drawn UPWARD from y=$07, not captured
-# pixels. 1024 of frame_l1.bin's 4968 bytes.
-test-frame-top-derivable:
-	python3 scripts/check_frame_top_derivable.py
+# WS7 item 1 evidence: the frame's top and side strips are tape sprites
+# drawn UPWARD, not captured pixels. 2368 of frame_l1.bin's 4968 bytes.
+test-frame-derivable:
+	python3 scripts/check_frame_derivable.py
 
 # Proof for WS7: every live brick's attr byte in the captured
 # level_attrs.bin is reproduced by briks_colors + print_border_shadow.
