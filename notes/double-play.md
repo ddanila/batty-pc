@@ -171,16 +171,32 @@ Only the bat, bullet and bonus sites read a live coordinate. Ported as
 from `BAT_X`'s top bit at every deflection. `PROBE.TXT` reports it as
 the `own` field of `scores=`.
 
-Still missing: `LAB1F`'s second-bat test itself —
+`LAB1F`'s second-bat test is ported too (2026-08-09):
 
     LD IY,object_bat_1 / CALL obj_compare / JR C,LAB1F_0
     LD A,(game_mode) / CP $02 / RET NZ
     LD IY,object_bat_2 / CALL obj_compare / RET NC
 
-so in Double Play the ball can be deflected by EITHER bat. The port has
-no bat-2 collider, so `BAT_X` is the only source of the owner bit today.
-That is the next WS3 item and it needs bat 2 to be a real object in the
-ball's path, not just a sprite.
+Bat 1 wins an overlap; bat 2 is only tried if bat 1 missed, and only in
+mode $02. `ball_lands_on_bat_2` / `deflect_ball_off_bat_2` mirror that,
+and the owner comes from bat 2's x on a bat-2 hit.
+
+No catch branch on bat 2: `LAB1F`'s MAGNET test is
+`LD A,(IY+$14) / CP $03` on the HITTING bat, and `object_bat_2+$14` is
+not maintained by the port. A bat-2 hit is therefore always a plain
+deflection — a gap, not a simplification.
+
+### A seed outside a table's domain measures the table
+
+Gating this took two attempts. The first seeded the ball with `dir=$10`,
+straight down at bat 2, and the ball STUCK: it snapped to the bat top
+every frame and never left. `$10` is not one of the directions
+`LAB1F_11` searches for ({$04,$08,$0C,$14,$18,$1C}), so the lookup
+returns its input unchanged and the ball re-collides forever.
+
+Real trajectories are diagonal, so the original never presents that
+input — but a seeded gate can. `test-double-play-bat2` uses `$08`,
+down-right, and gets a proper deflection to `$38`.
 
 Not ported: the mode-2 START X itself ($48 / $C0 instead of resting on
 a bat). The alternation drives the owner either way, and moving the

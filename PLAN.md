@@ -353,10 +353,15 @@ translates the ODD-indexed half of the ten seeded sparks by
 a second spawn. `parity-status.md` had it parked as "out of scope (port
 is 1P)". Gated inside `test-death-sparks`.
 
-**WS3's scoring and effects are complete.** What is left of the
-workstream is bat 2's INPUT (`p2_dev` selects nothing — see WS1),
-`handling_ball`'s bat-2 deflection branch, and bonus ownership via
-`object_bat_2+$14`.
+**Stage 7 done (2026-08-09): bat 2 deflects the ball.** `LAB1F` tries
+bat 1, then bat 2 in mode $02 only, and `LAB1F_0` re-owns the ball to
+whichever bat hit it. Gated by `test-double-play-bat2`, an A/B on
+`BATTY_GAME_MODE` with the ball seeded straight at bat 2.
+
+**WS3's scoring, effects and ball physics are complete.** What is left
+is bat 2's INPUT (`p2_dev` selects nothing — see WS1) and bonus
+ownership via `object_bat_2+$14`, which also gives bat 2 the MAGNET
+catch branch it currently cannot take.
 
 **Why after WS2:** WS2 builds the per-player state plumbing (HUD,
 banner, hi-score) that Double Play reuses; Double Play then adds the

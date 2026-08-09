@@ -8,14 +8,14 @@ test. Started 2026-08-07.
 The stage table below is complete except stage 1, which is blocked for a
 reason rather than for want of effort — see the end of this section.
 
-**The code.** `main.cpp`: 7,747 → 7,466 lines (-3.6%) across 15
+**The code.** `main.cpp`: 7,747 → 7,507 lines (-3.1%) across 15
 modules. The longest function is `run_level` at 113 lines, and it is an
 orchestrator of named phases, which is what it should be.
 
-**The tests.** 83 gates, indexed in `notes/testing.md` and kept complete
+**The tests.** 84 gates, indexed in `notes/testing.md` and kept complete
 by `test-gate-index`. They fall in three groups:
 
-  - 63 QEMU gates — `make parity-check-parallel`, ~6 min, twelve clean
+  - 64 QEMU gates — `make parity-check-parallel`, ~6 min, twelve clean
     runs, the latest covering the `handle_input` split.
   - 20 emulator-free source gates plus 14 host suites — `make test-fast`,
     seconds. CI runs exactly this.
@@ -131,7 +131,7 @@ happened, and `make test-video` caught it.
 | 1a | `replay_parse` — the BATTY_REPLAY_* value formats | 75 | **done** — 7 tests |
 | 1 | replay / probe scaffolding | ~430 | **as far as it should go** — 6 overrides out in `replay`, 6 host tests; the remaining 3 are blocked by design, see below |
 
-`main.cpp`: 7,747 → 7,466 (`wc -l`; see the status block on why this is not Watcom's count).
+`main.cpp`: 7,747 → 7,507 (`wc -l`; see the status block on why this is not Watcom's count).
 100 host tests + source gates, all via `make test-fast` in seconds.
 
 ### Stage 5b: one destroyed-cell reset, not two

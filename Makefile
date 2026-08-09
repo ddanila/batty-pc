@@ -768,6 +768,7 @@ parity-check-full:
 	$(MAKE) test-enemy-margin-clamp
 	$(MAKE) test-two-player-turn
 	$(MAKE) test-double-play-court
+	$(MAKE) test-double-play-bat2
 	$(MAKE) test-bat-redraw-window
 	$(MAKE) test-ball-left-wall-escape
 	$(MAKE) test-l3-replay-seed
@@ -1315,6 +1316,12 @@ test-two-player-turn:
 # changes nothing else. A/B on BATTY_GAME_MODE, whole-frame diff.
 test-double-play-court:
 	python3 scripts/test_double_play_court.py
+
+# WS3: LAB1F falls through to object_bat_2 in mode $02, and LAB1F_0
+# re-owns the ball to the bat that hit it. A/B on BATTY_GAME_MODE with
+# the ball seeded straight at bat 2.
+test-double-play-bat2:
+	python3 scripts/test_double_play_bat2.py
 
 # The Kinnock easter egg (POKE 47475,0). Source-gated: it is up for
 # ~0.3 s, so a timed screendump would be luck. Its expected text is

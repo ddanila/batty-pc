@@ -8,7 +8,7 @@
 > — in milliseconds. See [`video-engine.md`](video-engine.md).
 >
 > The QEMU gates below cost ~10 s per boot; `make parity-check-parallel`
-> runs all 63 QEMU gates in about six minutes.
+> runs all 64 QEMU gates in about six minutes.
 >
 > (This paragraph read "`make test-video` is the one gate here that
 > needs no emulator" until 2026-08-09. That was true when zxvga was the
@@ -363,6 +363,7 @@ mentioned nowhere in this file, including several of the oldest.
 - `test-two-player-state` — two sets of counters, and the HUD/cache both read them.
 - `test-two-player-turn` — a life loss hands the turn over in mode 1, not in mode 0.
 - `test-double-play-court` — mode $02 moves both bats and draws the divider.
+- `test-double-play-bat2` — bat 2 deflects the ball and takes ownership of it.
   byte, and `delta_to_dir` has no production caller (known-bugs #14).
 - `test-doc-links` — every file path cited in a comment or note exists.
 - `test-host-tests-wired` — every host suite runs under `make test-fast`.

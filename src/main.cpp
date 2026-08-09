@@ -4808,6 +4808,25 @@ static void rest_ball_on_bat(void) {
  * early at a smaller x and shifts the zone on shallow descents: dir
  * $08 left of centre came out $24 instead of $28.
  * See notes/bat-deflection.md. */
+/* LAB1F tries bat 1 and, in Double Play only, bat 2:
+ *
+ *   LD IY,object_bat_1 / CALL obj_compare / JR C,LAB1F_0
+ *   LD A,(game_mode) / CP $02 / RET NZ
+ *   LD IY,object_bat_2 / CALL obj_compare / RET NC
+ *
+ * Order matters: bat 1 wins an overlap. Bat 2 carries no bonus state in
+ * the port yet — no MAGNET catch, no big-bat widening — so this is the
+ * plain body rectangle. */
+static bool ball_lands_on_bat_2(int next_x, int next_y, int ball_sz) {
+    const Object &b2 = objects[OBJ_BAT_2];
+    if (game_mode != 2 || !object_active(b2)) return false;
+    return ball.dy > 0
+        && next_y + BALL_H_PX > (int)b2.y_coord
+        && next_y < (int)b2.y_coord
+        && next_x + ball_sz > (int)b2.x_coord
+        && next_x < (int)b2.x_coord + (int)b2.w_body_px;
+}
+
 static bool ball_lands_on_bat(int next_x, int next_y, int ball_sz) {
     return ball.dy > 0
         && next_y + BALL_H_PX > BAT_Y
@@ -4942,6 +4961,26 @@ static int deflect_ball_off_bat(int next_x, int *next_y) {
     return 0;
 }
 
+/* Bat 2's half of LAB1F. No catch branch: the MAGNET test is
+ * `LD A,(IY+$14) / CP $03` on the HITTING bat, and bat 2's bonus byte
+ * (`object_bat_2+$14`) is not maintained by the port yet — so a bat-2
+ * hit is always a plain deflection. That is a gap, not a simplification;
+ * see PLAN.md WS3. */
+static void deflect_ball_off_bat_2(int next_x, int *next_y) {
+    const Object &b2 = objects[OBJ_BAT_2];
+    int dx_q8, dy_q8;
+    *next_y = (int)b2.y_coord - BALL_H_PX;
+    /* LAB1F_0 again: the owner follows the bat that hit it. */
+    ball_owner_side = (unsigned char)((b2.x_coord & 0x80) ? 1 : 0);
+    objects[OBJ_BALL_1].dir =
+        bat_deflect_dir(objects[OBJ_BALL_1].dir,
+                        next_x + 3 - (int)b2.x_coord, false);
+    dir_to_dxdy(objects[OBJ_BALL_1].dir, objects[OBJ_BALL_1].speed,
+                      &dx_q8, &dy_q8);
+    refresh_ball_motion_signs(&objects[OBJ_BALL_1], dx_q8, dy_q8);
+    sound_queue(SND_BAT_BEAT);
+}
+
 static void step_ball(void) {
     int next_x, next_y;
     int dx_q8, dy_q8;
@@ -4970,6 +5009,8 @@ static void step_ball(void) {
     bounce_ball_off_ceiling(&next_y, &next_y_q8);
     if (ball_lands_on_bat(next_x, next_y, ball_sz)) {
         if (deflect_ball_off_bat(next_x, &next_y)) return;
+    } else if (ball_lands_on_bat_2(next_x, next_y, ball_sz)) {
+        deflect_ball_off_bat_2(next_x, &next_y);
     }
     /* Past the bat (= primary ball lost). Original at LA27E_25 ($A4xx)
      * checks Y >= $C0 (= 192). It deactivates the ball and decrements
