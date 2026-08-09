@@ -9,7 +9,7 @@ The full suite runs **54/54 green in 343s**, twice — the second run
 covering the three behaviour fixes in the table and everything since.
 All five defects this refactor surfaced are now closed.
 
-`main.cpp`: 7,746 → 6,900 lines across 14 modules. `make test-fast`
+`main.cpp`: 7,746 → 6,905 lines across 14 modules. `make test-fast`
 runs every host test and source gate in seconds; `--full` is 54 gates
 in under six minutes.
 
@@ -545,6 +545,13 @@ its own copy of the nine lines that centre the 16x13 blast, set
 sprite_set $0A, award 350 and queue the sound. Three of them now call
 `blast_active_alien`, which was extracted for the fourth back at stage
 6b-iv.
+
+`release_brick_hit_anim_if_gone` came from the same pass: the stepper
+and the renderer both freed a slot whose brick had been destroyed. Note
+what that means — the RENDERER changes animation state. It is safe
+because freeing is idempotent, but it is the same shape as known-bugs
+#10, so the helper says so rather than leaving the next reader to work
+out whether it matters.
 
 Re-running the sweep across every module, at a 4-line window, found the
 two kill functions still shared their HEADS — the targetable guard and

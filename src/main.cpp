@@ -5517,23 +5517,32 @@ static void brick_hit_anim_spawn(int col, int row) {
     }
 }
 
+/* Free a hit-animation slot whose brick is no longer there — destroyed
+ * (cell bit 7) or out of range. metal_brik_anim's
+ * `BIT 7,(HL) -> mark slot free`. True means the slot was released and
+ * the caller should skip it.
+ *
+ * This is an EARLY out only: an animation that outlives nothing still
+ * ends by itself after one ~15-tick pass.
+ *
+ * Both the stepper and the RENDERER call this, so the renderer can free
+ * a slot. That is safe because freeing is idempotent, but it is the
+ * same shape as known-bugs #10 — state changed from inside a draw — so
+ * it is worth knowing it is deliberate. */
+static bool release_brick_hit_anim_if_gone(int i) {
+    const int col = brick_hit_anim_col[i];
+    const int row = brick_hit_anim_row[i];
+    if (row < LVL_ROWS && col < LVL_COLS
+        && !(live_level[row * LVL_COLS + col] & 0x80)) return false;
+    brick_hit_anim_ticks[i] = 0;
+    return true;
+}
+
 static void step_brick_hit_anim(void) {
     int i;
     for (i = 0; i < BRICK_HIT_ANIM_SLOTS; i++) {
         if (!brick_hit_anim_ticks[i]) continue;
-        /* Destroyed brick (cell bit 7) frees the slot — metal_brik_anim's
-         * `BIT 7,(HL) -> mark slot free`. That is an EARLY-out only: in
-         * the original the anim also ends on its own after one pass (see
-         * the counter note below). */
-        {
-            int col = brick_hit_anim_col[i];
-            int row = brick_hit_anim_row[i];
-            if (row >= LVL_ROWS || col >= LVL_COLS
-                || (live_level[row * LVL_COLS + col] & 0x80)) {
-                brick_hit_anim_ticks[i] = 0;
-                continue;
-            }
-        }
+        if (release_brick_hit_anim_if_gone(i)) continue;
         /* metal_brik_anim's `INC A / AND $0F`: the wrap to 0 marks the slot
          * FREE (fill_briks_data skips counter==0), so the anim plays ONE
          * ~15-tick pass (8 frames, last = spr_brik_1, the normal brick
@@ -5562,13 +5571,9 @@ static void render_brick_hit_anim_to_buff(void) {
         unsigned int hl;
         int col, row;
         if (!tick) continue;
+        if (release_brick_hit_anim_if_gone(i)) continue;
         col = brick_hit_anim_col[i];
         row = brick_hit_anim_row[i];
-        if (row >= LVL_ROWS || col >= LVL_COLS
-            || (live_level[row * LVL_COLS + col] & 0x80)) {
-            brick_hit_anim_ticks[i] = 0;
-            continue;
-        }
         frame_idx = (unsigned char)((tick - 1) >> 1);
         if (frame_idx >= 8) frame_idx = 7;
         spr = brik_anim_sprites[brik_anim_order[frame_idx]];
