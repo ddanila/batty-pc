@@ -731,13 +731,26 @@ original", and nothing here measures the original's margin behaviour at
 all. The port has no gate pinning what the original does at an edge, so
 the change would be unverifiable in the direction that matters.
 
-Settling it needs a ZEsarUX capture of an alien at the right margin.
-`scripts/capture_enemy_flight.py` already frame-steps the original's
-`object_enemy` from the L3 state, and `replays/*.json` support
-`write_memory` setup ops, so the alien could be poked to `x = x_max`
-and its chosen target read back from `$9B96+$14`. The emulator binary
-is present at `tools/zesarux/src/zesarux`. This is a bounded piece of
-work rather than a blocked one — it is simply not a small one.
+### Settling it: what works and what does not (attempted 2026-08-09)
+
+The oracle path RUNS here. `tools/zesarux/src/zesarux` is built,
+`capture_enemy_flight.py` frame-steps the original's `object_enemy`, and
+the target byte is readable: `--probe-ball 0x9BA8` puts `$9B96+$14` in
+the printed `x=` field. Baseline on the unmodified L3 flight reads
+target `$10` for the first frames and `$2C` later — `$10` matching the
+fresh alien's documented target, which confirms the offset.
+
+What does NOT work is poking the alien to the right edge via a replay's
+`write_memory` SETUP ops. The L3 state spawns a FRESH alien during the
+run, at x=168 y=1 (exactly as `test-enemy-descend` documents), so a
+setup-time poke is overwritten before the first probe. Verified: with
+`$9B98`/`$9B9A` set to `$F0`/`$04`, the capture still reads x=168 y=1.
+
+So settling #16 needs a MID-RUN poke — write the position after the
+spawn, then step — which `capture_frame_timeline_original.py` does not
+currently support (its setup runs once, before stepping). Adding a
+"poke at frame N" op is the next step, and it is a change to the capture
+tool rather than to the game.
 
 ### What is in place meanwhile
 

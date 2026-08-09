@@ -569,6 +569,32 @@ removed when they were added; a multiset diff confirmed zero lines
 lost.
 
 
+#### Trying to settle #16 against the original
+
+Having said #16 was bounded rather than blocked, the next step was to
+prove that by doing it. Partly done, and the failure is the useful half.
+
+WORKS: the oracle path runs in this environment.
+`capture_enemy_flight.py` frame-steps the original's `object_enemy`, and
+the target byte is readable by offsetting the probe —
+`--probe-ball 0x9BA8` puts `$9B96+$14` in the printed `x=` field.
+Baseline on the unmodified L3 flight: target `$10` for the first frames,
+`$2C` later. The `$10` matches the fresh alien's documented target,
+which is what confirms the offset rather than assuming it.
+
+DOES NOT WORK: poking the alien to the right edge through a replay's
+`write_memory` SETUP ops. The L3 state spawns a FRESH alien during the
+run — x=168 y=1, exactly as `test-enemy-descend` documents — so a
+setup-time poke is overwritten before the first probe. Verified rather
+than assumed: with `$9B98`/`$9B9A` set to `$F0`/`$04`, the capture still
+reads x=168 y=1.
+
+So #16 needs a MID-RUN poke: write the position after the spawn, then
+step. `capture_frame_timeline_original.py` runs its setup once, before
+stepping, so this is a change to the capture TOOL rather than to the
+game. The entry says that now, with the working half recorded so the
+next attempt starts from the blocker instead of rediscovering it.
+
 #### My own hypothesis for #16, refuted from the repo
 
 I had written that `$38` looked like a transcription slip for `$18` out
