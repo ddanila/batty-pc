@@ -16,7 +16,7 @@ Gate count 51 → 59 this session: `test-blast-dirty-redraw`,
 `test-game-over-visual` and `test-name-entry-visual`, each covering
 something nothing reached before.
 
-`main.cpp`: 7,747 → 6,832 lines (-11.7%) across 15 modules. `make test-fast`
+`main.cpp`: 7,747 → 6,824 lines (-11.7%) across 15 modules. `make test-fast`
 runs every host test and source gate in seconds; `--full` is 59 gates
 in under six minutes.
 
@@ -102,7 +102,7 @@ happened, and `make test-video` caught it.
 | 1a | `replay_parse` — the BATTY_REPLAY_* value formats | 75 | **done** — 7 tests |
 | 1 | replay / probe scaffolding | ~430 | **started** — 5 overrides out in `replay`, 6 host tests; the rest need the state first |
 
-`main.cpp`: 7,747 → 6,832 (`wc -l`; see the status block on why this is not Watcom's count).
+`main.cpp`: 7,747 → 6,824 (`wc -l`; see the status block on why this is not Watcom's count).
 100 host tests + source gates, all via `make test-fast` in seconds.
 
 ### Stage 5b: one destroyed-cell reset, not two
@@ -665,6 +665,19 @@ and the gate was extended in the same commit to press LEFT and require
 the letter row to change, since placement alone would look identical
 whether `step_name_letter` worked or not. Mutation-checked by making the
 LEFT arm a no-op.
+
+`handle_input` went 70 → 26 lines: `toggle_pause` and `launch_or_fire`
+came out, leaving a function that is just the key dispatch it claims to
+be.
+
+The SPACE handler was carrying two comment blocks in front of a
+ONE-LINE call, both explaining the laser, and the sentence "Independent
+of ball state — SPACE refires the laser while the ball flies" appeared
+verbatim in each. One of them also described the cadence maths that
+moved into `try_fire_laser` when that was extracted; the block stayed
+behind. `launch_or_fire` now states the property once — the launch is
+conditional on a WAITING ball, the laser is not — because that
+independence is the whole reason the two live in one branch.
 
 `make help` was the SEVENTH stale list, and the one a newcomer meets
 first. It named 13 individual gates from an earlier era and omitted the

@@ -6126,73 +6126,65 @@ enum InputAction {
     INPUT_ADVANCE_LEVEL     /* ENTER on the pause overlay */
 };
 
+/* P (or 1-4, as the original) toggles the pause overlay. Returns the
+ * action the caller should take for this frame. */
+static InputAction toggle_pause(int &ball_moved, int &bat_moved) {
+    paused = !paused;
+    sound_silence();
+    if (paused) {
+        static const unsigned char paused_codes[] = {
+            0x19, 0x0A, 0x1D, 0x1C, 0x0E, 0x0D  /* P A U S E D */
+        };
+        draw_text(BORDER_X + 13 * 8, BORDER_Y + 90, 15, paused_codes, 6);
+    } else {
+        /* Resuming: schedule a full redraw to erase the banner. */
+        bat_moved = 1;
+        ball_moved = 1;
+        cache.full_flush = 1;
+    }
+    return INPUT_SKIP_FRAME;
+}
+
+/* SPACE does two independent things, and the independence is the point:
+ * it launches a ball only if one is WAITING, and it fires the laser
+ * whenever the bonus and a slot allow. Hammering SPACE with the ball in
+ * flight — which is what a player does to refire the laser — must not
+ * teleport the ball back to its launch trajectory. */
+static void launch_or_fire(void) {
+    if (ball.stuck) {
+        BALL_SHOW();
+        ball.stuck       = 0;
+        ball.stuck_ticks = 0;
+        sound_queue(SND_BALL_START);   /* descending launch blip */
+        primary_ball_launch_from_bat();
+        record_primary_launch();
+    }
+    try_fire_laser();                  /* free_bullet_2 $A14C; see there */
+}
+
 static InputAction handle_input(int &ball_moved, int &bat_moved) {
     if (!kbhit()) return INPUT_NONE;
     {
         const int k = getch();
-        if (k == KEY_ESC) {
-            return INPUT_QUIT;
-        }
+        if (k == KEY_ESC) return INPUT_QUIT;
         if (k == KEY_P_LOWER || k == KEY_P_UPPER
             || k == '1' || k == '2' || k == '3' || k == '4') {
-            paused = !paused;
-            sound_silence();
-            if (paused) {
-                /* Paint a "PAUSED" banner over the current frame. */
-                static const unsigned char paused_codes[] = {
-                    0x19, 0x0A, 0x1D, 0x1C, 0x0E, 0x0D  /* P A U S E D */
-                };
-                draw_text(BORDER_X + 13 * 8, BORDER_Y + 90, 15,
-                          paused_codes, 6);
-            } else {
-                /* Resuming: schedule a full redraw to erase banner. */
-                bat_moved = 1;
-                ball_moved = 1;
-                cache.full_flush = 1;
-            }
-            return INPUT_SKIP_FRAME;
+            return toggle_pause(ball_moved, bat_moved);
         }
         if (paused) {
             if (k == KEY_ENTER) return INPUT_ADVANCE_LEVEL;
-            return INPUT_SKIP_FRAME;                          /* swallow other input */
+            return INPUT_SKIP_FRAME;                    /* swallow other input */
         }
         if (k == KEY_EXT_PREFIX) {
-            /* Discard the scancode following 0 - arrows are
-             * handled by the per-frame key_state[] polling
-             * below; this just keeps the buffer drained. */
+            /* Discard the scancode following 0 — arrows are handled by the
+             * per-frame key_state[] polling, this just drains the buffer. */
             getch();
         } else if (k == KEY_SPACE) {
-            /* Launch the stuck ball — only fire the launch
-             * trajectory if the ball is actually waiting on the
-             * bat. Without this guard, hammering SPACE while
-             * the ball is in flight (e.g. trying to fire the
-             * laser repeatedly) would teleport the ball back to
-             * its launch dx/dy, breaking the bounce. */
-            if (ball.stuck) {
-                BALL_SHOW();
-                ball.stuck   = 0;
-                ball.stuck_ticks  = 0;
-                sound_queue(SND_BALL_START); /* descending launch blip */
-                primary_ball_launch_from_bat();
-                record_primary_launch();
-            }
-            /* If the bat carries the LASER bonus and a free
-             * bullet slot exists, also fire one from the bat
-             * top centre. Two slots = up to two in flight at
-             * once (port of object_bullet_1 / _2 at $A0FA).
-             * Independent of ball state — SPACE can refire
-             * the laser while the ball is in play. */
-            /* free_bullet_2 ($A14C): bullet emerges from the bat
-             * surface (bat_x+12, y=172), 0x18 reset = 12-frame
-             * cadence. Extracted to try_fire_laser so the auto-fire
-             * test hook can drive the same path. Independent of ball
-             * state — SPACE refires the laser while the ball flies. */
-            try_fire_laser();
+            launch_or_fire();
         }
-        /* Mirror the original: no level-skip key. ENTER while
-         * playing does nothing (only the pause overlay above
-         * consumes ENTER to dismiss). The level holds until
-         * the player clears it or loses all lives. */
+        /* Mirror the original: no level-skip key. ENTER while playing does
+         * nothing (only the pause overlay above consumes ENTER). The level
+         * holds until the player clears it or loses all lives. */
     }
     return INPUT_NONE;
 }
