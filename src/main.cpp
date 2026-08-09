@@ -31,6 +31,7 @@
 #include "enemies.h"
 #include "weapons.h"
 #include "replay_parse.h"
+#include "replay.h"
 #include "sound.h"
 #include "physics.h"
 #include "rng.h"
@@ -3525,42 +3526,11 @@ static unsigned int rng_sample(void) {
     return dbg.rng_perframe ? rng_current() : next_random();
 }
 
-static void apply_replay_random_override(void) {
-    const char *p = getenv("BATTY_REPLAY_RANDOM");
-    const char *s;
-    char *endp;
-    unsigned long v;
-    if (p != NULL && *p != '\0') {
-        v = strtoul(p, &endp, 16);
-        if (*endp == '\0' && v <= 0xFFFFUL) {
-            rng_seed(u16(v), rng_seed_addr());
-        }
-    }
-    /* Also seed the ROM-walk position (the original's random_seed at
-     * $8D4A). Needed for byte-exact RNG-dependent parity: with both
-     * random_number ($8D48) and random_seed seeded to the original's
-     * frame-0 values, next_random reproduces random_generate frame for
-     * frame (validated offline against the original's $8D48 sequence —
-     * see notes/rng-model.md). Without it the walk reads a different ROM
-     * offset. Only the low 14 bits matter ($8000-$9FFF). */
-    s = getenv("BATTY_REPLAY_RANDOM_SEED");
-    if (s != NULL && *s != '\0') {
-        v = strtoul(s, &endp, 16);
-        if (*endp == '\0' && v <= 0xFFFFUL) {
-            rng_seed(rng_current(), u16(v));
-        }
-    }
-}
 
 
 
 /* Seed a whole object descriptor from a hex blob, so a gate can put the
  * bat, ball or alien anywhere without playing the game into that state. */
-static void apply_replay_object_override(const char *name, unsigned char slot) {
-    unsigned char bytes[sizeof(Object)];
-    if (!replay_parse_hex_bytes(getenv(name), bytes, (int)sizeof(bytes))) return;
-    memcpy(&objects[slot], bytes, sizeof(bytes));
-}
 
 static void apply_replay_ball_motion_override(void) {
     const char *stuck = getenv("BATTY_REPLAY_BALL_STUCK");
@@ -3590,9 +3560,6 @@ static void apply_replay_ball_motion_override(void) {
  * All-or-nothing: a malformed override is ignored rather than applied
  * half-parsed, so a typo in a gate's env leaves the game untouched
  * instead of seeding a state nobody intended. */
-static bool parse_replay_ints(const char *name, long *out, int count) {
-    return replay_parse_ints(getenv(name), out, count);
-}
 
 /* Bake a falling bonus for the falling-object regression gate.
  * BATTY_REPLAY_BONUS = "type,x,y" (decimal or 0x-hex per field). Starts a
@@ -3601,7 +3568,7 @@ static bool parse_replay_ints(const char *name, long *out, int count) {
  * Put x clear of the bat to test pure fall (no catch). */
 static void apply_replay_bonus_override(void) {
     long v[3];
-    if (!parse_replay_ints("BATTY_REPLAY_BONUS", v, 3)) return;
+    if (!replay_env_ints("BATTY_REPLAY_BONUS", v, 3)) return;
     bonus.active = 1;
     bonus.type = (unsigned char)v[0];
     bonus.x = (int)v[1];
@@ -3616,7 +3583,7 @@ static void apply_replay_bonus_override(void) {
  * to test pure fall (no bat-kill). */
 static void apply_replay_bomb_override(void) {
     long v[2];
-    if (!parse_replay_ints("BATTY_REPLAY_BOMB", v, 2)) return;
+    if (!replay_env_ints("BATTY_REPLAY_BOMB", v, 2)) return;
     bomb_launch((int)v[0], (int)v[1]);
 }
 
@@ -3626,7 +3593,7 @@ static void apply_replay_bomb_override(void) {
  * exercises a faster-grow path. dx is zeroed so the y progression is pure. */
 static void apply_replay_pts400_override(void) {
     long v[2];
-    if (!parse_replay_ints("BATTY_REPLAY_PTS400", v, 2)) return;
+    if (!replay_env_ints("BATTY_REPLAY_PTS400", v, 2)) return;
     pts_marker.active = 1;
     pts_marker.x = (int)v[0];
     pts_marker.y = (int)v[1];
@@ -3639,14 +3606,6 @@ static void apply_replay_pts400_override(void) {
  * BATTY_REPLAY_BULLET = "x,y" into slot 0. The bullet rises at a constant
  * BULLET_SPEED (6 px/frame) in step_bullet_one; probe it in the window
  * below the brick field (y > 128) so it travels without blasting. */
-static void apply_replay_bullet_override(void) {
-    long v[2];
-    if (!parse_replay_ints("BATTY_REPLAY_BULLET", v, 2)) return;
-    bullet_active[0] = 1;
-    bullet_frame[0] = 0;
-    bullet_x[0] = (int)v[0];
-    bullet_y[0] = (int)v[1];
-}
 
 /* Activate big-ball (SMASH) for the deterministic big-ball dirty-tier gate.
  * big_ball_active() needs ball.big_ticks>0 AND bat.bonus_applied==0x07. */
@@ -3710,7 +3669,7 @@ static void apply_replay_ball_ramp(void) {
  * checkable. value 0x1X = single-hit (bit4 set) colour-X brick. */
 static void apply_replay_force_brick(void) {
     long v[3];      /* col, row, cell value */
-    if (!parse_replay_ints("BATTY_FORCE_BRICK", v, 3)) return;
+    if (!replay_env_ints("BATTY_FORCE_BRICK", v, 3)) return;
     if (v[0] < 0 || v[0] >= LVL_COLS || v[1] < 0 || v[1] >= LVL_ROWS) return;
     live_level[v[1] * LVL_COLS + v[0]] = (unsigned char)v[2];
 }
@@ -3719,13 +3678,6 @@ static void apply_replay_force_brick(void) {
  * BATTY_REPLAY_BLAST = "x,y" arms slot 0 at full duration; step_bullet_blast
  * decrements bullet_blast_ticks 1/frame (8 -> 0 over 8 frames = 4 frames x
  * BULLET_BLAST_TICKS_PER_FRAME), render frame = (ticks-1)/2. */
-static void apply_replay_blast_override(void) {
-    long v[2];
-    if (!parse_replay_ints("BATTY_REPLAY_BLAST", v, 2)) return;
-    bullet_blast_ticks[0] = BULLET_BLAST_FRAMES * BULLET_BLAST_TICKS_PER_FRAME;
-    bullet_blast_x[0] = (int)v[0];
-    bullet_blast_y[0] = (int)v[1];
-}
 
 static void apply_replay_rocket_override(void) {
     if (getenv("BATTY_REPLAY_ROCKET_ACTIVE") == NULL) return;
@@ -6115,18 +6067,18 @@ static void reset_level_state(unsigned char lvl_idx) {
  * bricks are loaded and before anything reads them, so a seeded run and
  * the original start from the same state. */
 static void apply_replay_overrides(void) {
-    apply_replay_random_override();
-    apply_replay_object_override("BATTY_REPLAY_BAT_OBJECT",  OBJ_BAT_1);
-    apply_replay_object_override("BATTY_REPLAY_BALL_OBJECT", OBJ_BALL_1);
+    replay_apply_random();
+    replay_apply_object("BATTY_REPLAY_BAT_OBJECT",  OBJ_BAT_1);
+    replay_apply_object("BATTY_REPLAY_BALL_OBJECT", OBJ_BALL_1);
     apply_replay_ball_motion_override();
-    apply_replay_object_override("BATTY_REPLAY_ENEMY_OBJECT", OBJ_ENEMY);
+    replay_apply_object("BATTY_REPLAY_ENEMY_OBJECT", OBJ_ENEMY);
     apply_replay_bonus_override();
     apply_replay_bomb_override();
     apply_replay_pts400_override();
     apply_replay_force_brick();
     apply_replay_ball_ramp();
-    apply_replay_bullet_override();
-    apply_replay_blast_override();
+    replay_apply_bullet();
+    replay_apply_blast();
     apply_replay_force_bonus();
     apply_replay_multiball();
     apply_replay_bigball();

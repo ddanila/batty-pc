@@ -42,7 +42,7 @@ WLINKFMT = format os2 le option stub=$(WSTUB)
 # Modules compile to their own object and expose a header; main.cpp is
 # the state machine and wiring. (zxvga.cpp is still #included -- it has no
 # separate object yet.)
-MODULES = src/rng.cpp src/physics.cpp src/assets.cpp src/zxvga.cpp src/bricks.cpp src/sound.cpp src/hud.cpp src/objects.cpp src/weapons.cpp src/replay_parse.cpp src/enemies.cpp src/bonus_codes.cpp src/scoring.cpp
+MODULES = src/rng.cpp src/physics.cpp src/assets.cpp src/zxvga.cpp src/bricks.cpp src/sound.cpp src/hud.cpp src/objects.cpp src/weapons.cpp src/replay_parse.cpp src/replay.cpp src/enemies.cpp src/bonus_codes.cpp src/scoring.cpp
 SRC     = src/main.cpp $(MODULES)
 OBJ      = $(patsubst src/%.cpp,build/%.obj,$(SRC))
 TEST_OBJ = $(patsubst src/%.cpp,build/%-test.obj,$(SRC))

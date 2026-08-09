@@ -24,11 +24,11 @@ So this checks both directions:
              template, and it makes the list look maintained when it is
              not.
 
-Knob names are taken from every `"BATTY_..."` STRING LITERAL in the
-source, not from `getenv(...)` call sites. Several are read indirectly —
-`parse_replay_ints("BATTY_REPLAY_BOMB", v, 2)` and
-`apply_replay_object_override("BATTY_REPLAY_BALL_OBJECT", ...)` both
-reach `getenv` one level down, and scanning only `getenv(` reported nine
+Knob names are taken from every `"BATTY_..."` STRING LITERAL in every
+`src/*.cpp`, not from `getenv(...)` call sites. Several are read indirectly —
+`replay_env_ints("BATTY_REPLAY_BOMB", v, 2)` and
+`replay_apply_object("BATTY_REPLAY_BALL_OBJECT", ...)` both reach
+`getenv` one level down, and scanning only `getenv(` reported nine
 false orphans on the first attempt.
 
 Scope is the TEST floppy. The main floppy's list is deliberately shorter:
@@ -41,7 +41,7 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-SRC = ROOT / "src" / "main.cpp"
+SRC_DIR = ROOT / "src"
 MAKEFILE = ROOT / "Makefile"
 
 # Knobs that intentionally do not reach the test floppy. Add a REASON, or
@@ -50,7 +50,17 @@ EXEMPT: dict[str, str] = {}
 
 
 def knobs_in_source() -> set[str]:
-    return set(re.findall(r'"(BATTY_[A-Z_0-9]+)"', SRC.read_text()))
+    """Every .cpp under src/, not just main.cpp.
+
+    Scanning main.cpp alone was right until the replay overrides moved to
+    src/replay.cpp, at which point three knobs read there were reported
+    as ORPHANED. The gate was correct about its own scope being wrong,
+    which is the useful failure — a gate that had scanned for GETENV call
+    sites instead would have gone quiet."""
+    found: set[str] = set()
+    for f in sorted(SRC_DIR.glob("*.cpp")):
+        found |= set(re.findall(r'"(BATTY_[A-Z_0-9]+)"', f.read_text()))
+    return found
 
 
 def knobs_on_test_floppy() -> set[str]:

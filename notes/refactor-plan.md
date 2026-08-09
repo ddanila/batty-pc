@@ -16,7 +16,7 @@ Gate count 51 → 57 this session: `test-blast-dirty-redraw`,
 `test-game-over-visual` and `test-name-entry-visual`, each covering
 something nothing reached before.
 
-`main.cpp`: 7,747 → 6,910 lines (-11.4%) across 14 modules. `make test-fast`
+`main.cpp`: 7,747 → 6,862 lines (-12.0%) across 15 modules. `make test-fast`
 runs every host test and source gate in seconds; `--full` is 57 gates
 in under six minutes.
 
@@ -104,9 +104,9 @@ happened, and `make test-video` caught it.
 | 9 | `run_level` decomposition | 684 -> 115 | **done** — every phase named |
 | 10 | state owners — structs at file scope | 113 vars | **done** — 11 clusters, see below |
 | 1a | `replay_parse` — the BATTY_REPLAY_* value formats | 75 | **done** — 7 tests |
-| 1 | replay / probe scaffolding | ~430 | **last** — see below |
+| 1 | replay / probe scaffolding | ~430 | **started** — 5 overrides out in `replay`; the rest need the state first |
 
-`main.cpp`: 7,747 → 6,910 (`wc -l`; see the status block on why this is not Watcom's count).
+`main.cpp`: 7,747 → 6,862 (`wc -l`; see the status block on why this is not Watcom's count).
 100 host tests + source gates, all via `make test-fast` in seconds.
 
 ### Stage 5b: one destroyed-cell reset, not two
@@ -669,6 +669,26 @@ and the gate was extended in the same commit to press LEFT and require
 the letter row to change, since placement alone would look identical
 whether `step_name_letter` worked or not. Mutation-checked by making the
 LEFT arm a no-op.
+
+Stage 1 has a first real slice. `src/replay.{cpp,h}` holds the five
+`BATTY_REPLAY_*` seeders that depend ONLY on state other modules already
+own — `objects` (objects.h), the bullet and blast arrays (weapons.h) and
+the RNG (rng.h). That is the entire boundary, and it is why exactly
+those five could come out: the bonus, bomb, pts400, rocket, big-ball,
+multiball and brick seeders write structs still living in `main.cpp`, so
+moving them means moving the state first, which is the part that was
+always the blocker.
+
+The split against stage 1a is clean: `replay_parse` turns a string into
+numbers and has no game state at all; `replay` applies them.
+
+`check_env_passthrough` failed on this, correctly, and about its own
+scope: it scanned `main.cpp` only, so three knobs whose literals moved to
+`replay.cpp` came back as ORPHANED. It now scans every `src/*.cpp`. Worth
+noting WHICH design made that a loud failure — the gate reads string
+literals, so moving them moved what it sees. Had it scanned `getenv(`
+call sites it would simply have gone quiet, which is the same reason it
+reported nine false orphans the first time and had to be built this way.
 
 Auditing what was LEFT on the frozen clock found `run_level`'s `start`:
 seeded from `bios_ticks()`, threaded into `handle_input` by reference so
