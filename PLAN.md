@@ -497,6 +497,23 @@ original artifact:
    right_*` compositor (disasm ~L6940) and drop `frame_l1.bin`
    (also kills the manual L6853 re-extract procedure in
    `modded-batty.md`).
+   *Top arm proven 2026-08-09.* `test-frame-top-derivable` lays out the
+   eight sprites `set_border_horizontal` names and matches
+   `frame_l1.bin` exactly — 1024 of its 4968 bytes, all four cycles.
+
+   **The detail that makes this work is `print_sprite_pix`.** It is a
+   plain UNMASKED copy (`LD A,(DE) / LD (HL),A`, no OR, no mask) and each
+   row moves to the PREVIOUS buffer line, so a sprite at `y=$07` occupies
+   y 0..7 with its rows REVERSED. Laid out top-down the same data matches
+   58 bytes of 256, which reads as "not derivable" rather than "drawn the
+   other way up".
+
+   The sprites live at `$6B17..` — below every current extraction
+   (`sprites.bin` starts at `$7A8C`), so porting this needs a new asset
+   like `separator.bin` was.
+
+   Remaining for this item: the side strips and the attribute rows, plus
+   the `border_horizontal_addon` AND-strip at `scr_buff+$101`.
 2. **`level_attrs.bin` residue** — brick-body attrs are already
    computed; port the writer for frame-strip columns and pre-dimmed
    shadow attrs. This is also the root of the accepted 4px frame-step

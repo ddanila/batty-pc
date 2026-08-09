@@ -543,3 +543,19 @@ finding up more carefully.
 When looking for every write to a BIT, search the bit ops too — or
 better, read the routines that consume it rather than grepping for
 writers.
+
+**Sprites in this game are drawn bottom-up.** `print_sprite_pix` copies
+width bytes per row and then moves to the PREVIOUS buffer line
+(`SUB width+$1F` on the low byte, `DEC H` on borrow), so the first data
+row lands at the given y and the rest stack ABOVE it.
+
+Checking whether the frame's top strip is generatable, I laid the eight
+`set_border_horizontal` sprites out top-down, got 58 bytes of 256, and
+had written most of a note concluding the strip was not reducible to the
+tape's sprites. Reading the routine instead of trusting the layout gave
+256 of 256, on all four colour cycles.
+
+This is the same shape as the round banner's bottom-anchored text
+coordinates and the Kinnock egg's — the ZX side of this codebase
+consistently anchors at the BOTTOM. Assume it, and check the routine
+before concluding that data does not match.
