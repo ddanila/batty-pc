@@ -5,10 +5,14 @@ test. Started 2026-08-07.
 
 ## Where this stands
 
-The full suite runs **54/54 green in 343s**, three times now — the
-latest covering the compose-order unification, which merged the two
-redraw paths' copies of the `$9AD0` slot sequence. All five defects
-this refactor surfaced are closed.
+The full suite runs **55/55 green in 343s** — four clean runs now, the
+latest covering the level-entry reset going through `bullets_clear`.
+All five defects this refactor surfaced are closed.
+
+Gate count 51 → 55 this session: `test-blast-dirty-redraw`,
+`test-game-over`, `test-stuck-ball-offset`, `test-visual-checkpoints`
+and `test-invariant-owners`, each covering something nothing reached
+before.
 
 `main.cpp`: 7,746 → 6,817 lines (-12%) across 14 modules. `make test-fast`
 runs every host test and source gate in seconds; `--full` is 54 gates
