@@ -83,8 +83,39 @@ the data underneath it.
 - The port's clamps for the bat already are `check_left_margin` /
   `check_right_margin` in effect, so both bats are already free to roam
   once bat 2 gets input. Nothing to do.
-- The real work is `need_change_player` + `add_points_to_score`: an
-  x-derived side flag threaded through every scoring site. The port
-  credits `player.score` directly in several places, so this needs the
-  event's x at each of them — that is the next WS3 stage, and it is
-  plumbing rather than a mechanic.
+- `need_change_player` + `add_points_to_score` is the real work, and
+  it is partly done (2026-08-09). See below.
+
+
+## Ported: the scoring owner (2026-08-09)
+
+`add_points_to_score(pts, side_x)` is now the single place a score is
+added, and `check_two_player_state` holds that — a second `+=` site
+would bypass the side rule, and two places deciding the same thing means
+one of them is untested.
+
+WHICH object's top bit is tested differs by caller, which is the part
+worth having written down:
+
+| site | flag from |
+|---|---|
+| `handling_bat` -> `kill_enemy_by_bat` | the BAT's x, `(IX+$02)` |
+| `LA67B_1` -> `get_bonus` | the BAT's x, `(IY+$02)` |
+| `handling_bullet` | the BULLET's x, `(IX+$02)` |
+| `handling_ball` | the ball's `(IX+$12)` — an OWNER flag, not its x |
+| `add_points_for_left_briks` | zero, then alternated to split evenly |
+
+The first three are ported. The last two are not, and their call sites
+pass `SIDE_ACTIVE`, which credits the active player exactly as before:
+
+- the ball's side is a persistent owner bit in `+$12`, set at
+  `all_var_init` (`LD A,(object_ball_1+$12) / OR $80` in the mode-$02
+  branch when the ball starts at x=$C0), not derived from where the ball
+  currently is. The port has no such bit, so brick scores are not
+  side-attributed yet.
+- the end-of-round leftover bricks are split EVENLY between the players
+  by alternating the flag ("Добавляет двум игрокам поровну очки"), which
+  needs a counter this does not have.
+
+So in Double Play, brick points currently go to the active player rather
+than the side. A stated gap, not a silent one.

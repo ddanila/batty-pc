@@ -209,6 +209,35 @@ def main() -> int:
             "in a 1-player capture, so no pixel gate can hold this.")
     print("PASS game_over_player_digit: the GAME OVER line prints "
           "active_player + 1")
+
+    # Scoring has ONE owner. orig add_points_to_score ($018D) decides,
+    # in Double Play, WHICH player a score goes to from the side the
+    # event happened on. A second `+=` site would silently bypass that —
+    # and the duplicate-guard lesson applies here too: two places that
+    # decide the same thing means one of them is untested.
+    helper = body_of(code, "static void add_points_to_score(unsigned long pts, int side_x) {")
+    strays = []
+    for n, line in enumerate(code.split("\n"), 1):
+        if re.search(r"\.score\s*\+=", line) and line not in helper:
+            strays.append(f"{n}: {line.strip()}")
+    if strays:
+        raise SystemExit(
+            "FAIL: score is added outside add_points_to_score:\n  "
+            + "\n  ".join(strays)
+            + "\nEvery scoring site must route through it, or Double Play "
+              "credits the wrong player. notes/double-play.md.")
+    print("PASS score_single_owner: every score add goes through "
+          "add_points_to_score")
+
+    flat_helper = "".join(helper.split())
+    if "game_mode==2" not in flat_helper or "&0x80" not in flat_helper:
+        raise SystemExit(
+            "FAIL: add_points_to_score no longer decides by game_mode $02 "
+            "and the side's top bit. The original is `CP $02 / JR NZ` then "
+            "`LD A,(need_change_player) / AND A / JR Z`, and "
+            "need_change_player is always an `AND $80` of some object's "
+            "coordinate.")
+    print("PASS score_side_rule: it keys on game_mode $02 and the top bit")
     return 0
 
 

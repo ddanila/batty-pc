@@ -313,6 +313,22 @@ before anything was built on them — see notes/double-play.md):
   did it**: a brick broken on the right half scores for player 2 even if
   player 1 sent the ball there.
 
+**Stage 3 done (2026-08-09): the scoring owner.** `add_points_to_score`
+is the single place a score is added — gated, because a second `+=` site
+would bypass the side rule. Three of the five flag sites are ported (the
+alien kill and both bonus paths take the BAT's x; the bullet takes its
+own). Two are not, and pass an explicit `SIDE_ACTIVE`:
+
+- the ball's side is a persistent OWNER bit in `object_ball_1+$12`, set
+  at `all_var_init`, not its current x — the port has no such bit, so
+  brick scores are not side-attributed;
+- the end-of-round leftover bricks are split EVENLY by alternating the
+  flag, which needs a counter.
+
+In Double Play those points therefore go to the active player. Stated,
+not silent. `PROBE.TXT` now carries `scores=<1up>_<2up>` so the next
+stage has something to assert against.
+
 **Why after WS2:** WS2 builds the per-player state plumbing (HUD,
 banner, hi-score) that Double Play reuses; Double Play then adds the
 simultaneous-play mechanics on top.

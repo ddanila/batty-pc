@@ -718,6 +718,38 @@ static unsigned char active_player = 0;
 
 static unsigned long high_score = 0;
 
+/* orig: add_points_to_score ($018D). In Double Play the score goes to
+ * the side the event happened on, not to whoever is "active":
+ *
+ *   LD A,(game_mode) / CP $02 / JR NZ,score_update
+ *   LD A,(need_change_player) / AND A / JR Z,score_update
+ *   ... swap score_1up/score_2up, score_update, swap back ...
+ *
+ * `need_change_player` is set from a top-bit test at five sites, and
+ * WHICH object's bit differs by caller — traced in notes/double-play.md:
+ *
+ *   handling_bat      (IX+$02) & $80   the BAT's x    -> kill_enemy_by_bat
+ *   LA67B_1           (IY+$02) & $80   the BAT's x    -> get_bonus
+ *   handling_bullet   (IX+$02) & $80   the BULLET's x
+ *   handling_ball     (IX+$12) & $80   the ball's OWNER flag, not its x
+ *   add_points_for_left_briks          zero, then alternated to split
+ *                                      the leftover bricks evenly
+ *
+ * SIDE_ACTIVE means "not side-attributed yet": the last two need state
+ * the port does not have (the ball's +$12 owner bit, and the alternating
+ * split), so their callers pass it and credit the active player as
+ * before. That is a stated gap, not a silent one — in Double Play those
+ * points go to the wrong player. See PLAN.md WS3. */
+#define SIDE_ACTIVE (-1)
+
+static void add_points_to_score(unsigned long pts, int side_x) {
+    if (game_mode == 2 && side_x != SIDE_ACTIVE && (side_x & 0x80))
+        players[1].score += pts;
+    else
+        player.score += pts;
+}
+
+
 /* The replay harness's own state. None of this affects the game: every
  * field is driven by a BATTY_* environment variable and read back through
  * PROBE.TXT, so a gate can seed a scenario and check what happened.
@@ -3228,7 +3260,9 @@ static void blast_active_alien(void) {
     e->sprite_set = 0x0A;
     e->sprite_num = 0;
     e->misc_12    = 0x50;   /* kill_enemy $A4C4 seed */
-    player.score += 350;
+    /* kill_enemy_by_bat, reached from handling_bat, which has
+     * just set need_change_player from the BAT's x. */
+    add_points_to_score(350, BAT_X);
     sound_queue(SND_ALIEN_BLAST);
 }
 
@@ -3314,7 +3348,7 @@ static void bonus_apply(unsigned char type) {
             break;
         case BONUS_TYPE_SCORE_5K:
             /* Pure score bonus. 5000 in BCD-equivalent decimal. */
-            player.score += 5000;
+            add_points_to_score(5000, BAT_X);   /* LA67B_1: IY = bat */
             break;
         case BONUS_TYPE_LASER:
             /* bat.bonus_applied = \$01 has already been set above —
@@ -3462,7 +3496,7 @@ static void step_bonus(void) {
     if (overlaps_bat_body(bonus.x, bonus.y, BONUS_W_PX, BONUS_H_PX)) {
         bonus_apply(bonus.type);          /* effect + catch sound */
         bonus.active = 0;
-        player.score += 400;              /* LD BC,$0400 at $A67D */
+        add_points_to_score(400, BAT_X);  /* LD BC,$0400 at $A67D */
         spawn_pts_marker(bonus.x, bonus.y);
         return;
     }
@@ -3647,7 +3681,8 @@ static int brick_hit_resolve(int col, int row, int axis) {
         unsigned int idx = (unsigned int)((row < 12) ? row : 11);
         unsigned int pts = points_table[idx];
         if ((cell_val & 0x0F) >= 6) pts *= 2;     /* metal -> double */
-        player.score += pts;
+        add_points_to_score(pts, SIDE_ACTIVE);    /* needs the ball's
+                                                   * +$12 owner bit */
     }
     *cell |= 0x80;
     mark_brick_row_dirty(row);
@@ -4081,6 +4116,7 @@ static void write_replay_probe(void) {
     fprintf(f, "current_level=%02X\n", (unsigned)current_level_idx_var);
     fprintf(f, "bricks_quantity=%02X\n", (unsigned)live_bricks_remaining());
     fprintf(f, "score=%06lu\n", player.score);
+    fprintf(f, "scores=%06lu_%06lu\n", players[0].score, players[1].score);
     fprintf(f, "random_number=%04X\n", (unsigned)rng_current());
     fprintf(f, "random_seed=%04X\n", (unsigned)rng_seed_addr());
     fprintf(f, "enemy_repicks=arrival%u_turns%u\n",
@@ -4310,7 +4346,7 @@ static void step_bullet_one(int b) {
             unsigned int idx = (unsigned int)((hit.row < 12) ? hit.row : 11);
             unsigned int pts = points_table[idx];
             if ((*cell & 0x0F) >= 6) pts *= 2;    /* metal scores double */
-            player.score += pts;
+            add_points_to_score(pts, SIDE_ACTIVE);
             *cell |= 0x80;
             mark_brick_row_dirty(hit.row);
             brick_flash_spawn(hit.col, hit.row);
@@ -6108,7 +6144,9 @@ static void play_rocket_award_tally(unsigned char level_idx) {
             idx = (unsigned int)((row < 12) ? row : 11);
             pts = points_table[idx];
             if ((*cell & 0x0F) >= 6) pts *= 2;
-            player.score += pts;
+            /* add_points_for_left_briks alternates the flag to split
+             * these evenly between the two players; not ported. */
+            add_points_to_score(pts, SIDE_ACTIVE);
             sound_queue(SND_NORMAL_BRIK);          /* per-brick tick */
             /* Pace one brick per PIT tick (sound playing meanwhile). */
             do { sound_tick(); } while (pit_ticks() == last);
