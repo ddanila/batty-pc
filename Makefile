@@ -1263,6 +1263,11 @@ test-game-over-visual:
 test-name-entry-visual:
 	python3 scripts/test_name_entry_visual.py
 
+# Losing a life removes exactly one indicator. An A/B on
+# BATTY_SUPPRESS_NO_BALL_DEATH, so the death is the only difference.
+test-life-loss:
+	python3 scripts/test_life_loss.py
+
 test-stuck-ball-offset:
 	python3 scripts/test_stuck_ball_offset.py
 

@@ -5,19 +5,19 @@ test. Started 2026-08-07.
 
 ## Where this stands
 
-The full suite runs **57/57 green** — twelve clean runs now, the
+The full suite runs **58/58 green** — twelve clean runs now, the
 latest covering the name-entry decomposition.
 Six of the seven defects this refactor surfaced are closed; #14 is open
 because settling it needs ground truth the port does not have.
 
-Gate count 51 → 57 this session: `test-blast-dirty-redraw`,
+Gate count 51 → 58 this session: `test-blast-dirty-redraw`,
 `test-game-over`, `test-stuck-ball-offset`, `test-visual-checkpoints`
 `test-invariant-owners`, `test-ball-sign-cache-owner` and
 `test-game-over-visual` and `test-name-entry-visual`, each covering
 something nothing reached before.
 
 `main.cpp`: 7,747 → 6,815 lines (-12.7%) across 15 modules. `make test-fast`
-runs every host test and source gate in seconds; `--full` is 57 gates
+runs every host test and source gate in seconds; `--full` is 58 gates
 in under six minutes.
 
 Line counts here are `wc -l`, measured against `wc -l` at `e0bb447` (the
@@ -669,6 +669,23 @@ and the gate was extended in the same commit to press LEFT and require
 the letter row to change, since placement alone would look identical
 whether `step_name_letter` worked or not. Mutation-checked by making the
 LEFT arm a no-op.
+
+`parity-gaps.md` listed the game-FLOW transitions as ungated. Three of
+the five are now closed: game-over and name entry visually, and
+life-loss by `test-life-loss` — an A/B where BOTH runs seed 3 lives and
+hide the ball (so `handle_no_ball_death` is reached on frame 1) and the
+only difference is `BATTY_SUPPRESS_NO_BALL_DEATH`. Same level, same
+seed, same frame, so a change in the indicator strip IS the life loss.
+Level-clear → next and level wrap remain open, and the note now says
+exactly that instead of listing all five.
+
+Measuring the indicator took two wrong attempts, both worth recording
+because they generalise. "Lit pixels" fails — the playfield background
+is not colour 0. "Any non-background pixel" fails too: the background
+carries a vertical line every 16 px, so every cell contains one and the
+first version counted four icons where there are two. Density works, and
+the gap is an order of magnitude: icons measure 74 and 46 non-background
+pixels per 16×6 cell, empty cells exactly 6.
 
 `sound` is the one module the QEMU suite structurally CANNOT cover:
 every gate runs with sound off, so its 366 lines are guarded by host

@@ -229,8 +229,10 @@ invariants (see notes/testing.md for the full list). Now covered:
   magnet), no-escape, all-sprite attr non-corruption, and a long-run
   multi-level soak (`test-gameplay-soak`).
 
-Remaining test gaps (see the priority list at the top of this file): full
-game-FLOW transitions (level-clear -> next, life-loss, game-over, hi-score,
-level wrap) are not yet end-to-end gated, and the byte-exact frame-step
+Remaining test gaps (see the priority list at the top of this file): of the
+game-FLOW transitions, game-over and the hi-score name entry are now gated
+visually (`test-game-over-visual`, `test-name-entry-visual`) and life-loss by
+an A/B on the death (`test-life-loss`). Still ungated end-to-end:
+level-clear -> next, and level wrap. and the byte-exact frame-step
 oracle is built for L3/L5 — the poke-`$B7EA`+`$BA24` recipe generalizes it
 to any level when more are wanted.
