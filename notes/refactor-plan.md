@@ -613,6 +613,17 @@ row-scoped — now live beside the primitives they drive. What is left in
 `(cells, lattr, bg_attr)`, which is the only thing the module could not
 know.
 
+`test-invariant-owners` now keeps this from recurring: seven state
+changes that must have exactly ONE writer, checked by count in about a
+second. It is aimed squarely at the failure mode above — a helper exists,
+and code written before it (or beside it) hand-rolls the same thing. The
+message names the owner to call instead.
+
+Mutation-checked both directions: re-introducing `reset_level_state`'s
+hand-rolled extra-ball clear fails it with "expected 1 writer
+(hide_extra_balls), found 2", and changing a mask so the owner no longer
+matches fails with "found 0".
+
 Sweeping for the rest of that pattern — every helper written this
 session, grepped for hand-rolled copies — came back clean except one:
 `restore_inner_border_line` re-implemented the two masks
