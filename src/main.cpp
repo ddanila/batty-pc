@@ -5580,12 +5580,10 @@ static int play_brik_anim(void) {
  * PLAYER X at Y=$8F (= 143) and ROUND XX at Y=$9E (= 158). Holds for
  * ~1.2 s (60 PIT ticks) or until a key is pressed. ESC during the
  * wait returns 1 so the caller can quit. */
-static int show_round_banner(unsigned int round_num_display) {
-    int round_num = (int)round_num_display;
+static void draw_round_banner(int round_num) {
     int banner_x = BORDER_X + 88;
     int banner_y = BORDER_Y + 133;
     int text_x   = BORDER_X + 96;
-    unsigned long start;
     unsigned char round_codes[8];
     static const unsigned char player_codes[7] = {
         0x19, 0x15, 0x0A, 0x22, 0x0E, 0x1B, 0x26    /* P L A Y E R _ */
@@ -5617,6 +5615,15 @@ static int show_round_banner(unsigned int round_num_display) {
         draw_text(text_x + 7 * 8, BORDER_Y + 138, 15, &one, 1);
     }
     draw_text(text_x, BORDER_Y + 153, 15, round_codes, 8);
+}
+
+/* Hold the banner for 60 PIT ticks — about 1.2 s — or until a key.
+ * Returns 1 if that key was ESC, which quits the game.
+ *
+ * BATTY_HOLD_ROUND_BANNER waits indefinitely instead, so a gate can
+ * capture the banner without racing the timer. */
+static int hold_round_banner(void) {
+    unsigned long start;
 
     if (getenv("BATTY_HOLD_ROUND_BANNER") != NULL) {
         while (!kbhit()) sound_tick();
@@ -5634,6 +5641,11 @@ static int show_round_banner(unsigned int round_num_display) {
         }
     }
     return 0;
+}
+
+static int show_round_banner(unsigned int round_num_display) {
+    draw_round_banner((int)round_num_display);
+    return hold_round_banner();
 }
 
 /* --- "Bat explodes" death animation -----------------------------------

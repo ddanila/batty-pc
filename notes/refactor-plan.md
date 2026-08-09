@@ -14,7 +14,7 @@ Gate count 51 → 55 this session: `test-blast-dirty-redraw`,
 and `test-invariant-owners`, each covering something nothing reached
 before.
 
-`main.cpp`: 7,746 → 6,817 lines (-12%) across 14 modules. `make test-fast`
+`main.cpp`: 7,746 → 6,829 lines (-12%) across 14 modules. `make test-fast`
 runs every host test and source gate in seconds; `--full` is 54 gates
 in under six minutes.
 
@@ -616,6 +616,15 @@ row-scoped — now live beside the primitives they drive. What is left in
 `main.cpp` is the two thin wrappers that turn a level index into
 `(cells, lattr, bg_attr)`, which is the only thing the module could not
 know.
+
+`show_round_banner` split into `draw_round_banner` and
+`hold_round_banner`, which separates a long provenance note from a
+control-flow one. The drawing carries why the text sits where it does —
+the original's coordinates are BOTTOM-anchored, so `$8F`/`$9E` are the
+glyphs' lowest rows and the ink lands 5 px above; an earlier port read
+them as top-Y and jammed both lines against the box. The hold carries
+the 60-tick timer and `BATTY_HOLD_ROUND_BANNER`, which waits
+indefinitely so a gate can capture the banner without racing it.
 
 `test-invariant-owners` now keeps this from recurring: seven state
 changes that must have exactly ONE writer, checked by count in about a
