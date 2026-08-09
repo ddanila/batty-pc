@@ -208,3 +208,52 @@ The "PLAYER 1 / ROUND XX" window shown ~1.2s at each level entry
     busy-wait — a breakpoint can't be used here, arming one parks the
     emulator in a cpu-step state where injected keys never register).
 
+
+## Leaving the menu: key 0, and nothing else
+
+`main_menu`'s tail, after the A/B device rows and the mode rows:
+
+    L93F8_10:
+      LD DE,current_game_mode_line_prop
+      CALL fill_color_current_game_mode
+      LD A,$EF
+      CALL in_a_fe          ; IN A,($EFFE) — the 6 7 8 9 0 row
+      AND $01
+      RET NZ                ; key 0 pressed -> leave, and start the game
+      JP L93F8_0            ; anything else -> back round the poll loop
+
+The `RET NZ` reads backwards until you look at `in_a_fe`:
+
+    in_a_fe:
+      IN A,($FE) / CPL / AND $1F / RET
+
+The `CPL` is the whole story. ZX keyboard reads are active LOW, so after
+the complement a SET bit means PRESSED, and `AND $01 / RET NZ` is "key 0
+is down". The Russian comment in the disassembly says so
+("запуск игры, если нажат 0"); the instruction alone does not.
+
+Bit 0 of the `$EFFE` row is the **0** key. There is no ENTER anywhere in
+this routine.
+
+The other exit is the attract timeout at the TOP of the loop
+(`L93F8_0`): `counter_misc` is incremented and `BIT 6,H` jumps to
+`disp_hs_table_and_wait_keys`. That is a free-running counter, not an
+idle timer — pressing keys does not postpone it in the original, though
+the port's `run_menu` does reset its own `last_input` on A/B/1-3.
+
+### What the port does (2026-08-09)
+
+`run_menu` returns `ST_LEVEL` on '0', which runs `new_game_reset` and
+enters the round-1 banner. Before this it returned `ST_HISCORE` for
+"0 / ENTER / other" under a comment saying it "would start a game".
+
+ENTER is kept, deliberately, as the port's own attract-chain step. That
+is not cosmetic: `test-visual` walks title -> menu -> hi-score -> level
+by sending ENTER at each state. Had ENTER been made to start a game, its
+`state3_hiscore` checkpoint would have captured a level instead — and
+because it diffs each checkpoint against its OWN reference, the failure
+would have read as a rendering regression on the wrong screen rather
+than as a navigation change. `test-menu-start` pins both halves.
+
+Modes 2 and 3 remain inert, so choosing one and pressing 0 starts a
+1-player game (PLAN.md WS2/WS3).

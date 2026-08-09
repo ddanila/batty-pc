@@ -76,6 +76,29 @@ scoped, and it converts a documented stub into original behaviour.
 chosen mode; a source-level gate pins the dispatch; attract-timeout
 behaviour unchanged.
 
+**Dispatch DONE (2026-08-09).** Key 0 now returns ST_LEVEL, which runs
+`new_game_reset` and enters the round-1 banner; unrecognised keys re-poll
+instead of leaving the menu; the attract timeout is untouched. Gated by
+`test-menu-start`.
+
+Two corrections to what this section said:
+
+- It is **0 only**, not "0/ENTER". The original's tail is
+  `LD A,$EF / CALL in_a_fe / AND $01 / RET NZ` on the $EFFE row and
+  there is no ENTER in `main_menu` at all. ENTER is kept as the port's
+  own attract-chain affordance, and that is load-bearing: `test-visual`
+  walks title -> menu -> hi-score -> level by sending ENTER at each
+  state, so making ENTER start a game would have turned its
+  `state3_hiscore` checkpoint into a level capture — and since it diffs
+  each checkpoint against its own reference, the failure would have read
+  as a rendering regression on the wrong screen.
+- "boots into the banner of the chosen mode" is only true for mode 1.
+  Modes 2 and 3 are still inert, so picking one and pressing 0 starts a
+  1-player game. Recorded here rather than papered over in the code.
+
+Still open in WS1: `p1_dev`/`p2_dev` select nothing, and the
+input-device adaptation below is undone.
+
 ## WS2 — 2 Players mode (alternating)
 
 **What:** Classic turn-taking (research-confirmed: on the Spectrum,

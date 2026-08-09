@@ -2762,8 +2762,34 @@ static state_t run_menu(void) {
                 last_blink_phase = -1;       /* force redraw next phase tick */
                 continue;
             }
-            /* 0 / ENTER / other — would start a game; advance for now. */
-            return ST_HISCORE;
+            /* orig main_menu tail ($93F8_10):
+             *   LD A,$EF / CALL in_a_fe / AND $01 / RET NZ
+             * in_a_fe CPLs the port read, so bits are active HIGH after
+             * it and `RET NZ` means "key 0 IS pressed -> leave the menu
+             * and start the game". Key 0 is the ONLY way out; every
+             * other key falls back into the poll loop.
+             *
+             * ENTER is kept as the port's own attract-chain affordance —
+             * it is not in the original, which has no ENTER in this
+             * routine at all, and test-visual walks title -> menu ->
+             * hi-score -> level with it. Making ENTER start the game
+             * would have silently turned that gate's hi-score checkpoint
+             * into a level capture. PLAN.md's WS1 said "0/ENTER"; the
+             * disassembly says 0, and it wins.
+             *
+             * Modes 2 and 3 are still inert (WS2/WS3), so choosing one
+             * and pressing 0 starts a 1-player game. That is a gap, not
+             * a silent success: it is written down in PLAN.md rather
+             * than dressed up here. */
+            if (k == '0') {
+                /* The original's game_mode is always one of the three;
+                 * the port's 0 means "nothing picked yet". */
+                if (selected_mode == 0) selected_mode = 1;
+                return ST_LEVEL;
+            }
+            if (k == '\r') return ST_HISCORE;    /* attract chain */
+            /* Anything else: the original ignores it. */
+            continue;
         }
         /* Re-render when blink phase flips. Shares blink_phase() with
          * apply_option_blink so we always render at the right phase. */

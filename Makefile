@@ -1200,6 +1200,7 @@ test-source-gates:
 	$(MAKE) test-l3-replay-seed
 	$(MAKE) test-death-sparks
 	$(MAKE) test-rocket-bonus
+	$(MAKE) test-menu-start
 
 # Everything that needs no emulator: the host module tests plus the source
 # gates. Seconds, and it is what CI checks.
@@ -1268,6 +1269,12 @@ test-enemy-brick-walk:
 # 76 gates green — no gate had ever watched an alien reach a margin.
 test-enemy-margin-clamp:
 	python3 scripts/test_enemy_margin_clamp.py
+
+# Key 0 in the menu starts the game (orig main_menu tail). Not
+# observable from a screendump: test-visual walks these screens with
+# ENTER and never presses 0.
+test-menu-start:
+	python3 scripts/check_menu_start.py
 
 test-rocket-flight-redraw:
 	python3 scripts/test_rocket_flight_redraw.py
