@@ -183,7 +183,10 @@ $(TEST_EXE): $(TEST_OBJ)
 
 assets: $(ASSETS)
 
-assets/loading.bin: original/Batty.scr scripts/extract_scr.py
+# The tape's loading screen. Block 02 of Batty.tap IS a 6912-byte
+# SCREEN$ — original/Batty.scr is a byte-identical copy of it, so this
+# reads the block directly and the provenance needs no explaining.
+assets/loading.bin: original/blocks/02_DATA_headless.dat.bin scripts/extract_scr.py
 	python3 scripts/extract_scr.py $< $@
 
 assets/hi_score.bin: $(HISCORE_SNAP) scripts/extract_scr.py
@@ -201,9 +204,20 @@ assets/font.bin: original/blocks/03_DATA_headless.dat.bin scripts/extract_font.p
 # End is *exactly* the last record's last byte — any trailing bytes
 # can contain spurious multiple-of-8 values that the parser would
 # misread as new records.
-assets/main_menu_markup.bin: $(MAINMENU_SNAP_RAM)
+# From the TAPE, not a snapshot's RAM: $954D lands inside block 03, and
+# the bytes are identical either way. A snapshot dump was never needed
+# to read data the tape loads verbatim.
+# The hi-score screen's markup, $8FD1..$90E1. This had NO build rule at
+# all — a 273-byte binary checked in with its provenance nowhere. It is
+# tape data like the rest; found by searching block 03 for its contents.
+assets/markup.bin: original/blocks/03_DATA_headless.dat.bin
 	@python3 -c "from pathlib import Path; \
-		Path('$@').write_bytes(Path('$<').read_bytes()[0x954D-0x4000 : 0x9614-0x4000])"
+		Path('$@').write_bytes(Path('$<').read_bytes()[0x8FD1-0x6800 : 0x8FD1-0x6800+273])"
+	@echo "wrote $@ ($$(wc -c < $@) bytes)"
+
+assets/main_menu_markup.bin: original/blocks/03_DATA_headless.dat.bin
+	@python3 -c "from pathlib import Path; \
+		Path('$@').write_bytes(Path('$<').read_bytes()[0x954D-0x6800 : 0x9614-0x6800])"
 	@echo "wrote $@ ($$(wc -c < $@) bytes)"
 
 # Player indicators: 32x16px each. P1 at blob 0x92C1, P2 at 0x9303
@@ -1254,6 +1268,7 @@ test-source-gates:
 	$(MAKE) test-floppy-assets
 	$(MAKE) test-frame-derivable
 	$(MAKE) test-bg-tile-derivable
+	$(MAKE) test-asset-provenance
 
 # Everything that needs no emulator: the host module tests plus the source
 # gates. Seconds, and it is what CI checks.
@@ -1367,6 +1382,11 @@ test-frame-derivable:
 # nothing else ties to its source.
 test-bg-tile-derivable:
 	python3 scripts/check_bg_tile_derivable.py
+
+# WS7's exit condition: every asset the game LOADS is built from the
+# tape's own blocks, not from a snapshot or a screen capture.
+test-asset-provenance:
+	python3 scripts/check_asset_provenance.py
 
 # Proof for WS7: every live brick's attr byte in the captured
 # level_attrs.bin is reproduced by briks_colors + print_border_shadow.

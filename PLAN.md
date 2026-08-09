@@ -697,8 +697,23 @@ emulator-derived original imagery.
 gates stay pixel-identical (they are the proof the generation is
 right).
 
-**Status 2026-08-09.** Everything the game LOADS is tape-derived except
-`LOADING.BIN`, the title screen. `bg_tile.bin` was the last hold-out and
+**EXIT MET 2026-08-09**, and `test-asset-provenance` holds it: every one
+of the 13 assets the port loads is built from `original/blocks/*.dat.bin`.
+
+The last three took repointing, and none of them needed a capture in the
+first place:
+
+- `loading.bin` came from `original/Batty.scr`, which is byte-identical
+  to tape block 02 — the tape's own 6912-byte SCREEN$.
+- `main_menu_markup.bin` was cut out of a snapshot's RAM dump at `$954D`,
+  an address inside block 03.
+- `markup.bin` had NO build rule at all: 273 bytes checked in with its
+  provenance recorded nowhere. It is at `$8FD1`, found by searching the
+  block for its contents.
+
+All three rebuilt byte-identical from the tape.
+
+`bg_tile.bin` was the hold-out before them and
 was never captured out of necessity: the four textures are tape data at
 `$C015`/`$8EE8`/`$8F10`/`$8F38`, and switching the extractor to them
 produced a byte-identical file. Their attribute bytes are
