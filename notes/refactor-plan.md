@@ -9,7 +9,7 @@ The full suite runs **54/54 green in 343s**, twice — the second run
 covering the three behaviour fixes in the table and everything since.
 All five defects this refactor surfaced are now closed.
 
-`main.cpp`: 7,746 → 6,925 lines across 14 modules. `make test-fast`
+`main.cpp`: 7,746 → 6,897 lines across 14 modules. `make test-fast`
 runs every host test and source gate in seconds; `--full` is 54 gates
 in under six minutes.
 
@@ -538,6 +538,19 @@ to protect, violated three commits after naming it. Inert today, because
 the port's ball object handler is a stub, but `call_for_all_obj`
 dispatches on `sprite_set` and the probe dumps those objects. It uses
 the helper now.
+
+The alien-to-blast transition existed **four** times — killed by the
+bat, by a ball, by a bullet, and by the KILL_ALIENS bonus — each with
+its own copy of the nine lines that centre the 16x13 blast, set
+sprite_set $0A, award 350 and queue the sound. Three of them now call
+`blast_active_alien`, which was extracted for the fourth back at stage
+6b-iv.
+
+Found by a duplicate-block detector rather than by reading: normalise
+the source, hash every 5-line window, report the collisions. It also
+surfaced the rocket placement appearing twice and the compose order
+shared by both redraw paths. Worth running again after a batch of
+extractions — the eye stops seeing these.
 
 `bat_body_sprite` and `fill_bat_resize_sides` split `render_bat` into
 what it draws and the gap it has to fill. The second is the one worth

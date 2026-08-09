@@ -3055,9 +3055,16 @@ static void attach_rocket_to_bat(void) {
     objects[OBJ_BAT_2].bonus_applied++;
 }
 
-/* Turn the alien currently on screen into its death blast. A blast
- * (sprite_set $0A) is already dying, so it is left alone.
- * orig: $A4D2 centres the 16x13 blast over the alien */
+/* Turn the alien on screen into its death blast — the ONE place that
+ * transition happens, whether the bat, a ball, a bullet or the
+ * KILL_ALIENS bonus caused it.
+ *
+ * sprite_set $0A makes handling_table_routines dispatch to the blast
+ * handler, which animates five frames and then deactivates. The 16x13
+ * blast is centred over the alien first, mirroring $A4D2's adjustment
+ * of (old_w_shadow - 2) * 4 on X and 4 on Y. An alien already
+ * exploding is left alone.
+ * orig: kill_enemy $A4C4 / $A4D2, sound $C1A8, score $0350 BCD */
 static void blast_active_alien(void) {
     Object *e = &objects[OBJ_ENEMY];
     if ((e->sprite_set & 0x7F) == 0) return;
@@ -4051,23 +4058,7 @@ static void kill_enemy_by_bat(void) {
     by_b = BAT_Y + 10;                /* h_body_px = \$0A per object_bat_1 init */
     if (ex_r <= bx_l || ex_l >= bx_r) return;
     if (ey_b <= by_t || ey_t >= by_b) return;
-    /* Hit. Transition to blast state (per $A4C4): sprite_set = $0A
-     * so handling_table_routines dispatches to handling_blast_obj
-     * which animates the 5-frame explosion then deactivates.
-     *
-     * Centre the blast sprite (16x13) over the alien before swapping
-     * — mirror of the $A4D2 position adjustment which adds
-     * (old_w_shadow - 2) * 4 to X and 4 to Y so the explosion is
-     * roughly where the alien's centre was. */
-    e->x_coord = (unsigned char)(e->x_coord + (int)e->w_body_px / 2 - 8);
-    e->y_coord = (unsigned char)(e->y_coord + 4);
-    e->w_body_px = 16;
-    e->h_body_px = 13;
-    e->sprite_set = 0x0A;
-    e->sprite_num = 0;
-    e->misc_12 = 0x50;          /* kill_enemy $A4C4: LD (IY+$12),$50 */
-    player.score += 350;                                   /* $0350 BCD */
-    sound_queue(SND_ALIEN_BLAST);                    /* port of $C1A8 */
+    blast_active_alien();
 }
 
 /* Mirror of kill_enemy_by_bat for the ball — original
@@ -4090,16 +4081,7 @@ static void kill_enemy_by_ball_rect(int bx_l, int by_t, int bw, int bh) {
     ey_b = e->y_coord + e->h_body_px;
     if (ex_r <= bx_l || ex_l >= bx_r) return;
     if (ey_b <= by_t || ey_t >= by_b) return;
-    /* Same blast transition as kill_enemy_by_bat. */
-    e->x_coord = (unsigned char)(e->x_coord + (int)e->w_body_px / 2 - 8);
-    e->y_coord = (unsigned char)(e->y_coord + 4);
-    e->w_body_px = 16;
-    e->h_body_px = 13;
-    e->sprite_set = 0x0A;
-    e->sprite_num = 0;
-    e->misc_12 = 0x50;          /* kill_enemy $A4C4 seed */
-    player.score += 350;
-    sound_queue(SND_ALIEN_BLAST);
+    blast_active_alien();
 }
 
 /* Port of bomb_appear at $A977 - called per alien tick. Probability
@@ -4168,17 +4150,7 @@ static void step_bullet_one(int b) {
     const BulletHit hit = bullet_advance(b, *enemy, BrickField(live_level));
 
     if (hit.what == BulletHit::ENEMY) {
-        /* The alien becomes its own 5-frame blast, centred on itself.
-         * orig: kill_enemy $A4C4 / $A4D2 */
-        enemy->x_coord   = u8(enemy->x_coord + int(enemy->w_body_px) / 2 - 8);
-        enemy->y_coord   = u8(enemy->y_coord + 4);
-        enemy->w_body_px = 16;
-        enemy->h_body_px = 13;
-        enemy->sprite_set = 0x0A;
-        enemy->sprite_num = 0;
-        enemy->misc_12    = 0x50;
-        player.score += 350;
-        sound_queue(SND_ALIEN_BLAST);
+        blast_active_alien();
         return;
     }
 
