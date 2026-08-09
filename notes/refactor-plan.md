@@ -560,6 +560,30 @@ removed when they were added; a multiset diff confirmed zero lines
 lost.
 
 
+#### A test that read its expectation from the thing it was testing
+
+Third and fourth sweeps: thirteen more mutations. Eleven caught, one
+survivor, one badly-chosen mutation of my own that changed no behaviour
+and was not a finding.
+
+The survivor was a shape I had not hit before. `BRICK_BAND_Y_TOP` 31 →
+30 was green, because `test_painting_stays_in_the_band` reads its bound
+from `bricks.h` — the SAME header the painter reads. Mutating the
+constant moves the code and the expectation together, so the test can
+never fail on it. Self-referential coverage looks like coverage and is
+not, and it is invisible to inspection: the test asserts a real property
+and names a real constant.
+
+The fix takes the expectation from an independent authority. `level.h`
+owns the field geometry and static-asserts it against the original's
+addresses, so the band's top is `FIELD_Y0 - 1` and its bottom is
+`FIELD_Y_END`. Mutating either bound is now caught, and so is moving the
+field itself.
+
+Yield is falling — three sweeps found three real gaps, the fourth found
+one. That is the signal to stop sweeping broadly and mutate deliberately
+when touching something, which is what `mutate.py` is for.
+
 #### The accelerator's fraction, and a truncated asset accepted
 
 Second sweep: eight more mutations, two survivors, both real.

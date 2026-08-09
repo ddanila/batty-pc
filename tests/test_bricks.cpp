@@ -397,6 +397,36 @@ static void test_live_count_vs_solid() {
     report("live_count_vs_solid", before, "0x80 vs 0xA0 rules   ok");
 }
 
+
+/* The band's bounds must come from the GEOMETRY, not from themselves.
+ *
+ * test_painting_stays_in_the_band asserts that nothing is painted
+ * outside [BRICK_BAND_Y_TOP, BRICK_BAND_Y_BOT] — but it reads those
+ * bounds from bricks.h, the same header the painter uses. Mutating
+ * BRICK_BAND_Y_TOP from 31 to 30 moves the code and the expectation
+ * together, and the test cannot fail. A self-referential test looks
+ * like coverage and is not.
+ *
+ * level.h is the independent authority: it owns the field's origin and
+ * carries its own static asserts against the original's addresses. The
+ * band is one edge row above the first brick row and one below the
+ * last, so both bounds are derivable from it. */
+static void test_band_bounds_follow_the_field_geometry() {
+    const int before = failures;
+    check(BRICK_BAND_Y_TOP == FIELD_Y0 - 1,
+          "BRICK_BAND_Y_TOP is %d; the band's top edge sits one row above "
+          "FIELD_Y0 (%d), so it must be %d\n",
+          BRICK_BAND_Y_TOP, FIELD_Y0, FIELD_Y0 - 1);
+    check(BRICK_BAND_Y_BOT == FIELD_Y_END,
+          "BRICK_BAND_Y_BOT is %d; the band's bottom edge sits on "
+          "FIELD_Y_END (%d)\n", BRICK_BAND_Y_BOT, FIELD_Y_END);
+    /* and the original's own numbers, which level.h static-asserts */
+    check(FIELD_Y0 == 0x20 && FIELD_Y_END == 0x80,
+          "the field geometry moved: Y0=%02X END=%02X\n",
+          FIELD_Y0, FIELD_Y_END);
+    report("band_bounds_from_geometry", before, "vs level.h           ok");
+}
+
 int main(int argc, char **argv) {
     const char *levels_path = argc > 1 ? argv[1] : "assets/levels.bin";
     printf("bricks tests\n");
@@ -413,6 +443,7 @@ int main(int argc, char **argv) {
     test_destroyed_cell_shadow_follows_left_neighbour();
     test_window_repaint_matches_full_at_its_edges();
     test_live_count_vs_solid();
+    test_band_bounds_follow_the_field_geometry();
     printf("\n%d tests, %d failed\n", tests_run, failures);
     return failures ? 1 : 0;
 }
