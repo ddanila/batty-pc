@@ -1,4 +1,5 @@
-/* weapons — the bat's laser: bullets in flight and their impact blasts.
+/* weapons — things in flight: the bat's laser bullets, their impact
+ * blasts, and the enemy's bomb.
  *
  * orig: LA5A3 (alien hit), LAFFC_31 (brick hit), the bullet slots at
  * object_bullet_1/2
@@ -13,12 +14,21 @@
  *
  * One detail that is geometry: a blast snaps to the 8-pixel column grid
  * (the sprite is byte-aligned), so the impact point is rounded down
- * rather than used raw. */
+ * rather than used raw.
+ *
+ * The BOMB is here for the same reason the bullets are: it is a thing
+ * with a position, an active flag and a fall, cleared on the same
+ * events. What it COSTS when it reaches the bat — the explosion, the
+ * lost life, the hidden extra balls — is game rules and stays in
+ * main.cpp, exactly as bullet scoring does. The original shares
+ * object_bonus between the bomb and a falling bonus; the port keeps
+ * them separate. */
 
 #ifndef BATTY_WEAPONS_H
 #define BATTY_WEAPONS_H
 
 #include "level.h"
+#include "physics.h"
 #include "objects.h"
 #include "types.h"
 
@@ -72,5 +82,28 @@ void bullet_blasts_tick();
 
 /* Clear every bullet and blast — level change, death, level clear. */
 void bullets_clear();
+
+/* The enemy's bomb: one at a time, as in the original.
+ * orig: bomb_appear $A977, which sets the body to 8x8. */
+struct BombState {
+    u8           active;
+    int          x, y;
+    motion_acc_t motion;
+};
+extern BombState bomb;
+
+/* Drop a bomb at (x, y), with the fall accumulator reset so it starts
+ * from rest rather than inheriting the last bomb's speed. */
+void bomb_launch(int x, int y);
+
+/* Advance the fall one frame, deactivating the bomb once it is past
+ * `bottom_y`.
+ *
+ * The floor is a PARAMETER because this module has no business knowing
+ * the screen: taking PLAYFIELD_H directly would mean including the whole
+ * video engine to drop a bomb. Same reason bricks takes its cells.
+ *
+ * Does NOT test the bat — that costs a life, which is a game rule. */
+void bomb_fall_step(int bottom_y);
 
 #endif /* BATTY_WEAPONS_H */

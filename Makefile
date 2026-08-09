@@ -1015,9 +1015,10 @@ REPLAY_TEST = build/test_replay
 # value. That IS the module's contract.
 $(REPLAY_TEST): tests/test_replay.cpp src/replay.cpp src/replay.h \
                 src/replay_parse.cpp src/objects.cpp src/weapons.cpp \
-                src/rng.cpp src/types.h | build
+                src/physics.cpp src/rng.cpp src/types.h | build
 	$(HOSTCXX) $(HOSTCXXFLAGS) -o $@ tests/test_replay.cpp \
-	    src/replay_parse.cpp src/objects.cpp src/weapons.cpp src/rng.cpp
+	    src/replay_parse.cpp src/objects.cpp src/weapons.cpp \
+	    src/physics.cpp src/rng.cpp
 
 test-replay: $(REPLAY_TEST)
 	@$(REPLAY_TEST)
@@ -1048,8 +1049,9 @@ test-enemies: $(ENEMIES_TEST)
 
 WEAPONS_TEST = build/test_weapons
 
-$(WEAPONS_TEST): tests/test_weapons.cpp src/weapons.cpp src/weapons.h src/objects.h src/level.h src/types.h | build
-	$(HOSTCXX) $(HOSTCXXFLAGS) -o $@ tests/test_weapons.cpp
+# Links physics because the bomb's fall goes through motion_accel_step.
+$(WEAPONS_TEST): tests/test_weapons.cpp src/weapons.cpp src/weapons.h src/objects.h src/level.h src/physics.cpp src/physics.h src/types.h | build
+	$(HOSTCXX) $(HOSTCXXFLAGS) -o $@ tests/test_weapons.cpp src/physics.cpp
 
 test-weapons: $(WEAPONS_TEST)
 	./$(WEAPONS_TEST)

@@ -8,7 +8,7 @@ test. Started 2026-08-07.
 The stage table below is complete except stage 1, which is blocked for a
 reason rather than for want of effort — see the end of this section.
 
-**The code.** `main.cpp`: 7,747 → 6,827 lines (-11.7%) across 15
+**The code.** `main.cpp`: 7,747 → 6,811 lines (-12.0%) across 15
 modules. The longest function is `run_level` at 113 lines, and it is an
 orchestrator of named phases, which is what it should be.
 
@@ -28,13 +28,13 @@ missing #15 by the time anyone noticed.
 
 ### What is actually left
 
-1. **Stage 1's remainder.** Five replay seeders came out because they
-   depend only on state other modules own. The rest need main.cpp
-   FUNCTIONS, not just state — `apply_replay_bomb_override` calls
-   `bomb_launch`, `apply_replay_force_bonus` calls `try_spawn_bonus` —
-   and the brick ones need `live_level`, which is game state rather than
-   compositor state and belongs where it is. The next increment is a
-   real move of state and behaviour, not another easy slice.
+1. **Stage 1's remainder.** Six replay seeders are out. The bomb's went
+   with `bomb_launch` and `BombState` into `weapons`, which is the
+   pattern for the rest: move the state AND the behaviour the seeder
+   calls, leaving the game rules behind. What is left needs
+   `try_spawn_bonus` (bonus), and `live_level` for the brick ones —
+   `live_level` is game state rather than compositor state and belongs
+   where it is, so those two may simply stay.
 
 2. **known-bugs #14**, and only its second half: whether the original
    derives the extra balls' launch angle from a real velocity. That
@@ -120,9 +120,9 @@ happened, and `make test-video` caught it.
 | 9 | `run_level` decomposition | 684 -> 115 | **done** — every phase named |
 | 10 | state owners — structs at file scope | 113 vars | **done** — 11 clusters, see below |
 | 1a | `replay_parse` — the BATTY_REPLAY_* value formats | 75 | **done** — 7 tests |
-| 1 | replay / probe scaffolding | ~430 | **started** — 5 overrides out in `replay`, 6 host tests; the rest need the state first |
+| 1 | replay / probe scaffolding | ~430 | **started** — 6 overrides out in `replay`, 6 host tests; the rest need their state and behaviour moved first |
 
-`main.cpp`: 7,747 → 6,827 (`wc -l`; see the status block on why this is not Watcom's count).
+`main.cpp`: 7,747 → 6,811 (`wc -l`; see the status block on why this is not Watcom's count).
 100 host tests + source gates, all via `make test-fast` in seconds.
 
 ### Stage 5b: one destroyed-cell reset, not two
@@ -559,6 +559,35 @@ paragraph. Use the headings, not the order. Nothing was reordered or
 removed when they were added; a multiset diff confirmed zero lines
 lost.
 
+
+#### Stage 1's blocker, taken on rather than worked around
+
+The remaining replay seeders were blocked on main.cpp FUNCTIONS, not on
+state, and I had said the next step was a real move rather than another
+easy slice. The bomb is that move.
+
+`BombState`, `bomb` and `bomb_launch` went to `weapons`, whose framing
+widened honestly from "the bat's laser" to "things in flight" — the bomb
+is a position, an active flag and a fall, cleared on the same events as
+a bullet. What it COSTS on reaching the bat (the explosion, the lost
+life, the hidden extra balls) stayed in `main.cpp`, exactly as bullet
+scoring did. `replay_apply_bomb` followed into `replay`.
+
+Two decisions worth recording.
+
+`bomb_fall_step` takes the floor as a PARAMETER. `PLAYFIELD_H` lives in
+`zxvga.h`, so reading it directly would mean including the whole video
+engine to drop a bomb. The module owns the fall; the caller owns where
+the floor is — the same reason `bricks` takes its cells.
+
+The off-bottom deactivate moved ABOVE the bat check, since the fall now
+owns it. That is an order change, so it needs an argument rather than a
+shrug: off-bottom means `bomb.y > 192`, while `overlaps_bat_body`
+requires `bomb.y < BAT_Y + 10 = 186`. Both cannot hold, so no frame
+behaves differently. The reasoning is in the code, not just here.
+
+Two host-test link lines needed `physics.cpp` afterwards, because the
+fall goes through `motion_accel_step` — the linker found both.
 
 #### Two fall curves, not three sets of magic numbers
 

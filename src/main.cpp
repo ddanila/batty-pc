@@ -585,21 +585,6 @@ static RocketState rocket = {0, 0, 0, 0, 0, 0, 0};
 /* The original shares object_bonus between the bomb and a regular
  * bonus, making them mutually exclusive; the port keeps them separate.
  * orig: $A977 bomb_appear */
-struct BombState {
-    unsigned char active;
-    int           x;
-    int           y;
-    motion_acc_t  motion;
-};
-static BombState bomb = {0, 0, 0, {0, 0}};
-
-static void bomb_launch(int x, int y) {
-    bomb.active = 1;
-    bomb.x = x;
-    bomb.y = y;
-    bomb.motion.acc = 0;
-    bomb.motion.frac = 0;
-}
 #define BOMB_W_PX       8
 #define BOMB_H_PX       12
 /* ball_visible is encoded in objects[OBJ_BALL_1].sprite_set bit 7:
@@ -3534,11 +3519,6 @@ static void apply_replay_bonus_override(void) {
  * (motion_accel_step(&bomb.motion, FALL_DE_SLOW, FALL_CAP_SLOW)); put x
  * clear of the bat
  * to test pure fall (no bat-kill). */
-static void apply_replay_bomb_override(void) {
-    long v[2];
-    if (!replay_env_ints("BATTY_REPLAY_BOMB", v, 2)) return;
-    bomb_launch((int)v[0], (int)v[1]);
-}
 
 /* Bake a rising/falling +400 score popup for the pts-400-fall gate.
  * BATTY_REPLAY_PTS400 = "x,y". Uses motion_accel_step(&pts_marker.motion,
@@ -3982,7 +3962,13 @@ static void bomb_appear(Object *o) {
  * past the bottom. Bat hit costs a life and respawns the ball. */
 static void step_bomb(void) {
     if (!bomb.active) return;
-    bomb.y += motion_accel_step(&bomb.motion, FALL_DE_SLOW, FALL_CAP_SLOW);
+    bomb_fall_step(PLAYFIELD_H);
+    /* The fall now owns the off-bottom deactivate, so that test moved
+     * ABOVE the bat check (it used to be below). Safe, and provably:
+     * off-bottom means bomb.y > 192, while overlaps_bat_body requires
+     * bomb.y < BAT_Y + 10 = 186. The two cannot both hold, so no frame
+     * changes behaviour. */
+    if (!bomb.active) return;
     /* 8 high, not BOMB_H_PX: the body is 8x8, the sprite 8x12. See
      * overlaps_bat_body. */
     if (overlaps_bat_body(bomb.x, bomb.y, BOMB_W_PX, 8)) {
@@ -3995,9 +3981,7 @@ static void step_bomb(void) {
         play_bat_explosion(current_level_idx_var);
         if (player.lives > 0) player.lives--;
         if (player.lives > 0) respawn_primary_ball();    /* else game-over fires next frame */
-        return;
     }
-    if (bomb.y > PLAYFIELD_H) bomb.active = 0;
 }
 
 /* Step one laser bullet slot (slot index in `b`). Move up; on first
@@ -6044,7 +6028,7 @@ static void apply_replay_overrides(void) {
     apply_replay_ball_motion_override();
     replay_apply_object("BATTY_REPLAY_ENEMY_OBJECT", OBJ_ENEMY);
     apply_replay_bonus_override();
-    apply_replay_bomb_override();
+    replay_apply_bomb();
     apply_replay_pts400_override();
     apply_replay_force_brick();
     apply_replay_ball_ramp();

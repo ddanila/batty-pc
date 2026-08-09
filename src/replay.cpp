@@ -67,3 +67,9 @@ void replay_apply_blast(void) {
     bullet_blast_x[0] = (int)v[0];
     bullet_blast_y[0] = (int)v[1];
 }
+
+void replay_apply_bomb(void) {
+    long v[2];
+    if (!replay_env_ints("BATTY_REPLAY_BOMB", v, 2)) return;
+    bomb_launch((int)v[0], (int)v[1]);
+}

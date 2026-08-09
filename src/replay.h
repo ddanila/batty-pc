@@ -30,6 +30,11 @@ void replay_apply_object(const char *name, u8 slot);
  * position. Both are needed for byte-exact RNG parity. */
 void replay_apply_random(void);
 
+/* BATTY_REPLAY_BOMB: drop the enemy's bomb at "x,y". Moved here once
+ * bomb_launch left main.cpp — the seeder was blocked on the FUNCTION,
+ * not on the state. */
+void replay_apply_bomb(void);
+
 /* BATTY_REPLAY_BULLET / _BLAST: place bullet or blast slot 0. */
 void replay_apply_bullet(void);
 void replay_apply_blast(void);

@@ -96,3 +96,19 @@ void bullets_clear() {
         bullet_blast_ticks[i] = 0;
     }
 }
+
+BombState bomb = {0, 0, 0, {0, 0}};
+
+void bomb_launch(int x, int y) {
+    bomb.active = 1;
+    bomb.x = x;
+    bomb.y = y;
+    bomb.motion.acc = 0;
+    bomb.motion.frac = 0;
+}
+
+void bomb_fall_step(int bottom_y) {
+    if (!bomb.active) return;
+    bomb.y += motion_accel_step(&bomb.motion, FALL_DE_SLOW, FALL_CAP_SLOW);
+    if (bomb.y > bottom_y) bomb.active = 0;
+}
