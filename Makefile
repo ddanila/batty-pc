@@ -66,7 +66,8 @@ ASSETS  = assets/loading.bin assets/hi_score.bin assets/main_menu.bin \
           assets/hud_sprites.bin \
           assets/levels.bin assets/level_attrs.bin \
           assets/bg_tile.bin assets/frame_l1.bin \
-          assets/sprites.bin assets/separator.bin assets/random_seed.bin
+          assets/sprites.bin assets/separator.bin assets/border.bin \
+          assets/random_seed.bin
 HISCORE_SNAP      ?= build/snapshots/20260513T202038Z/screen.scr
 MAINMENU_SNAP     ?= build/snapshots/20260513T202041Z/screen.scr
 MAINMENU_SNAP_RAM ?= build/snapshots/20260513T202041Z/ram_4000_FFFF.bin
@@ -282,6 +283,16 @@ assets/bg_tile.bin: build/level_gt/level_01.scr scripts/extract_bg_tile.py
 # rather than a widened range, which would shift every existing offset.
 # 98 bytes: the (width=2 bytes, height=$18 rows) header plus the body.
 # File offset = Z80 addr - 0x6800 ($7A8C -> 0x128C).
+# The perimeter-frame sprites, $6B3F..$6CBC: the bold/thin side pair
+# (each immediately followed by its right-hand twin, which the original
+# reaches by letting DE walk off the end of the left one) and the six
+# distinct horizontal pieces set_border_horizontal draws. 382 bytes.
+# Below sprites.bin's $7A8C range, so its own extraction.
+# File offset = Z80 addr - 0x6800.
+assets/border.bin: original/blocks/03_DATA_headless.dat.bin Makefile
+	@python3 -c "open('$@','wb').write(open('$<','rb').read()[0x033F:0x04BD])"
+	@echo "wrote $@ ($$(wc -c < $@) bytes, perimeter frame sprites)"
+
 assets/separator.bin: original/blocks/03_DATA_headless.dat.bin Makefile
 	@python3 -c "open('$@','wb').write(open('$<','rb').read()[0x122A:0x128C])"
 	@echo "wrote $@ ($$(wc -c < $@) bytes, spr_separator)"
@@ -336,9 +347,9 @@ $(FLOPPY_OUT): $(FLOPPY_EXE) $(ASSETS) $(FLOPPY_SRC)
 	mcopy -i $@ -o assets/levels.bin ::LEVELS.BIN
 	mcopy -i $@ -o assets/level_attrs.bin ::LVLATTR.BIN
 	mcopy -i $@ -o assets/bg_tile.bin ::BGTILE.BIN
-	mcopy -i $@ -o assets/frame_l1.bin ::FRAMEL1.BIN
 	mcopy -i $@ -o assets/sprites.bin ::SPRITES.BIN
 	mcopy -i $@ -o assets/separator.bin ::SEPARAT.BIN
+	mcopy -i $@ -o assets/border.bin ::BORDER.BIN
 	mcopy -i $@ -o assets/random_seed.bin ::RANDOM.BIN
 	@printf '@ECHO OFF\r\n' > build/AUTOEXEC.BAT
 	@if [ -n "$$BATTY_NOSOUND" ]; then \
@@ -398,9 +409,9 @@ $(TEST_FLOPPY_OUT): $(FLOPPY_TEST_EXE) $(ASSETS) $(FLOPPY_SRC)
 	mcopy -i $@ -o assets/levels.bin ::LEVELS.BIN
 	mcopy -i $@ -o assets/level_attrs.bin ::LVLATTR.BIN
 	mcopy -i $@ -o assets/bg_tile.bin ::BGTILE.BIN
-	mcopy -i $@ -o assets/frame_l1.bin ::FRAMEL1.BIN
 	mcopy -i $@ -o assets/sprites.bin ::SPRITES.BIN
 	mcopy -i $@ -o assets/separator.bin ::SEPARAT.BIN
+	mcopy -i $@ -o assets/border.bin ::BORDER.BIN
 	mcopy -i $@ -o assets/random_seed.bin ::RANDOM.BIN
 	@# BATTY_LEVEL env passthrough — without injecting `SET BATTY_LEVEL=N`
 	@# into the DOS boot AUTOEXEC.BAT, the C-side getenv() at run_level

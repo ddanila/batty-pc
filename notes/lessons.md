@@ -559,3 +559,19 @@ This is the same shape as the round banner's bottom-anchored text
 coordinates and the Kinnock egg's — the ZX side of this codebase
 consistently anchors at the BOTTOM. Assume it, and check the routine
 before concluding that data does not match.
+
+**An INFO row is a measurement, not a gate.** `test-visual`'s
+`state4_level1` — the whole level screen — was `assert_match=False` for a
+rendering residual that had long since been fixed. It printed
+"pixel-identical" run after run and failed nothing.
+
+That went unnoticed until the perimeter frame started being GENERATED
+from the tape's sprites rather than loaded from a capture. Mutating that
+generator (truncating the inner-border band, shifting a column, moving
+the top border a row) left the entire suite green, because the only gate
+that watches those pixels was not asserting.
+
+So: when a gate is downgraded to INFO for a known residual, the residual
+is a TODO with an expiry, not a permanent state. Re-check it when the
+thing it was measuring changes — and promoting it back is usually one
+line.

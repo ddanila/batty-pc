@@ -366,8 +366,16 @@ def main():
     # `assert_match=False` => captured, diff-reported, but not failing.
     # state4_level1 diffs the full playfield against a modded-batty GT
     # captured AFTER one gameplay-loop iter has painted bat/ball/lives
-    # to VRAM (see notes/modded-batty.md). The residual is real rendering
-    # drift, not the old bat-overlay artefact.
+    # to VRAM (see notes/modded-batty.md).
+    #
+    # PROMOTED to assert_match on 2026-08-09. It had been INFO-only for a
+    # residual that is long gone — it reports pixel-identical, and did so
+    # on every run for weeks. What forced the issue: generating the
+    # perimeter frame from the tape's sprites instead of loading a
+    # capture, then mutating that generator (truncating the inner-border
+    # band, moving a column) and watching BOTH mutations SURVIVE. The
+    # level screen is where frame errors show, and nothing was failing on
+    # it. An INFO row is a measurement, not a gate.
     # state5_bat_band is the same captured frame, ROI'd to the bat band
     # (y=160..192). Separate metric so bat-render regressions are not
     # buried inside the whole-frame number — fix this before state4.
@@ -375,7 +383,7 @@ def main():
         ('state1_title',    TITLE_SCR,    True,  None,                 None),
         ('state2_menu',     SNAP_MENU,    False, None,                 None),
         ('state3_hiscore',  SNAP_HISCORE, True,  None,                 None),
-        ('state4_level1',   GT_LEVEL1,    False, None,                 None),
+        ('state4_level1',   GT_LEVEL1,    True,  None,                 None),
         ('state5_bat_band', GT_LEVEL1,    True,  (0, 160, 256, 192),  'state4_level1'),
     ]
 

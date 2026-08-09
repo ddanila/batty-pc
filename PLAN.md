@@ -586,10 +586,22 @@ original artifact:
    sprites, addon strip, in LBE8B's order — and compares it whole:
    3072 + 1344 side + 1110 `level_attrs` cells = 5526 bytes.
 
-   **Nothing is left to discover for this item.** What remains is the
-   port itself: extract the sprites at `$6B17..` as an asset, write the
-   upward unmasked blit, and generate the frame at level entry instead
-   of loading `frame_l1.bin`.
+   **DONE 2026-08-09.** `assets/border.bin` is a new 382-byte extraction
+   (`$6B3F..$6CBC` — the bold/thin side pair with their right-hand twins,
+   and the six distinct horizontal pieces), and
+   `build_frame_from_sprites` runs LBE8B's pixel passes at startup to
+   fill `frame_l1[]`. `FRAMEL1.BIN` is off the floppy; the captured
+   `assets/frame_l1.bin` stays as `test-frame-derivable`'s reference,
+   the same role `main_menu.bin` and `hi_score.bin` have.
+
+   All five `test-visual` states are pixel-identical with the frame
+   built rather than loaded.
+
+   That promotion is part of this item: `state4_level1` had been
+   INFO-only for a residual that is long gone, so mutating the new
+   generator — truncating the inner band, moving a column — left the
+   whole suite green. It asserts now, and all three mutations are
+   caught. An INFO row is a measurement, not a gate.
 2. **`level_attrs.bin` residue** — brick-body attrs are already
    computed; port the writer for frame-strip columns and pre-dimmed
    shadow attrs. This is also the root of the accepted 4px frame-step

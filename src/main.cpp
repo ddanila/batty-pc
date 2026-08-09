@@ -1173,6 +1173,37 @@ static const unsigned int spr_spark_frames[5] = {
 #define FRAME_CYCLES 4
 static unsigned char frame_l1[FRAME_CYCLES * FRAME_SIZE];
 
+/* The perimeter-frame sprites, $6B3F..$6CBC. Offsets are relative to
+ * $6B3F. Each block is (w, h) then w*h pixel bytes then its attr block;
+ * only the pixels are used here, since paint_frame_to_buff takes attrs
+ * from level_attrs. */
+#define BORDER_BLOB_SIZE 382
+static unsigned char border_spr[BORDER_BLOB_SIZE];
+#define BSPR_SIDE_BOLD_L    0     /* $6B3F */
+#define BSPR_SIDE_BOLD_R   40     /* $6B67 — must follow the left one */
+#define BSPR_SIDE_THIN_L   80     /* $6B8F */
+#define BSPR_SIDE_THIN_R  111     /* $6BAE */
+#define BSPR_H_LEFT_EDGE  142     /* $6BCD */
+#define BSPR_H_LEFT_THIN  182     /* $6BF5 */
+#define BSPR_H_LEFT_BOLD  222     /* $6C1D */
+#define BSPR_H_RIGHT_THIN 262     /* $6C45 */
+#define BSPR_H_RIGHT_BOLD 302     /* $6C6D */
+#define BSPR_H_RIGHT_EDGE 342     /* $6C95 */
+
+/* set_border_horizontal ($BFE7), in order. */
+static const unsigned int border_top_seq[8] = {
+    BSPR_H_LEFT_EDGE,  BSPR_H_LEFT_THIN,  BSPR_H_LEFT_BOLD, BSPR_H_LEFT_THIN,
+    BSPR_H_RIGHT_THIN, BSPR_H_RIGHT_BOLD, BSPR_H_RIGHT_THIN, BSPR_H_RIGHT_EDGE
+};
+
+/* border_horizontal_addon ($BFFB): ANDed into scr_buff+$101, i.e. row 8
+ * bytes 1..30 — a one-pixel inner outline under the top border. */
+static const unsigned char border_addon[30] = {
+    0x00, 0x00, 0x03, 0xFF, 0xFF, 0xFF, 0xC0, 0x00, 0x00, 0x00,
+    0x03, 0xFF, 0xFF, 0xFF, 0xC0, 0x03, 0xFF, 0xFF, 0xFF, 0xC0,
+    0x00, 0x00, 0x00, 0x03, 0xFF, 0xFF, 0xFF, 0xC0, 0x00, 0x00
+};
+
 
 
 
@@ -1395,6 +1426,99 @@ static void paint_strip_to_buff(const unsigned char *pixels,
  * blits so the frame's pixels participate in the OR-blit — fixes
  * "bat invisible at extremes" where direct-VGA frame painting
  * overwrote the side-strip half of the bat sprite. */
+/* Build frame_l1[] from the tape's sprites instead of loading a capture.
+ *
+ * This is LBE8B's pixel work, in its order, and it reproduces the blob
+ * that used to be extracted from emulator screens byte for byte —
+ * `test-frame-derivable` is the same construction in Python, checked
+ * against the last captured copy.
+ *
+ * print_sprite_pix is a plain UNMASKED copy that walks UPWARD: the first
+ * data row lands at the given y and later rows stack above it. Every
+ * placement below is a bottom edge, not a top one. */
+static void draw_border_sprite_up(unsigned char *dest, int dest_rows,
+                                  unsigned int off, int x_byte, int y) {
+    const int w = border_spr[off];
+    const int h = border_spr[off + 1];
+    int r, bx;
+    for (r = 0; r < h; r++) {
+        const int yy = y - r;
+        if (yy < 0 || yy >= dest_rows) continue;
+        for (bx = 0; bx < w; bx++) {
+            const int col = x_byte + bx;
+            if (col < 0 || col >= 32) continue;
+            dest[yy * 32 + col] = border_spr[off + 2 + r * w + bx];
+        }
+    }
+}
+
+static void build_frame_from_sprites(void) {
+    int cycle;
+    for (cycle = 0; cycle < FRAME_CYCLES; cycle++) {
+        unsigned char *base = frame_l1 + (unsigned int)cycle * FRAME_SIZE;
+        unsigned char *top  = base;
+        unsigned char *left = top + FRAME_TOP_PX;
+        unsigned char *right = left + FRAME_SIDE_PX;
+        const unsigned char *tile = bg_tile + cycle * BG_TILE_SIZE;
+        int y, i, x_byte, placement;
+
+        /* 1. the level's background texture, as LBE8B paints it first */
+        for (y = 0; y < FRAME_TOP_H_PX; y++) {
+            const int ty = (y & 15) * 2;
+            for (i = 0; i < 32; i++)
+                top[y * 32 + i] = tile[ty + (i & 1)];
+        }
+        /* 2. LBE8B_1's SEVENTH side placement, bold from y=$17. The
+         *    other six are the side strips below. */
+        draw_border_sprite_up(top, FRAME_TOP_H_PX, BSPR_SIDE_BOLD_L, 0, 0x17);
+        draw_border_sprite_up(top, FRAME_TOP_H_PX, BSPR_SIDE_BOLD_R, 31, 0x17);
+        /* 3. LBE8B_2's FIRST inner-outline band. inner_border_line_c has
+         *    the lower three; this one starts 56 rows above them, at
+         *    y=-6, so rows 0..21 here. BEFORE the top border, which
+         *    overwrites rows 0..7 of it. */
+        for (y = 0; y < 22; y++) {
+            top[y * 32 + 1]  &= 0x7F;
+            top[y * 32 + 30] &= 0xFE;
+        }
+        /* 4. the top border: eight sprites, x stepping $20 per turn */
+        x_byte = 0;
+        for (i = 0; i < 8; i++) {
+            draw_border_sprite_up(top, FRAME_TOP_H_PX, border_top_seq[i],
+                                  x_byte, 0x07);
+            x_byte += border_spr[border_top_seq[i]];
+        }
+        /* 5. border_horizontal_addon, ANDed into row 8 bytes 1..30 */
+        for (i = 0; i < 30; i++) top[8 * 32 + 1 + i] &= border_addon[i];
+
+        /* The side strips, y 24..191. Placements 1..6 of the same loop:
+         * bold from $BF, thin from $9F, each -56 per turn. */
+        for (y = 0; y < FRAME_SIDE_H_PX; y++) {
+            const int ty = ((y + FRAME_TOP_H_PX) & 15) * 2;
+            left[y]  = tile[ty];        /* byte col 0 is even */
+            right[y] = tile[ty + 1];    /* byte col 31 is odd  */
+        }
+        {
+            int y_bold = 0xBF, y_thin = 0x9F;
+            for (placement = 0; placement < 6; placement++) {
+                const int bold = (placement % 2) == 0;
+                const unsigned int lo = bold ? BSPR_SIDE_BOLD_L
+                                             : BSPR_SIDE_THIN_L;
+                const unsigned int ro = bold ? BSPR_SIDE_BOLD_R
+                                             : BSPR_SIDE_THIN_R;
+                const int base_y = bold ? y_bold : y_thin;
+                const int h = border_spr[lo + 1];
+                for (i = 0; i < h; i++) {
+                    const int yy = base_y - i;
+                    if (yy < FRAME_TOP_H_PX || yy >= PLAYFIELD_H) continue;
+                    left[yy - FRAME_TOP_H_PX]  = border_spr[lo + 2 + i];
+                    right[yy - FRAME_TOP_H_PX] = border_spr[ro + 2 + i];
+                }
+                if (bold) y_bold -= 56; else y_thin -= 56;
+            }
+        }
+    }
+}
+
 static void paint_frame_to_buff(unsigned char cycle, unsigned char level_idx) {
     const unsigned char *base     = frame_l1 + (unsigned int)cycle * FRAME_SIZE;
     const unsigned char *top_px   = base;
@@ -7483,7 +7607,7 @@ int main(void) {
         asset_load("LEVELS.BIN",  levels,      sizeof(levels)) &&
         asset_load("LVLATTR.BIN", level_attrs, sizeof(level_attrs)) &&
         asset_load("BGTILE.BIN",  bg_tile,     sizeof(bg_tile)) &&
-        asset_load("FRAMEL1.BIN", frame_l1,    sizeof(frame_l1)) &&
+        asset_load("BORDER.BIN", border_spr, sizeof(border_spr)) &&
         asset_load("SPRITES.BIN", sprites_blob, sizeof(sprites_blob)) &&
         asset_load("SEPARAT.BIN", separator_spr, sizeof(separator_spr)) &&
         asset_load("INDICAT.BIN", indicator_file, sizeof(indicator_file)) &&
@@ -7497,6 +7621,9 @@ int main(void) {
         memcpy(bot_p1, bottom_file, sizeof(bot_p1));
         memcpy(bot_p2, bottom_file + sizeof(bot_p1), sizeof(bot_p2));
         rng_set_rom(random_rom);
+        /* The perimeter frame is BUILT, not loaded. It needs bg_tile,
+         * so it runs after the asset block rather than inside it. */
+        build_frame_from_sprites();
     } else {
         fill(0, 0, SCREEN_W, SCREEN_H, 10 /* bright red */);
     }
