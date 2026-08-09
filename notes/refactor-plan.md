@@ -569,6 +569,27 @@ removed when they were added; a multiset diff confirmed zero lines
 lost.
 
 
+#### Making the disassembly cheaper to reach than a guess
+
+Three of my hypotheses died on `original/disasm/batty.asm` in a week, and
+I noted the pattern twice without doing anything about it. Part of the
+cause is friction: reading a routine meant
+`sed -n "$(grep -n '^name:' ...)"` and counting lines by eye, which I
+did clumsily half a dozen times this session.
+
+`scripts/disasm.py` takes a label, an address (via the
+`; Routine at XXXX` headers), or `-l` to list labels containing a
+substring. A routine prints from its label to the next, with the
+FOLLOWING routine's comment header trimmed — that block describes what
+comes after, and leaving it in was the one thing wrong with the first
+version.
+
+Not a gate, and deliberately so — this is the opposite kind of tool. The
+last few entries have been about not adding gates that cannot pay their
+way; this one lowers the cost of the thing I should have been doing
+first anyway. Whether it works is measurable in whether the next
+hypothesis gets traced before it gets written down.
+
 #### Both halves of the "dir $00 moves UP" puzzle were mine
 
 Last entry left an open observation: the original might drive enemy

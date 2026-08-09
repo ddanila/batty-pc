@@ -403,6 +403,28 @@ false result, so the script handles all three:
   clean, the test passes, and it reads as "not caught" — the worst
   outcome, because it looks like a finding.
 
+## Reading the original (`scripts/disasm.py`)
+
+    scripts/disasm.py handling_bird     # by label
+    scripts/disasm.py 0xA67B            # by address, via "; Routine at XXXX"
+    scripts/disasm.py margin -l         # list labels containing a substring
+
+`original/disasm/batty.asm` answers questions that otherwise cost
+emulator runs, and it settled three in one week: whether the enemy is
+reflected at a wall (no — `check_margins` clamps, `bounce_wall`
+reflects, and the enemy gets the first), whether the multiball spawn
+reads a velocity (no — it reads the dir byte), and what the bat resize's
+gating actually is (every other frame, which the port already matched).
+
+Each of those started as a plausible guess that turned out wrong. The
+friction was part of it: reading a routine meant
+`sed -n "$(grep -n '^name:' ...)"` and counting lines. Now it does not.
+
+A routine prints from its label to the next one, with the following
+routine's comment header trimmed off. Mid-routine entry points
+(`LA67B_8` and the like) are labels too, so they print just their own
+stretch.
+
 ### One class that is NOT gated, and why
 
 Comments that duplicate an explanation and then drift have caused four
