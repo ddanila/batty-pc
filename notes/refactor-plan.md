@@ -670,6 +670,19 @@ the letter row to change, since placement alone would look identical
 whether `step_name_letter` worked or not. Mutation-checked by making the
 LEFT arm a no-op.
 
+That drift had a THIRD copy, and it was the worst of them: the CI
+workflow named `test-video` and three source gates by hand, so CI ran
+**1 of 14 host suites and 3 of 10 source gates** while showing a green
+tick. `parity-check` kept its own copy too.
+
+Both now delegate to `make test-fast`, which is the one list, guarded by
+`check_host_tests_wired.py`. Verified rather than assumed: with
+`build/level_gt` moved aside and `assets/random_seed.bin` deleted — the
+two things a fresh CI checkout lacks — `make test-fast` regenerates the
+asset from the tracked tape data (8192 bytes), `test_bricks` SKIPs its
+golden half cleanly, and all 14 suites pass. That is a better check than
+linting the YAML, which is all that was available locally.
+
 `tests/test_replay_parse.cpp` had seven tests, a working make target,
 and never ran under `make test-fast`. It was reachable only from
 `parity-check`, the full QEMU suite — so the tests guarding the

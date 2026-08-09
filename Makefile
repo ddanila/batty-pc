@@ -644,21 +644,13 @@ test:
 # incl. the rocket-clear / sparks / brick-flash / redraw guards), use
 # `parity-check-full` below.
 parity-check:
-	$(MAKE) test-video
-	$(MAKE) test-rng
-	$(MAKE) test-physics
-	$(MAKE) test-assets
-	$(MAKE) test-bricks
-	$(MAKE) test-sound
-	$(MAKE) test-hud-unit
-	$(MAKE) test-objects
-	$(MAKE) test-weapons
-	$(MAKE) test-enemies
-	$(MAKE) test-bonus-codes
-	$(MAKE) test-scoring
-	$(MAKE) test-replay-parse
-	$(MAKE) test-replay
-	$(MAKE) test-source-gates
+	@# Every host suite and source gate, by DELEGATION rather than by a
+	@# second copy of the list. The two lists drifted once already:
+	@# test_replay was added here and not to test-fast, test_replay_parse
+	@# to test-fast and not here, and each looked complete on its own.
+	@# check_host_tests_wired.py guards test-fast's list; this makes it
+	@# the only list there is.
+	$(MAKE) test-fast
 	$(MAKE) test
 	$(MAKE) test-laffc-ball-frame1
 	$(MAKE) test-bat-deflection

@@ -25,10 +25,17 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build the DOS test EXE (compile check, in-tree linux-amd64 OpenWatcom)
         run: make build/batty-test.exe
-      - name: Video-engine tests (host-native, exhaustive, no emulator)
-        run: make test-video
-      - name: Source-level regression gates (no emulator)
-        run: |
-          make test-l3-replay-seed
-          make test-death-sparks
-          make test-rocket-bonus
+      - name: Host tests and source gates (no emulator)
+        # `make test-fast` IS the list: 14 host suites plus every source
+        # gate, in seconds. This step used to name test-video and three
+        # gates by hand, so CI ran 1 of 14 suites and 3 of 10 gates while
+        # looking complete. Naming targets here made this a THIRD copy of
+        # a list that had already drifted twice between test-fast and
+        # parity-check; delegating means there is one list, and
+        # check_host_tests_wired.py guards it.
+        #
+        # Everything it needs is in the repo or degrades cleanly:
+        # assets/random_seed.bin builds from the tracked tape data, and
+        # test_bricks skips its golden half when build/level_gt/*.scr is
+        # absent (as it is here) rather than failing.
+        run: make test-fast
