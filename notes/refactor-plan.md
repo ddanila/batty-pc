@@ -8,16 +8,16 @@ test. Started 2026-08-07.
 The stage table below is complete except stage 1, which is blocked for a
 reason rather than for want of effort — see the end of this section.
 
-**The code.** `main.cpp`: 7,747 → 6,834 lines (-11.8%) across 15
+**The code.** `main.cpp`: 7,747 → 6,840 lines (-11.7%) across 15
 modules. The longest function is `run_level` at 113 lines, and it is an
 orchestrator of named phases, which is what it should be.
 
-**The tests.** 71 gates, indexed in `notes/testing.md` and kept complete
+**The tests.** 72 gates, indexed in `notes/testing.md` and kept complete
 by `test-gate-index`. They fall in three groups:
 
   - 59 QEMU gates — `make parity-check-parallel`, ~6 min, twelve clean
     runs, the latest covering the `handle_input` split.
-  - 12 emulator-free source gates plus 14 host suites — `make test-fast`,
+  - 13 emulator-free source gates plus 14 host suites — `make test-fast`,
     seconds. CI runs exactly this.
   - 3 ZEsarUX-oracle gates — `make parity-check-full`.
 
@@ -130,7 +130,7 @@ happened, and `make test-video` caught it.
 | 1a | `replay_parse` — the BATTY_REPLAY_* value formats | 75 | **done** — 7 tests |
 | 1 | replay / probe scaffolding | ~430 | **as far as it should go** — 6 overrides out in `replay`, 6 host tests; the remaining 3 are blocked by design, see below |
 
-`main.cpp`: 7,747 → 6,834 (`wc -l`; see the status block on why this is not Watcom's count).
+`main.cpp`: 7,747 → 6,840 (`wc -l`; see the status block on why this is not Watcom's count).
 100 host tests + source gates, all via `make test-fast` in seconds.
 
 ### Stage 5b: one destroyed-cell reset, not two
@@ -567,6 +567,31 @@ paragraph. Use the headings, not the order. Nothing was reordered or
 removed when they were added; a multiset diff confirmed zero lines
 lost.
 
+
+#### Making a default impossible to misdocument
+
+Six stale claims in six readings is a pattern, not luck, so this closes
+the subclass that can actually be checked.
+
+Prose about behaviour cannot be gated in general. Debug-switch DEFAULTS
+can: each field of `DebugSwitches` now carries `default=0` or
+`default=1`, and `check_switch_defaults.py` compares those against the
+`dbg = { ... }` initialiser positionally. Adding a field without a
+default fails; so does reordering the initialiser.
+
+This is aimed squarely at the RNG case. That comment opened "OFF by
+default" for two months after the flip, and `parity-gaps.md` then
+carried the closed gap as its TOP priority — a documentation error that
+would have sent someone to fix working code.
+
+The honest limit is in the gate's own docstring: it cannot read the long
+prose notes elsewhere in the file, which is where the wrong claim
+actually lived. What it does is make the struct the single checked place
+a default is written, so any prose that disagrees now has something
+adjacent and verified to disagree with.
+
+Mutation-checked three ways: flipping a documented default, flipping the
+initialiser, and removing a `default=` marker.
 
 #### testing.md's first line, and one I broke myself
 

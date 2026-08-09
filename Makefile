@@ -1161,8 +1161,14 @@ test-gate-index:
 test-doc-links:
 	python3 scripts/check_doc_links.py
 
+# Each debug switch's documented default vs the initialiser. The RNG
+# model's comment said "OFF by default" for two months after it flipped.
+test-switch-defaults:
+	python3 scripts/check_switch_defaults.py
+
 test-source-gates:
 	$(MAKE) test-gate-greps
+	$(MAKE) test-switch-defaults
 	$(MAKE) test-host-tests-wired
 	$(MAKE) test-gate-index
 	$(MAKE) test-doc-links

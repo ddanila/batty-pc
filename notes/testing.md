@@ -1,7 +1,7 @@
 # Visual regression test
 
 > **`make test-fast` needs no emulator and runs in seconds** — 14 host
-> test suites plus 12 source gates. Start there; it is also exactly what
+> test suites plus 13 source gates. Start there; it is also exactly what
 > CI runs. `make test-video` is one of those suites: it compiles the
 > video engine (`src/zxvga.cpp`) with the host compiler and checks the
 > ZX attribute/colour-clash model exhaustively — every attr x every byte
@@ -348,6 +348,8 @@ mentioned nowhere in this file, including several of the oldest.
 **Structural (no emulator)**
 - `test-gate-greps` — the gates' source needles still match the source.
 - `test-gate-index` — every gate is named in this section.
+- `test-switch-defaults` — each debug switch's documented default
+  matches the initialiser.
 - `test-doc-links` — every file path cited in a comment or note exists.
 - `test-host-tests-wired` — every host suite runs under `make test-fast`.
 - `test-notes-numbers` — the plan's status block still states true numbers.

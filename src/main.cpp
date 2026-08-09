@@ -1068,16 +1068,22 @@ static RenderProfile prof;
  * original. `BATTY_RNG_PERFRAME=0` reverts to the old behaviour (the
  * BATTY_LAFFC fallback pattern); the RNG-independent gates (ball, bat,
  * enemy-descend, visual states) stay green either way. */
+/* Each field states its default as `default=0` or `default=1`, and
+ * test-switch-defaults checks that against the initialiser below. A
+ * comment claiming the wrong default is not a typo: the RNG model's
+ * long note opened with "OFF by default" for two months after the
+ * default flipped to ON, and notes/parity-gaps.md then listed the
+ * closed gap as its top priority. */
 struct DebugSwitches {
-    unsigned char auto_fire;              /* BATTY_AUTO_FIRE: hold SPACE */
-    unsigned char full_band_rebuild;      /* BATTY_FULL_BAND_REBUILD */
-    unsigned char bat_full_redraw;        /* BATTY_FORCE_BAT_FULL_REDRAW */
-    unsigned char ball_full_redraw;       /* BATTY_FORCE_BALL_FULL_REDRAW */
-    unsigned char full_flush_each_frame;  /* BATTY_FORCE_FULL_FLUSH_EACH_FRAME */
-    unsigned char suppress_no_ball_death; /* BATTY_SUPPRESS_NO_BALL_DEATH */
-    unsigned char use_laffc;              /* BATTY_LEGACY_COLLISION clears it */
-    unsigned char rng_perframe;           /* BATTY_RNG_PERFRAME */
-    unsigned long profile_auto_frames;    /* BATTY_PROFILE_AUTO_FRAMES */
+    unsigned char auto_fire;              /* BATTY_AUTO_FIRE: hold SPACE, default=0 */
+    unsigned char full_band_rebuild;      /* BATTY_FULL_BAND_REBUILD, default=0 */
+    unsigned char bat_full_redraw;        /* BATTY_FORCE_BAT_FULL_REDRAW, default=0 */
+    unsigned char ball_full_redraw;       /* BATTY_FORCE_BALL_FULL_REDRAW, default=0 */
+    unsigned char full_flush_each_frame;  /* BATTY_FORCE_FULL_FLUSH_EACH_FRAME, default=0 */
+    unsigned char suppress_no_ball_death; /* BATTY_SUPPRESS_NO_BALL_DEATH, default=0 */
+    unsigned char use_laffc;              /* BATTY_LEGACY_COLLISION clears it, default=1 */
+    unsigned char rng_perframe;           /* BATTY_RNG_PERFRAME, default=1 */
+    unsigned long profile_auto_frames;    /* BATTY_PROFILE_AUTO_FRAMES, default=0 */
 };
 static DebugSwitches dbg = { 0, 0, 0, 0, 0, 0, 1, 1, 0 };
 
