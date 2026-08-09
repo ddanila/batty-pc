@@ -3175,23 +3175,35 @@ static void spawn_pts_marker(int x, int y) {
 
 /* Advance the falling bonus, check for catch on the bat, and tick down
  * any active effect timers. */
+/* Does a falling object's BODY overlap the bat's BODY?
+ *
+ * Two body-vs-sprite distinctions meet here, and both are easy to get
+ * wrong in the same way — by reaching for the sprite extent, which is
+ * larger and makes the hit register early:
+ *
+ *   the BAT is 10 px, not 13. obj_compare_2pix at $94BC reads
+ *   (IY+$0C, IY+$0D), the body dimensions on object_bat_1; the extra
+ *   3 px are shadow and are not a catch surface.
+ *
+ *   the caller passes the object's body too. A bomb's is 8x8
+ *   (bomb_appear at $A977 sets object_bonus+$0C/+$0D to $08,$08), NOT
+ *   its 8x12 sprite — an earlier port used the sprite and triggered
+ *   when the bomb's bottom reached the bat's top, rather than when the
+ *   bodies overlapped.
+ *
+ * Uses the EFFECTIVE bat extents, so BIG_BAT widens the catch zone. */
+static int overlaps_bat_body(int x, int y, int w, int h) {
+    return y + h >= BAT_Y && y < BAT_Y + 10
+        && x + w > eff_bat_left() && x < eff_bat_right();
+}
+
 static void step_bonus(void) {
-    int bat_left, bat_right;
 
     tick_bat_resize();
     tick_big_ball_timer();
     if (!bonus.active) return;
     bonus.y += motion_accel_step(&bonus.motion, 0x0008, 0x02);
-    bat_left  = eff_bat_left();
-    bat_right = eff_bat_right();
-    /* Catch test uses bat body (10 px) not full sprite (13 px =
-     * body + shadow). obj_compare_2pix at \$94BC reads (IY+\$0C, IY+\$0D)
-     * which are body dimensions on object_bat_1. Shadow rows aren't
-     * a catch surface. */
-    if (bonus.y + BONUS_H_PX >= BAT_Y
-        && bonus.y < BAT_Y + 10
-        && bonus.x + BONUS_W_PX > bat_left
-        && bonus.x < bat_right) {
+    if (overlaps_bat_body(bonus.x, bonus.y, BONUS_W_PX, BONUS_H_PX)) {
         bonus_apply(bonus.type);          /* effect + catch sound */
         bonus.active = 0;
         player.score += 400;              /* LD BC,$0400 at $A67D */
@@ -3965,21 +3977,11 @@ static void bomb_appear(Object *o) {
 /* Step the bomb each frame: fall, check bat collision, deactivate
  * past the bottom. Bat hit costs a life and respawns the ball. */
 static void step_bomb(void) {
-    int bx_l, bx_r, by_t, by_b;
     if (!bomb.active) return;
     bomb.y += motion_accel_step(&bomb.motion, 0x0008, 0x02);
-    /* Original bomb_appear at $A977 sets (object_bonus+$0C, +$0D) =
-     * $08, $08 — bomb body is 8x8 starting at (bomb.x, bomb.y), not
-     * the full 8x12 sprite extent. Earlier port used only the last
-     * 4 px of the sprite for collision, which triggered slightly
-     * earlier (when bomb-bottom reached bat-top) than the original
-     * (when bomb-body overlapped bat-body). */
-    bx_l = bomb.x; bx_r = bomb.x + BOMB_W_PX;
-    by_t = bomb.y;            by_b = bomb.y + 8;
-    if (by_b >= BAT_Y && by_t < BAT_Y + 10
-        && bx_r > eff_bat_left() && bx_l < eff_bat_right()) {
-        /* h = 10 matches object_bat_1.h_body_px = \$0A — same as
-         * kill_enemy_by_bat's body band. */
+    /* 8 high, not BOMB_H_PX: the body is 8x8, the sprite 8x12. See
+     * overlaps_bat_body. */
+    if (overlaps_bat_body(bomb.x, bomb.y, BOMB_W_PX, 8)) {
         /* Bomb hit the bat. Original at $A69D zeroes balls_quantity
          * which triggers LBC10's bat-explosion + lives-- branch on
          * the next frame — i.e. ALL balls die, not just the primary.

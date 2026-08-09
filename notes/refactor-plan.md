@@ -16,7 +16,7 @@ Gate count 51 → 59 this session: `test-blast-dirty-redraw`,
 `test-game-over-visual` and `test-name-entry-visual`, each covering
 something nothing reached before.
 
-`main.cpp`: 7,747 → 6,823 lines (-11.9%) across 15 modules. `make test-fast`
+`main.cpp`: 7,747 → 6,825 lines (-11.9%) across 15 modules. `make test-fast`
 runs every host test and source gate in seconds; `--full` is 59 gates
 in under six minutes.
 
@@ -106,7 +106,7 @@ happened, and `make test-video` caught it.
 | 1a | `replay_parse` — the BATTY_REPLAY_* value formats | 75 | **done** — 7 tests |
 | 1 | replay / probe scaffolding | ~430 | **started** — 5 overrides out in `replay`, 6 host tests; the rest need the state first |
 
-`main.cpp`: 7,747 → 6,823 (`wc -l`; see the status block on why this is not Watcom's count).
+`main.cpp`: 7,747 → 6,825 (`wc -l`; see the status block on why this is not Watcom's count).
 100 host tests + source gates, all via `make test-fast` in seconds.
 
 ### Stage 5b: one destroyed-cell reset, not two
@@ -669,6 +669,28 @@ and the gate was extended in the same commit to press LEFT and require
 the letter row to change, since placement alone would look identical
 whether `step_name_letter` worked or not. Mutation-checked by making the
 LEFT arm a no-op.
+
+The falling bonus and the falling bomb each carried their own copy of
+the bat-overlap test AND their own explanation of why it uses body
+extents rather than sprite extents. `overlaps_bat_body(x, y, w, h)` now
+holds both, once. Two distinctions meet in it and both fail the same
+way — by reaching for the larger sprite, which makes the hit register
+early:
+
+  the BAT is 10 px, not 13. `obj_compare_2pix` at `$94BC` reads the body
+  dimensions; the extra 3 px are shadow and are not a catch surface.
+
+  the OBJECT's body too. A bomb's is 8x8 (`bomb_appear` at `$A977` sets
+  `$08,$08`), not its 8x12 sprite — an earlier port used the sprite and
+  triggered when the bomb's bottom reached the bat's top instead of when
+  the bodies overlapped.
+
+The `8` at the bomb's call site is therefore deliberate and says so;
+`BOMB_H_PX` is 12 and would be the wrong constant. The enemy-vs-bat test
+looks similar but is a general AABB over two passed-in rects, so it is
+left alone rather than forced through this.
+
+Watcom caught all five orphaned locals the extraction left behind.
 
 The shared fall accelerator (`motion_acc_t` + `motion_accel_step`, the
 original's LA55A_0) moved to `physics` with three host tests. It is pure
