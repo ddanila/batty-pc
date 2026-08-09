@@ -623,3 +623,54 @@ hands on the strength of a ball that has no owner of its own.
 
 A real per-extra owner is its own item. Silently reusing the primary's
 would be worse than not having one, because it would look correct.
+
+
+## Ported: the owner bit is per BALL (2026-08-10)
+
+`LAB1F_0` writes it on the ball being handled —
+
+    RES 7,(IX+$12) / BIT 7,(IY+$02) / JR Z / SET 7,(IX+$12)
+
+— and `handling_ball` runs once per ball object, so every ball has one.
+The port kept a single `ball_owner_side` and spent it on the primary, so
+brick points from a secondary were credited to whoever last deflected
+the PRIMARY: a ball the player may not have touched for seconds, and
+possibly on the other side of the court.
+
+Now `ball_owner_side[3]`, indexed like the stuck and `mag_*` arrays.
+`brick_hit_resolve` takes the slot, and so do `brick_collision` and
+`laffc_collision` — each of their four call sites already knew which
+ball it was stepping, so nothing had to be derived or guessed.
+
+Three writers:
+
+- level entry seeds all three from the alternating start side. No extras
+  are alive then, so seeding all three costs nothing and means a slot
+  cannot be read before it is written.
+- `spawn_extra_ball` copies the primary's. The original does not copy
+  anything — `+$12` is part of the object and the spawn writes into
+  slots that already carry a bit — but inheriting is the only reading
+  that does not credit a brick to a player who never touched the ball
+  that broke it.
+- `extra_ball_meets_bat` re-owns on a deflection, which is LAB1F_0 on
+  the right ball. That is the line the previous commit deliberately left
+  out, with a comment saying it had nowhere correct to record itself.
+
+### The gate asserts a relationship, not literals
+
+`ball_start_right` alternates every level entry (`XOR $88`), so the
+entry side is a fact about WHICH entry a run happens to be, not about
+the code. The first draft of `test-extra-ball-owner` asserted
+`(0, 0, 0)` at frame 2 and failed against a run that legitimately
+started on the right.
+
+It now reads the entry side from frame 2, requires all three to agree
+there, and then requires exactly slot 1 to differ at frame 12 — bat 1
+touched one ball, so one bit may move. That is the whole difference
+between a per-ball owner and a shared one, and it holds whichever side
+the entry picked.
+
+Finding the frame took a measurement rather than a guess: the three
+balls spawn together and spread out on their derived directions, so
+there is a window where one has bounced and the others have not. Frames
+6 through 16 all show `010001`.

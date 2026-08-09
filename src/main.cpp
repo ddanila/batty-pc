@@ -779,7 +779,15 @@ static unsigned long high_score = 0;
  * side" suggests: brick points go to whoever the BALL belongs to, for
  * that ball's whole life, wherever the brick is. Only the bat, bullet
  * and bonus sites are positional. */
-static unsigned char ball_owner_side = 0;      /* 0 = 1UP, 1 = 2UP */
+/* Per BALL, because the original is: `RES 7,(IX+$12)` / `SET 7,(IX+$12)`
+ * in LAB1F_0 writes the bit on whichever ball is being handled, and
+ * `handling_ball` runs once per ball object. The port kept ONE bit and
+ * spent it on the primary, so brick points from a secondary were
+ * credited to whoever last deflected the PRIMARY — a ball the player
+ * may not have touched for seconds.
+ *
+ * Indexed like the stuck and mag_* arrays: slot 0..2 = OBJ_BALL_1..3. */
+static unsigned char ball_owner_side[3] = {0, 0, 0};   /* 0 = 1UP, 1 = 2UP */
 static unsigned char ball_start_right = 0;     /* the alternating flag */
 
 static void add_points_to_score(unsigned long pts, int side_x) {
@@ -3481,6 +3489,13 @@ static void spawn_extra_ball(unsigned char slot,
     o->speed      = objects[OBJ_BALL_1].speed;
     o->x_coord_hi = 0;
     o->y_coord_hi = 0;
+    /* The extras come out of the primary at the primary's position, so
+     * they start owned by whoever owned it. The original does not copy
+     * anything here — `+$12` is part of the object and LA67B_8 spawns
+     * into slots that already carry a bit — but inheriting is the only
+     * reading that does not credit a brick to a player who never
+     * touched the ball that broke it. */
+    ball_owner_side[slot] = ball_owner_side[BALL_PRIMARY];
 }
 
 /* An extra ball's liveness is recorded twice: the flag the step loop
@@ -3968,10 +3983,11 @@ static void render_brick_flash_to_buff(void) {
     (void)brick_flash.y;
 }
 
-static int brick_hit_resolve(int col, int row, int axis);
-static int laffc_collision(Object *o, int prev_x, int prev_y, int new_x, int new_y);
+static int brick_hit_resolve(int col, int row, int axis, int slot);
+static int laffc_collision(Object *o, int prev_x, int prev_y, int new_x,
+                           int new_y, int slot);
 
-static int brick_hit_resolve(int col, int row, int axis) {
+static int brick_hit_resolve(int col, int row, int axis, int slot) {
     unsigned char *cell = &live_level[row * LVL_COLS + col];
     /* BIT 5 = undestructible: bounce, never destroy.
      * BIT 4 = "this hit destroys" (1-hit brick OR multi-hit's final
@@ -4006,7 +4022,7 @@ static int brick_hit_resolve(int col, int row, int axis) {
         unsigned int idx = (unsigned int)((row < 12) ? row : 11);
         unsigned int pts = points_table[idx];
         if ((cell_val & 0x0F) >= 6) pts *= 2;     /* metal -> double */
-        add_points_to_score(pts, ball_owner_side ? 0x80 : 0);
+        add_points_to_score(pts, ball_owner_side[slot] ? 0x80 : 0);
     }
     *cell |= 0x80;
     mark_brick_row_dirty(row);
@@ -4027,15 +4043,17 @@ static int brick_hit_resolve(int col, int row, int axis) {
  *   2 = horizontal (entered from a side)   -> caller flips dx
  * The previous position disambiguates the corner cases. Field geometry
  * is in level.h. */
-static int brick_collision(int prev_x, int prev_y, int new_x, int new_y) {
+static int brick_collision(int prev_x, int prev_y, int new_x, int new_y,
+                           int slot) {
     const BrickHit hit = brick_sweep(BrickField(live_level),
                                      eff_ball_size(), BALL_H_PX,
                                      prev_x, prev_y, new_x, new_y);
     if (!hit.hit) return 0;
-    return brick_hit_resolve(hit.col, hit.row, hit.axis);
+    return brick_hit_resolve(hit.col, hit.row, hit.axis, slot);
 }
 
-static int laffc_collision(Object *o, int prev_x, int prev_y, int new_x, int new_y) {
+static int laffc_collision(Object *o, int prev_x, int prev_y, int new_x,
+                           int new_y, int slot) {
     (void)prev_x; (void)prev_y;
     const LaffcHit hit = laffc_sweep(BrickField(live_level), o->dir,
                                      o->w_body_px, o->h_body_px, new_x, new_y);
@@ -4043,7 +4061,7 @@ static int laffc_collision(Object *o, int prev_x, int prev_y, int new_x, int new
 
     /* SMASH (big ball) ploughs through: the cell is destroyed and there is
      * no bounce to apply. */
-    if (brick_hit_resolve(hit.col, hit.row, 1) == 0) return 0;
+    if (brick_hit_resolve(hit.col, hit.row, 1, slot) == 0) return 0;
 
     const BallBounce bounce = laffc_bounce(hit, o->dir,
                                            o->w_body_px, o->h_body_px,
@@ -4441,7 +4459,15 @@ static void write_replay_probe(void) {
     fprintf(f, "bricks_quantity=%02X\n", (unsigned)live_bricks_remaining());
     fprintf(f, "score=%06lu\n", player.score);
     fprintf(f, "scores=%06lu_%06lu_own%02X\n",
-            players[0].score, players[1].score, (unsigned)ball_owner_side);
+            players[0].score, players[1].score,
+            (unsigned)ball_owner_side[BALL_PRIMARY]);
+    /* All three owners, as their own row. The `own` field above stays
+     * the primary's: several gates parse it, and widening a field other
+     * tests already read is how a probe change breaks things it was not
+     * about. */
+    fprintf(f, "ball_owners=%02X%02X%02X\n",
+            (unsigned)ball_owner_side[0], (unsigned)ball_owner_side[1],
+            (unsigned)ball_owner_side[2]);
     fprintf(f, "random_number=%04X\n", (unsigned)rng_current());
     fprintf(f, "random_seed=%04X\n", (unsigned)rng_seed_addr());
     fprintf(f, "enemy_repicks=arrival%u_turns%u\n",
@@ -4910,8 +4936,10 @@ static void magnet_captured_move(Object *o, unsigned char exit_dir) {
     else if (next_x > x_max)  { next_x = x_max;       nx_q8 = (long)next_x << 8; }
     if (next_y < BALL_Y_TOP)  { next_y = BALL_Y_TOP;  ny_q8 = (long)next_y << 8; }
     o->dir = exit_dir;
-    hit = laffc_collision(o, o->x_coord, o->y_coord, next_x, next_y);
-    if (hit == 0) hit = brick_collision(o->x_coord, o->y_coord, next_x, next_y);
+    hit = laffc_collision(o, o->x_coord, o->y_coord, next_x, next_y,
+                          (int)(o - objects));
+    if (hit == 0) hit = brick_collision(o->x_coord, o->y_coord, next_x, next_y,
+                                        (int)(o - objects));
     if (hit == 3) {
         nx_q8 = ((long)o->x_coord << 8) | (nx_q8 & 0xFF);
         ny_q8 = ((long)o->y_coord << 8) | (ny_q8 & 0xFF);
@@ -5194,9 +5222,12 @@ static void bounce_ball_off_ceiling(int *y, long *y_q8) {
  * unchanged. BATTY_LEGACY_COLLISION drops back to brick_collision alone. */
 static int sweep_bricks_for_primary(int next_x, int next_y) {
     int hit;
-    if (!dbg.use_laffc) return brick_collision(BALL_X, BALL_Y, next_x, next_y);
-    hit = laffc_collision(&objects[OBJ_BALL_1], BALL_X, BALL_Y, next_x, next_y);
-    if (hit == 0) hit = brick_collision(BALL_X, BALL_Y, next_x, next_y);
+    if (!dbg.use_laffc)
+        return brick_collision(BALL_X, BALL_Y, next_x, next_y, BALL_PRIMARY);
+    hit = laffc_collision(&objects[OBJ_BALL_1], BALL_X, BALL_Y, next_x, next_y,
+                          BALL_PRIMARY);
+    if (hit == 0)
+        hit = brick_collision(BALL_X, BALL_Y, next_x, next_y, BALL_PRIMARY);
     return hit;
 }
 
@@ -5274,7 +5305,7 @@ static int deflect_ball_off_bat(int next_x, int *next_y) {
      * ball changes hands on every deflection. Outside it, bat 1's x is
      * the only source and the bit follows the bat across the middle —
      * harmless, since add_points_to_score ignores it unless mode $02. */
-    ball_owner_side = (unsigned char)((BAT_X & 0x80) ? 1 : 0);
+    ball_owner_side[BALL_PRIMARY] = (unsigned char)((BAT_X & 0x80) ? 1 : 0);
     objects[OBJ_BALL_1].dir =
         bat_deflect_dir(objects[OBJ_BALL_1].dir,
                         next_x + 3 - BAT_X, bat.extra_px != 0);
@@ -5318,7 +5349,8 @@ static int deflect_ball_off_bat_2(int next_x, int *next_y) {
         return 1;
     }
     /* LAB1F_0 again: the owner follows the bat that hit it. */
-    ball_owner_side = (unsigned char)((b2.x_coord & 0x80) ? 1 : 0);
+    ball_owner_side[BALL_PRIMARY] =
+        (unsigned char)((b2.x_coord & 0x80) ? 1 : 0);
     objects[OBJ_BALL_1].dir =
         bat_deflect_dir(objects[OBJ_BALL_1].dir,
                         next_x + 3 - (int)b2.x_coord, false);
@@ -5421,13 +5453,11 @@ static void ride_stuck_ball_on_bat(int b, int bat);
  * `big` is bat 1's own affair — bat 2 is always the plain 28-wide
  * sprite, since the width bonuses are bat-1 globals (WS3 residual).
  *
- * NOT here: `ball_owner_side`. That is the PRIMARY's owner bit, and the
- * original keeps one per ball (`RES 7,(IX+$12)` on whichever ball
- * LAB1F is handling). The port models only the primary's, so an extra
- * bouncing off bat 2 must not rewrite it — brick points would change
- * hands on a ball that has no owner of its own. A real per-extra owner
- * is a separate item; silently reusing the primary's would be worse
- * than not having one. */
+ * It DOES write `ball_owner_side[slot]`, which it could not when this
+ * function was written: the owner was a single byte spent on the
+ * primary, so an extra's deflection had nowhere correct to record
+ * itself and deliberately recorded nothing. The owner became per-ball
+ * the next commit and this is LAB1F_0 on the right ball. */
 static int extra_ball_meets_bat(Object *o, int bat_idx, int slot,
                                 int bat_left, int bat_right, int bat_top,
                                 int ball_sz, bool big,
@@ -5444,6 +5474,10 @@ static int extra_ball_meets_bat(Object *o, int bat_idx, int slot,
         return 2;
     }
     *next_y = bat_top - BALL_H_PX;
+    /* LAB1F_0 on this ball: the owner follows the bat that hit it.
+     * Reachable for an extra since the owner became per-ball. */
+    ball_owner_side[slot] =
+        (unsigned char)((objects[bat_idx].x_coord & 0x80) ? 1 : 0);
     o->dir = bat_deflect_dir(o->dir, next_x + 3 - (int)objects[bat_idx].x_coord,
                              big);
     sound_queue(SND_BAT_BEAT);
@@ -5511,8 +5545,10 @@ static void step_extra_ball(unsigned char *in_active,
         o->sprite_set = 0x82;
         return;
     }
-    hit = laffc_collision(o, o->x_coord, o->y_coord, next_x, next_y);
-    if (hit == 0) hit = brick_collision(o->x_coord, o->y_coord, next_x, next_y);
+    hit = laffc_collision(o, o->x_coord, o->y_coord, next_x, next_y,
+                          (int)(o - objects));
+    if (hit == 0) hit = brick_collision(o->x_coord, o->y_coord, next_x, next_y,
+                                        (int)(o - objects));
     if (hit == 3) {
         next_x_q8 = ((long)o->x_coord << 8) | (next_x_q8 & 0xFF);
         next_y_q8 = ((long)o->y_coord << 8) | (next_y_q8 & 0xFF);
@@ -6927,8 +6963,16 @@ static void reset_level_state(unsigned char lvl_idx) {
      * every mode — only its effect on the ball's START X is mode-2
      * specific, since outside Double Play the ball rests on the bat. */
     ball_start_right = (unsigned char)(!ball_start_right);
-    ball_owner_side  = (unsigned char)((game_mode == 2 && ball_start_right)
-                                       ? 1 : 0);
+    {   /* all_var_init writes the start side into the ball it is
+         * initialising. There are no extras alive at level entry, so
+         * seeding all three costs nothing and means a slot can never be
+         * read before it is written. */
+        const unsigned char start =
+            (unsigned char)((game_mode == 2 && ball_start_right) ? 1 : 0);
+        ball_owner_side[0] = start;
+        ball_owner_side[1] = start;
+        ball_owner_side[2] = start;
+    }
     BALL_X        = BAT_X + BALL_X_OFFSET_ON_BAT;
     BALL_Y        = BAT_Y - BALL_H_PX;
     ball.stuck_ticks[BALL_PRIMARY]   = 0;                /* counts up while waiting for launch */
@@ -7247,7 +7291,7 @@ static void kill_enemy_by_ball_slot(unsigned char slot) {
     kill_enemy_in_rect((int)objects[slot].x_coord,
                             (int)objects[slot].y_coord,
                             BALL_W_PX, BALL_H_PX,
-                            ball_owner_side ? 0x80 : 0);
+                            ball_owner_side[slot] ? 0x80 : 0);
 }
 
 /* Any ball landing on an alien destroys it, not just the bat: the

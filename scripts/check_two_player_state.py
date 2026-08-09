@@ -263,7 +263,7 @@ def main() -> int:
             f"leftover), found {len(sides)}: {sides}. If a path was added "
             f"or removed, decide what need_change_player is at that point "
             f"in the original before updating this list.")
-    want = {"ball_owner_side ? 0x80 : 0", "side_x",
+    want = {"ball_owner_side[slot] ? 0x80 : 0", "side_x",
             "left_brik_side ? 0x80 : 0"}
     got = set(x.strip() for x in sides)
     if got != want:
@@ -295,7 +295,8 @@ def main() -> int:
     # writes use RES/SET, not LD, and a grep for `LD (IX+$12)` found
     # only the counter ones — which led to a published claim that
     # nothing in flight changes the owner.
-    if "ball_owner_side = (unsigned char)((BAT_X & 0x80) ? 1 : 0);" not in code:
+    if ("ball_owner_side[BALL_PRIMARY] = (unsigned char)((BAT_X & 0x80) ? 1 : 0);"
+            not in code):
         raise SystemExit(
             "FAIL: the ball's owner is no longer reassigned on a bat "
             "deflection. LAB1F_0 sets it from the HITTING bat's x every "

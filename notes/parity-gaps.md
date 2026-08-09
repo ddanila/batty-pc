@@ -24,11 +24,10 @@ they are good next targets when tightening original fidelity.
 >     The narrower gap it left — `step_extra_ball` never consulting bat
 >     2 — closed the next commit (`test-extra-ball-bat2`).
 >
->     What remains from that thread: the extras have no OWNER bit. The
->     original keeps one per ball (`RES 7,(IX+$12)`); the port models
->     only the primary's, so brick points from a secondary are credited
->     to the primary's owner. Not invented over — the bat-2 deflection
->     leaves the bit alone rather than reusing it.
+>     The last of that thread — the extras having no OWNER bit — closed
+>     2026-08-10 (`test-extra-ball-owner`). `ball_owner_side` is `[3]`,
+>     `brick_hit_resolve` takes the slot, and a bat deflection re-owns
+>     the ball it hit and no other.
 >  2. **Cosmetic / timing**: big-bat resize timing is matched visually
 >     rather than being a literal port of the original's bit-gated state
 >     machine. Out of scope: sound.

@@ -16,7 +16,7 @@ The port is "100%" when all of the following hold:
 |---|-----------|-------|
 | 1 | All three game modes work: 1 Player, 2 Players (alternating), Double Play (simultaneous split-court co-op) | 1P and 2P done; Double Play has its court, both bats, ball physics, scoring and INPUT (2026-08-10); bonus ownership and bat-2 catch remain |
 | 2 | Menu semantics match the original (0 starts the selected game directly; A/B input-device cycling affects play) | Key 0 starts the game (`test-menu-start`); the device byte is per-player state but still selects nothing |
-| 3 | Core gameplay byte-exact where an oracle exists (ball, bat, collision, RNG, enemy, bonuses, scoring) | **Done** — regression-locked by 98 gates |
+| 3 | Core gameplay byte-exact where an oracle exists (ball, bat, collision, RNG, enemy, bonuses, scoring) | **Done** — regression-locked by 99 gates |
 | 4 | Full game FLOW gated end-to-end: level-clear → next, life-loss → respawn, game-over → initials, level wrap | **Done** — `test-level-advance`, `test-life-loss`, `test-game-over-visual`, `test-name-entry-visual` |
 | 5 | Sound faithful to the original's 5-slot beeper queue (envelope/timing, not just effect IDs) | ids, slot count, pitches and envelope ARITHMETIC faithful; durations still round to 20 ms because the sound clock is the 50 Hz frame counter |
 | 6 | All assets derived from the tape at build time; no captured emulator blobs | **Done** — all 13 loaded assets build from `original/blocks/`, held by `test-asset-provenance` |
@@ -651,10 +651,11 @@ In priority order (all pre-scoped in `parity-gaps.md` / notes):
    bat 2 when bat 1 missed, mirroring LAB1F's fall-through
    (`test-extra-ball-bat2`).
 
-   Still open from the same thread: the extras have no OWNER bit, so
-   brick points from a secondary go to the primary's owner. The bat-2
-   path leaves the bit alone rather than reusing it — see
-   notes/double-play.md.
+   **And the owner bit followed** (2026-08-10): `ball_owner_side` is
+   `[3]`, `brick_hit_resolve`/`brick_collision`/`laffc_collision` take
+   the slot, and a bat deflection re-owns the ball it hit and no other
+   (`test-extra-ball-owner`). The whole extras-vs-Double-Play thread is
+   closed.
 3. ~~**Seeded destroyed-cell mismatch**~~ — **CLOSED 2026-08-09, and it
    had already fixed itself.** This entry said the port and original
    destroy different *cells* on `replay-l3-brick-flash-both`. They do

@@ -814,6 +814,7 @@ parity-check-full:
 	$(MAKE) test-double-play-bat2-catch
 	$(MAKE) test-secondary-ball-catch
 	$(MAKE) test-extra-ball-bat2
+	$(MAKE) test-extra-ball-owner
 	$(MAKE) test-stuck-auto-launch
 	$(MAKE) test-bat-redraw-window
 	$(MAKE) test-ball-left-wall-escape
@@ -1404,6 +1405,11 @@ test-secondary-ball-catch:
 # A/B on BATTY_GAME_MODE with the extras thrown into bat 2's half.
 test-extra-ball-bat2:
 	python3 scripts/test_extra_ball_bat2.py
+
+# WS3: LAB1F_0 writes the owner on the ball it is handling, so every ball
+# has one. A bat deflection must move that ball's bit and no other's.
+test-extra-ball-owner:
+	python3 scripts/test_extra_ball_owner.py
 
 # A ball left on the bat launches itself after STUCK_TIMEOUT (192)
 # ticks. Nothing gated this: mutating the counter so it never fires
