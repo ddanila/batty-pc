@@ -120,8 +120,10 @@ levels and FAIL-gates state4 at 0 px each; wired into parity-check-full.
 dirty-vs-fullflush repro built for the (wrong) stale-VGA theory found a
 genuine ~21 px black trailing residue at a descending UFO's upper edge
 rows (frame-50 halt, RNG+counter pinned, measured (83..87, 49..57) on
-L1). See `scripts/repro_enemy_flyover_trail.py` (expected-FAIL repro,
-not yet wired) and the pending entry in notes/known-bugs.md.
+L1). The expected-FAIL repro `repro_enemy_flyover_trail.py` (named without a
+path, because it no longer resolves) was deleted in 41fdcbd once the cause was found and fixed (the two compose
+paths drew the bomb and the enemy in different orders). What guards it
+now is `test-enemy-flyover-redraw` plus `test-enemy-brick-residue`.
 
 UPDATE 2026-06-12 (follow-up session): the bycatch decomposed into
 three. (1) NOT persistent — post-fly-over captures are 0 px, so there

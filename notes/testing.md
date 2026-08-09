@@ -340,6 +340,7 @@ mentioned nowhere in this file, including several of the oldest.
 **Structural (no emulator)**
 - `test-gate-greps` — the gates' source needles still match the source.
 - `test-gate-index` — every gate is named in this section.
+- `test-doc-links` — every file path cited in a comment or note exists.
 - `test-host-tests-wired` — every host suite runs under `make test-fast`.
 - `test-notes-numbers` — the plan's status block still states true numbers.
 - `test-env-passthrough` — every `BATTY_*` knob reaches DOS on the test floppy.

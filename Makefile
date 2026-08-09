@@ -1155,10 +1155,16 @@ test-host-tests-wired:
 test-gate-index:
 	python3 scripts/check_gate_index.py
 
+# Does every file path cited in a comment or note actually exist?
+# Three had rotted, including one note that was never written.
+test-doc-links:
+	python3 scripts/check_doc_links.py
+
 test-source-gates:
 	$(MAKE) test-gate-greps
 	$(MAKE) test-host-tests-wired
 	$(MAKE) test-gate-index
+	$(MAKE) test-doc-links
 	$(MAKE) test-notes-numbers
 	$(MAKE) test-ball-sign-cache-owner
 	$(MAKE) test-env-passthrough

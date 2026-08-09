@@ -16,7 +16,7 @@ Gate count 51 → 59 this session: `test-blast-dirty-redraw`,
 `test-game-over-visual` and `test-name-entry-visual`, each covering
 something nothing reached before.
 
-`main.cpp`: 7,747 → 6,823 lines (-11.8%) across 15 modules. `make test-fast`
+`main.cpp`: 7,747 → 6,832 lines (-11.7%) across 15 modules. `make test-fast`
 runs every host test and source gate in seconds; `--full` is 59 gates
 in under six minutes.
 
@@ -106,7 +106,7 @@ happened, and `make test-video` caught it.
 | 1a | `replay_parse` — the BATTY_REPLAY_* value formats | 75 | **done** — 7 tests |
 | 1 | replay / probe scaffolding | ~430 | **started** — 5 overrides out in `replay`, 6 host tests; the rest need the state first |
 
-`main.cpp`: 7,747 → 6,823 (`wc -l`; see the status block on why this is not Watcom's count).
+`main.cpp`: 7,747 → 6,832 (`wc -l`; see the status block on why this is not Watcom's count).
 100 host tests + source gates, all via `make test-fast` in seconds.
 
 ### Stage 5b: one destroyed-cell reset, not two
@@ -669,6 +669,31 @@ and the gate was extended in the same commit to press LEFT and require
 the letter row to change, since placement alone would look identical
 whether `step_name_letter` worked or not. Mutation-checked by making the
 LEFT arm a no-op.
+
+Three file citations had rotted (named below without paths, per the
+convention this turned into). A `magnets-missing` note was folded into
+`notes/magnets.md` by a notes audit, so the 271-px measurement
+justifying why BOTH magnet sprites are painted led nowhere; a `laser`
+note was cited for "the long note" and was never written at all; a
+`repro_enemy_flyover_trail` script was deleted once the bug it
+reproduced was fixed, and was still cited as a thing to run.
+
+None of these break a build, which is why they lasted. A provenance
+comment whose evidence cannot be found is worse than one that states the
+fact inline, because it LOOKS documented. So in each case the thing the
+citation pointed at moved into the comment rather than the citation
+being deleted — the laser cadence now spells out reset $18, decrement 2,
+`== 0` tested before the decrement, so a shot lands on the 12th frame.
+
+`check_doc_links.py` guards the remaining 239 citations. Writing it hit
+the self-reference trap for the third time: explaining that a file is
+gone means naming it, and naming it in path form trips the check. The
+convention now is to name a dead file without its directory or extension
+— a `laser` note — so it reads as history rather than a live pointer.
+That trap has now appeared four times — the frozen-clock gate, the gate
+index, this gate's own docstring, and this very paragraph, which named
+all three dead paths and failed the check I had just written. Worth
+expecting rather than rediscovering.
 
 A comment block in `main.cpp` listed the gun, triple-ball, rocket and
 kill-aliens bonuses as "deferred" and claimed the port supported four

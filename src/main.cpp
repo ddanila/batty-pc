@@ -271,7 +271,10 @@ static const unsigned char spr_bomb_data[66] = {
  * coin-flip overlays `on` at (x, y+5). For the deterministic state4
  * test we paint both: the GT was captured at a moment when the coin
  * flipped to "on" (verified by the L2 magnet showing up in the
- * 271-px diff at y=44..70 — see notes/magnets-missing.md). */
+ * 271-px diff at y=44..70). a `magnets-missing` note used to hold that
+ * measurement and was folded into notes/magnets.md by the a26e5d8 notes
+ * audit (named without a path, because it no longer resolves); the number is kept here because it is the whole reason both
+ * sprites are painted. */
 static const unsigned char spr_magnet_off[140] = {
     0x03, 0x17,
     0x00,0x00,0xFF,0x00,0x80,0x00,
@@ -4043,7 +4046,13 @@ static void step_bullet(void) {
  * $A12C cooldown gate. Called from the SPACE handler and (under
  * BATTY_AUTO_FIRE) once per frame. The cooldown == 0 check is BEFORE the
  * end-of-frame `-= 2`, so the 0x18 reset yields the original's 12-frame
- * cadence (see the long note at the old call site / notes/laser.md). */
+ * cadence.
+ *
+ * That reasoning used to live at the old call site and in a
+ * a `laser` note that was never written. Stated here instead: reset to
+ * $18 = 24, decrement 2 per frame, and the == 0 test running BEFORE the
+ * decrement means a shot is allowed on the 12th frame, not the 13th.
+ * test-laser-cadence pins it. */
 static void try_fire_laser(void) {
     int free_slot = -1;
     int j;
