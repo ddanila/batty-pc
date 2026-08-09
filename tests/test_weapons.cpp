@@ -27,7 +27,10 @@ static void check(bool ok, const char *fmt, ...) {
     va_end(ap);
 }
 
+static int tests_run = 0;
+
 static void report(const char *name, int before, const char *detail) {
+    tests_run++;
     printf("  %-28s %s\n", name, failures > before ? "FAIL" : detail);
 }
 
@@ -77,6 +80,46 @@ static void test_bullet_cannot_tunnel() {
 }
 
 /* A reported brick hit must name a cell that is actually standing. */
+
+/* How FAR a bullet moves per advance, not just that it moves up.
+ *
+ * The tunnel test walks a bullet until it leaves the field and the hit
+ * tests care about what it meets, so both hold for any positive speed:
+ * changing BULLET_SPEED from 6 to 7 left every assertion in this file
+ * green. The value is the original's, and a bullet that climbs faster
+ * reaches a brick a frame early — which is exactly the kind of drift
+ * the QEMU cadence gates would then report as a mystery. */
+static void test_bullet_moves_exactly_bullet_speed() {
+    const int before = failures;
+    u8 cells[FIELD_ROWS * FIELD_COLS];
+    memset(cells, 0x80, sizeof(cells));      /* every brick destroyed */
+    BrickField field(cells);
+    Object enemy;
+    memset(&enemy, 0, sizeof(enemy));        /* inactive: sprite_set 0 */
+
+    bullets_clear();
+    bullet_active[0] = 1;
+    bullet_x[0] = 100;
+    bullet_y[0] = 150;
+
+    const int y0 = bullet_y[0];
+    bullet_advance(0, enemy, field);
+    check(bullet_y[0] == y0 - BULLET_SPEED,
+          "one advance moved the bullet %d px, expected %d\n",
+          y0 - bullet_y[0], BULLET_SPEED);
+
+    /* and it keeps that rate, rather than accelerating */
+    const int y1 = bullet_y[0];
+    bullet_advance(0, enemy, field);
+    check(bullet_y[0] == y1 - BULLET_SPEED,
+          "the second advance moved %d px, expected %d\n",
+          y1 - bullet_y[0], BULLET_SPEED);
+
+    check(BULLET_SPEED == 6, "BULLET_SPEED is %d; the original's is 6\n",
+          BULLET_SPEED);
+    report("bullet_moves_by_speed", before, "2 advances, exact    ok");
+}
+
 static void test_hits_name_standing_cells() {
     const int before = failures;
     unsigned long seed = 99;
@@ -246,6 +289,7 @@ static void test_inactive_bullet_does_not_animate() {
 int main() {
     printf("weapons tests\n");
     test_bullet_cannot_tunnel();
+    test_bullet_moves_exactly_bullet_speed();
     test_hits_name_standing_cells();
     test_blast_only_on_impact();
     test_blast_snaps_to_column();
@@ -253,6 +297,6 @@ int main() {
     test_blasts_expire();
     test_bullet_frame_is_per_bullet();
     test_inactive_bullet_does_not_animate();
-    printf("\n%s\n", failures ? "FAILED" : "6 tests, 0 failed");
+    printf("\n%d tests, %d failed\n", tests_run, failures);
     return failures ? 1 : 0;
 }

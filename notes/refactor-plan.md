@@ -560,6 +560,42 @@ removed when they were added; a multiset diff confirmed zero lines
 lost.
 
 
+#### Two host suites tested the shape, not the value
+
+With all twelve source gates now mutation-verified, the same audit ran
+over the fourteen host suites. `rng`, `scoring`, `enemies`,
+`bonus_codes` and `replay_parse` all caught their mutations. Two did
+not.
+
+`test_objects` checked that `object_reflect` is an INVOLUTION and is not
+the identity. Both hold for the wrong constant: changing the `+ 1` to
+`+ 2` left every assertion green. That constant is the original's
+`change_direction` (`$ACEE`), and the file's own comment records that
+getting it wrong once pinned the ball against a side wall juggling its
+dy forever — a property test that survives the historical bug is not
+guarding much.
+
+The fix ties the two ports of ONE original routine together:
+`object_reflect(flip_x)` must equal `laffc_change_dir(dir, $1F)` and
+`flip_y` must equal `laffc_change_dir(dir, $3F)`, over all 64
+directions. That pins the value without a hardcoded table and makes it
+impossible for the two to drift apart. One anchored case (dir `$20` →
+`$00`) catches a change to BOTH.
+
+`test_weapons` never pinned how FAR a bullet travels. The tunnel test
+walks it until it leaves the field and the hit tests only care what it
+meets, so `BULLET_SPEED` 6 → 7 was green. A bullet climbing faster
+reaches a brick a frame early, which the QEMU cadence gates would report
+as a mystery rather than as this.
+
+Two suites also still printed a hardcoded test count, so adding a test
+left the total unchanged — the same defect fixed in four suites earlier.
+
+The stale-binary trap bit twice during this: `make` sees a restored
+source file with a timestamp inside the same second and reruns the OLD
+binary, reporting a mutation as caught (or a new test as absent). Every
+mutation run here does `rm -f build/test_<name>` first.
+
 #### The gate that guards the other gates was skipping a third of them
 
 Last commit found `check_notes_numbers` checking almost nothing, so I

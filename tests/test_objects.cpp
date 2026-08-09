@@ -14,6 +14,7 @@
 #include <string.h>
 
 #include "../src/objects.cpp"
+#include "../src/physics.cpp"
 
 static int failures = 0;
 
@@ -27,7 +28,10 @@ static void check(bool ok, const char *fmt, ...) {
     va_end(ap);
 }
 
+static int tests_run = 0;
+
 static void report(const char *name, int before, const char *detail) {
+    tests_run++;
     printf("  %-28s %s\n", name, failures > before ? "FAIL" : detail);
 }
 
@@ -107,6 +111,51 @@ static void test_reflection_axes() {
     report("reflection_axes", before, "64 directions        ok");
 }
 
+
+/* The VALUE, not just the shape.
+ *
+ * test_reflection_axes above checks that a reflect is an involution and
+ * is not the identity. Both hold for the WRONG constant: changing the
+ * `+ 1` in object_reflect to `+ 2` leaves every assertion there green.
+ * That constant is not free — object_reflect is the original's
+ * bounce_wall ($AC75) calling change_direction ($ACEE), and getting it
+ * wrong once pinned the ball against a side wall juggling its dy
+ * forever.
+ *
+ * physics.cpp implements the SAME original routine as
+ * laffc_change_dir(dir, mask), used for brick faces. Tying the two
+ * together pins the value without hardcoding a table, and makes it
+ * impossible for the two ports of one routine to drift apart. */
+static void test_reflection_matches_change_direction() {
+    const int before = failures;
+    int bad_x = 0, bad_y = 0;
+    for (int d = 0; d < 0x40; d++) {
+        Object a;
+        memset(&a, 0, sizeof(a));
+        a.dir = u8(d);
+        object_reflect(a, true, false);
+        if (a.dir != laffc_change_dir(u8(d), 0x1F)) bad_x++;
+
+        memset(&a, 0, sizeof(a));
+        a.dir = u8(d);
+        object_reflect(a, false, true);
+        if (a.dir != laffc_change_dir(u8(d), 0x3F)) bad_y++;
+    }
+    check(bad_x == 0, "%d of 64 horizontal reflects disagree with "
+          "laffc_change_dir(dir, $1F)\n", bad_x);
+    check(bad_y == 0, "%d of 64 vertical reflects disagree with "
+          "laffc_change_dir(dir, $3F)\n", bad_y);
+
+    /* One anchored value, so a change to BOTH implementations still
+     * fails: dir $20 travels left, and the original turns it into $00. */
+    Object o;
+    memset(&o, 0, sizeof(o));
+    o.dir = 0x20;
+    object_reflect(o, true, false);
+    check(o.dir == 0x00, "dir $20 bounced to $%02X, expected $00\n", o.dir);
+    report("reflect_matches_change_dir", before, "64 dirs x 2 axes     ok");
+}
+
 /* The cached buffer offset must agree with the position it came from. */
 static void test_buffer_offset() {
     const int before = failures;
@@ -151,8 +200,9 @@ int main() {
     test_descriptor_layout();
     test_slot_order();
     test_reflection_axes();
+    test_reflection_matches_change_direction();
     test_buffer_offset();
     test_active_flag();
-    printf("\n%s\n", failures ? "FAILED" : "5 tests, 0 failed");
+    printf("\n%d tests, %d failed\n", tests_run, failures);
     return failures ? 1 : 0;
 }
