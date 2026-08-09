@@ -3873,31 +3873,42 @@ static void write_replay_probe(void) {
     fclose(f);
 }
 
+/* Whether a natural alien spawn is allowed this frame. Six reasons it
+ * might not be, and the first is a test hook rather than a game rule.
+ * orig: $9EAA */
+static bool enemy_spawn_allowed(void) {
+    /* Test-mode pin (BATTYALL): no NATURAL spawns, the same determinism
+     * trick as the menu blink, the running dot and the magnet toggle.
+     * On levels whose starting brick count is already under the $2C
+     * gate (L3: 26, L9: 7), an alien would spawn within the first
+     * gameplay frame and the wall-clock state4 screendump would race its
+     * descent — the L3/L9 "186 px drift" in notes/per-level-profile.md.
+     * The ground truth is alien-free by construction, and a test that
+     * wants one seeds it via BATTY_REPLAY_ENEMY_OBJECT, which bypasses
+     * this spawner entirely. */
+    if (test_mode_pin_blink) return false;
+
+    /* L4 has no enemies at all — $9EAA returns immediately there. An
+     * earlier port added a bouncing spark as extra challenge; removed
+     * for byte-exact parity. */
+    if (current_level_idx_var == 4) return false;
+
+    /* The KILL_ALIENS bonus stops further spawns while it is held. */
+    if (objects[OBJ_BAT_1].bonus_applied == 0x09) return false;
+    if (objects[OBJ_BAT_2].bonus_applied == 0x09) return false;
+
+    if (live_bricks_remaining() >= 0x2C) return false;   /* too early */
+    if (objects[OBJ_ENEMY].sprite_set != 0) return false; /* one already out */
+    return true;
+}
+
 static void enemy_prepare(void) {
     Object *e = &objects[OBJ_ENEMY];
     const unsigned char *prop;
     unsigned char r;
-    /* Test-mode pin (BATTYALL): no NATURAL alien spawns — the same
-     * determinism trick as the menu-blink / running-dot / magnet-toggle
-     * pins. On levels whose starting brick count is already below the
-     * 0x2C spawn gate (L3: 26, L9: 7 — L5 is exempted below), an alien
-     * spawns within the first gameplay frame and the wall-clock state4
-     * screendump races its descent — the L3/L9 "186 px drift"
-     * (notes/per-level-profile.md, 2026-06-11). The GT is alien-free by
-     * construction. Tests that need an alien seed one explicitly via
-     * BATTY_REPLAY_ENEMY_OBJECT, which bypasses this spawner. */
-    if (test_mode_pin_blink) return;
-    /* Original $9EAA returns immediately when current_level == 4 —
-     * L4 has no enemies at all. Earlier port added a bouncing spark
-     * here as extra challenge; removed for byte-exact parity. */
-    if (current_level_idx_var == 4) return;
-    /* Skip if bat carries the kill-aliens bonus. */
-    if (objects[OBJ_BAT_1].bonus_applied == 0x09) return;
-    if (objects[OBJ_BAT_2].bonus_applied == 0x09) return;
-    /* Skip while bricks remaining >= 44. */
-    if (live_bricks_remaining() >= 0x2C) return;
-    /* Skip if alien already active. */
-    if (e->sprite_set != 0) return;
+
+    if (!enemy_spawn_allowed()) return;
+
     /* clear_hl_buff16 equivalent. */
     {
         unsigned int i;

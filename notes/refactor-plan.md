@@ -10,7 +10,7 @@ latest covering the compose-order unification, which merged the two
 redraw paths' copies of the `$9AD0` slot sequence. All five defects
 this refactor surfaced are closed.
 
-`main.cpp`: 7,746 → 6,799 lines (-12%) across 14 modules. `make test-fast`
+`main.cpp`: 7,746 → 6,810 lines (-12%) across 14 modules. `make test-fast`
 runs every host test and source gate in seconds; `--full` is 54 gates
 in under six minutes.
 
@@ -612,6 +612,14 @@ row-scoped — now live beside the primitives they drive. What is left in
 `main.cpp` is the two thin wrappers that turn a level index into
 `(cells, lattr, bg_attr)`, which is the only thing the module could not
 know.
+
+`enemy_spawn_allowed` split `enemy_prepare` into the question and the
+act. Six reasons a natural spawn might not happen, and the first is a
+TEST hook rather than a game rule: `BATTYALL` pins it off, because on
+levels already under the $2C brick gate an alien would spawn inside the
+first gameplay frame and race the wall-clock screendump — the L3/L9
+"186 px drift". Mixing that with the five real rules made the function
+read as if the test mode were part of the game's logic.
 
 ### The two band painters do not have the same attr contract
 
