@@ -477,6 +477,47 @@ caught, something else changed.
   edge face. Deleting a term changes nothing; INVERTING one does, and
   test_boundary_faces_stay_open catches that.
 
+## Counter-phase sweeps (`scripts/phase_sweep.py`)
+
+`pit_frame_counter` free-runs from boot, and cadences key off its low
+bits — the enemy steer (`& 3`), the ball speed ramp (`& 7`). How long
+boot took therefore decides which phase a probe frame lands on, so a
+gate whose expectations depend on the phase passes or fails by luck.
+That is known-bugs #17, found because `test-enemy-descend` failed about
+two runs in three.
+
+Running a gate repeatedly is how it was found, but repetition is a weak
+instrument: it samples whatever phases the machine happened to produce.
+`BATTY_REPLAY_COUNTER` pins the counter at the aligned start, so the
+phase can be varied on purpose instead:
+
+    scripts/phase_sweep.py test-enemy-anim test-bat-deflection
+
+runs each gate at phases 0..3 — every case `& 3` can produce. Passing at
+all four means the gate does not depend on the phase. Failing at some
+means it was passing by luck.
+
+**Run it on any new QEMU gate before trusting it.**
+
+Gates that set `BATTY_REPLAY_COUNTER` in their own env are reported as
+SKIPPED rather than swept: their inline value overrides the outer
+environment, so all four runs would use the same pin and report a
+confident, meaningless "phase-independent". (The first version of the
+tool detected that by searching the whole file, which skipped every gate
+whose DOCSTRING merely explains the variable — a false negative wearing
+the costume of a decision. It strips docstrings and comments now.)
+
+Validated by removing the pin from `test-enemy-margin-clamp`, whose
+`dir` expectations are exact: the sweep reported PHASE-DEPENDENT at
+pins 1, 2 and 3. A tool that can only ever say "fine" is not a tool.
+
+Audited so far, all **phase-independent**: `test`,
+`test-laffc-ball-frame1`, `test-bat-deflection`, `test-ball-no-tunnel`,
+`test-rng-walk`, `test-enemy-anim`, `test-enemy-attr-parity`,
+`test-l3-replay-seed`. The rest of the suite has not been swept — at
+four boots per gate it is a couple of hours, worth spending when a gate
+next behaves oddly rather than pre-emptively.
+
 ## Stale symbol citations (`scripts/notes_symbols.py`)
 
 `check_doc_links` catches a note that points at a file which no longer

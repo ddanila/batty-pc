@@ -1048,3 +1048,22 @@ checkpoint halts — so any multi-checkpoint gate is back to needing them.
 PLAN.md's WS6 item 4 called a boot-phase-normalized harness "a known
 deferred test-infra effort". For the port side it is done and was
 already done.
+
+### Auditing the rest of the suite
+
+Repetition found #17 but is a weak instrument — it samples whatever
+phases the machine happens to produce, and three passes prove little
+about a gate that is a coin flip. Since the pin exists, the phase can be
+varied deliberately: `scripts/phase_sweep.py` runs a gate at pins 0..3,
+which is every case `& 3` can produce.
+
+Swept and clean: `test`, `test-laffc-ball-frame1`,
+`test-bat-deflection`, `test-ball-no-tunnel`, `test-rng-walk`,
+`test-enemy-anim`, `test-enemy-attr-parity`, `test-l3-replay-seed` —
+the four enemy-seeding gates that do NOT pin, plus the core gates
+everything else rests on. All pass at all four phases.
+
+The tool was validated by taking the pin back out of
+`test-enemy-margin-clamp`, whose `dir` expectations are exact: it
+reported PHASE-DEPENDENT at pins 1, 2 and 3. That also settles, with
+evidence rather than assumption, that pinning that gate was necessary.
