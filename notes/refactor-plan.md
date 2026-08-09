@@ -61,7 +61,7 @@ happened, and `make test-video` caught it.
 | 1a | `replay_parse` — the BATTY_REPLAY_* value formats | 75 | **done** — 7 tests |
 | 1 | replay / probe scaffolding | ~430 | **last** — see below |
 
-`main.cpp`: 7,746 → 6,883. 100 host tests + source gates, all via `make test-fast` in seconds.
+`main.cpp`: 7,746 → 6,891. 100 host tests + source gates, all via `make test-fast` in seconds.
 
 ### Stage 5b: one destroyed-cell reset, not two
 
@@ -511,6 +511,13 @@ to protect, violated three commits after naming it. Inert today, because
 the port's ball object handler is a stub, but `call_for_all_obj`
 dispatches on `sprite_set` and the probe dumps those objects. It uses
 the helper now.
+
+`render_brick_effects_and_mark` collected the brick band's transients —
+the destruction marker and the multi-hit animations. Neither draws
+anything of its own (the marker exists purely for dirty-rect
+scheduling), but both must be marked because the background beneath them
+was repainted. Dropping the redundant `if (any_brick_hit_anim())` around
+a loop that already skips empty slots left one less thing to read.
 
 `step_primary_ball` took the last inline block from the frame tick: ride
 the bat while stuck, otherwise ramp and step, and end the run if a

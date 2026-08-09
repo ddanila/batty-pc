@@ -4947,6 +4947,28 @@ static void flush_composed_frame(void) {
     flush_dirty_to_vga();
 }
 
+/* The brick band's transients: the destruction marker and the
+ * multi-hit animations. Neither draws anything itself — the marker is
+ * dirty-rect scheduling only — but both must be marked, because the
+ * background beneath them was repainted.
+ *
+ * The flash rect is one pixel bigger on every side (18x10 around an
+ * 16x8 cell), which is what test-brick-flash greps for. */
+static void render_brick_effects_and_mark(void) {
+    int i;
+    render_brick_flash_to_buff();
+    if (brick_flash.ticks) {
+        mark_dirty_rect_px(brick_flash.x - 1, brick_flash.y - 1, 18, 10);
+    }
+    render_brick_hit_anim_to_buff();
+    for (i = 0; i < BRICK_HIT_ANIM_SLOTS; i++) {
+        if (!brick_hit_anim_ticks[i]) continue;
+        mark_dirty_rect_px(8 + (int)brick_hit_anim_col[i] * 16,
+                           32 + (int)brick_hit_anim_row[i] * 8,
+                           16, 8);
+    }
+}
+
 /* Anything about the bat that changes its pixels, not just its position:
  * a resize, a caught bonus (the body sprite carries it) or a laser
  * fire-animation frame all need the whole body redrawn. */
@@ -5035,7 +5057,6 @@ static void refresh_static_background(unsigned char level_idx) {
 static void redraw_full_with_ball(unsigned char level_idx) {
     unsigned char bg_attr = bg_attr_per_cycle[level_idx & 3];
     unsigned char cycle   = (unsigned char)(level_idx & 3);
-    int i;
     int bat_full_dirty;
 
     prof_start();
@@ -5072,20 +5093,7 @@ static void redraw_full_with_ball(unsigned char level_idx) {
      * only when score/lives/brick-animation invalidation requires it. */
     prof.hud_pit += prof_elapsed();
 
-    render_brick_flash_to_buff();
-    if (brick_flash.ticks) {
-        mark_dirty_rect_px(brick_flash.x - 1, brick_flash.y - 1, 18, 10);
-    }
-    render_brick_hit_anim_to_buff();
-    if (any_brick_hit_anim()) {
-        for (i = 0; i < BRICK_HIT_ANIM_SLOTS; i++) {
-            if (brick_hit_anim_ticks[i]) {
-                mark_dirty_rect_px(8 + (int)brick_hit_anim_col[i] * 16,
-                                   32 + (int)brick_hit_anim_row[i] * 8,
-                                   16, 8);
-            }
-        }
-    }
+    render_brick_effects_and_mark();
 
     /* Moving objects in the ORIGINAL's slot-paint order ($9AD0 table,
      * call_for_all_obj walks it low->high, so later slots paint ON TOP):
