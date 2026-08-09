@@ -613,6 +613,30 @@ row-scoped — now live beside the primitives they drive. What is left in
 `(cells, lattr, bg_attr)`, which is the only thing the module could not
 know.
 
+### The two band painters do not have the same attr contract
+
+Having moved both into `bricks.cpp`, the obvious next move was to point
+`window_repaint_matches_full` at THEM rather than at the primitives
+underneath — comparing `paint_brick_band_rows` against
+`paint_brick_band` is closer to what the game does.
+
+It fails, on all 150 level/window pairs, and the pixels are fine: the
+difference is entirely in the attrs. Two reasons, both deliberate.
+
+- `paint_brick_band_rows` dims char column 1 itself; `paint_brick_band`
+  leaves the border shadow to the caller's `print_border_shadow_c`, a
+  frame concern the module does not own.
+- The row-scoped painter re-bases only `[cr0, cr1]`. In the game the
+  rows around it come from the static cache, so a standalone full paint
+  is not the right oracle for them.
+
+So the comparison is between different contracts, not evidence of a bug.
+The test stays where it was — at the primitive level, where its attr
+comparison is mutation-verified to catch `repaint_row_attrs` going
+missing. Strengthening it properly would mean giving the test the cache
+the rebuild restores from, which is a bigger fixture than the property
+justifies right now.
+
 `release_brick_hit_anim_if_gone` came from the same pass: the stepper
 and the renderer both freed a slot whose brick had been destroyed. Note
 what that means — the RENDERER changes animation state. It is safe
