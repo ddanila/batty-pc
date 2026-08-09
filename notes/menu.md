@@ -257,3 +257,70 @@ than as a navigation change. `test-menu-start` pins both halves.
 
 Modes 2 and 3 remain inert, so choosing one and pressing 0 starts a
 1-player game (PLAN.md WS2/WS3).
+
+
+## Two-player alternation, traced (2026-08-09)
+
+WS2 stage 2 left one question open: the original stores only
+`briks_quantity` per player, not the grid, so what does a returning
+player's brick field look like? Answer: **the grid is preserved**, and
+the routine that does it is not the one it looks like.
+
+### `game_mode` is 0-based, and the port's `selected_mode` is not
+
+    0  1 Player
+    1  2 Players (alternating)
+    2  Double Play
+
+Read off `LBC10`: `CP $02 / CALL Z,print_txt_players_1_and_2` prints
+"PLAYERS 1 AND 2" for mode 2, and the life-loss path's `LD A,(game_mode)
+/ DEC A / CALL Z,...` runs the alternation for mode 1. The port's
+`selected_mode` is 1..3 (`k - '0'` in `run_menu`), so any dispatch on it
+has to subtract one. Worth having written down before WS2 stage 3 wires
+it.
+
+### The life-loss path
+
+    LD A,(lives_1up) / DEC A / LD (lives_1up),A
+    JR Z,LBC10_6                    ; out of lives -> the game-over path
+    LD A,(game_mode) / DEC A
+    CALL Z,current_level_2up_copier ; mode 1 only
+    JP LB9E8_1                      ; per-level entry
+
+### `current_level_2up_copier` falls through into `players_swap`
+
+    current_level_2up_copier:
+      LD A,(lives_2up) / AND A / RET Z    ; no player 2 -> neither half runs
+      LD DE,(current_level_addr)          ; the ACTIVE player's level slot
+      PUSH DE
+      LD A,(current_level_number_2up)
+      CALL level_addr_calc_a              ; HL = player 2's level slot
+      POP DE
+      LD BC,current_level_copy            ; the live 180-cell grid
+      LD A,$B4                            ; 180 = 12 x 15 cells
+    LBE0C_0:
+      ...  (HL) <- live grid,  live grid <- (DE)  ...
+      DEC A / JR NZ,LBE0C_0
+    players_swap:                         ; <-- NO RET. Falls straight in.
+      ... swaps 8 bytes at lives_1up and 10 at score_1up_in_game,
+      ... then toggles player_number
+
+So one call does both halves of a turn change: the live grid is written
+back into the departing player's level slot and the arriving player's is
+loaded out of theirs, and then the counters swap. The level table doubles
+as per-player grid storage — there is no separate save area.
+
+The `RET Z` guard covers both halves too: with `lives_2up == 0` nothing
+swaps, so a solo player keeps playing.
+
+**This is why `players_swap` looked absent from the alternation.** It is
+called by name only from `game_restart` and the game-over path; on an
+ordinary life loss it is reached by fallthrough. Reading the two
+routines separately makes 2-player mode look like it never changes turns.
+
+### What it means for the port
+
+`briks_quantity` per player is not enough — WS2 stage 3 needs a
+per-player copy of the 180-cell grid, swapped with `live_level` at the
+same moment the counters swap. That is a real chunk of state, which is
+why stage 2 deliberately stopped short of guessing it.

@@ -470,3 +470,23 @@ that entry and did not connect it.
 
 So: when a mechanism is diagnosed, grep for it in `src/` and in these
 notes before deciding what to build.
+
+**Read past the end of a routine.** Twice now the load-bearing detail
+has been in the instructions AFTER a listing stopped. `LAFFC_30` ends
+`LD (LAA7B),HL` and falls into `LB1C3`, which UNDOES the position snap
+it just recorded — miss it and the alien's brick reaction reads as
+"teleports to the corner". `current_level_2up_copier` ends its copy loop
+on `JR NZ` and falls into `players_swap`, which is the entire turn
+alternation in 2-player mode — miss it and the mode looks like it never
+changes turns.
+
+Both times the listing looked complete, and both times `disasm.py` made
+it worse: it trims the next routine's comment header (deliberately, so
+output is not padded with someone else's documentation), and that header
+is the only visual cue that another routine begins. It now prints a
+FALLS THROUGH warning when a routine's last instruction is not an
+unconditional `RET`/`JP`/`JR`. Verified on both cases, silent on a
+`JP`-tailed control.
+
+The general rule: a Z80 routine boundary is a LABEL, not an end. Before
+concluding what a routine does, check how it leaves.

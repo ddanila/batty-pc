@@ -134,10 +134,23 @@ is byte-identical and all 61 QEMU gates are unchanged.
 from `players[1].score` in a 1-player game, nor a per-player counter
 from a global while there is one player.
 
-Remaining stages: `briks_quantity` per player (it needs the level-reset
-question answered first — the original stores only the COUNT, so what a
-returning player's grid looks like is not yet established), the swap on
-life loss, and the menu's mode-2 dispatch.
+**The level-reset question is settled (2026-08-09).** The grid IS
+preserved per player. `current_level_2up_copier` exchanges the live
+180-cell grid with the arriving player's level slot — the level table
+doubles as per-player storage, there is no separate save area — and then
+FALLS THROUGH into `players_swap`, so one call does the grid, the
+counters and the turn toggle. It is called from the life-loss path for
+`game_mode == 1` only, and its `lives_2up == 0` guard covers both halves
+so a solo player keeps playing.
+
+Also settled: `game_mode` is 0-based (0 = 1 Player, 1 = 2 Players,
+2 = Double Play) while the port's `selected_mode` is 1..3, so the
+dispatch has to subtract one.
+
+Remaining stages: a per-player copy of the 180-cell grid swapped with
+`live_level` (this is the substantial part, and why stage 2 stopped
+short of guessing it), the swap on life loss, and the menu's mode-2
+dispatch. See notes/menu.md.
 
 **What:** Classic turn-taking (research-confirmed: on the Spectrum,
 2 PLAYERS alternates turns, unlike the C64 version). Per-player state

@@ -86,6 +86,42 @@ def main() -> int:
     while body and (not body[-1].strip() or body[-1].lstrip().startswith(";")):
         body.pop()
     print("\n".join(body))
+
+    # FALLTHROUGH. A routine that does not end in an unconditional
+    # transfer runs straight on into whatever label follows, and the
+    # trimming above hides that by design — it removes the next
+    # routine's comment header, which is the only visual cue.
+    #
+    # This has hidden the load-bearing detail twice. LAFFC_30 ends
+    # `LD (LAA7B),HL` and falls into LB1C3, which UNDOES the position
+    # snap it just recorded; current_level_2up_copier ends `JR NZ` on
+    # its copy loop and falls into players_swap, which is the entire
+    # turn alternation in 2-player mode. Both times the printed output
+    # looked like a complete routine.
+    last = ""
+    for line in reversed(body):
+        t = line.split(";")[0].strip()
+        if t and not LABEL.match(line):
+            last = t.upper()
+            break
+    unconditional = (last == "RET"
+                     or (last.startswith(("JP ", "JR "))
+                         and "," not in last))
+    if last and not unconditional and not last.startswith("DEFB") \
+            and not last.startswith("DEFW"):
+        nxt = None
+        for j in range(end, len(lines)):
+            m = LABEL.match(lines[j])
+            if m:
+                nxt = m.group(1)
+                break
+        note = f" into `{nxt}`" if nxt else ""
+        print(f"\n; --- FALLS THROUGH{note} ---")
+        print(f"; Last instruction is `{last}`, which is not an "
+              f"unconditional RET/JP/JR,")
+        print(f"; so execution continues past the end of this listing. "
+              f"Read on before")
+        print(f"; concluding what the routine does.")
     return 0
 
 
