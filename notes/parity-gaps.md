@@ -14,10 +14,12 @@ they are good next targets when tightening original fidelity.
 >  2. **Multi-ball + MAGNET catch** — a MAGNET bat catches the primary ball
 >     but not the unified secondaries; mirroring the ~32-site stuck system
 >     per-ball is deferred feature work (see "bat-ball deflection").
->  3. **Full game-flow transitions** — level-clear -> next-level,
->     life-loss/respawn, game-over, hi-score entry, level wrap are not
->     verified end-to-end (the long-run soak covers sustained single-level
->     play, not transitions).
+>  3. ~~**Full game-flow transitions**~~ — CLOSED 2026-08-09. All five are
+>     gated end-to-end: `test-level-advance` (level-clear -> next, and the
+>     wrap), `test-life-loss`, `test-game-over-visual`,
+>     `test-name-entry-visual`. See "Test coverage gaps" below — which is
+>     where this was first marked closed, while this priority list kept
+>     saying otherwise for several commits.
 >  4. **Cosmetic / timing**: metal-brick shimmer phase, big-bat resize
 >     timing — visually matched, not literal ports. Out of scope: sound.
 >  5. **Infra**: QEMU-on-CI needs a KVM/self-hosted runner (hosted TCG is

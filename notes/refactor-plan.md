@@ -5,35 +5,55 @@ test. Started 2026-08-07.
 
 ## Where this stands
 
-The full suite runs **59/59 green** — twelve clean runs now, the
-latest covering the name-entry decomposition.
-Seven of the eight defects this refactor surfaced are closed; #14 is
-open because settling it needs ground truth the port does not have.
+The stage table below is complete except stage 1, which is blocked for a
+reason rather than for want of effort — see the end of this section.
 
-Gate count 51 → 59 this session: `test-blast-dirty-redraw`,
-`test-game-over`, `test-stuck-ball-offset`, `test-visual-checkpoints`
-`test-invariant-owners`, `test-ball-sign-cache-owner` and
-`test-game-over-visual` and `test-name-entry-visual`, each covering
-something nothing reached before.
+**The code.** `main.cpp`: 7,747 → 6,824 lines (-11.7%) across 15
+modules. The longest function is `run_level` at 113 lines, and it is an
+orchestrator of named phases, which is what it should be.
 
-`main.cpp`: 7,747 → 6,824 lines (-11.7%) across 15 modules. `make test-fast`
-runs every host test and source gate in seconds; `--full` is 59 gates
-in under six minutes.
+**The tests.** 71 gates, indexed in `notes/testing.md` and kept complete
+by `test-gate-index`. They fall in three groups:
 
-Line counts here are `wc -l`, measured against `wc -l` at `e0bb447` (the
-C++ conversion, before any extraction). Earlier revisions of this file
-quoted Watcom's `N lines` report instead. The two agreed within 1 at the
-baseline and have since drifted apart by a constant 96 for this file —
-adding 10 lines moves both by 10, so it is an offset, not a scaling, and
-the cause is not established. Mixing the two understated the reduction.
-`scripts/check_notes_numbers.py` now pins this section's numbers to
-reality on every `make test-fast`.
+  - 59 QEMU gates — `make parity-check-parallel`, ~6 min, twelve clean
+    runs, the latest covering the `handle_input` split.
+  - 12 emulator-free source gates plus 14 host suites — `make test-fast`,
+    seconds. CI runs exactly this.
+  - 3 ZEsarUX-oracle gates — `make parity-check-full`.
 
-Eight defects this refactor surfaced, #8 through #15. Seven are closed;
-**#14 is the only open one**, and it needs the Spectrum rather than more
-work here. `notes/known-bugs.md` carries the status table and the
-reasoning — this file deliberately does NOT keep a second copy, because
-the copy here was already missing #15 by the time anyone noticed.
+**The defects.** Eight surfaced by this refactor, #8 through #15.
+`notes/known-bugs.md` holds the status table; this file deliberately
+keeps no second copy, because the copy that used to be here was already
+missing #15 by the time anyone noticed.
+
+### What is actually left
+
+1. **Stage 1's remainder.** Five replay seeders came out because they
+   depend only on state other modules own. The rest need main.cpp
+   FUNCTIONS, not just state — `apply_replay_bomb_override` calls
+   `bomb_launch`, `apply_replay_force_bonus` calls `try_spawn_bonus` —
+   and the brick ones need `live_level`, which is game state rather than
+   compositor state and belongs where it is. The next increment is a
+   real move of state and behaviour, not another easy slice.
+
+2. **known-bugs #14**, and only its second half: whether the original
+   derives the extra balls' launch angle from a real velocity. That
+   needs a Spectrum, not more work in the port.
+
+3. **The parity gaps in `notes/parity-gaps.md`** — enemy RNG not
+   byte-exact, multi-ball plus MAGNET catch, and the cosmetic/timing
+   items. Those are fidelity work, not refactor work.
+
+### A note on the numbers here
+
+Line counts are `wc -l`, measured against `wc -l` at `e0bb447` (the C++
+conversion, before any extraction). Earlier revisions quoted Watcom's
+`N lines` report instead. The two agreed within 1 at the baseline and
+have since drifted apart by a constant 96 for this file — adding 10
+lines moves both by 10, so it is an offset, not a scaling, and the cause
+is not established. Mixing them understated the reduction.
+`scripts/check_notes_numbers.py` pins this section to reality on every
+`make test-fast`.
 
 ## How to read this file
 
@@ -539,6 +559,39 @@ paragraph. Use the headings, not the order. Nothing was reordered or
 removed when they were added; a multiset diff confirmed zero lines
 lost.
 
+
+#### The status block rewritten, and a gate that was not checking it
+
+`Where this stands` had drifted into a summary of the last few commits
+rather than a description of the state: it named the wrong "latest full
+run", stated the defect count TWICE in the same section, and listed the
+new gates in a sentence whose grammar had not survived four
+appendings. It now says what the code, the tests and the defects are,
+and — new — **what is actually left**, which nothing said anywhere.
+
+Two things were wrong beyond the prose. `notes/parity-gaps.md` still
+listed "full game-flow transitions" as priority 3 while its own "Test
+coverage gaps" section, lower in the SAME FILE, recorded them closed;
+that is the eighth duplicated list, and the first one found inside a
+single document.
+
+And `check_notes_numbers.py` was not checking what it appeared to. Three
+separate defects, each found by a mutation that PASSED:
+
+  - it knew only the runner's 59 gates, so a status block stating the
+    true total of 71 failed against a gate that was less accurate than
+    the text it was judging;
+  - its regex needed the number ADJACENT to "gates", so "59 QEMU gates"
+    was invisible and mutating 59 to 60 passed;
+  - widened by one word, "12 emulator-free source gates" was still
+    invisible, and 12 to 11 passed.
+
+It now knows all four counts — QEMU, source, oracle, total — computing
+them as set differences rather than subtracting totals (the groups
+overlap, and a subtraction version reported 0 oracle gates). All four
+mutations are caught. The limit is stated in the source: swapping two
+VALID counts is not caught, because that needs the gate to parse the
+sentence.
 
 #### Stage 1a: the parsers came out first
 

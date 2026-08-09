@@ -44,20 +44,53 @@ def status_block() -> str:
     return body if nxt < 0 else body[:nxt]
 
 
-def gate_count() -> int:
+def gate_counts() -> dict:
+    """Every gate count the status block may legitimately state.
+
+    The block names four: the QEMU suite, the emulator-free source
+    gates, the ZEsarUX-oracle ones, and the total. Prose cannot tell the
+    gate WHICH a given number is, so the rule is that every "N gates"
+    claim must equal one of them — a wrong number matches none.
+
+    The limit, stated because a green run should not be over-read:
+    swapping two VALID counts (writing 59 where 71 belongs) is not
+    caught. Catching that needs the gate to parse the sentence, which it
+    cannot.
+
+    Two earlier versions were worse. One knew only the runner's list and
+    failed a status block that was more accurate than the gate. The next
+    required the number to sit immediately before "gates", so it never
+    saw "59 QEMU gates" at all — mutating 59 to 60 PASSED. Same three
+    sources as check_gate_index.py."""
     src = RUNNER.read_text()
-    total = 0
+    all_gates: set[str] = set()
     for name in ("PARITY_CHECK_GATES", "FULL_EXTRA_GATES"):
         start = src.index(name + " = [")
-        block = src[start:src.index("]", start)]
-        total += len(re.findall(r'"[a-z0-9-]+"', block))
-    return total
+        all_gates |= set(re.findall(r'"([a-z0-9-]+)"',
+                                    src[start:src.index("]", start)]))
+    mk = (ROOT / "Makefile").read_text()
+    def recipe(target: str) -> set:
+        m = re.search(r"^" + re.escape(target) + r":.*?\n((?:\t.*\n|\s*\n)*)",
+                      mk, re.M)
+        return set(re.findall(r"\$\(MAKE\) (test-[a-z0-9-]+|test)\b",
+                              m.group(1))) if m else set()
+
+    qemu_set = all_gates
+    source = recipe("test-source-gates")
+    # The ZEsarUX-only ones: named by parity-check-full and by nothing
+    # else. Computed as a set difference, not by subtracting counts —
+    # the groups OVERLAP (parity-check-full re-runs most of the QEMU
+    # suite), and an earlier version that subtracted got 0.
+    oracle = recipe("parity-check-full") - qemu_set - source
+    total = qemu_set | source | oracle
+    return {"qemu": len(qemu_set), "source": len(source),
+            "oracle": len(oracle), "total": len(total)}
 
 
 def main() -> int:
     block = status_block()
     real_lines = len(MAIN.read_text().splitlines())
-    real_gates = gate_count()
+    counts = gate_counts()
     bad = []
 
     # "`main.cpp`: 7,747 -> 6,762 lines"  — the arrow may be -> or an en/em dash
@@ -72,15 +105,23 @@ def main() -> int:
                        f"wc -l says {real_lines:,} "
                        f"(NB: Watcom's 'N lines' is NOT this number)")
 
-    claims = set(int(n) for n in re.findall(r"(\d+)\s+gates", block))
+    # Up to THREE words between the number and "gates". The block says
+    # "71 gates", "59 QEMU gates" and "12 emulator-free source gates",
+    # and each widening was forced by a mutation that PASSED: first
+    # 59 -> 60 (one intervening word), then 12 -> 11 (two). Both were
+    # cases of the gate appearing to check a number it could not see.
+    claims = set(int(n) for n in
+                 re.findall(r"(\d+)\s+(?:[A-Za-z-]+\s+){0,3}gates", block))
     claims |= set(int(a) for a, b in re.findall(r"\b(\d+)/(\d+)\b", block)
                   if a == b and int(a) > 20)
     if not claims:
         bad.append("the status block states no gate count at all")
     for n in sorted(claims):
-        if n != real_gates:
-            bad.append(f"status block claims {n} gates; the runner defines "
-                       f"{real_gates} (PARITY_CHECK_GATES + FULL_EXTRA_GATES)")
+        if n not in counts.values():
+            bad.append(f"status block claims {n} gates, which is none of the "
+                       f"real counts: {counts['qemu']} QEMU, "
+                       f"{counts['source']} source, {counts['oracle']} "
+                       f"ZEsarUX-oracle, {counts['total']} total")
 
     if bad:
         print("FAIL: the plan's status block has gone stale\n")
@@ -92,7 +133,9 @@ def main() -> int:
         return 1
 
     print(f"PASS notes_numbers: status block agrees with reality "
-          f"(main.cpp {real_lines:,} lines, {real_gates} gates)")
+          f"(main.cpp {real_lines:,} lines; {counts['qemu']} QEMU + "
+          f"{counts['source']} source + {counts['oracle']} oracle = "
+          f"{counts['total']} gates)")
     return 0
 
 
