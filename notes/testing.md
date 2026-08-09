@@ -8,7 +8,7 @@
 > — in milliseconds. See [`video-engine.md`](video-engine.md).
 >
 > The QEMU gates below cost ~10 s per boot; `make parity-check-parallel`
-> runs all 59 QEMU gates in about six minutes.
+> runs all 60 QEMU gates in about six minutes.
 >
 > (This paragraph read "`make test-video` is the one gate here that
 > needs no emulator" until 2026-08-09. That was true when zxvga was the
@@ -322,6 +322,7 @@ mentioned nowhere in this file, including several of the oldest.
 - `test-enemy-anim` — the LAAD2 sprite walk.
 - `test-enemy-attr-parity` — the alien's attribute cells.
 - `test-enemy-flyover-redraw`, `test-enemy-brick-residue` — no residue when it passes over.
+- `test-enemy-brick-walk` — it hits a brick: nothing breaks, and it walks to the snap point.
 
 **Weapons, bonuses, the rocket**
 - `test-bullet-fly`, `test-laser-cadence`, `test-bullet-blast` — the laser and its hit.

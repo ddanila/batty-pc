@@ -45,6 +45,11 @@ void enemy_turn_towards_target(Object &o);
 /* Choose a target at random. */
 void enemy_pick_new_target(Object &o);
 
+/* Re-target off the CURRENT random number (orig LAA7D_1), which is what
+ * a LAFFC hit triggers via `flag_2`. Not the same read as
+ * enemy_pick_new_target. */
+void enemy_repick_target_current(Object &o);
+
 /* Aim away from whichever edge the alien is against; if it is not
  * against one, choose at random as usual. */
 void enemy_target_away_from_margins(Object &o);

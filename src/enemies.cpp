@@ -35,6 +35,19 @@ void enemy_pick_new_target(Object &o) {
     o.bonus_applied = u8(read_sample() & 0x3F);
 }
 
+void enemy_repick_target_current(Object &o) {
+    /* orig LAA7D_1, reached from the handler tail when `flag_2` says
+     * LAFFC hit something: `LD A,(random_number) / AND $3F /
+     * LD (IX+$14),A`. That is a CURRENT read, like the arrival re-pick
+     * and unlike enemy_pick_new_target's sample — see notes/rng-model.md
+     * for why the two are not interchangeable.
+     *
+     * Deliberately not counted in any of the three enemy_repicks fields:
+     * they are a fixed probe format that gates parse, and this is
+     * neither an arrival nor a margin re-pick. */
+    o.bonus_applied = u8(read_current() & 0x3F);
+}
+
 void enemy_target_away_from_margins(Object &o) {
     enemy_margin_repicks++;
     if (o.x_coord <= 8) {

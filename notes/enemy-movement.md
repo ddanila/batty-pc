@@ -480,6 +480,47 @@ The walk itself (`LAA44`, ported as `enemy_home_step` in
   - the only clamp is a LOW one on x (`CP $10`), and it is written back
     into `LAA7B`; there is no clamp on the right or on y
 
+#### Ported and gated (2026-08-09)
+
+`handling_bird_obj` now runs the detection too, between the move and the
+margin check, exactly where `LA9BC_1` puts `CALL LAFFC`. It reuses the
+ball's `laffc_sweep` for the geometry and `laffc_bounce` for the snap,
+and then does the alien's half of `LAFFC_30`: keep the reflected `dir`,
+latch the snapped position, leave the alien where the move put it, and
+re-target off the CURRENT random number (`flag_2` -> `LAA7D_1`, which is
+a different read from `enemy_pick_new_target`'s sample — rng-model.md).
+`brick_hit_resolve` is deliberately not called: that is `LAFFC_32`, and
+only `sprite_set $02` reaches it.
+
+Measured on a seeded L3 flight, alien dropped into the band at
+(164, 60) aimed straight down:
+
+    frame  x    y   dir   enemy_home
+      2   165   61  $10   A83D      <- latched at the snap point
+      3   166   61  $10   A83D      <- walking, 1px/frame
+      4   167   61  $10   A83D
+      6   168   62  $30   A834      <- arrived, cleared, flew, re-latched
+
+with `bricks_quantity` unchanged at 25 throughout.
+
+**This needed a new probe word to be checkable at all.** The bricks are
+untouched by design and the alien ends up roughly where a bounce would
+have left it, so the entire reaction is invisible on screen: all 75
+gates passed both before and after wiring it up. `PROBE.TXT` now carries
+`enemy_home=<x><y>`, and `test-enemy-brick-walk` reads it. Mutating the
+latch away, or inverting the hit test, is caught.
+
+`target` is deliberately not asserted by that gate. The alien's first
+frame is ordinary flight, and a steer there is phase-gated
+(known-bugs #17); x, y, dir and the latched word are not, because from
+frame 1 on the alien is homing and homing skips the steer.
+
+What is still missing from the enemy's LAFFC is the entry guard
+(`y < $80`, `y + height >= $20`) — `laffc_sweep`'s own band scan covers
+the same ground for the positions an alien can reach — and exact
+`check_margins`, which remains the port's own reflect-and-re-aim
+invention.
+
 #### RESOLVED: dir $00 moving the alien UP was my own setup
 
 In the same capture, with `dir` poked to `$00` and the target pinned to

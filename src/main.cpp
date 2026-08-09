@@ -1523,6 +1523,38 @@ static bool bounce_enemy_off_margins(Object *o, int *nx, int *ny,
  * steer to a new target so enemies roam through the playfield instead
  * of patrolling only along the top edge. */
 static void bomb_appear(Object *o);     /* forward decl */
+
+/* LAFFC as the ALIEN reaches it. `LAFFC_30` tests the object's
+ * sprite_set and only $02 (the ball) takes the destroy-and-score path,
+ * so an alien neither destroys the brick nor is destroyed by it. What it
+ * does get is what `LAFFC_26`..`LAFFC_29` already did on the way in: the
+ * direction reflected by change_direction, and the position snapped to
+ * the struck cell's edge.
+ *
+ * The snap, though, is RECORDED in LAA7B and then UNDONE — LAFFC_30
+ * falls through into LB1C3, whose `LD HL,$0000` is self-modified with
+ * the position at LAFFC entry. So the alien stays where the move put it
+ * and walks to the snapped position over the next few frames (LAA44,
+ * ported as enemy_home_step), steering and colliding for none of them.
+ *
+ * y == 0 is the "no target" marker, so a snap to y == 0 would be
+ * indistinguishable from no hit at all. The original has the same hole
+ * and it is unreachable for the same reason: the brick band starts well
+ * below y 0, so no face can snap an alien there.
+ *
+ * See notes/enemy-movement.md for the full trace. */
+static void enemy_brick_reaction(Object *o, int nx, int ny) {
+    const LaffcHit hit = laffc_sweep(BrickField(live_level), o->dir,
+                                     o->w_body_px, o->h_body_px, nx, ny);
+    if (!hit.hit) return;
+    const BallBounce snap = laffc_bounce(hit, o->dir,
+                                         o->w_body_px, o->h_body_px, nx, ny);
+    o->dir = snap.dir;                      /* CALL change_direction */
+    enemy_home_target.x = snap.x;           /* LD (LAA7B),HL */
+    enemy_home_target.y = snap.y;
+    enemy_repick_target_current(*o);        /* flag_2 -> LAA7D_1 */
+}
+
 static void handling_bird_obj(Object *o) {
     int dx_q8, dy_q8;
     long nx_q8, ny_q8;
@@ -1584,6 +1616,8 @@ static void handling_bird_obj(Object *o) {
     ny_q8 = ((long)o->y_coord << 8) + o->y_coord_hi + dy_q8;
     nx = (int)(nx_q8 >> 8);
     ny = (int)(ny_q8 >> 8);
+    /* LA9BC_1 order: LAD69 (move) -> LAFFC -> check_margins. */
+    enemy_brick_reaction(o, nx, ny);
     if (!bounce_enemy_off_margins(o, &nx, &ny, &nx_q8, &ny_q8)) return;
     o->x_coord = (unsigned char)nx;
     o->x_coord_hi = (unsigned char)(nx_q8 & 0xFF);
@@ -3821,6 +3855,13 @@ static void probe_write_harness_state(FILE *f) {
      * raw bonus + marker bytes the replay harness diffs. Both were once
      * called bonus_state, which "worked" only because the regex gates
      * anchor on `=active` and the harness's dict kept the last. */
+    /* The alien's brick-hit walk target (orig LAA7B). Zero y means no
+     * target; anything else means a hit has latched and the alien is
+     * walking to the snapped position. Without this the whole reaction
+     * is invisible to every capture — the bricks are untouched by
+     * design, so there is nothing on screen that says it fired. */
+    fprintf(f, "\nenemy_home=%02X%02X",
+            (unsigned)enemy_home_target.x, (unsigned)enemy_home_target.y);
     fprintf(f, "\nbonus_pts_raw=%02X%02X%02X%02X%02X%04X",
             (unsigned)bonus.active,
             (unsigned)bonus.type,

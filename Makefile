@@ -740,6 +740,7 @@ parity-check-full:
 	$(MAKE) test-bigball-dirty-redraw
 	$(MAKE) test-stuck-ball-dirty-redraw
 	$(MAKE) test-enemy-brick-residue
+	$(MAKE) test-enemy-brick-walk
 	$(MAKE) test-bat-redraw-window
 	$(MAKE) test-ball-left-wall-escape
 	$(MAKE) test-l3-replay-seed
@@ -1251,6 +1252,15 @@ test-stuck-ball-dirty-redraw:
 # dirty-vs-full-redraw gates can't see (both sides flush identically).
 test-enemy-brick-residue:
 	python3 scripts/test_enemy_brick_residue.py
+
+# An alien that hits a brick destroys nothing and is not destroyed
+# (LAFFC_30 branches on sprite_set; only $02, the ball, reaches the
+# destroy path). It latches the snap point in LAA7B and walks there over
+# the next few frames. The reaction leaves NO trace on screen, so this
+# reads the enemy_home probe word — without it the whole thing is
+# unobservable and 75 gates pass either way.
+test-enemy-brick-walk:
+	python3 scripts/test_enemy_brick_walk.py
 
 test-rocket-flight-redraw:
 	python3 scripts/test_rocket_flight_redraw.py

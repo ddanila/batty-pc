@@ -48,12 +48,18 @@ Several paths use gameplay-equivalent but not byte-exact motion:
   Still approximate, and now decoded precisely — `handling_bird` calls
   `LAA7D` (steer, every 4 frames), `LAD69` (move), `LAFFC` (brick
   collision), then `check_margins` (clamp), in that order. The port
-  matches the steer and the move, runs NO brick collision for the bird,
-  and substitutes a reflect-and-re-aim for the clamp. `LAFFC` branches on
+  matches the steer and the move, and substitutes a reflect-and-re-aim
+  for the clamp. The brick collision, once absent, is ported as of
+  2026-08-09 (`enemy_brick_reaction` + `enemy_home_step`, gated by
+  `test-enemy-brick-walk`), so the clamp is the only piece of this line
+  still approximate. `LAFFC` branches on
   the object's sprite_set: the ball's destroy path is reached only for
   `$02`, while `$08`/`$09` (bird/UFO) latch the enemy's position into
   `LAA7B` — which flips `handling_bird` onto its `LAA44` HOMING branch —
-  and the tail re-targets randomly via `flag_2`. Full trace in
+  and the tail re-targets randomly via `flag_2`. The snap is then UNDONE
+  by the `LB1C3` fallthrough (a self-modified `LD HL,nn` holding the
+  position at LAFFC entry), so the alien walks to it over the following
+  frames instead of arriving there at once. Full trace in
   `notes/enemy-movement.md`. Ground truth + decode: `notes/enemy-movement.md`,
   capture via `scripts/capture_enemy_flight.py`. Enemy capture is
   unblocked (the L3 snapshot has a live enemy), unlike multi-ball.
