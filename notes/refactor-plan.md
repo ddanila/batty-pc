@@ -644,7 +644,23 @@ A new `BATTY_*` knob does not reach DOS just because `src` reads it. The
 test floppy bakes a HAND-MAINTAINED list of `SET` lines into
 `AUTOEXEC.BAT`, and a variable missing from it is silently absent — the
 gate then runs a DIFFERENT SCENARIO and can still pass, depending on what
-it asserts. Mine failed only because it asserted on screen content.
+it asserts. Mine failed only because it asserted on screen content; a
+gate checking "did it not crash" would have passed while testing nothing
+it named.
+
+`check_env_passthrough.py` closes that permanently, in both directions.
+MISSING is the bug above. ORPHANED is a `SET` line for a knob nothing
+reads — harmless at runtime, but it is what someone copies as a template,
+and it makes the list look maintained when it is not. Five knobs turned
+out to be missing (`BATTY_NOSOUND`, `BATTY_SOUND_OFF`,
+`BATTY_RENDER_PROFILE`, `BATTY_PROFILE_AUTO_FRAMES`,
+`BATTY_FULL_BAND_REBUILD`) — including one the new game-over gate was
+already setting to no effect.
+
+Knob names come from every `"BATTY_..."` STRING LITERAL, not from
+`getenv(` call sites: `parse_replay_ints("BATTY_REPLAY_BOMB", v, 2)`
+reaches `getenv` one level down, and scanning call sites reported nine
+false orphans on the first attempt.
 
 "How many pixels are lit" does not distinguish the game-over screen from
 the playfield: the playfield background is not black, so both are ~100%

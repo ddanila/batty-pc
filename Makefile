@@ -416,6 +416,21 @@ $(TEST_FLOPPY_OUT): $(FLOPPY_TEST_EXE) $(ASSETS) $(FLOPPY_SRC)
 	if [ -n "$$BATTY_HOLD_GAME_OVER" ]; then \
 	    printf 'SET BATTY_HOLD_GAME_OVER=%s\r\n' "$$BATTY_HOLD_GAME_OVER" >> $(AUTOEXEC_T) ; \
 	fi; \
+	if [ -n "$$BATTY_NOSOUND" ]; then \
+	    printf 'SET BATTY_NOSOUND=%s\r\n' "$$BATTY_NOSOUND" >> $(AUTOEXEC_T) ; \
+	fi; \
+	if [ -n "$$BATTY_SOUND_OFF" ]; then \
+	    printf 'SET BATTY_SOUND_OFF=%s\r\n' "$$BATTY_SOUND_OFF" >> $(AUTOEXEC_T) ; \
+	fi; \
+	if [ -n "$$BATTY_RENDER_PROFILE" ]; then \
+	    printf 'SET BATTY_RENDER_PROFILE=%s\r\n' "$$BATTY_RENDER_PROFILE" >> $(AUTOEXEC_T) ; \
+	fi; \
+	if [ -n "$$BATTY_PROFILE_AUTO_FRAMES" ]; then \
+	    printf 'SET BATTY_PROFILE_AUTO_FRAMES=%s\r\n' "$$BATTY_PROFILE_AUTO_FRAMES" >> $(AUTOEXEC_T) ; \
+	fi; \
+	if [ -n "$$BATTY_FULL_BAND_REBUILD" ]; then \
+	    printf 'SET BATTY_FULL_BAND_REBUILD=%s\r\n' "$$BATTY_FULL_BAND_REBUILD" >> $(AUTOEXEC_T) ; \
+	fi; \
 	if [ -n "$$BATTY_SUPPRESS_NO_BALL_DEATH" ]; then \
 	    printf 'SET BATTY_SUPPRESS_NO_BALL_DEATH=%s\r\n' "$$BATTY_SUPPRESS_NO_BALL_DEATH" >> $(AUTOEXEC_T) ; \
 	fi; \
@@ -1085,10 +1100,17 @@ test-notes-numbers:
 test-ball-sign-cache-owner:
 	python3 scripts/test_ball_sign_cache_owner.py
 
+# Does every BATTY_* knob src reads actually reach DOS on the test
+# floppy? A missing SET line does not error — the gate just runs a
+# different scenario. This cost a run when BATTY_REPLAY_LIVES was added.
+test-env-passthrough:
+	python3 scripts/check_env_passthrough.py
+
 test-source-gates:
 	$(MAKE) test-gate-greps
 	$(MAKE) test-notes-numbers
 	$(MAKE) test-ball-sign-cache-owner
+	$(MAKE) test-env-passthrough
 	$(MAKE) test-l3-replay-seed
 	$(MAKE) test-death-sparks
 	$(MAKE) test-rocket-bonus
