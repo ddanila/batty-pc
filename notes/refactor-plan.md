@@ -670,6 +670,25 @@ the letter row to change, since placement alone would look identical
 whether `step_name_letter` worked or not. Mutation-checked by making the
 LEFT arm a no-op.
 
+`.PHONY` was the fourth hand-maintained list found out of sync: 85 of
+109 task targets, with everything added in the last stretch missing —
+`test-life-loss`, `test-level-advance`, `test-gate-index`,
+`parity-check-parallel` and 21 others. A target that is not `.PHONY`
+silently does nothing if a file of that name ever appears, which is the
+same "green while running nothing" failure as a host suite that is never
+invoked.
+
+This one is DERIVED rather than gated. The list is now a `$(shell grep)`
+over the Makefile itself, so there is nothing to drift — strictly better
+than adding 25 names and checking them. Verified two ways: all 109 task
+targets are `.PHONY` by `make -p`, and creating a file named
+`test-life-loss` no longer shadows the target.
+
+Four lists have now drifted (`test-fast` vs `parity-check` vs CI, the
+`BATTY_*` passthrough, the gate index, `.PHONY`). The pattern is worth
+naming: this repo keeps growing parallel lists of the same set, and each
+looks complete on its own. Derive where possible, gate where not.
+
 `notes/testing.md` had no index. It grew as a narrative of how
 particular gates came to be — worth keeping — but 30 of 59 gates were
 mentioned nowhere in it, including several of the oldest, so "what
