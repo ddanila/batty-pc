@@ -746,11 +746,40 @@ run, at x=168 y=1 (exactly as `test-enemy-descend` documents), so a
 setup-time poke is overwritten before the first probe. Verified: with
 `$9B98`/`$9B9A` set to `$F0`/`$04`, the capture still reads x=168 y=1.
 
-So settling #16 needs a MID-RUN poke — write the position after the
-spawn, then step — which `capture_frame_timeline_original.py` does not
-currently support (its setup runs once, before stepping). Adding a
-"poke at frame N" op is the next step, and it is a change to the capture
-tool rather than to the game.
+`capture_frame_timeline_original.py` now takes
+`--poke-at-frame FRAME:ADDR:BYTES`, which writes after reaching that
+frame and before its probe. With it, the alien can be placed:
+
+    --poke-at-frame 10:0x9B98:0xF0   x = 240
+    --poke-at-frame 10:0x9B9A:0x04   y = 4
+    --poke-at-frame 10:0x9B9C:0x00   dir = $00 (rightward)
+
+### What the original actually did — and it is not what I expected
+
+    frame 14  x=240 y=8 dir=$00   target=$2C
+    frame 18  x=243      dir=$3F   target=$2C
+    frame 22  x=247      dir=$3E   target=$2C
+    frame 26  x=251      dir=$3D   target=$2C
+    frame 30  x=255      dir=$3C   target=$2C
+
+The target NEVER CHANGES. The original did not re-aim at all between
+x=240 and x=255; `dir` simply walks toward the `$2C` it already had,
+one step at a time, exactly as `enemy_turn_towards_target` does. And the
+alien is not bounced or clamped — it travels to x=255.
+
+So the question "does the original pick `$38` or `$18` at the right
+edge?" has no answer at these coordinates, because the original picks
+NOTHING here. The port re-aims where the original does not.
+
+That makes #16 larger than an angle table: the port clamps the alien at
+`x_max = 256 - 8 - w` and re-aims on the bounce, and at the same
+coordinates the original does neither. Which of the two behaviours is
+right needs the original's own margin threshold, which this capture has
+not found — x=255 is the last value a byte holds, so whatever the
+original does next happens off the end of this measurement.
+
+Still not fixed, and now for a better reason: changing `$38` to `$18`
+would refine a re-aim the original may not perform at all.
 
 ### What is in place meanwhile
 

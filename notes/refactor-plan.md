@@ -569,6 +569,37 @@ removed when they were added; a multiset diff confirmed zero lines
 lost.
 
 
+#### The capture tool gained a mid-run poke, and #16 got bigger
+
+The blocker from last entry was precise, so it was fixable:
+`capture_frame_timeline_original.py --poke-at-frame FRAME:ADDR:BYTES`
+writes memory after reaching a frame and before its probe. Setup ops run
+before the game spawns its objects; this runs after.
+
+It refuses a poke frame that is not also a capture frame. That is not
+tidiness — a poke only fires when the loop STOPS at that frame, so
+naming a frame outside `--frames` is a silent no-op, and the run then
+looks entirely normal while measuring unpoked state. I made exactly that
+mistake and read x=167 where I expected x=240, which is the only reason
+I noticed.
+
+Then the measurement, which did not say what I expected. With the alien
+placed at x=240, y=4, dir=`$00` and stepped:
+
+    frame 14  x=240 dir=$00  target=$2C
+    frame 30  x=255 dir=$3C  target=$2C
+
+The target NEVER CHANGES. The original does not re-aim anywhere between
+x=240 and x=255; `dir` just walks toward the `$2C` it already had. The
+alien is not clamped or bounced either — it travels to x=255.
+
+So "does the original pick `$38` or `$18` at the right edge?" has no
+answer at these coordinates, because the original picks nothing here.
+The port re-aims where the original does not, which makes #16 larger
+than an angle table and smaller than a bug: two behaviours differ, and
+this capture does not reach the original's own margin threshold to say
+which is right.
+
 #### Trying to settle #16 against the original
 
 Having said #16 was bounded rather than blocked, the next step was to

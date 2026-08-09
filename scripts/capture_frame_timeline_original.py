@@ -78,6 +78,14 @@ def main():
     ap.add_argument('--zesarux', default='tools/zesarux/src/zesarux')
     ap.add_argument('--zrcp-port', type=int, default=10000)
     ap.add_argument('--require-motion', action='store_true')
+    ap.add_argument('--poke-at-frame', action='append', default=[],
+                    metavar='FRAME:ADDR:BYTES',
+                    help="Write memory AFTER reaching FRAME, before that "
+                         "frame's probe. Repeatable. BYTES is comma-separated "
+                         "(e.g. 4:0x9B98:0xF0,0x00). Needed because a "
+                         "replay's setup ops run before the game spawns its "
+                         "objects: poking object_enemy at setup time is "
+                         "overwritten by the fresh spawn (known-bugs #16).")
     ap.add_argument('--probe-ball', type=lambda s: int(s, 0), default=None,
                     help='read object_ball_1 at this address (e.g. 0x9AD0) '
                          'at each captured frame and print x/y/dir')
@@ -97,6 +105,28 @@ def main():
 
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
+
+    pokes = {}
+    for spec_str in args.poke_at_frame:
+        try:
+            f_s, addr_s, bytes_s = spec_str.split(':', 2)
+            pokes.setdefault(int(f_s, 0), []).append(
+                (int(addr_s, 0), [int(b, 0) for b in bytes_s.split(',')]))
+        except ValueError:
+            raise SystemExit(f"--poke-at-frame wants FRAME:ADDR:BYTES, "
+                             f"got {spec_str!r}")
+
+    # A poke only fires when the loop STOPS at that frame, so a poke frame
+    # that is not a capture frame is a silent no-op — the run then looks
+    # normal and the data is simply wrong. Refuse it rather than let that
+    # happen: this exact mistake produced a confident bad capture once.
+    missing = sorted(f for f in pokes if f not in frames)
+    if missing:
+        raise SystemExit(
+            f"--poke-at-frame names frame(s) {missing} that are not in "
+            f"--frames {sorted(frames)}. The poke would never fire and the "
+            f"capture would silently be of unpoked state. Add them to "
+            f"--frames.")
 
     proc, zc = launch_emulator(args.zesarux, machine="48k",
                                extra_args=[], port=args.zrcp_port, headless=True)
@@ -126,6 +156,10 @@ def main():
             idx = decode_scr(scr.read_bytes())
             (out / f'frame_{n:04d}.idx').write_bytes(idx)
             captures.append((n, scr, idx))
+            for addr, vals in pokes.get(n, []):
+                zc.write_memory(addr, bytes(vals))
+                print(f'    poke@frame{n}: {addr:#06x} <- '
+                      + ','.join(f'{v:#04x}' for v in vals))
             if args.probe_ball is not None:
                 # Read object_ball_1 ($9AD0) at this frame boundary (the
                 # tool reliably parks at frame_pc here). Bytes +02/+04 are
