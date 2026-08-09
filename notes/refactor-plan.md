@@ -8,7 +8,7 @@ test. Started 2026-08-07.
 The stage table below is complete except stage 1, which is blocked for a
 reason rather than for want of effort — see the end of this section.
 
-**The code.** `main.cpp`: 7,747 → 6,851 lines (-11.6%) across 15
+**The code.** `main.cpp`: 7,747 → 6,852 lines (-11.6%) across 15
 modules. The longest function is `run_level` at 113 lines, and it is an
 orchestrator of named phases, which is what it should be.
 
@@ -131,7 +131,7 @@ happened, and `make test-video` caught it.
 | 1a | `replay_parse` — the BATTY_REPLAY_* value formats | 75 | **done** — 7 tests |
 | 1 | replay / probe scaffolding | ~430 | **as far as it should go** — 6 overrides out in `replay`, 6 host tests; the remaining 3 are blocked by design, see below |
 
-`main.cpp`: 7,747 → 6,851 (`wc -l`; see the status block on why this is not Watcom's count).
+`main.cpp`: 7,747 → 6,852 (`wc -l`; see the status block on why this is not Watcom's count).
 100 host tests + source gates, all via `make test-fast` in seconds.
 
 ### Stage 5b: one destroyed-cell reset, not two
@@ -568,6 +568,36 @@ paragraph. Use the headings, not the order. Nothing was reordered or
 removed when they were added; a multiset diff confirmed zero lines
 lost.
 
+
+#### The bat resize was more faithful than its own notes said
+
+Taking the disassembly to the next parity gap — "big-bat resize timing
+is matched visually but not a literal port". Decoding `bat_resize`
+($9D2C): the body grows 2 px every OTHER frame (`RR E` on
+`counter_misc` returns on the odd parity), from `$1C` (28) to `$2C`
+(44).
+
+I worked out from the code that the port grew twice as fast, and was
+wrong: `tick_bat_resize` already has an every-other-tick gate, correctly
+documented right there — "ungated it grew twice as fast as the
+disassembly prescribes". Someone had already found and fixed this.
+
+What was actually wrong was a SECOND copy of that explanation 2,300
+lines earlier, saying the port "roughly matches" at 1 px/tick. Written
+before the gate went in, left behind after. The same
+two-copies-one-stale pattern as the bricks header and the SPACE-key
+comment, and it is what sent me looking for a bug that was not there.
+
+`parity-gaps.md` had inherited the same understatement. Both now say the
+rate and endpoints are EXACT, with the arithmetic (8 steps of `extra_px`
+per side over `BAT_BODY_W = 28` gives 28 -> 44 in ~16 frames), and name
+what genuinely is not literal: the original interleaves an x adjustment
+plus `check_margins` on the alternate frames, where the port keeps
+`BAT_X` fixed and widens symmetrically. Same visible extent, different
+means.
+
+A gap listed as open for months was mostly closed, and the record said
+otherwise because a duplicated comment outlived its subject.
 
 #### Guarding a fix no QEMU gate can see
 

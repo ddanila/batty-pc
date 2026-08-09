@@ -819,10 +819,11 @@ static BonusState bonus = {0, 0, 0, 0, {0, 0}};
  * comment above and ball_speed_ramp_tick(). */
 static int big_ball_active(void);    /* forward — defined below */
 static int big_bat_active(void);     /* forward — defined below */
-/* Bat resize animation - bat.extra_px ramps 0..8 toward bat.extra_target
- * (port of bat_resize at $9D2C). Width grows / shrinks 1 px / 50 Hz
- * tick = ~6 px / 100 ms which roughly matches the original's 2-px-
- * every-other-frame from $9D45's `RR E` gating. */
+/* Bat resize animation — bat.extra_px ramps 0..8 toward bat.extra_target
+ * (port of bat_resize at $9D2C). The rate and endpoints are documented
+ * on tick_bat_resize, which is where the gating lives; this comment used
+ * to carry a second copy saying the port only "roughly" matched, which
+ * was written before the every-other-tick gate went in and stayed after. */
 
 /* "+400" floating-marker state spawned on bonus catch (port of
  * sprite_set $0B transition at $A6BA + handling_400pts at $A58D).
