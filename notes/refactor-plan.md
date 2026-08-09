@@ -560,6 +560,32 @@ removed when they were added; a multiset diff confirmed zero lines
 lost.
 
 
+#### A bullet that hit a brick stayed in flight
+
+The first sweep with `mutate.py` — eight mutations, several per module
+rather than one per suite, which is what the earlier pass under-sampled.
+Seven were caught. One survived, and it was the serious kind.
+
+`start_blast` turns a bullet into a blast and deactivates it. Mutating
+`bullet_active[i] = 0` to `= 1` there left the whole weapons suite
+green: the hit tests check WHAT was hit, the blast tests check the
+blast, and neither looks at the bullet afterwards. In the game that
+bullet keeps climbing and clears the rest of the column from one shot.
+
+`bullets_clear` had the same shape of gap. The suite called it
+constantly as setup but only ever asserted that it reset the animation
+frame — never that it deactivated anything. It runs at level entry, on
+death and on level clear, so a bullet surviving it is a phantom shot in
+the next level.
+
+`test_hit_consumes_the_bullet` covers both, and both mutations are now
+caught. Also confirmed: mutating `bullets_clear` to skip only the active
+flag is caught, so the test is not passing on the frame reset alone.
+
+One sweep entry errored rather than reporting — a substitution that
+matched nothing, which under the old hand-rolled method would have read
+as a survived mutation and sent me looking for a gap that was not there.
+
 #### Mutation testing made reliable, after it went wrong three ways
 
 The technique found five real gaps in this repo's own tests. It also

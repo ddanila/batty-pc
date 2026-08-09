@@ -148,6 +148,56 @@ static void test_hits_name_standing_cells() {
 }
 
 /* Every impact leaves a blast; leaving the screen must not. */
+
+/* A bullet is CONSUMED by what it hits, and bullets_clear really clears.
+ *
+ * start_blast turns the bullet into a blast; if it forgot to deactivate
+ * the bullet, that bullet would keep climbing and destroy the rest of
+ * the column from one shot. Mutating `bullet_active[i] = 0` to `= 1`
+ * inside start_blast left this whole suite green — the hit tests check
+ * WHAT was hit and the blast tests check the blast, and neither looks at
+ * the bullet afterwards.
+ *
+ * bullets_clear is checked here too: the suite called it constantly as
+ * setup but only ever asserted that it reset the animation frame. It
+ * runs at level entry, on death and on level clear, so a bullet
+ * surviving it is a phantom shot in the next level. */
+static void test_hit_consumes_the_bullet() {
+    const int before = failures;
+    u8 cells[FIELD_ROWS * FIELD_COLS];
+    memset(cells, 0x00, sizeof(cells));       /* every brick standing */
+    BrickField field(cells);
+    Object enemy;
+    memset(&enemy, 0, sizeof(enemy));         /* inactive */
+
+    bullets_clear();
+    bullet_active[0] = 1;
+    bullet_x[0] = FIELD_X0 + 3 * BRICK_W_PX;
+    bullet_y[0] = FIELD_Y0 + FIELD_ROWS * BRICK_H_PX - 1;
+
+    const BulletHit hit = bullet_advance(0, enemy, field);
+    check(hit.what == BulletHit::BRICK, "expected a BRICK hit, got %d\n",
+          (int)hit.what);
+    check(bullet_active[0] == 0,
+          "the bullet is still active after hitting a brick; it would "
+          "climb on and clear the column from one shot\n");
+    check(bullet_blast_ticks[0] > 0,
+          "no blast started where the bullet struck\n");
+
+    /* bullets_clear must undo all of it. */
+    bullet_active[1] = 1;
+    bullet_x[1] = 40;
+    bullets_clear();
+    int still = 0, blasting = 0;
+    for (int i = 0; i < N_BULLETS; i++) {
+        if (bullet_active[i]) still++;
+        if (bullet_blast_ticks[i] != 0) blasting++;
+    }
+    check(still == 0, "bullets_clear left %d bullet(s) active\n", still);
+    check(blasting == 0, "bullets_clear left %d blast(s) running\n", blasting);
+    report("hit_consumes_bullet", before, "consumed + cleared   ok");
+}
+
 static void test_blast_only_on_impact() {
     const int before = failures;
     fill_field(true);
@@ -291,6 +341,7 @@ int main() {
     test_bullet_cannot_tunnel();
     test_bullet_moves_exactly_bullet_speed();
     test_hits_name_standing_cells();
+    test_hit_consumes_the_bullet();
     test_blast_only_on_impact();
     test_blast_snaps_to_column();
     test_exploding_alien_is_not_a_target();
