@@ -5,8 +5,8 @@ test. Started 2026-08-07.
 
 ## Where this stands
 
-The full suite runs **55/55 green in 343s** — four clean runs now, the
-latest covering the level-entry reset going through `bullets_clear`.
+The full suite runs **55/55 green in 343s** — five clean runs now, the
+latest covering the `step_ball` decomposition.
 All five defects this refactor surfaced are closed.
 
 Gate count 51 → 55 this session: `test-blast-dirty-redraw`,
@@ -14,7 +14,7 @@ Gate count 51 → 55 this session: `test-blast-dirty-redraw`,
 and `test-invariant-owners`, each covering something nothing reached
 before.
 
-`main.cpp`: 7,746 → 6,829 lines (-12%) across 14 modules. `make test-fast`
+`main.cpp`: 7,746 → 6,848 lines (-12%) across 14 modules. `make test-fast`
 runs every host test and source gate in seconds; `--full` is 54 gates
 in under six minutes.
 
@@ -616,6 +616,17 @@ row-scoped — now live beside the primitives they drive. What is left in
 `main.cpp` is the two thin wrappers that turn a level index into
 `(cells, lattr, bg_attr)`, which is the only thing the module could not
 know.
+
+`step_ball` went 101 → 52 lines by lifting out its two self-contained
+blocks: `deflect_ball_off_bat` (snap to rest height, then CATCH or
+deflect — it returns 1 for a catch, which fully handles the frame) and
+`resolve_primary_brick_hit` (sweep, then reverse and unwind the axis the
+ball entered through, pixel position AND q8.8 fraction). What is left
+reads as the sequence it always was: move, side walls, ceiling, bat,
+floor, bricks, commit. The provenance moved with the code — LAB1F's
+deflection table and the quantised catch offset now sit in the function
+that implements them, and LAFFC's "keep the moved low byte" note sits in
+the brick resolver.
 
 `show_round_banner` split into `draw_round_banner` and
 `hold_round_banner`, which separates a long provenance note from a

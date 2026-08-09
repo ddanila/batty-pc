@@ -4495,11 +4495,78 @@ static int sweep_bricks_for_primary(int next_x, int next_y) {
 /* A stuck ball rides the bat at the catch offset (where it hit, when
  * the CATCH bonus stuck it; otherwise BALL_X_OFFSET_ON_BAT) until SPACE
  * or the timeout auto-launches it. */
+/* Sweep the bricks along the ball's path and, on a hit, reverse the
+ * direction and unwind the axis the ball entered through — putting both
+ * the pixel position and its q8.8 fraction back where the collision
+ * decided they belong. */
+static void resolve_primary_brick_hit(int *next_x, int *next_y,
+                                      long *next_x_q8, long *next_y_q8) {
+    const int hit = sweep_bricks_for_primary(*next_x, *next_y);
+    if (hit == 3) {
+        /* LAFFC path already reflected the direction and snapped the
+         * ball to the cell edge (in BALL_X/BALL_Y). LAFFC_26-29 set
+         * only the pixel byte (IX+$02 / IX+$04) and LEAVE the q8.8
+         * fraction from the move untouched, so keep the moved low
+         * byte rather than zeroing it — matching the original's
+         * sub-pixel accumulation (probed: x frac 9, y frac 72). */
+        *next_x_q8 = ((long)BALL_X << 8) | (*next_x_q8 & 0xFF);
+        *next_y_q8 = ((long)BALL_Y << 8) | (*next_y_q8 & 0xFF);
+        *next_x = BALL_X;
+        *next_y = BALL_Y;
+    } else if (hit == 1) {
+        ball_reflect_descriptor(0, 1);
+        *next_y = BALL_Y;
+        *next_y_q8 = ((long)BALL_Y << 8) + objects[OBJ_BALL_1].y_coord_hi;
+    } else if (hit == 2) {
+        ball_reflect_descriptor(1, 0);
+        *next_x = BALL_X;
+        *next_x_q8 = ((long)BALL_X << 8) + objects[OBJ_BALL_1].x_coord_hi;
+    }
+}
+
+/* The primary ball has reached the bat's top edge. Snap it to rest
+ * height and either CATCH it or deflect it.
+ *
+ * Returns 1 if the ball was caught, which fully handles the frame — the
+ * caller must return without moving the ball any further. Returns 0
+ * after a normal deflection, leaving *next_y snapped and the direction
+ * rewritten for the caller to commit. */
+static int deflect_ball_off_bat(int next_x, int *next_y) {
+    int dx_q8, dy_q8;
+    *next_y = BAT_Y - BALL_H_PX;   /* rests at $A6 = 166 */
+    /* MAGNET/CATCH bonus (original BAT+$14 == $03, LAB1F_1..3): the
+     * ball sticks on contact and waits for FIRE to release. Only a
+     * NORMAL-width bat catches (the original gates on width $1C; a
+     * big bat falls through to the normal deflection). The caught
+     * offset is QUANTIZED: offset = ball_x - bat_x, clamped >=0, then
+     * `& 0xFC` (multiple of 4) and clamped to 0x18 - so the rest x
+     * (= bat_x + offset) and the launch direction derived from it
+     * match the Spectrum (probed: ball_x 133 -> offset 0x10 -> rest
+     * x 132). The original then snaps the ball to y=$A7=167. */
+    if (objects[OBJ_BAT_1].bonus_applied == 0x03 && bat.extra_px == 0) {
+        catch_ball_on_bat(next_x);
+        return 1;
+    }
+    ball.dy = -BALL_SPEED;
+    /* Exact LAB1F deflection: offset = ball_x + 3 - bat_x (the bat
+     * object's left edge, the original's IY+$02); an enlarged bat
+     * selects the LABFC table. Validated against captured ground
+     * truth — see notes/bat-deflection.md. */
+    objects[OBJ_BALL_1].dir =
+        bat_deflect_dir(objects[OBJ_BALL_1].dir,
+                        next_x + 3 - BAT_X, bat.extra_px != 0);
+    dir_to_dxdy(objects[OBJ_BALL_1].dir, objects[OBJ_BALL_1].speed,
+                      &dx_q8, &dy_q8);
+    ball.dx = (dx_q8 < 0) ? -1 : (dx_q8 > 0 ? 1 : 0);
+    ball.dy = (dy_q8 < 0) ? -1 : (dy_q8 > 0 ? 1 : 0);
+    sound_queue(SND_BAT_BEAT);            /* ball-on-bat */
+    return 0;
+}
+
 static void step_ball(void) {
     int next_x, next_y;
     int dx_q8, dy_q8;
     long next_x_q8, next_y_q8;
-    int bat_top   = BAT_Y;
     int ball_sz   = eff_ball_size();
     if (ball.stuck) {
         rest_ball_on_bat();
@@ -4524,33 +4591,7 @@ static void step_ball(void) {
     bounce_ball_off_side_walls(&next_x, &next_x_q8, ball_sz);
     bounce_ball_off_ceiling(&next_y, &next_y_q8);
     if (ball_lands_on_bat(next_x, next_y, ball_sz)) {
-        next_y = bat_top - BALL_H_PX;   /* rests at $A6 = 166 */
-        /* MAGNET/CATCH bonus (original BAT+$14 == $03, LAB1F_1..3): the
-         * ball sticks on contact and waits for FIRE to release. Only a
-         * NORMAL-width bat catches (the original gates on width $1C; a
-         * big bat falls through to the normal deflection). The caught
-         * offset is QUANTIZED: offset = ball_x - bat_x, clamped >=0, then
-         * `& 0xFC` (multiple of 4) and clamped to 0x18 - so the rest x
-         * (= bat_x + offset) and the launch direction derived from it
-         * match the Spectrum (probed: ball_x 133 -> offset 0x10 -> rest
-         * x 132). The original then snaps the ball to y=$A7=167. */
-        if (objects[OBJ_BAT_1].bonus_applied == 0x03 && bat.extra_px == 0) {
-            catch_ball_on_bat(next_x);
-            return;
-        }
-        ball.dy = -BALL_SPEED;
-        /* Exact LAB1F deflection: offset = ball_x + 3 - bat_x (the bat
-         * object's left edge, the original's IY+$02); an enlarged bat
-         * selects the LABFC table. Validated against captured ground
-         * truth — see notes/bat-deflection.md. */
-        objects[OBJ_BALL_1].dir =
-            bat_deflect_dir(objects[OBJ_BALL_1].dir,
-                            next_x + 3 - BAT_X, bat.extra_px != 0);
-        dir_to_dxdy(objects[OBJ_BALL_1].dir, objects[OBJ_BALL_1].speed,
-                          &dx_q8, &dy_q8);
-        ball.dx = (dx_q8 < 0) ? -1 : (dx_q8 > 0 ? 1 : 0);
-        ball.dy = (dy_q8 < 0) ? -1 : (dy_q8 > 0 ? 1 : 0);
-        sound_queue(SND_BAT_BEAT);            /* ball-on-bat */
+        if (deflect_ball_off_bat(next_x, &next_y)) return;
     }
     /* Past the bat (= primary ball lost). Original at LA27E_25 ($A4xx)
      * checks Y >= $C0 (= 192). It deactivates the ball and decrements
@@ -4568,29 +4609,7 @@ static void step_ball(void) {
     }
     /* Side-aware brick collision: the sweep says which axis the ball
      * entered through, and we reverse and unwind that axis. */
-    {
-        const int hit = sweep_bricks_for_primary(next_x, next_y);
-        if (hit == 3) {
-            /* LAFFC path already reflected the direction and snapped the
-             * ball to the cell edge (in BALL_X/BALL_Y). LAFFC_26-29 set
-             * only the pixel byte (IX+$02 / IX+$04) and LEAVE the q8.8
-             * fraction from the move untouched, so keep the moved low
-             * byte rather than zeroing it — matching the original's
-             * sub-pixel accumulation (probed: x frac 9, y frac 72). */
-            next_x_q8 = ((long)BALL_X << 8) | (next_x_q8 & 0xFF);
-            next_y_q8 = ((long)BALL_Y << 8) | (next_y_q8 & 0xFF);
-            next_x = BALL_X;
-            next_y = BALL_Y;
-        } else if (hit == 1) {
-            ball_reflect_descriptor(0, 1);
-            next_y = BALL_Y;
-            next_y_q8 = ((long)BALL_Y << 8) + objects[OBJ_BALL_1].y_coord_hi;
-        } else if (hit == 2) {
-            ball_reflect_descriptor(1, 0);
-            next_x = BALL_X;
-            next_x_q8 = ((long)BALL_X << 8) + objects[OBJ_BALL_1].x_coord_hi;
-        }
-    }
+    resolve_primary_brick_hit(&next_x, &next_y, &next_x_q8, &next_y_q8);
     BALL_X = next_x;
     BALL_Y = next_y;
     objects[OBJ_BALL_1].x_coord_hi = (unsigned char)(next_x_q8 & 0xFF);
