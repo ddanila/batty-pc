@@ -112,6 +112,14 @@ void paint_shadow_row(unsigned int hl_attr, const unsigned char *cell_row) {
 /* Port of print_briks ($ADE1). Walks the 12x15 level cell grid and
  * compositess each non-skip cell into scr_buff/attr_buff via
  * print_one_brik_buf_c + brik_shadow_c. */
+int bricks_live_count(const u8 *cells) {
+    int i, n = 0;
+    for (i = 0; i < FIELD_ROWS * FIELD_COLS; i++) {
+        if (!(cells[i] & 0xA0)) n++;
+    }
+    return n;
+}
+
 void paint_bricks(const u8 *cells) {
     int row, col;
     brik_addr_buf = 0x401;   /* scr_buff + $401 = pixel (8, 32). */

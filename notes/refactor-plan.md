@@ -16,7 +16,7 @@ Gate count 51 → 59 this session: `test-blast-dirty-redraw`,
 `test-game-over-visual` and `test-name-entry-visual`, each covering
 something nothing reached before.
 
-`main.cpp`: 7,747 → 6,839 lines (-11.7%) across 15 modules. `make test-fast`
+`main.cpp`: 7,747 → 6,838 lines (-11.7%) across 15 modules. `make test-fast`
 runs every host test and source gate in seconds; `--full` is 59 gates
 in under six minutes.
 
@@ -106,7 +106,7 @@ happened, and `make test-video` caught it.
 | 1a | `replay_parse` — the BATTY_REPLAY_* value formats | 75 | **done** — 7 tests |
 | 1 | replay / probe scaffolding | ~430 | **started** — 5 overrides out in `replay`, 6 host tests; the rest need the state first |
 
-`main.cpp`: 7,747 → 6,839 (`wc -l`; see the status block on why this is not Watcom's count).
+`main.cpp`: 7,747 → 6,838 (`wc -l`; see the status block on why this is not Watcom's count).
 100 host tests + source gates, all via `make test-fast` in seconds.
 
 ### Stage 5b: one destroyed-cell reset, not two
@@ -669,6 +669,32 @@ and the gate was extended in the same commit to press LEFT and require
 the letter row to change, since placement alone would look identical
 whether `step_name_letter` worked or not. Mutation-checked by making the
 LEFT arm a no-op.
+
+Writing the clear-bricks knob surfaced that this codebase has TWO
+"is this brick there" rules, and both are correct:
+
+  `BrickField::standing`  `!(cell & 0x80)` — bit 7, destroyed. Collision.
+                          An undestructible brick is still there to
+                          bounce off.
+  `bricks_live_count`     `!(cell & 0xA0)` — destroyed OR undestructible
+                          (bit 5). Level completion. An undestructible
+                          brick can never be cleared, so counting it
+                          would make the level uncompletable.
+
+Reading one as the other has no visible symptom until a level either
+never ends or ends early. The rule was an unexported four-liner in
+`main.cpp` with no test; it moved to `bricks` as `bricks_live_count`
+(taking `const u8 *cells`, the module's existing style) with both rules
+stated together and a host test that asserts the same grid gives
+different answers to each.
+
+Also, a per-override audit of what still blocks stage 1: the remaining
+seeders need main.cpp FUNCTIONS, not just state — `apply_replay_bomb_
+override` calls `bomb_launch`, `apply_replay_force_bonus` calls
+`try_spawn_bonus`, and the brick ones need `live_level`, which is game
+state rather than compositor state and belongs where it is. So the next
+increment is a real move, not another easy slice, and the plan should
+stop implying otherwise.
 
 `parity-gaps.md` listed five game-FLOW transitions as ungated. **All
 five are now closed.** The last two — level-clear → next and the level

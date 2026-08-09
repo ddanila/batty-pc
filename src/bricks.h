@@ -28,6 +28,24 @@
 const int BRICK_BAND_Y_TOP = 31;
 const int BRICK_BAND_Y_BOT = 128;
 
+/* How many bricks still stand between the player and the next level.
+ *
+ * There are TWO "is this brick there" rules in this codebase and they
+ * are deliberately different:
+ *
+ *   BrickField::standing (level.h)  `!(cell & 0x80)`  — bit 7, DESTROYED.
+ *       Used for collision. An undestructible brick is very much still
+ *       there to bounce off.
+ *   bricks_live_count (here)     `!(cell & 0xA0)`  — bit 7 or bit 5,
+ *       destroyed OR UNDESTRUCTIBLE. Used for level completion. An
+ *       undestructible brick can never be cleared, so counting it would
+ *       make the level uncompletable.
+ *
+ * Reading one rule as the other is an easy mistake with no visible
+ * symptom until a level either never ends or ends early, which is why
+ * both are stated here and covered in tests/test_bricks.cpp. */
+int bricks_live_count(const u8 *cells);
+
 /* Paint every standing brick in `cells` into scr_buff / attr_buff. */
 void paint_bricks(const u8 *cells);
 

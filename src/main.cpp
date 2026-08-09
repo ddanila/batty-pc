@@ -3428,12 +3428,11 @@ static int laffc_collision(Object *o, int prev_x, int prev_y, int new_x, int new
 /* Count remaining destructible bricks: bit 7 clear (still present)
  * AND bit 5 clear (not undestructible). bit 4 is the multi-hit
  * "next hit destroys" marker — those still count as destructible. */
+/* The live-brick rule lives in bricks (with the contrast against
+ * BrickField::solid spelled out there); this is just the binding to the
+ * current level's grid. */
 static int live_bricks_remaining(void) {
-    int i, n = 0;
-    for (i = 0; i < LVL_CELLS; i++) {
-        if (!(live_level[i] & 0xA0)) n++;
-    }
-    return n;
+    return bricks_live_count(live_level);
 }
 
 /* --- Enemy preparation (port of enemy_prepare @ $9EAA) -----------------

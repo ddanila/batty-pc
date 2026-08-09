@@ -36,7 +36,10 @@ static void check(bool ok, const char *fmt, ...) {
     va_end(ap);
 }
 
+static int tests_run = 0;
+
 static void report(const char *name, int before, const char *detail) {
+    tests_run++;
     printf("  %-28s %s\n", name, failures > before ? "FAIL" : detail);
 }
 
@@ -340,6 +343,60 @@ static void test_window_repaint_matches_full_at_its_edges() {
     report("window_repaint_matches_full", before, "15 levels x 10 windows ok");
 }
 
+
+/* The two "is this brick there" rules must stay different.
+ *
+ * BrickField::standing is `!(cell & 0x80)` — an undestructible brick is
+ * still there to bounce off. bricks_live_count is `!(cell & 0xA0)` — an
+ * undestructible brick can never be cleared, so counting it toward level
+ * completion would make the level uncompletable.
+ *
+ * Reading one as the other has no visible symptom until a level either
+ * never ends or ends early. BATTY_REPLAY_CLEAR_BRICKS depends on the
+ * distinction too: it must not turn an undestructible cell into rubble.
+ */
+static void test_live_count_vs_solid() {
+    const int before = failures;
+    u8 cells[FIELD_ROWS * FIELD_COLS];
+    const int ALL = FIELD_ROWS * FIELD_COLS;
+
+    memset(cells, 0x01, sizeof(cells));          /* all plain, all live */
+    check(bricks_live_count(cells) == ALL,
+          "a full grid counted %d, expected %d\n",
+          bricks_live_count(cells), ALL);
+
+    memset(cells, 0x81, sizeof(cells));          /* all destroyed */
+    check(bricks_live_count(cells) == 0,
+          "an all-destroyed grid counted %d\n", bricks_live_count(cells));
+
+    memset(cells, 0x21, sizeof(cells));          /* all undestructible */
+    check(bricks_live_count(cells) == 0,
+          "an all-undestructible grid counted %d — a level made only of "
+          "metal could never be completed\n", bricks_live_count(cells));
+
+    memset(cells, 0xA1, sizeof(cells));          /* both bits */
+    check(bricks_live_count(cells) == 0,
+          "destroyed AND undestructible counted %d\n",
+          bricks_live_count(cells));
+
+    memset(cells, 0x01, sizeof(cells));
+    cells[0] = 0x81;    /* destroyed      */
+    cells[1] = 0x21;    /* undestructible */
+    cells[2] = 0xA1;    /* both           */
+    check(bricks_live_count(cells) == ALL - 3,
+          "mixed grid counted %d, expected %d\n",
+          bricks_live_count(cells), ALL - 3);
+
+    /* ...while collision still sees the undestructible one. */
+    BrickField f(cells);
+    check(f.standing(0, 1),
+          "BrickField::standing says the undestructible brick at col 1 is "
+          "gone; it must still be there to bounce off\n");
+    check(!f.standing(0, 0),
+          "BrickField::standing says the DESTROYED brick at col 0 is there\n");
+    report("live_count_vs_solid", before, "0x80 vs 0xA0 rules   ok");
+}
+
 int main(int argc, char **argv) {
     const char *levels_path = argc > 1 ? argv[1] : "assets/levels.bin";
     printf("bricks tests\n");
@@ -355,6 +412,7 @@ int main(int argc, char **argv) {
     test_destroyed_cells_reset_but_sentinels_survive();
     test_destroyed_cell_shadow_follows_left_neighbour();
     test_window_repaint_matches_full_at_its_edges();
-    printf("\n%s\n", failures ? "FAILED" : "8 tests, 0 failed");
+    test_live_count_vs_solid();
+    printf("\n%d tests, %d failed\n", tests_run, failures);
     return failures ? 1 : 0;
 }
