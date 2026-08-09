@@ -3203,7 +3203,7 @@ static void step_bonus(void) {
     tick_bat_resize();
     tick_big_ball_timer();
     if (!bonus.active) return;
-    bonus.y += motion_accel_step(&bonus.motion, 0x0008, 0x02);
+    bonus.y += motion_accel_step(&bonus.motion, FALL_DE_SLOW, FALL_CAP_SLOW);
     if (overlaps_bat_body(bonus.x, bonus.y, BONUS_W_PX, BONUS_H_PX)) {
         bonus_apply(bonus.type);          /* effect + catch sound */
         bonus.active = 0;
@@ -3223,7 +3223,8 @@ static void step_bonus(void) {
  * Switched back to match the disasm: marker falls off the bottom. */
 static void step_pts_400(void) {
     if (!pts_marker.active) return;
-    pts_marker.y += motion_accel_step(&pts_marker.motion, 0x0028, 0x80);
+    pts_marker.y += motion_accel_step(&pts_marker.motion,
+                                      FALL_DE_FAST, FALL_CAP_FAST);
     /* Apply the X drift each frame (port of LA590's ADD A,SMC). Clamp
      * to playfield via the original's check_left/right_margin pattern. */
     pts_marker.x += pts_marker.dx;
@@ -3514,7 +3515,8 @@ static void apply_replay_ball_motion_override(void) {
 /* Bake a falling bonus for the falling-object regression gate.
  * BATTY_REPLAY_BONUS = "type,x,y" (decimal or 0x-hex per field). Starts a
  * fresh fall (bonus.motion zeroed) so the accel progression
- * motion_accel_step(&bonus.motion, 0x0008, 0x02) is deterministic from y.
+ * motion_accel_step(&bonus.motion, FALL_DE_SLOW, FALL_CAP_SLOW) is
+ * deterministic from y.
  * Put x clear of the bat to test pure fall (no catch). */
 static void apply_replay_bonus_override(void) {
     long v[3];
@@ -3529,7 +3531,8 @@ static void apply_replay_bonus_override(void) {
 
 /* Bake a falling enemy bomb for the bomb-fall regression gate.
  * BATTY_REPLAY_BOMB = "x,y". Same accel family as the bonus
- * (motion_accel_step(&bomb.motion, 0x0008, 0x02)); put x clear of the bat
+ * (motion_accel_step(&bomb.motion, FALL_DE_SLOW, FALL_CAP_SLOW)); put x
+ * clear of the bat
  * to test pure fall (no bat-kill). */
 static void apply_replay_bomb_override(void) {
     long v[2];
@@ -3979,7 +3982,7 @@ static void bomb_appear(Object *o) {
  * past the bottom. Bat hit costs a life and respawns the ball. */
 static void step_bomb(void) {
     if (!bomb.active) return;
-    bomb.y += motion_accel_step(&bomb.motion, 0x0008, 0x02);
+    bomb.y += motion_accel_step(&bomb.motion, FALL_DE_SLOW, FALL_CAP_SLOW);
     /* 8 high, not BOMB_H_PX: the body is 8x8, the sprite 8x12. See
      * overlaps_bat_body. */
     if (overlaps_bat_body(bomb.x, bomb.y, BOMB_W_PX, 8)) {

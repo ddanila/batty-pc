@@ -278,7 +278,7 @@ static void test_motion_accel_ramps_then_caps() {
      * $0200 and it climbs 8 per step. The first draft of this test
      * guessed 40 and failed; the guess was wrong, not the code. */
     for (int f = 0; f < 120; f++) {
-        const int step = motion_accel_step(&m, 0x0008, 0x02);
+        const int step = motion_accel_step(&m, FALL_DE_SLOW, FALL_CAP_SLOW);
         check(step >= 0 && step <= 2,
               "frame %d gave a %d px step; a falling bonus moves 0..2\n",
               f, step);
@@ -318,7 +318,7 @@ static void test_motion_accel_fraction_carries() {
         motion_acc_t m = {0, 0};
         int total = 0;
         for (int f = 0; f < at[k]; f++)
-            total += motion_accel_step(&m, 0x0008, 0x02);
+            total += motion_accel_step(&m, FALL_DE_SLOW, FALL_CAP_SLOW);
         check(total == want[k],
               "%d frames of the bonus curve covered %d px, expected %d — "
               "if this is 0 early on, the fraction is being dropped\n",
@@ -335,7 +335,7 @@ static void test_motion_accel_fast_variant_caps() {
     motion_acc_t m = {0, 0};
     /* Measured: the cap is reached at step 820 (acc climbs $28 to
      * $8000), so 1000 is comfortably past it. */
-    for (int f = 0; f < 1000; f++) motion_accel_step(&m, 0x0028, 0x80);
+    for (int f = 0; f < 1000; f++) motion_accel_step(&m, FALL_DE_FAST, FALL_CAP_FAST);
     check((m.acc >> 8) == 0x80, "fast variant settled at %02X, expected 80\n",
           (unsigned)(m.acc >> 8));
     report("motion_accel_fast_caps", before, "de=$28 cap=$80       ok");
@@ -358,8 +358,8 @@ static void test_motion_accel_clamp_is_equality_not_ge() {
           "curves against the captured timings before keeping this\n");
 
     /* ...and every production constant does hit it. */
-    const unsigned int de[2] = {0x0008, 0x0028};
-    const unsigned char cap[2] = {0x02, 0x80};
+    const unsigned int de[2] = {FALL_DE_SLOW, FALL_DE_FAST};
+    const unsigned char cap[2] = {FALL_CAP_SLOW, FALL_CAP_FAST};
     for (int i = 0; i < 2; i++) {
         motion_acc_t n = {0, 0};
         for (int f = 0; f < 1000; f++) motion_accel_step(&n, de[i], cap[i]);

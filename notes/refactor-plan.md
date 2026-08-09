@@ -8,7 +8,7 @@ test. Started 2026-08-07.
 The stage table below is complete except stage 1, which is blocked for a
 reason rather than for want of effort — see the end of this section.
 
-**The code.** `main.cpp`: 7,747 → 6,824 lines (-11.7%) across 15
+**The code.** `main.cpp`: 7,747 → 6,827 lines (-11.7%) across 15
 modules. The longest function is `run_level` at 113 lines, and it is an
 orchestrator of named phases, which is what it should be.
 
@@ -122,7 +122,7 @@ happened, and `make test-video` caught it.
 | 1a | `replay_parse` — the BATTY_REPLAY_* value formats | 75 | **done** — 7 tests |
 | 1 | replay / probe scaffolding | ~430 | **started** — 5 overrides out in `replay`, 6 host tests; the rest need the state first |
 
-`main.cpp`: 7,747 → 6,824 (`wc -l`; see the status block on why this is not Watcom's count).
+`main.cpp`: 7,747 → 6,827 (`wc -l`; see the status block on why this is not Watcom's count).
 100 host tests + source gates, all via `make test-fast` in seconds.
 
 ### Stage 5b: one destroyed-cell reset, not two
@@ -559,6 +559,25 @@ paragraph. Use the headings, not the order. Nothing was reordered or
 removed when they were added; a multiset diff confirmed zero lines
 lost.
 
+
+#### Two fall curves, not three sets of magic numbers
+
+`physics.h` documented three falling things and their constants; the
+three call sites each wrote the numbers out again, in three different
+functions. There are only TWO curves — bonuses and enemy bombs share
+one — and that is easy to miss when both are spelled `0x0008, 0x02`
+pages apart. `FALL_DE_SLOW` / `FALL_CAP_SLOW` / `FALL_DE_FAST` /
+`FALL_CAP_FAST` now say it.
+
+The replay-knob comments quoted the raw numbers too, so grepping
+`0x0008` found the documentation and not the code. Those now name the
+constants, and the accelerator tests use them as well — which is what
+makes the change more than cosmetic: the measured distances (20 frames →
+6 px, 40 → 25, 80 → 97) now PIN the constants. Mutating `FALL_DE_SLOW`
+from 8 to 9 is caught, which it would not have been when the test spelled
+the number out itself. That is the same self-reference trap as the band
+bounds, avoided by having the numbers come from one place and the
+expectation from measurement.
 
 #### A test that read its expectation from the thing it was testing
 
