@@ -767,7 +767,7 @@ parity-check-full:
 	$(MAKE) test-enemy-brick-walk
 	$(MAKE) test-enemy-margin-clamp
 	$(MAKE) test-two-player-turn
-	$(MAKE) test-double-play-separator
+	$(MAKE) test-double-play-court
 	$(MAKE) test-bat-redraw-window
 	$(MAKE) test-ball-left-wall-escape
 	$(MAKE) test-l3-replay-seed
@@ -1313,8 +1313,8 @@ test-two-player-turn:
 
 # WS3 stage 1: game_mode $02 draws object_separator (LBE8B_10) and
 # changes nothing else. A/B on BATTY_GAME_MODE, whole-frame diff.
-test-double-play-separator:
-	python3 scripts/test_double_play_separator.py
+test-double-play-court:
+	python3 scripts/test_double_play_court.py
 
 # The Kinnock easter egg (POKE 47475,0). Source-gated: it is up for
 # ~0.3 s, so a timed screendump would be luck. Its expected text is

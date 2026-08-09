@@ -254,9 +254,37 @@ down in the bat band — a marker between the two bats' halves, not a
 barrier the ball interacts with. The per-bat margin clamps below are
 what actually confine the bats.
 
-Gated by `test-double-play-separator`, a whole-frame A/B on
-`BATTY_GAME_MODE`: 98 pixels differ, all inside the sprite's rectangle,
-and the gate fails both if none differ and if any differ outside it.
+**Stage 2 done: the court layout.** `all_var_init` (LB7F8) does not add
+a bat beside the existing one — it MOVES both:
+
+    LD A,(game_mode) / CP $02 / JR NZ,LB7F8_1
+    LD A,$01 / LD (object_bat_2),A        ; sprite_set: activate
+    LD A,$38 / LD (object_bat_1+$02),A    ; bat 1 x = 56
+    LD A,$B0 / LD (object_bat_2+$02),A    ; bat 2 x = 176
+
+Ported in `reset_level_state`, with `render_bat_2` drawing the second
+one. It uses the PLAIN sprite: `bat.extra_px`, the gun frames and the
+resize sides are all bat-1 state, and bonus ownership for bat 2
+(`object_bat_2+$14`) is a later item — drawing it big or armed before
+that state exists would be inventing behaviour.
+
+`render_bat_2` is called from the STATIC background compose, not the
+per-frame path. Bat 1 is a moving object and the dirty path redraws it
+every frame; bat 2 has no input yet, so for now it is scenery. When it
+gets a device it moves to the per-frame path and that call goes with it.
+
+Gated by `test-double-play-court`, an A/B on `BATTY_GAME_MODE` frozen at
+a visual checkpoint: 610 pixels differ, none above the bat band, and
+each of the three regions — bat 1 at $38, the divider at $7D, bat 2 at
+$B0 — must contain some. That last check is not decoration: the first
+run of this gate passed with bat 2 missing entirely, because the call
+sat under `with_bat`, which the static compose does not use.
+
+The frozen frame matters too. The first version slept 9 s and
+screendumped, which worked while mode 2 changed only the divider. The
+moment bat 1 moved to x=56 the runs stopped being comparable at all —
+the ball auto-launches off a bat in a different place, so by 9 s they
+have destroyed different bricks and the diff is the whole screen.
 
 **What:** The distinctive mode: both bats on screen at once, court
 split into halves with a divider, each bat confined to its half, one

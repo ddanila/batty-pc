@@ -1875,6 +1875,30 @@ static void render_bat(unsigned char cycle, unsigned char attr) {
     blit_masked_to_scr_buff(spr, x, y);
 }
 
+/* The second bat. `all_var_init` (LB7F8) activates it and moves BOTH
+ * bats when game_mode is $02:
+ *
+ *   LD A,(game_mode) / CP $02 / JR NZ,LB7F8_1
+ *   LD A,$01 / LD (object_bat_2),A          ; sprite_set: activate
+ *   LD A,$38 / LD (object_bat_1+$02),A      ; bat 1 x = 56
+ *   LD A,$B0 / LD (object_bat_2+$02),A      ; bat 2 x = 176
+ *
+ * so Double Play does not add a bat beside the existing one — it moves
+ * bat 1 left and puts bat 2 on the right, one per half.
+ *
+ * Rendered with the PLAIN sprite: `bat.extra_px`, the gun frames and
+ * the resize sides are all bat-1 state, and bonus ownership for bat 2
+ * is a later WS3 item (`object_bat_2+$14`). Drawing it big or armed
+ * before that state exists would be inventing behaviour. */
+static void render_bat_2(unsigned char attr) {
+    const Object &b2 = objects[OBJ_BAT_2];
+    if (game_mode != 2 || !object_active(b2)) return;
+    blit_sprite_attrs_to_buff_clipped(b2.x_coord, b2.y_coord,
+                                      BAT_W_BYTES * 8, 13, attr,
+                                      8, PLAYFIELD_W - 8);
+    blit_masked_to_scr_buff(SPR_BAT_NORMAL, b2.x_coord, b2.y_coord);
+}
+
 static int bat_draw_extra_for_bounds(int extra) {
     return (extra >= BAT_BIG_EXTRA_PX) ? BAT_BIG_EXTRA_PX : extra;
 }
@@ -2362,6 +2386,12 @@ static void compose_level_scene(unsigned char level_idx, bool with_bat) {
     paint_bg_to_buff(bg_attr, cycle);
     paint_frame_to_buff(cycle, level_idx);
     if (with_bat) render_bat(cycle, bg_attr);
+    /* NOT gated on with_bat. Bat 1 is a moving object — the static
+     * background is built without it and the dirty path redraws it each
+     * frame — but bat 2 has no input yet, so for now it is scenery and
+     * belongs in the static cache. When WS3 gives it a device it moves
+     * to the per-frame path, and this call goes with it. */
+    render_bat_2(bg_attr);
     render_lives(cycle, bg_attr);
     if (with_bat) remember_bat_draw_state();
     render_separator();
@@ -6292,6 +6322,20 @@ static void reset_level_state(unsigned char lvl_idx) {
     BAT_Y         = BAT_Y_PX;
     objects[OBJ_BAT_2].y_coord = BAT_Y_PX;
     BAT_PREV_X    = BAT_X_INIT;
+    /* Double Play moves BOTH bats and activates the second — LB7F8's
+     * `CP $02 / LD A,$01 / LD (object_bat_2),A / LD A,$38 /
+     * LD (object_bat_1+$02),A / LD A,$B0 / LD (object_bat_2+$02),A`.
+     * Outside mode 2 bat 2 stays inactive, which is object_bat_2's own
+     * sprite_set $00 in the tape data. */
+    if (game_mode == 2) {
+        BAT_X      = 0x38;
+        BAT_PREV_X = 0x38;
+        objects[OBJ_BAT_2].x_coord = 0xB0;
+        object_activate(objects[OBJ_BAT_2]);
+        objects[OBJ_BAT_2].sprite_set = 0x01;
+    } else {
+        object_deactivate(objects[OBJ_BAT_2]);
+    }
     ball.stuck    = 1;
     ball.stuck_offset_x = BALL_X_OFFSET_ON_BAT;
     BALL_SHOW();                      /* visible from level entry; sits on the bat */

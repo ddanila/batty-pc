@@ -362,7 +362,7 @@ mentioned nowhere in this file, including several of the oldest.
 - `test-level-attrs-derivable` — the live-brick fifth of level_attrs.bin is computed, not captured.
 - `test-two-player-state` — two sets of counters, and the HUD/cache both read them.
 - `test-two-player-turn` — a life loss hands the turn over in mode 1, not in mode 0.
-- `test-double-play-separator` — mode $02 draws the court divider, and only that.
+- `test-double-play-court` — mode $02 moves both bats and draws the divider.
   byte, and `delta_to_dir` has no production caller (known-bugs #14).
 - `test-doc-links` — every file path cited in a comment or note exists.
 - `test-host-tests-wired` — every host suite runs under `make test-fast`.
