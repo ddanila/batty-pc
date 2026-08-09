@@ -205,11 +205,19 @@ visual gates that want the screen to STAY up, the opposite need.
 
 With both in place the path is observed — `over=1`, turn on player 2 —
 and disabling the hand-over is caught, as is ignoring the fast-holds
-knob. **WS2's flow is complete.** What is left of the workstream is
-cosmetic: the GAME OVER screen does not print "PLAYER n" (the original
-patches `txt_player_0+$0C` with `player_number`), and the menu's
-mode-2/3 selection still starts whatever mode is chosen without the
-Double Play court split (WS3).
+knob. **WS2's flow is complete**, and as of 2026-08-09 so is the GAME OVER
+screen's "PLAYER n" line — `active_player + 1`, the original's
+`LD A,(player_number) / INC A` patched into `txt_player_0+$0C`. Before
+that the screen did not say whose game had ended, which is harmless with
+one player and wrong with two.
+
+The screen's LAYOUT remains the port's own: the original prints exactly
+those two lines at ($60,$4F) and ($60,$67) and no score lines, while the
+port adds SCORE and HIGH and stacks four lines 12 px apart. Recorded as
+a deliberate divergence in notes/parity-gaps.md rather than left
+implicit.
+
+What is left of WS2 is nothing; Double Play's court split is WS3.
 
 **What:** Classic turn-taking (research-confirmed: on the Spectrum,
 2 PLAYERS alternates turns, unlike the C64 version). Per-player state

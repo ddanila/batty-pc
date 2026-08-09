@@ -195,6 +195,20 @@ def main() -> int:
             "LD (txt_player_x+11),A`; a hardcoded 1 is the stub this "
             "replaced, and it renders identically today.")
     print("PASS banner_player_digit: the banner prints active_player + 1")
+
+    # Same for the GAME OVER screen's second line. test-game-over-visual
+    # covers that the LINE is drawn, but not the digit: active_player is
+    # 0 in its scenario, so `active_player + 1` and a literal 1 render
+    # the same glyph. Mutating the digit to 0x01 SURVIVED that gate.
+    go = body_of(code, "static void render_game_over(void) {")
+    if "pl[8] = (unsigned char)(active_player + 1);" not in go:
+        raise SystemExit(
+            "FAIL: the GAME OVER screen's PLAYER line no longer prints "
+            "active_player + 1. The original patches txt_player_0+$0C with "
+            "`LD A,(player_number) / INC A`; a literal renders identically "
+            "in a 1-player capture, so no pixel gate can hold this.")
+    print("PASS game_over_player_digit: the GAME OVER line prints "
+          "active_player + 1")
     return 0
 
 

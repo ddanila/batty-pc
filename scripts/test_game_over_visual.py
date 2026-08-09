@@ -131,16 +131,22 @@ def check_screen(idx, tag: str) -> float:
             f"(Makefile AUTOEXEC_T passthrough), and that a seeded score did "
             f"not hand out extra lives via award_score_milestones.")
 
-    # GAME OVER / SCORE / HIGH, ink 15, at BORDER_Y + 70, + 95, + 110.
-    # Glyphs are 6px and TOP-anchored here, unlike the round banner's
-    # bottom-anchored originals.
-    want = [(70, 75), (95, 100), (110, 115)]
+    # GAME OVER / PLAYER n / SCORE / HIGH, ink 15, at BORDER_Y + 70,
+    # + 82, + 95 and + 110. Glyphs are 6px and TOP-anchored here, unlike
+    # the round banner's bottom-anchored originals.
+    #
+    # PLAYER n is the original's second message line (txt_player_0,
+    # whose digit byte the original patches from player_number); it
+    # arrived with the 2-player work on 2026-08-09 and this expectation
+    # gained a band.
+    want = [(70, 75), (82, 87), (95, 100), (110, 115)]
     got = bands_of(idx, 15)
     if got != want:
         raise SystemExit(
             f"FAIL[{tag}]: ink-15 bands are {got}, expected {want} — the "
-            f"GAME OVER / SCORE / HIGH lines must land at BORDER_Y + 70, "
-            f"+ 95 and + 110 as render_game_over draws them.")
+            f"GAME OVER / PLAYER / SCORE / HIGH lines must land at "
+            f"BORDER_Y + 70, + 82, + 95 and + 110 as render_game_over "
+            f"draws them.")
     return share
 
 

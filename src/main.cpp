@@ -5568,9 +5568,23 @@ static void render_game_over(void) {
     static const unsigned char hi_lbl[]  = { 0x11, 0x12, 0x10, 0x11, 0x26, 0x26 }; /* HIGH__ */
     static const unsigned char new_lbl[] = { 0x17, 0x0E, 0x21, 0x26, 0x11, 0x12,
                                              0x10, 0x11 }; /* NEW HIGH */
+    /* "PLAYER  n" — the original's SECOND line of the game-over
+     * message. `print_message` is called with B=$02 and txt_player_0
+     * follows txt_game_over in memory; the digit is the byte at
+     * txt_player_0+$0C, patched with `LD A,(player_number) / INC A`.
+     * Nine glyphs, same width as GAME OVER, so it aligns under it. */
+    unsigned char pl[9] = { 0x19, 0x15, 0x0A, 0x22, 0x0E, 0x1B,
+                            0x26, 0x26, 0x00 };
     unsigned char digits[6];
+    pl[8] = (unsigned char)(active_player + 1);
     fill(0, 0, SCREEN_W, SCREEN_H, 0);
     draw_text(BORDER_X + 4 * 8 + 4, BORDER_Y + 70, 15, go, (int)sizeof(go));
+    /* The original stacks these 24 px apart ($4F then $67, both at
+     * x=$60). This screen's layout is the PORT's, not the original's —
+     * it also carries SCORE and HIGH lines the original does not have —
+     * and 24 px would put this one on top of SCORE. 12 px keeps the
+     * order and the alignment. See notes/parity-gaps.md. */
+    draw_text(BORDER_X + 4 * 8 + 4, BORDER_Y + 82, 15, pl, (int)sizeof(pl));
     score_to_digits(player.score, digits);
     draw_text(BORDER_X + 3 * 8,        BORDER_Y +  95, 15, sc_lbl, (int)sizeof(sc_lbl));
     draw_text(BORDER_X + 3 * 8 + 6*8,  BORDER_Y +  95, 15, digits, 6);

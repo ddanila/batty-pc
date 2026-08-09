@@ -237,6 +237,32 @@ wrong here for weeks after the code was right.
 These should be compared against ZEsarUX captures if they become
 visibly wrong.
 
+### The GAME OVER screen's layout is the port's own
+
+The original's game-over message is exactly two lines, printed by one
+`print_message` with `B=$02`:
+
+    txt_game_over:  DEFB $60,$4F,$47,$09 ; "GAME OVER"
+    txt_player_0:   DEFB $60,$67,$47,$09 ; "PLAYER  n"
+
+both at x=$60, 24 px apart, with the digit byte at `txt_player_0+$0C`
+patched from `player_number`. No score, no high score — those live on
+the HUD, which is still on screen underneath.
+
+The port draws four lines: GAME OVER, PLAYER n, SCORE nnnnnn, HIGH
+nnnnnn, on a cleared screen, at BORDER_Y + 70 / 82 / 95 / 110. The
+SCORE and HIGH lines are additions and the spacing is the port's; 24 px
+would put PLAYER on top of SCORE.
+
+The PLAYER line itself arrived on 2026-08-09 with the 2-player work —
+before that the screen did not say whose game had ended, which is
+harmless with one player and wrong with two.
+
+This is a deliberate divergence, not an oversight, but it IS a
+divergence: a faithful pass would drop the two extra lines and use
+($60,$4F) / ($60,$67). `test-game-over-visual` pins the current bands,
+so that pass will have to move them on purpose.
+
 ### Sound envelopes are approximate
 
 Most queued sound effects follow the original sound IDs and rough
