@@ -42,6 +42,12 @@ void paint_bricks(const u8 *cells);
 void reset_destroyed_cell_attrs(const u8 *cells, u8 bg_attr,
                                 int r0, int r1, int cr0, int cr1);
 
+/* The whole brick band from a level's captured attrs: re-base the band's
+ * attr rows, reset the cells whose bricks are gone, then paint what is
+ * still standing. The caller adds the border shadow, which is a frame
+ * concern rather than a brick one. */
+void paint_brick_band(const u8 *cells, const u8 *lattr, u8 bg_attr);
+
 /* The same, for brick rows [first_row, last_row] only. Callers must
  * repaint or otherwise account for the neighbouring rows' edges. */
 void paint_brick_rows(const u8 *cells, int first_row, int last_row);

@@ -3,6 +3,8 @@
 #include "bricks.h"
 #include "zxvga.h"
 
+#include <string.h>   /* memcpy, for the band attr re-base */
+
 namespace {
 
 static const unsigned char spr_brik_1[16] = {
@@ -282,4 +284,12 @@ void repair_band_row_boundaries(const u8 *cells,
         }
     }
 
+}
+
+void paint_brick_band(const u8 *cells, const u8 *lattr, u8 bg_attr) {
+    /* The per-level attrs cover char rows 3..16: the brick band plus the
+     * frame's side strips and the pre-dimmed shadow rows. */
+    memcpy(&attr_buff[3 * ATTR_COLS], &lattr[3 * ATTR_COLS], 14 * ATTR_COLS);
+    reset_destroyed_cell_attrs(cells, bg_attr, 0, FIELD_ROWS - 1, 3, 16);
+    paint_bricks(cells);
 }

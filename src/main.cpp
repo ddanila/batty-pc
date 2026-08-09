@@ -1856,19 +1856,10 @@ static void render_lives(unsigned char cycle, unsigned char attr) {
  * paint_bg_to_buff already pre-filled the rest of the buffers. */
 static void print_border_shadow_c(void);
 static void render_brick_band(unsigned char level_idx) {
-    const unsigned char *cells = live_level;
-    const unsigned char *lattr = &level_attrs[(int)level_idx * ATTR_BAND_SIZE];
-    unsigned char bg_attr = bg_attr_per_cycle[level_idx & 3];
-
     if (level_idx >= N_LEVELS) return;
-
-    /* Copy the per-level attrs into char rows 3..16 (the brick band,
-     * including frame side strips and pre-dimmed shadow rows). */
-    memcpy(&attr_buff[3 * 32], &lattr[3 * ATTR_COLS], 14 * 32);
-
-    reset_destroyed_cell_attrs(cells, bg_attr, 0, LVL_ROWS - 1, 3, 16);
-
-    paint_bricks(cells);
+    paint_brick_band(live_level,
+                     &level_attrs[(int)level_idx * ATTR_BAND_SIZE],
+                     bg_attr_per_cycle[level_idx & 3]);
     print_border_shadow_c();
 }
 
