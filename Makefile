@@ -1109,11 +1109,18 @@ test-ball-sign-cache-owner:
 test-env-passthrough:
 	python3 scripts/check_env_passthrough.py
 
+# known-bugs #15: bios_ticks() does not advance during gameplay. Reading
+# it is fine (the TIMED_OUT screens act on nothing); computing with it is
+# a live dependency on a frozen clock.
+test-frozen-clock:
+	python3 scripts/check_frozen_clock.py
+
 test-source-gates:
 	$(MAKE) test-gate-greps
 	$(MAKE) test-notes-numbers
 	$(MAKE) test-ball-sign-cache-owner
 	$(MAKE) test-env-passthrough
+	$(MAKE) test-frozen-clock
 	$(MAKE) test-l3-replay-seed
 	$(MAKE) test-death-sparks
 	$(MAKE) test-rocket-bonus

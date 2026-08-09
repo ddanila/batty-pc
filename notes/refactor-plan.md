@@ -16,7 +16,7 @@ Gate count 51 → 57 this session: `test-blast-dirty-redraw`,
 `test-game-over-visual` and `test-name-entry-visual`, each covering
 something nothing reached before.
 
-`main.cpp`: 7,747 → 6,915 lines (-11.3%) across 14 modules. `make test-fast`
+`main.cpp`: 7,747 → 6,910 lines (-11.4%) across 14 modules. `make test-fast`
 runs every host test and source gate in seconds; `--full` is 57 gates
 in under six minutes.
 
@@ -106,7 +106,7 @@ happened, and `make test-video` caught it.
 | 1a | `replay_parse` — the BATTY_REPLAY_* value formats | 75 | **done** — 7 tests |
 | 1 | replay / probe scaffolding | ~430 | **last** — see below |
 
-`main.cpp`: 7,747 → 6,915 (`wc -l`; see the status block on why this is not Watcom's count).
+`main.cpp`: 7,747 → 6,910 (`wc -l`; see the status block on why this is not Watcom's count).
 100 host tests + source gates, all via `make test-fast` in seconds.
 
 ### Stage 5b: one destroyed-cell reset, not two
@@ -669,6 +669,25 @@ and the gate was extended in the same commit to press LEFT and require
 the letter row to change, since placement alone would look identical
 whether `step_name_letter` worked or not. Mutation-checked by making the
 LEFT arm a no-op.
+
+Auditing what was LEFT on the frozen clock found `run_level`'s `start`:
+seeded from `bios_ticks()`, threaded into `handle_input` by reference so
+it could be assigned twice more, and read by nothing at all. Its only
+possible consumer, `TIMED_OUT`, does not appear in `run_level`. Removing
+it also removed a by-reference parameter that made `handle_input` look
+like it managed timing.
+
+The menu, title and hiscore seeds are NOT the same thing and were left:
+each is read by a `TIMED_OUT` that `auto_advance` keeps permanently
+false. They record the cycle the original's screens would use and act on
+nothing.
+
+That distinction is what `check_frozen_clock.py` encodes. The rule is not
+"never call `bios_ticks`" — that would delete working documentation. It
+is **never compute with it**: a bare assignment is inert, an arithmetic
+or comparison is a live dependency on a clock that does not move, which
+is exactly the shape #15 was. Mutation-checked by restoring the old
+65-BIOS-tick hold, which is reported by line and text.
 
 known-bugs #15 is fixed, and the route to it is worth more than the fix.
 `bios_ticks()` does not advance during gameplay. I concluded that,

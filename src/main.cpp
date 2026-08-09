@@ -6204,8 +6204,7 @@ enum InputAction {
     INPUT_ADVANCE_LEVEL     /* ENTER on the pause overlay */
 };
 
-static InputAction handle_input(int &ball_moved, int &bat_moved,
-                            unsigned long &start) {
+static InputAction handle_input(int &ball_moved, int &bat_moved) {
     if (!kbhit()) return INPUT_NONE;
     {
         const int k = getch();
@@ -6240,7 +6239,6 @@ static InputAction handle_input(int &ball_moved, int &bat_moved,
              * handled by the per-frame key_state[] polling
              * below; this just keeps the buffer drained. */
             getch();
-            start = bios_ticks();
         } else if (k == KEY_SPACE) {
             /* Launch the stuck ball — only fire the launch
              * trajectory if the ball is actually waiting on the
@@ -6268,7 +6266,6 @@ static InputAction handle_input(int &ball_moved, int &bat_moved,
              * test hook can drive the same path. Independent of ball
              * state — SPACE refires the laser while the ball flies. */
             try_fire_laser();
-            start = bios_ticks();
         }
         /* Mirror the original: no level-skip key. ENTER while
          * playing does nothing (only the pause overlay above
@@ -6700,7 +6697,6 @@ static bool enter_level(unsigned char lvl_idx) {
 }
 
 static state_t run_level(void) {
-    unsigned long start;
     unsigned long last_tick;
     unsigned char cycle;
     unsigned char bg_attr;
@@ -6725,7 +6721,6 @@ static state_t run_level(void) {
             probe.pit_at_frame1  = pit_ticks();
             probe.clocks_latched = 1;
         }
-        start     = bios_ticks();
         last_tick = pit_ticks();
         for (;;) {
             unsigned long now;
@@ -6734,7 +6729,7 @@ static state_t run_level(void) {
             int frame_ticked = 0;
 
             {
-                const InputAction action = handle_input(ball_moved, bat_moved, start);
+                const InputAction action = handle_input(ball_moved, bat_moved);
                 if (action == INPUT_QUIT) { write_replay_probe(); return ST_QUIT; }
                 if (action == INPUT_ADVANCE_LEVEL) break;
                 if (action == INPUT_SKIP_FRAME)    continue;
