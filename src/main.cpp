@@ -655,7 +655,7 @@ struct RocketState {
     unsigned char clear_completed;
 };
 static RocketState rocket = {0, 0, 0, 0, 0, 0, 0};
-/* Stuck-on-bat dwell counter. While ball.stuck, the ball rides the
+/* Stuck-on-bat dwell counter. While ball.stuck[0], the ball rides the
  * bat; SPACE detaches immediately; after STUCK_TIMEOUT ticks the ball
  * auto-launches. ~5 sec at 50 Hz. */
 /* Mirror of ball.bonus_applied = $C0 at all_var_init's level entry: the
@@ -857,9 +857,22 @@ static ProbeState probe;
  * 0..2, and are the one part here that does cover all three uniformly. */
 struct BallState {
     int          dx, dy;              /* primary ball, whole pixels */
-    unsigned char stuck;              /* resting on the bat, awaiting launch */
-    int          stuck_offset_x;      /* where on the bat it rests */
-    unsigned int stuck_ticks;         /* counts up to the auto-launch */
+    /* Stuck-on-bat state, per ball 0..2 — the same indexing the mag_*
+     * arrays below already use.
+     *
+     * Only [0] is ever non-zero today: an extra ball is spawned in
+     * flight and nothing can catch it, because catch_ball_on_bat is
+     * only reachable from the primary's path. Widening the fields is
+     * the structural half of WS6 item 2 (MAGNET catch for secondaries)
+     * and of WS3's bat-2 catch, which need the same index — see
+     * notes/bat-deflection.md for the site-by-site breakdown.
+     *
+     * Ten of the 24 call sites are primary-BY-CONSTRUCTION — level
+     * entry, respawn, the replay overrides — and stay [0] forever.
+     * The other fourteen are the ones a catch feature has to thread. */
+    unsigned char stuck[3];           /* resting on the bat, awaiting launch */
+    int          stuck_offset_x[3];   /* where on the bat it rests */
+    unsigned int stuck_ticks[3];      /* counts up to the auto-launch */
     unsigned int speed_ramp;
     unsigned int big_ticks;           /* BIG_BALL bonus, counts down */
 
@@ -871,7 +884,7 @@ struct BallState {
 
 static BallState ball = {
     +BALL_SPEED, -BALL_SPEED,
-    1, BALL_X_OFFSET_ON_BAT, 0,
+    {1, 0, 0}, {BALL_X_OFFSET_ON_BAT, 0, 0}, {0, 0, 0},
     0, 0,
     0, 0,
     {0,0,0}, {0,0,0}, {0,0,0}, {0,0,0}
@@ -1752,7 +1765,7 @@ static void primary_ball_set_velocity(int dx, int dy) {
 
 static void primary_ball_launch_from_bat(void) {
     unsigned char dir;
-    int launch_offset = ball.stuck_offset_x - 4;
+    int launch_offset = ball.stuck_offset_x[0] - 4;
     if (launch_offset < 0) launch_offset = 0;
     /* Original LA27E_15 derives the release direction from the stuck
      * bat offset, with $30 remapped to $34. The first movement step can
@@ -3438,7 +3451,7 @@ static void hide_extra_balls(void) {
 static void hide_objects_for_rocket_clear(void) {
     int i;
     BALL_HIDE();
-    ball.stuck = 0;
+    ball.stuck[0] = 0;
     hide_extra_balls();
     objects[OBJ_ENEMY].sprite_set = 0;
     bomb.active = 0;
@@ -4054,7 +4067,7 @@ static void apply_replay_ball_motion_override(void) {
     const char *stuck = getenv("BATTY_REPLAY_BALL_STUCK");
     const char *vel = getenv("BATTY_REPLAY_BALL_VEL");
     if (stuck != NULL) {
-        ball.stuck = (unsigned char)(atoi(stuck) != 0);
+        ball.stuck[0] = (unsigned char)(atoi(stuck) != 0);
     }
     if (vel != NULL) {
         char *endp;
@@ -4069,7 +4082,7 @@ static void apply_replay_ball_motion_override(void) {
     }
     if (getenv("BATTY_HIDE_BALL") != NULL) {
         BALL_HIDE();
-        ball.stuck = 0;
+        ball.stuck[0] = 0;
     }
 }
 
@@ -4201,7 +4214,7 @@ static void apply_replay_rocket_override(void) {
     set_rocket_bonus_sprite_height(ROCKET_H_PX);
     place_rocket_on_bat();
     BALL_HIDE();
-    ball.stuck = 0;
+    ball.stuck[0] = 0;
 }
 
 /* prop_uneven / prop_even / prop_x_coord from $9F27. Fields:
@@ -4917,9 +4930,9 @@ static void catch_ball_on_bat(int contact_x) {
     off &= 0xFC;
     if (off >= 0x19) off = 0x18;
 
-    ball.stuck_offset_x = off;
-    ball.stuck          = 1;
-    ball.stuck_ticks    = 0;
+    ball.stuck_offset_x[0] = off;
+    ball.stuck[0]          = 1;
+    ball.stuck_ticks[0]    = 0;
     /* A SIGN, not a speed. Every other writer of this cache stores
      * {-1,0,+1}; this one stored -BALL_SPEED (= -2), and it is the copy
      * that SURVIVES, because a caught ball is stuck and step_ball
@@ -5015,7 +5028,7 @@ static void lose_primary_ball(void) {
  * BALL_H_PX, not the effective ball size: using the latter put the ball
  * at 165 every frame, silently clobbering respawn_primary_ball's $A6. */
 static void rest_ball_on_bat(void) {
-    BALL_X = BAT_X + ball.stuck_offset_x;
+    BALL_X = BAT_X + ball.stuck_offset_x[0];
     BALL_Y = BAT_Y - BALL_H_PX +
              (objects[OBJ_BAT_1].bonus_applied == 0x03 ? 1 : 0);
 }
@@ -5193,7 +5206,7 @@ static int deflect_ball_off_bat(int next_x, int *next_y) {
  *
  * The real reason is the other end: catching needs the stuck-ball
  * system, which is written around the primary ball and bat 1
- * (`catch_ball_on_bat` reads BAT_X, `ball.stuck_offset_x` is one
+ * (`catch_ball_on_bat` reads BAT_X, `ball.stuck_offset_x[0]` is one
  * value). PLAN.md WS6 item 2 has that scoped as ~32 sites.
  *
  * And writing both bats is itself the divergence: the original applies
@@ -5221,7 +5234,7 @@ static void step_ball(void) {
     int dx_q8, dy_q8;
     long next_x_q8, next_y_q8;
     int ball_sz   = eff_ball_size();
-    if (ball.stuck) {
+    if (ball.stuck[0]) {
         rest_ball_on_bat();
         objects[OBJ_BALL_1].x_coord_hi = 0;
         objects[OBJ_BALL_1].y_coord_hi = 0;
@@ -6521,9 +6534,9 @@ static void respawn_primary_ball(void) {
      * frame would otherwise carry over into the new life. */
     sound_stop_all();
     magnet_ball_state_clear(0);
-    ball.stuck     = 1;
-    ball.stuck_ticks    = 0;
-    ball.stuck_offset_x = BALL_X_OFFSET_ON_BAT;
+    ball.stuck[0]     = 1;
+    ball.stuck_ticks[0]    = 0;
+    ball.stuck_offset_x[0] = BALL_X_OFFSET_ON_BAT;
     BALL_SHOW();
     BALL_X = BAT_X + BALL_X_OFFSET_ON_BAT;
     /* Ball sits at BAT_Y_PX - BALL_H_PX = 166 (= $A6) so its bottom
@@ -6722,8 +6735,8 @@ static void reset_level_state(unsigned char lvl_idx) {
     } else {
         object_deactivate(objects[OBJ_BAT_2]);
     }
-    ball.stuck    = 1;
-    ball.stuck_offset_x = BALL_X_OFFSET_ON_BAT;
+    ball.stuck[0]    = 1;
+    ball.stuck_offset_x[0] = BALL_X_OFFSET_ON_BAT;
     BALL_SHOW();                      /* visible from level entry; sits on the bat */
     /* all_var_init's first act is the alternation, and it happens in
      * every mode — only its effect on the ball's START X is mode-2
@@ -6733,7 +6746,7 @@ static void reset_level_state(unsigned char lvl_idx) {
                                        ? 1 : 0);
     BALL_X        = BAT_X + BALL_X_OFFSET_ON_BAT;
     BALL_Y        = BAT_Y - BALL_H_PX;
-    ball.stuck_ticks   = 0;                /* counts up while waiting for launch */
+    ball.stuck_ticks[0]   = 0;                /* counts up while waiting for launch */
     primary_ball_set_velocity(+1, -BALL_SPEED);
     hide_extra_balls();
 
@@ -6910,10 +6923,10 @@ static InputAction toggle_pause(int &ball_moved, int &bat_moved) {
  * flight — which is what a player does to refire the laser — must not
  * teleport the ball back to its launch trajectory. */
 static void launch_or_fire(void) {
-    if (ball.stuck) {
+    if (ball.stuck[0]) {
         BALL_SHOW();
-        ball.stuck       = 0;
-        ball.stuck_ticks = 0;
+        ball.stuck[0]       = 0;
+        ball.stuck_ticks[0] = 0;
         sound_queue(SND_BALL_START);   /* descending launch blip */
         primary_ball_launch_from_bat();
         record_primary_launch();
@@ -6950,9 +6963,9 @@ static InputAction handle_input(int &ball_moved, int &bat_moved) {
 
 static void ride_stuck_ball_on_bat(void) {
     rest_ball_on_bat();
-    ball.stuck_ticks++;
-    if (ball.stuck_ticks >= STUCK_TIMEOUT) {
-        ball.stuck = 0;          /* auto-launch */
+    ball.stuck_ticks[0]++;
+    if (ball.stuck_ticks[0] >= STUCK_TIMEOUT) {
+        ball.stuck[0] = 0;          /* auto-launch */
         sound_queue(SND_BALL_START);
         primary_ball_launch_from_bat();
         record_primary_launch();
@@ -7304,7 +7317,7 @@ static bool visual_checkpoint_tick(void) {
  * False means a replay checkpoint fired: the probe is written and the
  * run should end. */
 static bool step_primary_ball(int *ball_moved) {
-    if (ball.stuck) {
+    if (ball.stuck[0]) {
         ride_stuck_ball_on_bat();
         *ball_moved = 1;
         return true;
@@ -7374,7 +7387,7 @@ static void redraw_frame(unsigned char lvl_idx, unsigned char cycle,
     }
     if (!bat_moved) return;
     redraw_bat(cycle, bg_attr);
-    if (BALL_VISIBLE && ball.stuck) {
+    if (BALL_VISIBLE && ball.stuck[0]) {
         rest_ball_on_bat();
         render_ball(BALL_X, BALL_Y, bg_attr);
     }

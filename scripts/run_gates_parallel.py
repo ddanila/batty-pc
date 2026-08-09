@@ -79,7 +79,7 @@ FULL_EXTRA_GATES = [
     "test-bat-fire-dirty-redraw", "test-multiball-dirty-redraw",
     "test-bigball-dirty-redraw", "test-stuck-ball-dirty-redraw",
     "test-enemy-brick-residue", "test-enemy-brick-walk", "test-enemy-margin-clamp",
-    "test-two-player-turn", "test-double-play-court", "test-double-play-bat2",
+    "test-two-player-turn", "test-double-play-court", "test-double-play-bat2", "test-stuck-auto-launch",
     "test-bat-redraw-window",
     "test-ball-left-wall-escape", "test-l3-replay-seed",
     "test-ball-paths-no-tunnel", "test-sprite-attr-parity",

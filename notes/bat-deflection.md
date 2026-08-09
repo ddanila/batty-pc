@@ -273,7 +273,19 @@ primary whatever happens to the others:
 | `steer_bat_from_keys`, `draw_bottom_sprites` | 2 | a held ball follows the bat |
 
 So the shape is: make the three fields per-ball, thread an index through
-eight functions, and leave ten sites alone. That is a real change but a
+eight functions, and leave ten sites alone.
+
+**The first half is done (2026-08-09).** `stuck`, `stuck_offset_x` and
+`stuck_ticks` are `[3]` now, indexed the same way the `mag_*` arrays
+already were, and every one of the 24 sites reads `[0]`. Behaviour is
+unchanged by construction — all 90 gates green — which is the point of
+doing it as its own step: the feature that follows can be judged on its
+own diff instead of on a rename buried inside it.
+
+Only `[0]` is ever non-zero today, because `catch_ball_on_bat` is
+reachable only from the primary's path. What remains is the fourteen
+sites above learning WHICH ball, and `catch_ball_on_bat` learning which
+BAT. That is a real change but a
 bounded one — and rather smaller than "~32 sites" suggests, which is
 probably why it has stayed deferred.
 

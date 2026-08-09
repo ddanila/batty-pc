@@ -803,6 +803,7 @@ parity-check-full:
 	$(MAKE) test-two-player-turn
 	$(MAKE) test-double-play-court
 	$(MAKE) test-double-play-bat2
+	$(MAKE) test-stuck-auto-launch
 	$(MAKE) test-bat-redraw-window
 	$(MAKE) test-ball-left-wall-escape
 	$(MAKE) test-l3-replay-seed
@@ -1362,6 +1363,12 @@ test-double-play-court:
 # the ball seeded straight at bat 2.
 test-double-play-bat2:
 	python3 scripts/test_double_play_bat2.py
+
+# A ball left on the bat launches itself after STUCK_TIMEOUT (192)
+# ticks. Nothing gated this: mutating the counter so it never fires
+# survived the whole suite.
+test-stuck-auto-launch:
+	python3 scripts/test_stuck_auto_launch.py
 
 # The Kinnock easter egg (POKE 47475,0). Source-gated: it is up for
 # ~0.3 s, so a timed screendump would be luck. Its expected text is

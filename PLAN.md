@@ -16,7 +16,7 @@ The port is "100%" when all of the following hold:
 |---|-----------|-------|
 | 1 | All three game modes work: 1 Player, 2 Players (alternating), Double Play (simultaneous split-court co-op) | 1P and 2P done; Double Play has its court, both bats, ball physics and scoring but no bat-2 INPUT |
 | 2 | Menu semantics match the original (0 starts the selected game directly; A/B input-device cycling affects play) | Key 0 starts the game (`test-menu-start`); the device byte is per-player state but still selects nothing |
-| 3 | Core gameplay byte-exact where an oracle exists (ball, bat, collision, RNG, enemy, bonuses, scoring) | **Done** — regression-locked by 90 gates |
+| 3 | Core gameplay byte-exact where an oracle exists (ball, bat, collision, RNG, enemy, bonuses, scoring) | **Done** — regression-locked by 91 gates |
 | 4 | Full game FLOW gated end-to-end: level-clear → next, life-loss → respawn, game-over → initials, level wrap | **Done** — `test-level-advance`, `test-life-loss`, `test-game-over-visual`, `test-name-entry-visual` |
 | 5 | Sound faithful to the original's 5-slot beeper queue (envelope/timing, not just effect IDs) | ids, slot count, pitches and envelope ARITHMETIC faithful; durations still round to 20 ms because the sound clock is the 50 Hz frame counter |
 | 6 | All assets derived from the tape at build time; no captured emulator blobs | **Done** — all 13 loaded assets build from `original/blocks/`, held by `test-asset-provenance` |
@@ -573,6 +573,13 @@ In priority order (all pre-scoped in `parity-gaps.md` / notes):
    reads `BAT_X` directly, so the index has to name a BAT as well as a
    ball. Doing it once serves both, which makes it better value than its
    "niche" framing suggests.
+
+   **Structural half done 2026-08-09.** The three fields are `[3]`,
+   indexed as the `mag_*` arrays already were, and all 24 sites read
+   `[0]`. No behaviour change — the whole suite is green — so the
+   feature that follows can be judged on its own diff rather than on a
+   rename buried inside it. What remains is the fourteen sites learning
+   which ball, and `catch_ball_on_bat` learning which bat.
 3. ~~**Seeded destroyed-cell mismatch**~~ — **CLOSED 2026-08-09, and it
    had already fixed itself.** This entry said the port and original
    destroy different *cells* on `replay-l3-brick-flash-both`. They do
