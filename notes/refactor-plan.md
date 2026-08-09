@@ -568,6 +568,34 @@ removed when they were added; a multiset diff confirmed zero lines
 lost.
 
 
+#### Re-verifying the two published claims
+
+Finding that `mutate.py` could report on a stale DOS EXE put two
+already-published claims in doubt, both of the form "all 59 QEMU gates
+pass with this broken". Each was the evidence for a gate I then added
+and, in one case, for a row in `known-bugs.md`. If the EXE had been
+stale, some gate might have caught the mutation after all and the claim
+would have overstated a coverage gap.
+
+Both re-run with every `build/*.obj` and `build/batty*.exe` deleted
+first, and the EXE's md5 checked to differ from the clean build so the
+mutation demonstrably reached the binary:
+
+  - entry slide `y < 8` → `y < 9`: only `test-enemy-descend` fails, and
+    only because of the frame-8 checkpoint added for it. The other 58
+    pass. The claim holds.
+  - shimmer wrap `& 0x0F` → `& 0x1F`: all 59 pass. The claim holds, and
+    so does the `known-bugs.md` row saying #3's fix was unguarded.
+
+Neither needed correcting, which is the boring outcome and the one worth
+having checked. A claim published on evidence from a tool later found
+faulty is not automatically wrong, but it is unverified until re-run —
+and "it probably still holds" is not a result.
+
+Still open and still unclaimed: whether `laffc_sweep`'s left-boundary
+term is guarded by anything. One trajectory gate does not catch it;
+whether any of the other 58 do would cost a third full-suite run.
+
 #### mutate.py was reporting on stale DOS builds
 
 Sampling further into the QEMU layer, a mutation of `src/physics.cpp`
