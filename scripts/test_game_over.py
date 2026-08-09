@@ -19,8 +19,10 @@ apart anyway, all ported from LBC10_6:
   - no sound is played; the original's pause_clear_screen_attrib just
     drains the queue while the screen clears
 
-A visual gate for the screen itself is still worth having. This is the
-part that can be checked without an emulator.
+This is the part that can be checked without an emulator; the screen
+itself is now covered by `test-game-over-visual`, which reaches it with
+BATTY_REPLAY_LIVES=1 + BATTY_HIDE_BALL and holds it with
+BATTY_HOLD_GAME_OVER.
 """
 
 from __future__ import annotations

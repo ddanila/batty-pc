@@ -6331,6 +6331,19 @@ static bool probe_checkpoint_due(unsigned char active, unsigned int *countdown) 
 static void new_game_reset(void) {
     player.score = 0;
     player.lives = LIVES_INIT;
+    /* BATTY_REPLAY_LIVES: start with fewer lives. The game-over sequence
+     * is otherwise unreachable from a gate — three deaths means three
+     * death animations on wall-clock waits, which is exactly the shape
+     * that made test-bat-redraw-window flaky (notes/testing.md). With
+     * lives=1 and BATTY_HIDE_BALL, handle_no_ball_death fires on the
+     * first frame and the whole sequence is deterministic. */
+    {
+        const char *lv = getenv("BATTY_REPLAY_LIVES");
+        long want;
+        if (lv != NULL && replay_parse_ints(lv, &want, 1)
+            && want >= 1 && want <= LIVES_INIT)
+            player.lives = (int)want;
+    }
     player.live_adds_awarded = 0;
     bonus.active = 0;
     ball.speed_ramp = 0;
@@ -6434,10 +6447,18 @@ static void play_game_over(void) {
     sound_stop_all();
     render_game_over();
 
-    start = bios_ticks();
-    while (bios_ticks() - start < 65UL) {
-        sound_tick();
-        if (kbhit()) { getch(); break; }
+    /* BATTY_HOLD_GAME_OVER holds the screen for a key instead of 65
+     * ticks, so a visual gate captures it without racing the timer —
+     * the same hook, for the same reason, as BATTY_HOLD_ROUND_BANNER. */
+    if (getenv("BATTY_HOLD_GAME_OVER") != NULL) {
+        while (!kbhit()) sound_tick();
+        getch();
+    } else {
+        start = bios_ticks();
+        while (bios_ticks() - start < 65UL) {
+            sound_tick();
+            if (kbhit()) { getch(); break; }
+        }
     }
 
     if (high_score_beaten_this_game) {

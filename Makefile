@@ -410,6 +410,12 @@ $(TEST_FLOPPY_OUT): $(FLOPPY_TEST_EXE) $(ASSETS) $(FLOPPY_SRC)
 	if [ -n "$$BATTY_HIDE_BALL" ]; then \
 	    printf 'SET BATTY_HIDE_BALL=%s\r\n' "$$BATTY_HIDE_BALL" >> $(AUTOEXEC_T) ; \
 	fi; \
+	if [ -n "$$BATTY_REPLAY_LIVES" ]; then \
+	    printf 'SET BATTY_REPLAY_LIVES=%s\r\n' "$$BATTY_REPLAY_LIVES" >> $(AUTOEXEC_T) ; \
+	fi; \
+	if [ -n "$$BATTY_HOLD_GAME_OVER" ]; then \
+	    printf 'SET BATTY_HOLD_GAME_OVER=%s\r\n' "$$BATTY_HOLD_GAME_OVER" >> $(AUTOEXEC_T) ; \
+	fi; \
 	if [ -n "$$BATTY_SUPPRESS_NO_BALL_DEATH" ]; then \
 	    printf 'SET BATTY_SUPPRESS_NO_BALL_DEATH=%s\r\n' "$$BATTY_SUPPRESS_NO_BALL_DEATH" >> $(AUTOEXEC_T) ; \
 	fi; \
@@ -1192,6 +1198,12 @@ test-brick-flash: $(TEST_FLOPPY_OUT)
 
 test-game-over:
 	python3 scripts/test_game_over.py
+
+# The visual half of the game-over coverage. Reaches the screen with
+# BATTY_REPLAY_LIVES=1 + BATTY_HIDE_BALL (death on the first frame) and
+# holds it with BATTY_HOLD_GAME_OVER, so nothing depends on wall clock.
+test-game-over-visual:
+	python3 scripts/test_game_over_visual.py
 
 test-stuck-ball-offset:
 	python3 scripts/test_stuck_ball_offset.py

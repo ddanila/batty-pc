@@ -5,19 +5,18 @@ test. Started 2026-08-07.
 
 ## Where this stands
 
-The full suite runs **55/55 green in 343s** — seven clean runs now, the
-latest covering the known-bugs #13 fix — unchanged by it, which is the
-expected result for a fix to a scenario no gate reaches.
+The full suite runs **56/56 green** — eight clean runs now, the
+latest adding the game-over screen's first visual coverage.
 Six of the seven defects this refactor surfaced are closed; #14 is open
 because settling it needs ground truth the port does not have.
 
-Gate count 51 → 55 this session: `test-blast-dirty-redraw`,
+Gate count 51 → 56 this session: `test-blast-dirty-redraw`,
 `test-game-over`, `test-stuck-ball-offset`, `test-visual-checkpoints`
-and `test-invariant-owners`, each covering something nothing reached
-before.
+`test-invariant-owners`, `test-ball-sign-cache-owner` and
+`test-game-over-visual`, each covering something nothing reached before.
 
-`main.cpp`: 7,747 → 6,791 lines (-12.3%) across 14 modules. `make test-fast`
-runs every host test and source gate in seconds; `--full` is 55 gates
+`main.cpp`: 7,747 → 6,812 lines (-12.1%) across 14 modules. `make test-fast`
+runs every host test and source gate in seconds; `--full` is 56 gates
 in under six minutes.
 
 Line counts here are `wc -l`, measured against `wc -l` at `e0bb447` (the
@@ -106,7 +105,7 @@ happened, and `make test-video` caught it.
 | 1a | `replay_parse` — the BATTY_REPLAY_* value formats | 75 | **done** — 7 tests |
 | 1 | replay / probe scaffolding | ~430 | **last** — see below |
 
-`main.cpp`: 7,747 → 6,791 (`wc -l`; see the status block on why this is not Watcom's count).
+`main.cpp`: 7,747 → 6,812 (`wc -l`; see the status block on why this is not Watcom's count).
 100 host tests + source gates, all via `make test-fast` in seconds.
 
 ### Stage 5b: one destroyed-cell reset, not two
@@ -630,6 +629,31 @@ row-scoped — now live beside the primitives they drive. What is left in
 `main.cpp` is the two thin wrappers that turn a level index into
 `(cells, lattr, bg_attr)`, which is the only thing the module could not
 know.
+
+The game-over screen had no visual coverage at all, and `test-game-over`
+said so in its own docstring. The blocker was never the assertions — it
+was that reaching game over meant three deaths on wall-clock waits, the
+shape that made `test-bat-redraw-window` flaky. `BATTY_REPLAY_LIVES=1`
+plus the existing `BATTY_HIDE_BALL` makes `handle_no_ball_death` fire on
+the FIRST frame, and `BATTY_HOLD_GAME_OVER` holds the screen for a key
+exactly as `BATTY_HOLD_ROUND_BANNER` does. No wall clock anywhere.
+
+Two things that cost a run each, both worth writing down:
+
+A new `BATTY_*` knob does not reach DOS just because `src` reads it. The
+test floppy bakes a HAND-MAINTAINED list of `SET` lines into
+`AUTOEXEC.BAT`, and a variable missing from it is silently absent — the
+gate then runs a DIFFERENT SCENARIO and can still pass, depending on what
+it asserts. Mine failed only because it asserted on screen content.
+
+"How many pixels are lit" does not distinguish the game-over screen from
+the playfield: the playfield background is not black, so both are ~100%
+non-zero. The real discriminator is UNIFORMITY — 98% one colour cleared
+versus 54% in play. The first version of the gate used lit-pixel count
+and failed against a perfectly correct capture.
+
+Mutation-checked: moving the SCORE line two pixels up is reported as
+`text bands are [(70,75),(93,100),(110,115)], expected [...(95,100)...]`.
 
 Fixing that ownership bug (#13) turned up another (#14). Two writers
 store `-BALL_SPEED` (= -2) into `ball.dy` where the other four store a
