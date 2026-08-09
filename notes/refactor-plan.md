@@ -560,6 +560,34 @@ removed when they were added; a multiset diff confirmed zero lines
 lost.
 
 
+#### The accelerator's fraction, and a truncated asset accepted
+
+Second sweep: eight more mutations, two survivors, both real.
+
+`motion_accel_step`'s `m->frac = (unsigned char)sum` is what turns a
+sub-pixel velocity into an occasional whole-pixel step. Dropping it left
+all three accelerator tests green — the steps are still 0..2, it still
+settles at the cap, and 120 frames still covers more than 100 px. But
+the object does not move AT ALL for the first 20 frames instead of
+falling 6 px. Every falling thing in the game would start late.
+
+The fix pins exact cumulative distances (20 frames → 6 px, 40 → 25,
+80 → 97) rather than a loose bound. My `total > 100` was the assertion
+that let it through; a threshold chosen to be safely true is a threshold
+that proves little.
+
+`asset_load_chunked`'s short-read branch had no test — only
+`asset_load`'s did. Mutating its `return false` to `return true` was
+green. The shipped assets all take the chunked path, since they are
+larger than the scratch buffer, so a truncated `SPRITES.BIN` would have
+loaded "successfully" with the tail left as whatever was in `dest`. Now
+checked across every scratch size 1..64, so it is caught whether the
+short read lands on the first chunk or a later one.
+
+Both new tests also assert the positive case, so neither can pass by
+failing always. `test_physics` and `test_assets` were two more suites
+printing a hardcoded count.
+
 #### A bullet that hit a brick stayed in flight
 
 The first sweep with `mutate.py` — eight mutations, several per module

@@ -27,7 +27,10 @@ static void check(bool ok, const char *fmt, ...) {
     va_end(ap);
 }
 
+static int tests_run = 0;
+
 static void report(const char *name, int before, const char *detail) {
+    tests_run++;
     printf("  %-28s %s\n", name, failures > before ? "FAIL" : detail);
 }
 
@@ -93,6 +96,46 @@ static void test_chunked_matches_whole() {
     check(mismatches == 0, "%d scratch sizes disagreed with a whole-file read\n",
           mismatches);
     report("chunked_matches_whole", before, "scratch 1..64        ok");
+}
+
+
+/* A truncated file must fail the CHUNKED path too.
+ *
+ * test_short_file_fails covers asset_load. asset_load_chunked has its
+ * own short-read branch, and it had no test: mutating its
+ * `return false` to `return true` left the suite green. The shipped
+ * assets go through the chunked path (they are larger than the scratch
+ * buffer), so a truncated SPRITES.BIN would have loaded "successfully"
+ * with the tail left as whatever was in dest.
+ *
+ * Run across scratch sizes so the failure is caught whether the short
+ * read lands on the first chunk or a later one. */
+static void test_chunked_short_file_fails() {
+    const int before = failures;
+    u8 src[300];
+    for (int i = 0; i < 300; i++) src[i] = u8(i * 3 + 1);
+    check(write_file(TMP, src, 200), "could not write the fixture\n");
+
+    int wrongly_ok = 0;
+    for (unsigned scratch_size = 1; scratch_size <= 64; scratch_size++) {
+        u8 scratch[64];
+        u8 dest[300];
+        memset(dest, 0xAA, sizeof(dest));
+        if (asset_load_chunked(TMP, dest, sizeof(dest), scratch, scratch_size))
+            wrongly_ok++;
+    }
+    check(wrongly_ok == 0,
+          "%d scratch sizes accepted a 200-byte file for a 300-byte load\n",
+          wrongly_ok);
+
+    /* and the exact size still succeeds, so this is not just "always fail" */
+    u8 scratch[64];
+    u8 dest[200];
+    check(asset_load_chunked(TMP, dest, sizeof(dest), scratch, 64),
+          "an exact-size chunked load of the same file failed\n");
+    check(memcmp(dest, src, 200) == 0,
+          "the exact-size chunked load returned wrong bytes\n");
+    report("chunked_short_file_fails", before, "scratch 1..64        ok");
 }
 
 /* Variable-length loads report what actually arrived. */
@@ -190,10 +233,11 @@ int main() {
     test_short_file_fails();
     test_missing_file_fails();
     test_chunked_matches_whole();
+    test_chunked_short_file_fails();
     test_variable_reports_size();
     test_high_score_roundtrip();
     test_shipped_assets_are_the_expected_size();
     remove(TMP);
-    printf("\n%s\n", failures ? "FAILED" : "6 tests, 0 failed");
+    printf("\n%d tests, %d failed\n", tests_run, failures);
     return failures ? 1 : 0;
 }

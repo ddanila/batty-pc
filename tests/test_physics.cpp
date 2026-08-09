@@ -37,7 +37,10 @@ static int pseudo(int n) {
     return int((rng_like_seed >> 16) % (unsigned long)n);
 }
 
+static int tests_run = 0;
+
 static void report(const char *name, int before, const char *detail) {
+    tests_run++;
     printf("  %-28s %s\n", name, failures > before ? "FAIL" : detail);
 }
 
@@ -292,6 +295,36 @@ static void test_motion_accel_ramps_then_caps() {
     check((m.acc >> 8) == 0x02, "accumulator high byte is %02X, expected 02\n",
           (unsigned)(m.acc >> 8));
     report("motion_accel_ramps_then_caps", before, "0..2 px, settles     ok");
+}
+
+/* The FRACTION carries, which is the whole point of the accumulator.
+ *
+ * `m->frac = (unsigned char)sum` is what turns a sub-pixel velocity into
+ * an occasional whole-pixel step. Dropping it (`m->frac = 0`) leaves the
+ * ramp-and-cap test above green — the steps are still 0..2, it still
+ * settles, and 120 frames still covers more than 100 px. But the object
+ * does not move AT ALL for the first 20 frames instead of falling 6 px,
+ * so every falling thing in the game starts late and lands in the wrong
+ * place relative to the original.
+ *
+ * Exact cumulative distances, computed from the same recurrence, at
+ * three points on the curve: early (fraction-dominated), mid, and past
+ * the cap. */
+static void test_motion_accel_fraction_carries() {
+    const int before = failures;
+    const int at[3] = {20, 40, 80};
+    const int want[3] = {6, 25, 97};
+    for (int k = 0; k < 3; k++) {
+        motion_acc_t m = {0, 0};
+        int total = 0;
+        for (int f = 0; f < at[k]; f++)
+            total += motion_accel_step(&m, 0x0008, 0x02);
+        check(total == want[k],
+              "%d frames of the bonus curve covered %d px, expected %d — "
+              "if this is 0 early on, the fraction is being dropped\n",
+              at[k], total, want[k]);
+    }
+    report("motion_accel_fraction", before, "20/40/80 frames exact ok");
 }
 
 /* The +400 marker uses a much steeper curve and a cap of $80. It must
@@ -651,6 +684,7 @@ int main() {
     test_delta_roundtrip_quadrants();
     test_delta_to_dir_sign_inputs();
     test_motion_accel_ramps_then_caps();
+    test_motion_accel_fraction_carries();
     test_motion_accel_fast_variant_caps();
     test_motion_accel_clamp_is_equality_not_ge();
     test_sweeps_miss_outside_the_band();
@@ -667,6 +701,6 @@ int main() {
     test_bat_step_is_four_pixels();
     test_extra_balls_keep_the_quadrant();
     test_extra_ball_dirs_split_three_ways();
-    printf("\n%s\n", failures ? "FAILED" : "22 tests, 0 failed");
+    printf("\n%d tests, %d failed\n", tests_run, failures);
     return failures ? 1 : 0;
 }
