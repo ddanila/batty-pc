@@ -1739,11 +1739,38 @@ static void run_dot_punch(int abs_x) {
     scr_buff[off] &= run_dot_mask[abs_x & 7];
 }
 
-static int test_mode_pin_blink;   /* set by BATTYALL env */
+static int test_mode_pin_blink;   /* Walk the dot one step along the bat and turn it round at the ends.
+ * Bit 7 of run_dot_frame is the direction: set = decreasing. The travel
+ * runs between 9 and bat_w - 10, so the dots stay inside the body cap.
+ *
+ * This MUTATES animation state from inside a render call, which is the
+ * shape that made known-bugs #10 a bug for bullets. It is safe here only
+ * because the frame loop's redraw dispatch is mutually exclusive — see
+ * redraw_frame — so exactly one path draws the bat each frame. Call both
+ * in one frame and the dot moves at double speed. */
+static void advance_run_dot(int frame, int bat_w) {
+    if (run_dot_frame & 0x80) {
+        frame--;
+        if (frame <= 9) {
+            run_dot_frame = 9;                               /* now increasing */
+        } else {
+            run_dot_frame = (unsigned char)(0x80 | frame);
+        }
+        return;
+    }
+    frame++;
+    if (frame >= bat_w - 10) {
+        run_dot_frame = (unsigned char)(0x80 | (bat_w - 10));  /* now decreasing */
+    } else {
+        run_dot_frame = (unsigned char)frame;
+    }
+}
+
+/* set by BATTYALL env */
 
 static void render_running_dot(void) {
     int bat_w, bat_left;
-    int frame, dir, span;
+    int frame;
     /* Test-mode determinism: the GT was captured after exactly one
      * gameplay-loop iter (PC=0xBB61), so the original's running_dot
      * punched at frame=0x0E. Our test reaches the screendump after many
@@ -1777,27 +1804,7 @@ static void render_running_dot(void) {
     /* Punch both dots: one at frame from the left, one mirrored. */
     run_dot_punch(bat_left + frame);
     run_dot_punch(bat_left + bat_w - frame - 1);
-    /* Advance the counter. Direction bit set = decreasing; clear =
-     * increasing. Floor at 9, ceiling at bat_w - 10. */
-    dir = run_dot_frame & 0x80;
-    if (dir) {
-        frame--;
-        if (frame <= 9) {
-            frame = 9;
-            run_dot_frame = (unsigned char)frame;     /* flip to increasing */
-        } else {
-            run_dot_frame = (unsigned char)(0x80 | frame);
-        }
-    } else {
-        frame++;
-        span = bat_w - 10;
-        if (frame >= span) {
-            frame = span;
-            run_dot_frame = (unsigned char)(0x80 | frame);   /* flip to decreasing */
-        } else {
-            run_dot_frame = (unsigned char)frame;
-        }
-    }
+    advance_run_dot(frame, bat_w);
 }
 
 /* Display (lives - 2) right-side indicators next to the left one

@@ -61,7 +61,7 @@ happened, and `make test-video` caught it.
 | 1a | `replay_parse` — the BATTY_REPLAY_* value formats | 75 | **done** — 7 tests |
 | 1 | replay / probe scaffolding | ~430 | **last** — see below |
 
-`main.cpp`: 7,746 → 6,909. 100 host tests + source gates, all via `make test-fast` in seconds.
+`main.cpp`: 7,746 → 6,916. 100 host tests + source gates, all via `make test-fast` in seconds.
 
 ### Stage 5b: one destroyed-cell reset, not two
 
@@ -511,6 +511,19 @@ to protect, violated three commits after naming it. Inert today, because
 the port's ball object handler is a stub, but `call_for_all_obj`
 dispatches on `sprite_set` and the probe dumps those objects. It uses
 the helper now.
+
+`advance_run_dot` split the bat dot's state advance out of its render.
+The split is the point: `render_running_dot` mutates animation state
+from inside a draw, which is exactly the shape that made known-bugs #10
+a bug for bullets. Here it is safe ONLY because `redraw_frame`'s
+dispatch is mutually exclusive, so one path draws the bat per frame.
+Call both and the dot moves at double speed. That reasoning was nowhere;
+it is now on the function that depends on it.
+
+Not restructured further, deliberately. Test mode pins `run_dot_frame`
+to `$0E` so the visual gates never see the phase advance — moving the
+advance to a per-frame tick, as the bullet fix did, would be a change no
+gate could check.
 
 `repair_band_row_boundaries` grouped the four edge fix-ups the
 row-scoped repaint needs. A full ascending paint gets them for free —
