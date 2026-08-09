@@ -156,6 +156,30 @@ void paint_brick_rows(const u8 *cells, int first_row, int last_row) {
     }
 }
 
+/* The brick COLOUR attrs a row contributes, and nothing else.
+ *
+ * `print_one_brik` writes a brick's colour into char row 4+row while
+ * also painting eight rows of pixels. The partial rebuild needs the
+ * colour of the row just BELOW its window without the pixels — that
+ * row's cells are not being recomposited, only the char row they share
+ * with the window's bottom shadow row. Same derivation as
+ * print_one_brik's attr_off: char row 4+row, char col 1+2*col, both
+ * cells of the brick.
+ */
+static void paint_row_brick_attrs(const u8 *cells, int row) {
+    const unsigned char *cell_row = &cells[row * FIELD_COLS];
+    unsigned int attr_off = (unsigned int)(4 + row) * ATTR_COLS + 1u;
+    int col;
+    for (col = 0; col < FIELD_COLS; col++) {
+        if (!(cell_row[col] & 0x80)) {
+            const unsigned char attr = briks_colors[cell_row[col] & 0x0F];
+            attr_buff[attr_off]     = attr;
+            attr_buff[attr_off + 1] = attr;
+        }
+        attr_off += 2;
+    }
+}
+
 void repaint_row_body_top(const u8 *cells, int row) {
     unsigned int hl = 0x401u + (unsigned int)row * 0x100u;
     for (int col = 0; col < FIELD_COLS; col++) {
@@ -300,6 +324,34 @@ void paint_brick_band_rows(const u8 *cells, const u8 *lattr, u8 bg_attr,
     memcpy(&attr_buff[cr0 * ATTR_COLS], &lattr[cr0 * ATTR_COLS],
            (unsigned)((cr1 - cr0 + 1) * ATTR_COLS));
     reset_destroyed_cell_attrs(cells, bg_attr, r0, r1, cr0, cr1);
+
+    /* The window's two boundary char rows are SHARED with the brick rows
+     * outside it, and the base copy above has just wiped both. Each
+     * neighbour's contribution has to go back, in the order the full
+     * ascending paint would apply it:
+     *
+     *   cr0 = 4+r0 = 5+(r0-1)   row r0-1's SHADOW, then row r0's colour
+     *   cr1 = 5+r1 = 4+(r1+1)   row r1's shadow, then row r1+1's colour
+     *
+     * so the shadow above goes in BEFORE paint_brick_rows and the colour
+     * below goes in AFTER it. Getting the order wrong is invisible
+     * wherever only one of the two applies to a cell.
+     *
+     * This was missing, and until 2026-08-09 it did not show: the base
+     * band was captured with every brick alive, so the copy already
+     * carried both neighbours' attrs. `ec8c03d` made the base band the
+     * EMPTY playfield — verified against level-ENTRY captures, which are
+     * static and never exercise a partial rebuild — and the gap became
+     * 92 px of stale bright in test-enemy-brick-residue. known-bugs #18.
+     */
+    if (r0 - 1 >= 0 && cr0 <= 5 + (r0 - 1) && 5 + (r0 - 1) <= cr1)
+        paint_shadow_row(0xA2u + (unsigned int)(r0 - 1) * 0x20u,
+                         &cells[(r0 - 1) * FIELD_COLS]);
+
     paint_brick_rows(cells, r0, r1);
+
+    if (r1 + 1 < FIELD_ROWS && cr0 <= 4 + (r1 + 1) && 4 + (r1 + 1) <= cr1)
+        paint_row_brick_attrs(cells, r1 + 1);
+
     repair_band_row_boundaries(cells, r0, r1);
 }

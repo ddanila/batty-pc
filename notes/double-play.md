@@ -462,17 +462,25 @@ Two traps it walked into, both worth remembering:
   key was ever read. The gate seeds $38 — `new_game_reset`'s own mode-2
   placement — so every row distinguishes a working key from a dead one.
 
-### ENTER is bat 2's right, and the harness presses ENTER
+### ENTER is bat 2's right in the ORIGINAL, and is dropped here
 
-$BFFE bit 0 is the Enter key, so in Double Play ENTER steers bat 2
-right. It is also what `capture_frame_timeline.py --wait-key` presses to
-start a capture, so the harness's own keystroke can nudge bat 2 one step
-before its key-up lands.
+$BFFE bit 0 is the Enter key, so on the Spectrum ENTER steers bat 2
+right. The port does not bind it, and this is the one key of the two
+clusters that is deliberately missing.
 
-Whether the step falls inside the gate's 20-frame window is a race, and
-it was measured going both ways on consecutive runs ($B4, then $B0). The
-gate allows either. It was nearly pinned at $B4 on one observation; the
-re-run after tightening is what caught it.
+ENTER is this port's attract-chain affordance (PLAN.md WS1) and
+`capture_frame_timeline.py --wait-key` presses it to start every
+capture, so the binding made the harness's own keystroke nudge bat 2 one
+4 px step at a moment nothing controls. It was not only a harness
+problem: a player pressing ENTER to get through a screen would move bat
+2 in the next level.
+
+It first showed as a race in `test-double-play-input` ($B4 on one run,
+$B0 on the next), which I wrongly accommodated by widening the
+assertion. It reappeared in `test-double-play-court`, which measures a
+pixel extent and had no tolerance to hide behind. See known-bugs #19 and
+notes/lessons.md — a gate written around a defect makes the defect
+permanent.
 
 ## Ported: bat 2 kills the alien, and three wrong score attributions
 (2026-08-10)

@@ -671,3 +671,45 @@ the count is unchanged.
 The tell was in the failure message itself: it named "the sweep path",
 which does not exist. A checker's own error text is a claim about the
 code, and it had gone unread for as long as the check had been green.
+
+
+## Widening a gate to cover a flake makes the flake permanent (2026-08-10)
+
+`test-double-play-input` measured bat 2 at $B4 on one run and $B0 on the
+next. I traced the mechanism correctly — ENTER is bat 2's right key and
+also what the capture harness presses — and then widened the assertion
+to accept both, with a paragraph calling it the honest bound.
+
+The mechanism was right and the conclusion was wrong. The behaviour was
+a defect OUTSIDE the harness too: a player pressing ENTER to get through
+a screen would move bat 2 in the next level. Widening the gate hid it
+from the only test that could see it. It came back four hours later in
+`test-double-play-court`, which measures a pixel extent and has no such
+tolerance, and only then got fixed — by dropping ENTER from the binding,
+a two-line change.
+
+**When a measurement comes out two ways, the question is which behaviour
+is correct, not which bounds cover both.** Tolerance is right for
+genuine environmental noise; it is wrong for anything the port itself
+decides. The tell is whether you can name the code that produced the
+variance. If you can — and here I had written it down — it is not noise.
+
+Related: `notes/double-play.md` on the ENTER binding, known-bugs #19.
+
+## Verify a redraw refactor against the DYNAMIC path, not just entry
+(2026-08-10)
+
+`ec8c03d` dropped the brick pass from the generated attr band and
+measured it properly: three builds, all 15 levels, pixel-identical. All
+15 were level-ENTRY captures, which are static and never exercise a
+partial rebuild. `test-enemy-brick-residue` — the dirty-vs-full redraw
+comparison — went red in the same commit and stayed red for ten.
+
+The base band is read by two consumers with different needs: the full
+paint, which repaints every row over it, and the partial rebuild, which
+copies it into a window and repaints only that window's rows. Removing
+data the full path recomputes is safe; the partial path was relying on
+the same data for the rows it does NOT repaint.
+
+**A change to shared base data needs a test per CONSUMER, not per
+output.** "All 15 levels identical" measured one consumer fifteen times.

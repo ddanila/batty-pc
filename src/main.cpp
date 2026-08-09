@@ -3132,6 +3132,8 @@ static volatile unsigned char key_state[128];
  *     $FDFE  A S D F G    AND $05 -> A,D = LEFT   AND $0A -> S,F = RIGHT
  *     $BFFE  Ent L K J H  AND $0A -> J,L = LEFT   AND $05 -> K,Ent = RIGHT
  *
+ * with ONE key dropped: Enter. See the bat-2 reader below.
+ *
  * The interleaving is not a typo. Each direction gets two keys either
  * side of the other direction's, so the cluster works whichever way a
  * player rests their hand.
@@ -3155,7 +3157,6 @@ static volatile unsigned char key_state[128];
 #define SC_J        0x24
 #define SC_K        0x25
 #define SC_L        0x26
-#define SC_ENTER    0x1C
 
 static void __interrupt new_int9(void) {
     unsigned char sc = (unsigned char)inp(0x60);
@@ -7458,7 +7459,17 @@ static void steer_bat_from_keys(void) {
      * WS3 residual — so nothing suspends its steering. */
     Object &b2 = objects[OBJ_BAT_2];
     const int b2_left  = key_state[SC_J] || key_state[SC_L];
-    const int b2_right = key_state[SC_K] || key_state[SC_ENTER];
+    /* K only. The original's right-hand cluster is K *or* Enter
+     * ($BFFE bit 0), and Enter is deliberately dropped: this port uses
+     * ENTER as its attract-chain affordance (PLAN.md WS1) and the
+     * capture harness presses it to start every run, so a bat-2 binding
+     * makes ENTER nudge the bat 4 px at a moment nothing controls.
+     *
+     * It is not merely a test artefact — a player pressing ENTER to get
+     * through a screen would move bat 2 in the next level too. It first
+     * showed as test-double-play-court flaking between a 207 and a 211
+     * px extent, one bat step apart. */
+    const int b2_right = key_state[SC_K];
     b2.x_coord = (unsigned char)bat_step_x((int)b2.x_coord, 0,
                                            b2_left != 0, b2_right != 0);
 

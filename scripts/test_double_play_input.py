@@ -45,23 +45,26 @@ players on the split keyboard. On a PC the arrows sit by the numpad, far
 from HJKL, so leaving them live costs player 2 nothing. It is a superset
 and it is deliberate, so it gets a row here rather than a footnote.
 
-### Why the last row allows bat 2 two values, with no P2 key held
+### Why ENTER is NOT one of bat 2's keys
 
-ENTER is bat 2's RIGHT — faithfully, $BFFE bit 0 is the Enter key. It is
-also what `--wait-key` presses to start the capture, so the harness's own
-keystroke can nudge bat 2 one step before its key-up lands. The first two
-rows hide it because bat 2 finishes pinned against something.
+The original's right cluster is K *or* Enter ($BFFE bit 0). The port
+drops Enter, and the last row above is what pins that: with no P2 key
+held, bat 2 must be EXACTLY on its seed.
 
-Whether the step lands inside the 20-frame window is a RACE between the
-key-up and the frame counter, and it was measured going both ways on
-consecutive runs — $B4 first, $B0 next. So the row allows either, which
-is the honest bound; a run that put bat 2 anywhere else would mean a P2
-key is being read that nobody pressed.
+ENTER is this port's attract-chain affordance (PLAN.md WS1) and the
+capture harness presses it to start every run, so binding it to bat 2
+made the harness's own keystroke nudge the bat 4 px at a moment nothing
+controls. That first showed up not here but in `test-double-play-court`,
+which measures bat 2's pixel EXTENT and began flaking between 207 and
+211 — one bat step apart — depending on whether the key-up landed
+inside the capture window.
 
-It was very nearly pinned at $B4 on the strength of one observation.
-The re-run is what caught it, and it is the reason to re-run a gate
-after tightening it rather than trusting the number that motivated the
-tightening.
+The row here originally ALLOWED both $B0 and $B4 and called the race
+honest bounding. It was not: a gate written around a defect makes the
+defect permanent, and the defect was real outside the harness too — a
+player pressing ENTER to get through a screen would move bat 2 in the
+next level. Fixing the binding was the answer; widening the assertion
+had merely hidden it from the one gate that could see it.
 """
 import os
 import re
@@ -76,7 +79,7 @@ FRAME = 20
 BAT = "01017400AD000000040DEFAE1C0A74AD040DF0008380"
 
 SC = {"S": 0x1F, "F": 0x21, "A": 0x1E, "D": 0x20,
-      "J": 0x24, "K": 0x25, "L": 0x26, "ENTER": 0x1C,
+      "J": 0x24, "K": 0x25, "L": 0x26,
       "LEFT": 0x4B, "RIGHT": 0x4D}
 
 # new_game_reset's mode-2 placement. The bat object has to be SEEDED
@@ -162,10 +165,10 @@ def main() -> int:
                 "moved from its seed; bat 2 is inactive")
 
     ok &= check("mode 2, RIGHT    ", probe("2", ("RIGHT",)),
-                DIVIDER - BAT_W, (0xB0, 0xB4),
+                DIVIDER - BAT_W, 0xB0,
                 "player 1's arrows still steer in Double Play — the port's "
                 "own addition; dead arrows would leave bat 1 on its seed. "
-                "Bat 2 is on its seed or one step right: see below")
+                "Bat 2 is EXACTLY on its seed: see below")
 
     if ok:
         print("PASS double_play_input: both clusters steer their own bat "

@@ -15,7 +15,8 @@
 | #15 | `bios_ticks()` frozen during gameplay | fixed; `test-frozen-clock` |
 | #16 | the port bounces and re-aims an alien at a wall; the original only clamps | fixed 2026-08-09 — `check_margins` ported literally, the invented reflect-and-re-aim deleted; `test-enemy-margin-clamp` |
 | #17 | `test-enemy-descend` failed about two runs in three | fixed 2026-08-09 — the gate asserts the implication, and `BATTY_REPLAY_COUNTER` pins the phase |
-| #18 | `test-enemy-brick-residue` red since `ec8c03d`: the dirty redraw leaves 92 px of residue | **open** — bisected 2026-08-10; the attr band lost its brick pass, verified only against static level-entry captures |
+| #18 | `test-enemy-brick-residue` red since `ec8c03d`: the dirty redraw leaves 92 px of residue | fixed 2026-08-10 — the partial rebuild now restores both boundary char rows' neighbour contributions |
+| #19 | ENTER bound to bat 2's right made `test-double-play-court` flake between a 207 and 211 px extent | fixed 2026-08-10 — ENTER dropped from the bat-2 cluster; it is the port's attract-chain key |
 
 **Nothing here is open.** #14's port-side half is fixed and gated; what
 remains of it is a QUESTION about the original that cannot be answered
@@ -1097,9 +1098,35 @@ DIRTY partial-redraw path against a full redraw after 80 frames of play,
 which is a different question about the same data: what the partial path
 restores when it repaints over a cell.
 
-The likely shape is that some dirty-redraw path reads the base band
-expecting brick colour and now finds background. Not yet confirmed —
-recorded at the point of bisection rather than guessed further.
+**Fixed 2026-08-10**, and the shape was one step off the guess above.
+
+The 92 px were all one colour pair — $45 vs $05, the BRIGHT bit — in a
+single char row, at two char columns. That located it exactly: char row
+7, columns 13 and 21, which is the drop SHADOW cast by the live bricks
+at field row 2, columns 5 and 9 (`paint_shadow_row` writes char row
+5+row at columns 2+2c and 3+2c, one char right of the brick's own).
+
+A window's two boundary char rows are SHARED with the brick rows outside
+it:
+
+    cr0 = 4+r0 = 5+(r0-1)    row r0-1's SHADOW, then row r0's colour
+    cr1 = 5+r1 = 4+(r1+1)    row r1's shadow, then row r1+1's colour
+
+`paint_brick_band_rows` copies the base band over both, and then
+repainted only rows [r0, r1] — so neither neighbour's contribution came
+back. `reset_destroyed_cell_attrs` already extended one row each way and
+its comment described the interlock precisely; the painting simply did
+not follow.
+
+It never showed before because the base band was captured with every
+brick alive and therefore already carried both neighbours' attrs. The
+fix restores them explicitly, in the order the full ascending paint
+applies them — shadow-above BEFORE `paint_brick_rows`, colour-below
+AFTER it, since where both touch a cell the later write wins.
+
+The cell that exposed it was $C0: destroyed AND bit 6 set, so
+`reset_destroyed_cell_attrs` skips it (it wants exactly $80) and the
+only thing that could supply its attr was a neighbour's paint.
 
 ### Why it hid for ten commits
 
@@ -1114,3 +1141,34 @@ And the gate is not in `test-fast`, so the day-to-day loop never saw it.
 
 Corrected in refactor-plan.md. The gate itself did its job the first
 time it was actually run.
+
+
+## #19 — ENTER steered bat 2, and ENTER is how the harness starts a run
+
+**Fixed 2026-08-10, same day it was introduced.**
+
+The original's right-hand cluster is K *or* Enter ($BFFE bit 0), and the
+Double Play input work transcribed both. But ENTER is this port's
+attract-chain affordance (PLAN.md WS1) and `--wait-key` presses it to
+start every capture, so the harness's own keystroke nudged bat 2 by one
+4 px step at a moment nothing controls.
+
+It surfaced as `test-double-play-court` flaking between a 207 and a 211
+px extent — one bat step — depending on whether the key-up landed inside
+the capture window.
+
+### The part worth remembering
+
+I had ALREADY seen this race, in `test-double-play-input`, where bat 2
+read $B4 on one run and $B0 on the next. I widened that gate to accept
+both and wrote a paragraph calling it the honest bound.
+
+It was not honest, it was accommodating. The behaviour was wrong outside
+the harness too — a player pressing ENTER to get through a screen would
+move bat 2 in the next level — and widening the assertion hid it from
+the one gate that could see it. The flake then reappeared somewhere with
+no such tolerance, which is the only reason it got fixed.
+
+**A gate written around a defect makes the defect permanent.** When a
+measurement comes out two ways, the question is which behaviour is
+right, not which bounds cover both.
