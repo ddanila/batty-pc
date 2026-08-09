@@ -116,9 +116,8 @@ The first three are ported. The last two are not, and their call sites
 pass `SIDE_ACTIVE`, which credits the active player exactly as before:
 
 - the end-of-round leftover bricks are split EVENLY between the players
-  by alternating the flag ("Добавляет двум игрокам поровну очки"), which
-  needs a counter this does not have. Its call site still passes
-  `SIDE_ACTIVE`.
+  by alternating the flag ("Добавляет двум игрокам поровну очки") —
+  ported 2026-08-09, see below.
 
 ## The ball's owner bit (2026-08-09)
 
@@ -153,3 +152,32 @@ Not ported: the mode-2 START X itself ($48 / $C0 instead of resting on
 a bat). The alternation drives the owner either way, and moving the
 ball off the bat at level entry in Double Play is a visible change that
 belongs with bat 2's input rather than with scoring.
+
+
+## The leftover-brick tally splits evenly, not by side (2026-08-09)
+
+The fifth flag site is the odd one out. `add_points_for_left_briks` is
+the rocket-clear tally, and it does not attribute by side at all:
+
+    XOR A / LD (need_change_player),A       ; start on 1UP
+    ...for each cell...
+      LD A,(IY+$00) / AND $A0 / JR NZ,...   ; skip destroyed/undestructible
+      CALL points_calc_and_add
+      CALL scr_score_update
+      LD A,(need_change_player) / XOR $01 / LD (need_change_player),A
+
+so the surviving bricks alternate 1UP, 2UP, 1UP... regardless of where
+they sit. The comment on the routine says as much: "Добавляет двум
+игрокам поровну очки за оставшиеся на раунде кирпичи" — adds the points
+for the round's remaining bricks equally to both players.
+
+Note `XOR $01`, not `$80`. Everywhere else the flag is the top bit of a
+coordinate; here it is bit 0. `add_points_to_score` only tests
+`AND A / JR Z`, so any non-zero value works and the two conventions
+coexist. Reproducing that literally would mean carrying the flag's
+numeric value around; the port passes `0x80` for "2UP" everywhere and
+keeps the alternation, which is the same behaviour.
+
+With this ported, every one of the five sites passes a real side and the
+`SIDE_ACTIVE` sentinel is gone. `check_two_player_state` asserts it
+stays gone: a sentinel with no callers is an invitation to add one.

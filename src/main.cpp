@@ -735,12 +735,9 @@ static unsigned long high_score = 0;
  *   add_points_for_left_briks          zero, then alternated to split
  *                                      the leftover bricks evenly
  *
- * SIDE_ACTIVE means "not side-attributed yet": the last two need state
- * the port does not have (the ball's +$12 owner bit, and the alternating
- * split), so their callers pass it and credit the active player as
- * before. That is a stated gap, not a silent one — in Double Play those
- * points go to the wrong player. See PLAN.md WS3. */
-#define SIDE_ACTIVE (-1)
+ * Every site passes a real side now, so there is no "not attributed
+ * yet" sentinel: SIDE_ACTIVE existed for the two that could not be
+ * derived and went when they could. See notes/double-play.md. */
 
 /* The primary ball's OWNER side in Double Play — bit 7 of the original's
  * `object_ball_1+$12`. Not a coordinate and not derived from one: the
@@ -772,7 +769,7 @@ static unsigned char ball_owner_side = 0;      /* 0 = 1UP, 1 = 2UP */
 static unsigned char ball_start_right = 0;     /* the alternating flag */
 
 static void add_points_to_score(unsigned long pts, int side_x) {
-    if (game_mode == 2 && side_x != SIDE_ACTIVE && (side_x & 0x80))
+    if (game_mode == 2 && (side_x & 0x80))
         players[1].score += pts;
     else
         player.score += pts;
@@ -6163,6 +6160,8 @@ static void redraw_level_scene(unsigned char level_idx) {
  * brick per PIT tick instead — the same visible count-up, timing not
  * byte-exact (the busy-wait is Z80-clock-bound and unreproducible). */
 static void play_rocket_award_tally(unsigned char level_idx) {
+    /* orig: XOR A / LD (need_change_player),A before the sweep. */
+    unsigned char left_brik_side = 0;
     int row, col;
     unsigned long last = pit_ticks();
     for (row = 0; row < LVL_ROWS; row++) {
@@ -6173,9 +6172,14 @@ static void play_rocket_award_tally(unsigned char level_idx) {
             idx = (unsigned int)((row < 12) ? row : 11);
             pts = points_table[idx];
             if ((*cell & 0x0F) >= 6) pts *= 2;
-            /* add_points_for_left_briks alternates the flag to split
-             * these evenly between the two players; not ported. */
-            add_points_to_score(pts, SIDE_ACTIVE);
+            /* The original splits these EVENLY, not by side: it zeroes
+             * need_change_player before the sweep and does
+             * `LD A,(need_change_player) / XOR $01 / LD (...),A` after
+             * each award. So the surviving bricks alternate 1UP, 2UP,
+             * 1UP... regardless of where they sit. ($01, not $80 — the
+             * consumer only tests non-zero.) */
+            add_points_to_score(pts, left_brik_side ? 0x80 : 0);
+            left_brik_side = (unsigned char)(!left_brik_side);
             sound_queue(SND_NORMAL_BRIK);          /* per-brick tick */
             /* Pace one brick per PIT tick (sound playing meanwhile). */
             do { sound_tick(); } while (pit_ticks() == last);

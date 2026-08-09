@@ -320,7 +320,7 @@ alien kill and both bonus paths take the BAT's x; the bullet takes its
 own). Two are not, and pass an explicit `SIDE_ACTIVE`:
 
 - the end-of-round leftover bricks are split EVENLY by alternating the
-  flag, which needs a counter. Still `SIDE_ACTIVE`.
+  flag — ported 2026-08-09, see stage 5.
 
 **Stage 4 done (2026-08-09): the ball's owner bit.** `+$12` is a counter
 in bits 0..6 with bit 7 a separate flag that every counter operation
@@ -336,6 +336,18 @@ was written; see notes/double-play.md.
 Not ported: the mode-2 start X itself. The alternation drives the owner
 either way, and moving the ball off the bat at Double Play entry is a
 visible change that belongs with bat 2's input.
+
+**Stage 5 done (2026-08-09): the leftover-brick split.** The fifth flag
+site attributes nothing by side — `add_points_for_left_briks` zeroes the
+flag and XORs it after every award, so the surviving bricks alternate
+1UP, 2UP, 1UP... wherever they sit ("Добавляет двум игрокам поровну
+очки"). With it ported, all five sites pass a real side and the
+`SIDE_ACTIVE` sentinel is gone; the gate asserts it stays gone.
+
+**WS3's scoring is complete.** What is left of the workstream is bat 2's
+INPUT (`p2_dev` selects nothing — see WS1), `handling_ball`'s bat-2
+deflection branch, bonus ownership via `object_bat_2+$14`, and the
+`LBC10_4` death-spark shift.
 
 **Why after WS2:** WS2 builds the per-player state plumbing (HUD,
 banner, hi-score) that Double Play reuses; Double Play then adds the

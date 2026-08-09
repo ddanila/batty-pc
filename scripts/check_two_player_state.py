@@ -267,6 +267,33 @@ def main() -> int:
             "self-modified start x ($48 <-> $C0); a fixed value leaves "
             "every ball owned by the same player.")
     print("PASS ball_start_alternates: the start side toggles each entry")
+
+    # The rocket-clear tally is the odd one out: it splits the surviving
+    # bricks EVENLY rather than by side. orig zeroes the flag before the
+    # sweep and XORs it after every award.
+    tally = body_of(code, "static void play_rocket_award_tally(unsigned char level_idx) {")
+    flat_tally = "".join(tally.split())
+    if "left_brik_side=0" not in flat_tally:
+        raise SystemExit(
+            "FAIL: the leftover-brick tally does not start on 1UP. The "
+            "original does `XOR A / LD (need_change_player),A` before the "
+            "sweep.")
+    if "left_brik_side=(unsignedchar)(!left_brik_side)" not in flat_tally:
+        raise SystemExit(
+            "FAIL: the leftover-brick tally no longer alternates. The "
+            "original does `LD A,(need_change_player) / XOR $01 / "
+            "LD (need_change_player),A` after EVERY award, so the "
+            "surviving bricks split evenly between the players — it is "
+            "not a side rule. notes/double-play.md.")
+    print("PASS left_brik_even_split: the tally alternates from 1UP")
+
+    # And with every site attributed, the sentinel is gone.
+    if re.search(r"^#define SIDE_ACTIVE", code, re.M):
+        raise SystemExit(
+            "FAIL: SIDE_ACTIVE is back. It existed only for the two sites "
+            "whose side could not be derived; both can now, and a sentinel "
+            "with no callers is an invitation to add one.")
+    print("PASS no_side_sentinel: every scoring site passes a real side")
     return 0
 
 
