@@ -670,6 +670,30 @@ the letter row to change, since placement alone would look identical
 whether `step_name_letter` worked or not. Mutation-checked by making the
 LEFT arm a no-op.
 
+`sound` is the one module the QEMU suite structurally CANNOT cover:
+every gate runs with sound off, so its 366 lines are guarded by host
+tests alone. Three contracts had none.
+
+`sound_silence()` and `sound_stop_all()` are one word apart and mean
+different things — silence stops what is SOUNDING, stop_all also empties
+the QUEUE. `play_game_over` depends on that difference, mirroring the
+original's `pause_clear_screen_attrib`, and `test-game-over` only checked
+that the CALL is present. Pick the wrong one and a sound queued before a
+screen change plays over it: audible, brief, and not something anyone
+would file. Also covered: `stop_all` really does silence a held note,
+and `sound_play_metal_brik` — an inline entry point, not a queue id —
+produces a tone and honours muting.
+
+One assertion in that first draft was a guess and failed: the queue
+drains 17 frames after a silence, not the 4 I assumed. Measured, then
+pinned with a loose bound, because the property is that the queue still
+drains rather than how fast.
+
+The suite also could not count. `test_sound` printed the LITERAL string
+"7 tests, 0 failed" on success, so it never reflected reality and could
+not; `test_replay` and `test_replay_parse` hardcoded their totals.
+All three now count in `report()`.
+
 `objects[]` turned out to be the ONLY module declaring state it did not
 own — a full scan of every `extern` in `src/*.h` against the matching
 `.cpp` found nothing else, and `check_module_ownership.py` now keeps it

@@ -27,7 +27,10 @@ static void check(bool ok, const char *fmt, ...) {
     va_end(ap);
 }
 
+static int tests_run = 0;
+
 static void report(const char *name, int before, const char *detail) {
+    tests_run++;
     printf("  %-28s %s\n", name, failures == before ? detail : "FAIL");
 }
 
@@ -178,6 +181,6 @@ int main() {
     test_frame_lists_parse();
     test_frame_lists_stay_ascending();
     test_frame_lists_respect_max();
-    printf("\n%d tests, %d failed\n", 7, failures);
+    printf("\n%d tests, %d failed\n", tests_run, failures);
     return failures ? 1 : 0;
 }

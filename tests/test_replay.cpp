@@ -33,7 +33,10 @@ static void check(bool ok, const char *fmt, ...) {
     va_end(ap);
 }
 
+static int tests_run = 0;
+
 static void report(const char *name, int before, const char *detail) {
+    tests_run++;
     printf("  %-28s %s\n", name, failures == before ? detail : "FAIL");
 }
 
@@ -229,6 +232,6 @@ int main(void) {
     test_blast_seed();
     test_object_seed();
     test_random_seed();
-    printf("\n%d tests, %d failed\n", 6, failures);
+    printf("\n%d tests, %d failed\n", tests_run, failures);
     return failures == 0 ? 0 : 1;
 }

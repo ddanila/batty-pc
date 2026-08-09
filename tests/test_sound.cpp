@@ -28,7 +28,10 @@ static void check(bool ok, const char *fmt, ...) {
     va_end(ap);
 }
 
+static int tests_run = 0;
+
 static void report(const char *name, int before, const char *detail) {
+    tests_run++;
     printf("  %-28s %s\n", name, failures > before ? "FAIL" : detail);
 }
 
@@ -210,6 +213,98 @@ static void test_periods_are_legal() {
     report("periods_are_legal", before, "11 events            ok");
 }
 
+
+/* sound_silence() and sound_stop_all() are one word apart and mean
+ * different things. silence stops what is SOUNDING; stop_all also
+ * empties the QUEUE. Pick the wrong one and a sound queued before a
+ * screen change plays after it — audible, brief, and something nobody
+ * would think to file a bug about.
+ *
+ * play_game_over depends on the difference: it calls sound_stop_all()
+ * before drawing, mirroring the original's pause_clear_screen_attrib,
+ * which drains the queue while the screen clears. test-game-over checks
+ * that the CALL is there. Nothing checked that the call does this. */
+static void test_silence_keeps_the_queue_stop_all_empties_it() {
+    const int before = failures;
+
+    reset();
+    sound_queue(SND_LIVE_ADD);
+    sound_queue(SND_MAGNET);
+    check(queued_slots() == 2, "setup queued %d, expected 2\n", queued_slots());
+    sound_silence();
+    check(queued_slots() == 2,
+          "sound_silence() emptied the queue (%d slots left); it must only "
+          "stop what is sounding\n", queued_slots());
+    /* and the queue must still be LIVE, not merely non-zero. How many
+     * frames that takes is measured below rather than guessed — the
+     * first version of this test used 4 and failed, which says more
+     * about the guess than about the code. */
+    int frames = 0;
+    while (queued_slots() == 2 && frames < 120) { run_frames(1); frames++; }
+    check(queued_slots() < 2,
+          "after silence the queued sounds never played in 120 frames — "
+          "silence must not strand the queue\n");
+    /* Measured at 17 frames. The bound is loose on purpose: the point is
+     * that the queue still drains, not how fast. The first version of
+     * this test asserted 4 frames and failed, which said more about the
+     * guess than about the code. */
+    check(frames <= 60, "queue took %d frames to drain after silence; "
+          "measured 17, so something has changed materially\n", frames);
+
+    reset();
+    sound_queue(SND_LIVE_ADD);
+    sound_queue(SND_MAGNET);
+    sound_stop_all();
+    check(queued_slots() == 0,
+          "sound_stop_all() left %d queued slot(s) — a sound queued before "
+          "the game-over screen would play over it\n", queued_slots());
+    const int tones_before = sound_test_tones;
+    run_frames(8);
+    check(sound_test_tones == tones_before,
+          "after stop_all, %d tone(s) still played\n",
+          sound_test_tones - tones_before);
+    report("silence_vs_stop_all", before, "queue kept / emptied  ok");
+}
+
+/* sound_stop_all also silences: it is documented as "the above, and
+ * empty the queue", so a held note must not survive it. */
+static void test_stop_all_silences_a_held_note() {
+    const int before = failures;
+    reset();
+    sound_queue(SND_BAT_RESIZE_1);
+    run_frames(1);
+    const int silences_before = sound_test_silences;
+    sound_stop_all();
+    check(sound_test_silences > silences_before,
+          "sound_stop_all() did not turn the speaker off\n");
+    check(ticks_left == 0, "a held note survived stop_all (%d ticks)\n",
+          (int)ticks_left);
+    report("stop_all_silences", before, "speaker off + no hold ok");
+}
+
+/* The metal-brick click is its own entry point, not a queue id — the
+ * original plays it inline. It must still produce a tone, and must
+ * still respect muting like everything else. */
+static void test_metal_brik_plays_and_obeys_mute() {
+    const int before = failures;
+    reset();
+    const int tones_before = sound_test_tones;
+    sound_play_metal_brik();
+    check(sound_test_tones > tones_before,
+          "sound_play_metal_brik() produced no tone\n");
+
+    reset();
+    sound_set_enabled(false);
+    const int muted_tones = sound_test_tones;
+    sound_play_metal_brik();
+    check(sound_test_tones == muted_tones,
+          "sound_play_metal_brik() played %d tone(s) while muted — every "
+          "gate runs with sound off, so this path is only ever exercised "
+          "here\n", sound_test_tones - muted_tones);
+    sound_set_enabled(true);
+    report("metal_brik", before, "tone + honours mute   ok");
+}
+
 int main() {
     printf("sound tests\n");
     test_repeat_events_collapse();
@@ -219,6 +314,9 @@ int main() {
     test_queue_overflow_is_safe();
     test_held_note_is_released();
     test_periods_are_legal();
-    printf("\n%s\n", failures ? "FAILED" : "7 tests, 0 failed");
+    test_silence_keeps_the_queue_stop_all_empties_it();
+    test_stop_all_silences_a_held_note();
+    test_metal_brik_plays_and_obeys_mute();
+    printf("\n%d tests, %d failed\n", tests_run, failures);
     return failures ? 1 : 0;
 }
