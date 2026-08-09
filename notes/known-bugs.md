@@ -13,7 +13,7 @@
 | #13 | extra balls write the primary's sign cache | fixed; `test-ball-sign-cache-owner` |
 | #14 | the sign cache mixed signs and speeds | units fixed; **one question OPEN**, needs the Spectrum |
 | #15 | `bios_ticks()` frozen during gameplay | fixed; `test-frozen-clock` |
-| #16 | two enemy margin-escape angles aim OUT of the field | **open**, and unverified — needs the original; see below |
+| #16 | the port bounces and re-aims an alien at a wall; the original only clamps | **open by design decision**, not by unknown — measured against the original and the disassembly, see below |
 
 **#14 is the only open item**, and it is open for a reason that cannot be
 closed from the port: `delta_to_dir` selects its angle by MAGNITUDE, and
@@ -798,7 +798,68 @@ margin handling an approximation.
 So #16's original question — `$38` or `$18`? — is the wrong question.
 The angle table belongs to a re-aim the original does not perform.
 
-### Why it is STILL not fixed
+### The disassembly explains all of it
+
+`original/disasm/batty.asm` settles what the captures could only hint at.
+
+    check_margins:                  ; called by handling_bird, handling_ufo
+      CALL check_top_margin
+      CALL check_left_margin
+      JP   check_right_margin       ; ...three CLAMPS, and nothing else
+
+    bounce_wall:                    ; called by handling_ball, handling_spark
+      LD B,$3F / CALL check_top_margin  / CALL C,change_direction
+      LD B,$1F / CALL check_left_margin / CALL C,change_direction
+      CALL check_right_margin / RET C / JP change_direction
+
+Two routines over the same three checks. The ENEMY gets the clamp-only
+one; the reflecting one belongs to the ball and the sparks. So the
+original never turns an alien at a wall, and never re-aims it — exactly
+what the capture showed.
+
+    check_right_margin:
+      LD A,(IX+$0C)     ; width
+      ADD A,(IX+$02)    ; + x        <-- 8-BIT ADD
+      CP $F9
+      RET C             ; no clamp if width + x < $F9
+      LD A,$F8
+      SUB (IX+$0C)
+      LD (IX+$02),A     ; x := $F8 - width
+
+The bird's width (`+$0C`) is 24, measured. So the clamp fires for
+`x >= 225` and sets `x = $F8 - 24 = 224`. But the `ADD` is 8-bit: for
+`x >= 232` the sum passes 255, WRAPS below `$F9`, and the clamp silently
+does not fire. That is an overflow escape window in the original, and it
+is why the poked alien at x=240 walked off the edge and reappeared at 8.
+
+Predicted and confirmed: poking the alien to x=228 — inside the working
+window — clamps it to exactly 224, with `dir` unchanged through the
+clamp.
+
+### Port versus original, complete
+
+| | original | port |
+|---|---|---|
+| clamp value | `$F8 - width` = 224 | `x_max = 256 - 8 - w` = 224 — same |
+| clamp range | `x` 225..231 only | every `x > 224` |
+| `x >= 232` | overflow, NO clamp, runs off and wraps | clamped |
+| reflect `dir` | never | `(0x20 - dir) & 0x3F` |
+| re-aim target | never | `enemy_target_away_from_margins` |
+
+The clamp VALUE matches. The other three rows are port inventions, and
+the `$38` angle that opened this entry is a detail of the last of them.
+
+### Why it is still not fixed
+
+Now a design question rather than an unknown. Reproducing the original
+means reproducing an 8-bit overflow that lets an alien traverse the
+screen edge — faithful, and startling to watch. The port's version is
+tidier and diverges. Neither is obviously right, and nothing anywhere
+records that the choice was ever made; it looks like the port simply
+reused ball-style bouncing for the enemy.
+
+That decision belongs to whoever owns the port's fidelity goals, not to
+a bug report. What this entry can do is make sure it is a decision.
 
 The measurement is one artificial scenario: the alien was poked to
 x=240, y=4, dir=`$00` and driven into the edge. It shows what the

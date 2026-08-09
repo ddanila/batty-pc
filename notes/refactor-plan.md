@@ -569,6 +569,46 @@ removed when they were added; a multiset diff confirmed zero lines
 lost.
 
 
+#### #16 resolved, by reading the disassembly I already had
+
+Four emulator runs narrowed #16; `original/disasm/batty.asm` finished it
+in one grep. It was there the whole time.
+
+    check_margins:   three CLAMPS, nothing else   <- handling_bird/_ufo
+    bounce_wall:     the same three, plus change_direction on carry
+                                                  <- handling_ball/_spark
+
+Two routines over the same checks. The ENEMY gets the clamp-only one;
+the reflecting one belongs to the ball. So the original never turns an
+alien at a wall and never re-aims it — which is what the captures showed,
+now with a reason.
+
+`check_right_margin` also explains the wrap I measured:
+
+    LD A,(IX+$0C) / ADD A,(IX+$02) / CP $F9 / RET C
+    LD A,$F8 / SUB (IX+$0C) / LD (IX+$02),A
+
+The bird's width is 24, so the clamp fires at `x >= 225` and sets
+`x = 224`. But that `ADD` is 8-BIT: from `x >= 232` the sum passes 255,
+wraps below `$F9`, and the clamp silently does not fire. An overflow
+escape window in the original — and my poked alien at x=240 sat inside
+it.
+
+Falsifiable prediction, then tested: an alien at x=228 is inside the
+WORKING window and must clamp to exactly 224. It did, with `dir`
+unchanged through the clamp.
+
+The port's clamp VALUE matches the original's (224 both ways). The
+reflect, the re-aim and the absence of the overflow window are all port
+inventions. So #16 stops being "is this constant wrong" and becomes a
+recorded design question: reproducing the original means reproducing an
+overflow that lets an alien cross the screen edge. Nothing anywhere says
+that choice was ever made — it looks like ball-style bouncing was simply
+reused for the enemy.
+
+The lesson is cheaper than the finding: I ran the emulator four times
+before grepping the disassembly sitting in the repo.
+
 #### What the original actually does at an alien's right edge
 
 One more run past x=255 settled the shape of #16, and it is not the
