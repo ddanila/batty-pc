@@ -181,9 +181,13 @@ In priority order (all pre-scoped in `parity-gaps.md` / notes):
    the snap point, leave the alien put, re-target off `flag_2` — without
    ever calling `brick_hit_resolve`. Gated by `test-enemy-brick-walk`,
    which needed a new `enemy_home` probe word because the reaction
-   leaves no trace on screen. What remains of this item is exact
-   `check_margins`; the port's reflect-and-re-aim is still its own
-   invention. See notes/enemy-movement.md.
+   leaves no trace on screen.
+   *`check_margins` DONE too (2026-08-09):* it is three clamps and
+   nothing else — the port's reflect-and-re-aim was an invention, since
+   `LAA7D` never looks at the alien's position. Gated by
+   `test-enemy-margin-clamp`. **This item is closed**; the only residue
+   is the original's 8-bit overflow in `check_right_margin`, reproduced
+   and documented rather than fixed. See notes/enemy-movement.md.
 2. **MAGNET catch for secondary balls:** the primary-ball stuck system
    spans ~32 sites; catching the unified secondaries means mirroring it
    per-ball. Deliberately deferred as substantial new code for the

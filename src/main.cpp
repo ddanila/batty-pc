@@ -1478,41 +1478,51 @@ static void ball_reflect_descriptor(int flip_x, int flip_y) {
 
 
 
-/* Keep an alien inside the playfield. A side reflection is (0x20 - dir),
- * the ceiling (0x40 - dir), both masked to the 6-bit direction.
+/* orig: check_margins, which is three clamps and nothing else:
  *
- * Each bounce also re-aims: enemy_target_away_from_margins reads the
- * object's CURRENT position, so the clamped coordinates are written
- * before it is called — re-aiming from the pre-clamp position would
- * pick a target off the edge it just hit.
+ *   check_top_margin    y < $08              -> y = $08
+ *   check_left_margin   x < $08              -> x = $08
+ *   check_right_margin  (u8)(w + x) >= $F9   -> x = $F8 - w
  *
- * There is no floor. Returns false when the alien has gone off the
- * bottom, which deactivates it (bit 7 of sprite_set) and ends its
- * frame. */
-static bool bounce_enemy_off_margins(Object *o, int *nx, int *ny,
-                                     long *nx_q8, long *ny_q8) {
-    const int x_max = PLAYFIELD_W - 8 - (int)o->w_body_px;
-
-    if (*nx < 8 || *nx > x_max) {
-        *nx = (*nx < 8) ? 8 : x_max;
+ * No direction change and no re-aim. Until 2026-08-09 the port
+ * reflected the direction off each edge and called
+ * enemy_target_away_from_margins, and BOTH were inventions: LAA7D turns
+ * one step toward the held target and re-picks only on ARRIVAL, so
+ * nothing in the original steers an alien off a wall. It presses against
+ * the clamp, its dir eventually reaches its target, it re-picks at
+ * random, and it leaves. The old comment in enemies.h describing a
+ * margin-aware pick was describing the port, not the game.
+ *
+ * The right clamp's ADD is 8-BIT and unguarded, so for the bird's
+ * w = $18 the sum wraps at x >= $E8 and the clamp does not fire at all —
+ * x in [$E1,$E7] clamps back to $E0, x >= $E8 escapes. Reproduced here
+ * rather than fixed. It needs a jump of more than 2px past $E7 to reach,
+ * which ordinary flight cannot do; a LAFFC snap is the only way in.
+ *
+ * PLAYFIELD_W is 256, so PLAYFIELD_W - 8 - w is exactly $F8 - w and the
+ * clamp value was already right; only the reflection was wrong.
+ *
+ * There is no floor in check_margins. The bottom exit below is the
+ * port's own and is left alone: returning false deactivates the alien
+ * (bit 7 of sprite_set) and ends its frame. */
+static bool enemy_check_margins(Object *o, int *nx, int *ny,
+                                long *nx_q8, long *ny_q8) {
+    if (*nx < 8) {                                  /* check_left_margin */
+        *nx = 8;
         *nx_q8 = (long)*nx << 8;
-        o->dir = (unsigned char)((0x20 - o->dir) & 0x3F);
-        o->x_coord = (unsigned char)*nx;
-        o->y_coord = (unsigned char)*ny;
-        enemy_target_away_from_margins(*o);
+    } else if ((unsigned char)((unsigned)o->w_body_px + (unsigned)*nx)
+               >= 0xF9) {                           /* check_right_margin */
+        *nx = 0xF8 - (int)o->w_body_px;
+        *nx_q8 = (long)*nx << 8;
     }
 
     if (*ny >= PLAYFIELD_H) {
         o->sprite_set |= 0x80;
         return false;
     }
-    if (*ny < 8) {
+    if (*ny < 8) {                                  /* check_top_margin */
         *ny = 8;
         *ny_q8 = (long)*ny << 8;
-        o->dir = (unsigned char)((0x40 - o->dir) & 0x3F);
-        o->x_coord = (unsigned char)*nx;
-        o->y_coord = (unsigned char)*ny;
-        enemy_target_away_from_margins(*o);
     }
     return true;
 }
@@ -1618,7 +1628,7 @@ static void handling_bird_obj(Object *o) {
     ny = (int)(ny_q8 >> 8);
     /* LA9BC_1 order: LAD69 (move) -> LAFFC -> check_margins. */
     enemy_brick_reaction(o, nx, ny);
-    if (!bounce_enemy_off_margins(o, &nx, &ny, &nx_q8, &ny_q8)) return;
+    if (!enemy_check_margins(o, &nx, &ny, &nx_q8, &ny_q8)) return;
     o->x_coord = (unsigned char)nx;
     o->x_coord_hi = (unsigned char)(nx_q8 & 0xFF);
     o->y_coord = (unsigned char)ny;
@@ -3884,9 +3894,8 @@ static void write_replay_probe(void) {
     fprintf(f, "score=%06lu\n", player.score);
     fprintf(f, "random_number=%04X\n", (unsigned)rng_current());
     fprintf(f, "random_seed=%04X\n", (unsigned)rng_seed_addr());
-    fprintf(f, "enemy_repicks=arrival%u_margin%u_turns%u\n",
-            enemy_arrival_repicks, enemy_margin_repicks,
-            enemy_turn_calls);
+    fprintf(f, "enemy_repicks=arrival%u_turns%u\n",
+            enemy_arrival_repicks, enemy_turn_calls);
     fprintf(f, "brik_anim_ticks=%lu\n", probe.brik_anim_ticks);
     /* Both clocks, side by side, to settle known-bugs #15: the game-over
      * hold is the only live user of bios_ticks() and it never expires

@@ -92,88 +92,6 @@ static void test_steering_converges() {
     report("steering_converges", before, "4096 pairs, <=64 steps ok");
 }
 
-/* Against an edge the alien must aim AWAY, not re-roll into the wall. */
-static void test_margins_aim_inward() {
-    const int before = failures;
-    enemy_set_random(read_canned, read_canned);
-    canned = 0;
-
-    struct Case { int x, y; const char *edge; };
-    const Case cases[] = {
-        {   4,  60, "left"  },
-        { 236,  60, "right" },
-        { 120,   4, "top"   },
-    };
-    for (unsigned i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
-        Object o = alien(0x00, 0x00);
-        o.x_coord = u8(cases[i].x);
-        o.y_coord = u8(cases[i].y);
-        const unsigned long before_margin = enemy_margin_repicks;
-        enemy_target_away_from_margins(o);
-        check(enemy_margin_repicks > before_margin,
-              "%s edge did not take the margin path\n", cases[i].edge);
-        check(o.bonus_applied <= 0x3F, "%s edge produced target %02X\n",
-              cases[i].edge, o.bonus_applied);
-    }
-
-    /* WHICH angle, not just "an angle in range".
-     *
-     * The checks above assert that the margin path was TAKEN and that
-     * the result is 6-bit. Neither says where the alien is now aimed, so
-     * swapping the two left-edge angles ($08 and $00) survived — the
-     * alien would turn the wrong way at an edge, which is the exact
-     * thing this routine exists to prevent.
-     *
-     * These are the original's escape angles, a value table rather than
-     * a derived property: LAA7D picks by edge and by whether the alien
-     * is in the upper part of the field. Pinned the way the bat
-     * deflection table is. */
-    struct Angle { int x, y; u8 want; const char *what; };
-    const Angle angles[] = {
-        {   4,   4, 0x08, "left edge, upper"  },
-        {   4,  60, 0x00, "left edge, lower"  },
-        { 236,   4, 0x38, "right edge, upper" },
-        { 236,  60, 0x20, "right edge, lower" },
-        {  40,   4, 0x08, "top edge, left half"  },
-        { 200,   4, 0x38, "top edge, right half" },
-    };
-    for (unsigned i = 0; i < sizeof(angles) / sizeof(angles[0]); i++) {
-        Object o = alien(0x00, 0x00);
-        o.x_coord = u8(angles[i].x);
-        o.y_coord = u8(angles[i].y);
-        enemy_target_away_from_margins(o);
-        check(o.bonus_applied == angles[i].want,
-              "%s aimed at %02X, expected %02X\n",
-              angles[i].what, o.bonus_applied, angles[i].want);
-    }
-
-    /* The thresholds are inclusive, and only a bracketing pair shows it.
-     * x <= 8 is the left margin, so x=8 takes it and x=9 does not — the
-     * cases above sit at x=4 and pass either way. */
-    canned = 0x2A;
-    Object at8 = alien(0x00, 0x00);
-    at8.x_coord = 8; at8.y_coord = 60;
-    enemy_target_away_from_margins(at8);
-    check(at8.bonus_applied == 0x00,
-          "x=8 is inside the left margin but aimed at %02X\n",
-          at8.bonus_applied);
-
-    Object at9 = alien(0x00, 0x00);
-    at9.x_coord = 9; at9.y_coord = 60;
-    enemy_target_away_from_margins(at9);
-    check(at9.bonus_applied == 0x2A,
-          "x=9 is outside the left margin but did not take the random "
-          "target (got %02X)\n", at9.bonus_applied);
-
-    /* Well inside the field, it should just pick at random. */
-    Object mid = alien(0x00, 0x00);
-    canned = 0x2A;
-    enemy_target_away_from_margins(mid);
-    check(mid.bonus_applied == 0x2A,
-          "an alien in open space did not take the random target (%02X)\n",
-          mid.bonus_applied);
-    report("margins_aim_inward", before, "6 angles + threshold ok");
-}
 
 /* Targets are 6-bit; a stray high bit would steer toward an angle that
  * does not exist. */
@@ -299,11 +217,10 @@ int main() {
     printf("enemies tests\n");
     test_turns_the_shorter_way();
     test_steering_converges();
-    test_margins_aim_inward();
     test_targets_stay_six_bit();
     test_rng_sources_are_not_crossed();
     test_home_walk_converges();
     test_home_target_x_clamped_left();
-    printf("\n%s\n", failures ? "FAILED" : "7 tests, 0 failed");
+    printf("\n%s\n", failures ? "FAILED" : "6 tests, 0 failed");
     return failures ? 1 : 0;
 }

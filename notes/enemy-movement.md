@@ -517,9 +517,57 @@ frame 1 on the alien is homing and homing skips the steer.
 
 What is still missing from the enemy's LAFFC is the entry guard
 (`y < $80`, `y + height >= $20`) — `laffc_sweep`'s own band scan covers
-the same ground for the positions an alien can reach — and exact
-`check_margins`, which remains the port's own reflect-and-re-aim
-invention.
+the same ground for the positions an alien can reach.
+
+#### check_margins is three clamps, and the port had invented a bounce
+
+    check_top_margin    y < $08              -> y = $08
+    check_left_margin   x < $08              -> x = $08
+    check_right_margin  (u8)(w + x) >= $F9   -> x = $F8 - w
+
+That is the whole routine. No direction change, no re-aim. The port
+reflected the direction off each edge and called
+`enemy_target_away_from_margins`, and BOTH were inventions — `LAA7D` is
+only "turn one step toward the target; on arrival re-pick at random",
+with nothing in it that looks at the alien's position:
+
+    LAA7D:
+      LD A,(IX+$06) / LD L,A / SUB (IX+$14) / JR Z,LAA7D_1
+      BIT 5,A / LD A,B / JR NZ,LAA7D_0 / NEG
+    LAA7D_0:
+      ADD A,L / AND $3F / LD (IX+$06),A / RET
+    LAA7D_1:
+      LD A,(random_number) / AND $3F / LD (IX+$14),A / RET
+
+So the original's alien has no wall-avoidance at all. It presses against
+the clamp, its dir eventually reaches its target, the arrival re-pick
+sends it somewhere random, and it leaves. `enemies.h` described the
+invented behaviour as if it were the game's until 2026-08-09.
+
+Measured after the change, alien seeded at x=12, y=20 heading left:
+
+    frame  x   y   dir    arrival/turns
+      2   10  20  $20     0/0
+      4    8  20  $20     1/1     <- clamped, direction untouched
+      6    8  20  $20     1/1     <- resting on the wall
+      8    8  20  $1F     1/2     <- steering away on its own
+
+`PLAYFIELD_W` is 256, so the port's `PLAYFIELD_W - 8 - w` was already
+exactly `$F8 - w`; only the reflection was wrong.
+
+The right clamp's `ADD A,(IX+$02)` is 8-BIT and unguarded, so for the
+bird's `w = $18` the sum wraps and the clamp stops firing: x in
+`[$E1,$E7]` clamps back to `$E0`, x >= `$E8` escapes entirely.
+Reproduced rather than fixed. Reaching it needs a jump of more than 2px
+past `$E7`, which ordinary flight cannot do — a LAFFC snap is the only
+way in. This is the residue of known-bugs #16.
+
+**No gate saw any of this.** Swapping a reflect-and-re-aim for three
+clamps left all 76 gates green: nothing in the suite had ever watched an
+alien reach a margin. `test-enemy-margin-clamp` now does, and it asserts
+the phase-robust form — each non-arrival turn moves dir by exactly one
+6-bit step, so `shortest_arc(dir, start) <= turns - arrival` is exact
+regardless of the steer phase, and a reflection is an arc of 32.
 
 #### RESOLVED: dir $00 moving the alien UP was my own setup
 

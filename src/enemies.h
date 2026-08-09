@@ -8,8 +8,11 @@
  * toward it, choosing the shorter way round. On arrival it picks a new
  * target at random, which is what makes its path wander.
  *
- * Near a wall it stops choosing randomly and aims at a fixed angle that
- * leads away, so it cannot grind along an edge.
+ * It does NOT do anything special near a wall. `check_margins` clamps
+ * the position and leaves the direction alone, so an alien presses
+ * against an edge until its dir reaches its target and the arrival
+ * re-pick turns it away. This file claimed the opposite until
+ * 2026-08-09, describing a margin-aware pick the port had invented.
  *
  *
  * THE RNG DISTINCTION MATTERS
@@ -31,7 +34,6 @@
 #define BATTY_ENEMIES_H
 
 #include "objects.h"
-#include "zxvga.h"   /* PLAYFIELD_W — the margins are screen-relative */
 #include "types.h"
 
 /* `current` must read without advancing; `sample` follows the game's
@@ -49,10 +51,6 @@ void enemy_pick_new_target(Object &o);
  * a LAFFC hit triggers via `flag_2`. Not the same read as
  * enemy_pick_new_target. */
 void enemy_repick_target_current(Object &o);
-
-/* Aim away from whichever edge the alien is against; if it is not
- * against one, choose at random as usual. */
-void enemy_target_away_from_margins(Object &o);
 
 /* The brick-hit home target: the original's LAA7B, a single global word
  * shared by every alien (L = x at $AA7B, H = y at $AA7C). `y == 0` means
@@ -72,6 +70,5 @@ void enemy_home_step(Object &o, EnemyHomeTarget &t);
 /* How often each path is taken — read by the render profile. */
 extern unsigned long enemy_turn_calls;
 extern unsigned long enemy_arrival_repicks;
-extern unsigned long enemy_margin_repicks;
 
 #endif /* BATTY_ENEMIES_H */

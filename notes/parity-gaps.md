@@ -48,11 +48,12 @@ Several paths use gameplay-equivalent but not byte-exact motion:
   Still approximate, and now decoded precisely — `handling_bird` calls
   `LAA7D` (steer, every 4 frames), `LAD69` (move), `LAFFC` (brick
   collision), then `check_margins` (clamp), in that order. The port
-  matches the steer and the move, and substitutes a reflect-and-re-aim
-  for the clamp. The brick collision, once absent, is ported as of
-  2026-08-09 (`enemy_brick_reaction` + `enemy_home_step`, gated by
-  `test-enemy-brick-walk`), so the clamp is the only piece of this line
-  still approximate. `LAFFC` branches on
+  matches all four as of 2026-08-09. The brick collision is
+  `enemy_brick_reaction` + `enemy_home_step` (gated by
+  `test-enemy-brick-walk`); `check_margins` is the literal three clamps
+  (gated by `test-enemy-margin-clamp`), replacing a reflect-and-re-aim
+  the port had invented. The residue is the original's 8-bit overflow in
+  `check_right_margin`, reproduced rather than fixed. `LAFFC` branches on
   the object's sprite_set: the ball's destroy path is reached only for
   `$02`, while `$08`/`$09` (bird/UFO) latch the enemy's position into
   `LAA7B` — which flips `handling_bird` onto its `LAA44` HOMING branch —

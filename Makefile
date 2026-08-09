@@ -741,6 +741,7 @@ parity-check-full:
 	$(MAKE) test-stuck-ball-dirty-redraw
 	$(MAKE) test-enemy-brick-residue
 	$(MAKE) test-enemy-brick-walk
+	$(MAKE) test-enemy-margin-clamp
 	$(MAKE) test-bat-redraw-window
 	$(MAKE) test-ball-left-wall-escape
 	$(MAKE) test-l3-replay-seed
@@ -1261,6 +1262,12 @@ test-enemy-brick-residue:
 # unobservable and 75 gates pass either way.
 test-enemy-brick-walk:
 	python3 scripts/test_enemy_brick_walk.py
+
+# check_margins is three CLAMPS, no reflection and no re-aim. Replacing
+# the port's invented reflect-and-re-aim with the literal clamps left all
+# 76 gates green — no gate had ever watched an alien reach a margin.
+test-enemy-margin-clamp:
+	python3 scripts/test_enemy_margin_clamp.py
 
 test-rocket-flight-redraw:
 	python3 scripts/test_rocket_flight_redraw.py

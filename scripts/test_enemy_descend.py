@@ -73,6 +73,9 @@ EXP_X, EXP_DIR, EXP_SPD, EXP_TARGET = 168, 0x10, 1, 0x10
 #   target=0x29  arrival1_margin0_turns1
 #   target=0x10  arrival0_margin0_turns0
 #
+# (the `margin` field was dropped from the probe on 2026-08-09 with the
+# invented margin re-pick it counted; the readings above are as taken)
+#
 # Both are CORRECT. Frame 8 is where the entry slide ends, so it is the
 # first frame the alien can steer, and steering is gated on
 # `pit_frame_counter & 3` — the port's stand-in for the original's
@@ -92,8 +95,6 @@ EXP_X, EXP_DIR, EXP_SPD, EXP_TARGET = 168, 0x10, 1, 0x10
 #   during the slide (`if (y < 8) { y++; return; }`) no turn can run at
 #   all, so turns MUST be 0 on frames 3 and 6
 #
-# A margin re-pick is wrong at every one of these frames: x=168 is
-# nowhere near an edge.
 TARGET_AFTER_REPICK = 0x29
 
 
@@ -123,12 +124,12 @@ def probe_enemy(frame: int):
     m = re.search(r"object_enemy=([0-9A-Fa-f]+)", text)
     if not m:
         return None, None
-    r = re.search(r"enemy_repicks=arrival(\d+)_margin(\d+)_turns(\d+)", text)
+    r = re.search(r"enemy_repicks=arrival(\d+)_turns(\d+)", text)
     if not r:
         raise SystemExit("FAIL: PROBE.TXT has no enemy_repicks line — this "
                          "gate reads it to tell an un-steered frame from a "
                          "steered one (known-bugs #17)")
-    counts = tuple(int(g) for g in r.groups())      # arrival, margin, turns
+    counts = tuple(int(g) for g in r.groups())      # arrival, turns
     return bytes.fromhex(m.group(1)), counts
 
 
@@ -140,14 +141,14 @@ def main() -> int:
             print(f"  frame {frame}: NO enemy in PROBE.TXT [FAIL]")
             ok = False
             continue
-        arrival, margin, turns = counts
+        arrival, turns = counts
         sset, x, y, d, spd, tgt = b[0], b[2], b[4], b[6], b[7], b[0x14]
 
         # The slide returns before the steer, so a turn there is a bug in
         # the port. Only the frame the slide ENDS on may steer.
         max_turns = 0 if frame < 8 else 1
-        if turns > max_turns or margin:
-            why = f"turns={turns} margin={margin}"
+        if turns > max_turns:
+            why = f"turns={turns}"
             exp_tgt = "no steer at all"
         elif turns == 0:
             why = "not steered yet"
@@ -159,11 +160,11 @@ def main() -> int:
         want_tgt = EXP_TARGET if turns == 0 else TARGET_AFTER_REPICK
         good = (sset == 0x09 and x == EXP_X and y == exp_y and d == EXP_DIR
                 and spd == EXP_SPD and tgt == want_tgt
-                and turns <= max_turns and margin == 0 and arrival == turns)
+                and turns <= max_turns and arrival == turns)
         ok = ok and good
         print(f"  frame {frame}: sprite_set={sset:02X} x={x} y={y} "
               f"dir=0x{d:02X} spd={spd} target=0x{tgt:02X} "
-              f"arrival={arrival} margin={margin} turns={turns} "
+              f"arrival={arrival} turns={turns} "
               f"[{'PASS' if good else 'FAIL'}] (expect x={EXP_X} y={exp_y} "
               f"dir=0x{EXP_DIR:02X} spd={EXP_SPD} target={exp_tgt} "
               f"— {why})")

@@ -4,7 +4,6 @@
 
 unsigned long enemy_turn_calls      = 0;
 unsigned long enemy_arrival_repicks = 0;
-unsigned long enemy_margin_repicks  = 0;
 
 namespace {
 u8 (*read_current)() = 0;
@@ -48,18 +47,6 @@ void enemy_repick_target_current(Object &o) {
     o.bonus_applied = u8(read_current() & 0x3F);
 }
 
-void enemy_target_away_from_margins(Object &o) {
-    enemy_margin_repicks++;
-    if (o.x_coord <= 8) {
-        o.bonus_applied = (o.y_coord <= 12) ? 0x08 : 0x00;
-    } else if (o.x_coord >= PLAYFIELD_W - 8 - o.w_body_px) {
-        o.bonus_applied = (o.y_coord <= 12) ? 0x38 : 0x20;
-    } else if (o.y_coord <= 8) {
-        o.bonus_applied = (o.x_coord < PLAYFIELD_W / 2) ? 0x08 : 0x38;
-    } else {
-        enemy_pick_new_target(o);
-    }
-}
 
 /* --- the brick-hit home target (orig LAA7B / LAA44) ------------------
  *
