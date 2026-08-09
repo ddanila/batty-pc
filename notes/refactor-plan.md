@@ -8,7 +8,7 @@ test. Started 2026-08-07.
 The stage table below is complete except stage 1, which is blocked for a
 reason rather than for want of effort — see the end of this section.
 
-**The code.** `main.cpp`: 7,747 → 6,840 lines (-11.7%) across 15
+**The code.** `main.cpp`: 7,747 → 6,851 lines (-11.6%) across 15
 modules. The longest function is `run_level` at 113 lines, and it is an
 orchestrator of named phases, which is what it should be.
 
@@ -131,7 +131,7 @@ happened, and `make test-video` caught it.
 | 1a | `replay_parse` — the BATTY_REPLAY_* value formats | 75 | **done** — 7 tests |
 | 1 | replay / probe scaffolding | ~430 | **as far as it should go** — 6 overrides out in `replay`, 6 host tests; the remaining 3 are blocked by design, see below |
 
-`main.cpp`: 7,747 → 6,840 (`wc -l`; see the status block on why this is not Watcom's count).
+`main.cpp`: 7,747 → 6,851 (`wc -l`; see the status block on why this is not Watcom's count).
 100 host tests + source gates, all via `make test-fast` in seconds.
 
 ### Stage 5b: one destroyed-cell reset, not two
@@ -568,6 +568,40 @@ paragraph. Use the headings, not the order. Nothing was reordered or
 removed when they were added; a multiset diff confirmed zero lines
 lost.
 
+
+#### #14 fixed, applying #16's lesson straight away
+
+#16's lesson was that the disassembly answers questions I was paying
+emulator runs for. Applied it to the other open item immediately, and it
+took one grep.
+
+#14's open half asked whether the original derives the extra balls'
+launch angle from the ball's real VELOCITY. LA67B_8 (`$A67B`):
+
+    LD A,(IY+$06)   ; the primary's DIR BYTE
+    AND $0F         ; low nibble picks the branch
+    ...
+    AND $30 / OR E  -> ball2   ;  AND $30 / OR D -> ball3
+
+No velocity anywhere. It reads the dir byte and splits it.
+
+`extra_ball_dirs` was already a faithful port of that table — the bug was
+its INPUT. The port passed `delta_to_dir(ball.dx, ball.dy)`, a dir
+reconstructed from the {-1,0,+1} sign cache. `delta_to_dir` picks its
+angle with `abs(dx) >= BALL_SPEED`, and a sign is never >= 2, so the low
+nibble came out `$04` EVERY time. The port always took the first branch
+where the original varies with the primary's actual angle.
+
+One line: pass `objects[OBJ_BALL_1].dir`, which is what `(IY+$06)` is.
+The round trip is gone and the sign cache is no longer involved in the
+multiball spawn at all — which also retires the last production caller of
+`delta_to_dir`.
+
+Full suite 59/59 green after the change, and that is itself the
+explanation for how it survived: no gate reaches a multiball spawn from a
+primary whose low nibble is not `$04`. The three tests added for this
+area over the last week all pinned the round trip's behaviour, not the
+original's.
 
 #### #16 resolved, by reading the disassembly I already had
 

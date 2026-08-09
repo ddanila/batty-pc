@@ -11,7 +11,7 @@
 | #11 | narrow bat redraw loses the inner border line | fixed; `test-bat-redraw-window` |
 | #12 | stuck ball snapped to the default offset | fixed; `test-stuck-ball-offset` |
 | #13 | extra balls write the primary's sign cache | fixed; `test-ball-sign-cache-owner` |
-| #14 | the sign cache mixed signs and speeds | units fixed; **one question OPEN**, needs the Spectrum |
+| #14 | the sign cache mixed signs and speeds | **fixed** — the open half was the multiball spawn reading a reconstructed dir instead of the primary's dir byte; settled from the disassembly |
 | #15 | `bios_ticks()` frozen during gameplay | fixed; `test-frozen-clock` |
 | #16 | the port bounces and re-aims an alien at a wall; the original only clamps | **open by design decision**, not by unknown — measured against the original and the disassembly, see below |
 
@@ -577,16 +577,39 @@ requires exactly one writer. It was right — that would have been a second
 one. Routing through the owner was the fix, and the gate found it before
 a human review would have.
 
-### Still open
+### The open half, settled from the disassembly (2026-08-09)
 
-The units are consistent; the QUESTION they raised is not settled.
-`delta_to_dir` selects its angle with `abs(dx) >= BALL_SPEED`, and now
-that `dx` is provably always a sign, the `0x08` angle is unreachable from
-the only production caller — by construction rather than by accident.
-Whether the original derives the extras' launch angle from the ball's
-real velocity, in which case reducing to signs destroys the input it
-wants, needs the Spectrum. `test_delta_to_dir_sign_inputs` pins today's
-behaviour so a change would be a decision.
+The question was whether the original derives the extras' launch angle
+from the ball's real VELOCITY, in which case reducing to signs destroys
+the input it wants. `original/disasm/batty.asm` answers it at LA67B_8
+(`$A67B`):
+
+    LD A,(IY+$06)     ; the primary ball's DIR BYTE
+    AND $0F           ; low nibble picks the branch
+    LD DE,$080C  / CP $04 / JR Z,...
+    LD DE,$040C  / CP $08 / JR Z,...
+    LD DE,$0408       ; else
+    LD A,(IY+$06) / AND $30 / OR E   -> ball2 dir
+    LD A,(IY+$06) / AND $30 / OR D   -> ball3 dir
+
+No velocity anywhere. It reads the dir byte and splits it: `$0F` for the
+angle, `$30` for the quadrant.
+
+`extra_ball_dirs` was already a faithful port of that table. The bug was
+its INPUT: the port passed `delta_to_dir(ball.dx, ball.dy)` — a dir
+RECONSTRUCTED from the {-1,0,+1} sign cache. `delta_to_dir` picks its
+angle with `abs(dx) >= BALL_SPEED`, and a sign is never >= 2, so the low
+nibble came out `$04` every single time. The port always took the FIRST
+branch where the original varies with the primary's actual angle.
+
+**Fixed**: `apply_multi_ball_bonus` now passes
+`objects[OBJ_BALL_1].dir`, which is what `(IY+$06)` is. One line, and it
+removes the round trip entirely — the sign cache is no longer involved
+in the multiball spawn at all.
+
+Full suite 59/59 green after the change: no gate reached a multiball
+spawn from a primary whose low nibble was not `$04`, which is why this
+survived. `delta_to_dir` now has no production caller.
 
 ---
 

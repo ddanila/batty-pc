@@ -3003,7 +3003,18 @@ static void apply_multi_ball_bonus(void) {
     set_bat_bonus(0xFF);
     if (ball.extra2_active || ball.extra3_active) return;
 
-    const ExtraBallDirs dirs = extra_ball_dirs(delta_to_dir(ball.dx, ball.dy));
+    /* The primary's DIR BYTE, not a direction reconstructed from the sign
+     * cache. The original reads `(IY+$06)` straight (LA67B_8 $A67B) and
+     * splits it: `AND $0F` picks the branch, `AND $30` carries the
+     * quadrant.
+     *
+     * The port used to pass `delta_to_dir(ball.dx, ball.dy)`, a round
+     * trip through {-1,0,+1} signs. delta_to_dir picks its angle with
+     * `abs(dx) >= BALL_SPEED`, and a sign is never >= 2, so the low
+     * nibble came out $04 EVERY time — the port always took the first
+     * branch of extra_ball_dirs where the original varies with the
+     * primary's actual angle. That was known-bugs #14's open half. */
+    const ExtraBallDirs dirs = extra_ball_dirs(objects[OBJ_BALL_1].dir);
     spawn_extra_ball(OBJ_BALL_2, BALL_X, BALL_Y, dirs.second);
     spawn_extra_ball(OBJ_BALL_3, BALL_X, BALL_Y, dirs.third);
     ball.extra2_active = 1;
