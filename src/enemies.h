@@ -49,6 +49,21 @@ void enemy_pick_new_target(Object &o);
  * against one, choose at random as usual. */
 void enemy_target_away_from_margins(Object &o);
 
+/* The brick-hit home target: the original's LAA7B, a single global word
+ * shared by every alien (L = x at $AA7B, H = y at $AA7C). `y == 0` means
+ * "no target" — the original tests only H (`LD HL,(LAA7B) / LD A,H /
+ * AND A / JR Z`), so a target with y == 0 could not be expressed anyway.
+ *
+ * An alien that hits a brick is not destroyed and does not destroy: it
+ * is put back where it was and given the position the collision would
+ * have snapped it to, which it then walks to. */
+struct EnemyHomeTarget { u8 x, y; };
+extern EnemyHomeTarget enemy_home_target;
+
+/* One step of that walk (orig LAA44). At most one pixel on each axis;
+ * clears `t` on arrival, which is what ends the mode. */
+void enemy_home_step(Object &o, EnemyHomeTarget &t);
+
 /* How often each path is taken — read by the render profile. */
 extern unsigned long enemy_turn_calls;
 extern unsigned long enemy_arrival_repicks;

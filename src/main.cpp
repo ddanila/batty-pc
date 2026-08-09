@@ -1556,6 +1556,22 @@ static void handling_bird_obj(Object *o) {
      * (and whose object byte +$12 is the sprite address in the original,
      * not a turn counter). LAA7D also refreshes the target on arrival, so
      * there is no separate timer-based random re-target. */
+    /* The two-mode dispatch at LA9BC:
+     *   LD HL,(LAA7B) / LD A,H / AND A / JR Z,LA9BC_1 / CALL LAA44
+     * A latched brick-hit target REPLACES steering, movement and the
+     * collision scan for as long as it lasts — the alien walks to the
+     * position the hit snapped it to and does nothing else. Only H (the
+     * y) is tested, so y == 0 is the "no target" marker.
+     *
+     * Nothing sets the target yet: the hit DETECTION half is still to
+     * come (parity-gaps.md, "enemy vs bricks"), so this branch is
+     * unreachable in-game today and enemy flight is byte-for-byte what
+     * it was. The dispatch is here because it is the fork the original
+     * has, and the walk it guards is tested host-side. */
+    if (enemy_home_target.y != 0) {
+        enemy_home_step(*o, enemy_home_target);
+        return;
+    }
     if (((unsigned long)pit_frame_counter & 0x03UL) == 0)
         enemy_turn_towards_target(*o);
     /* Move with the EXACT hl_bc_calc_direction (dir_to_dxdy) — the

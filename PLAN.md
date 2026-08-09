@@ -174,6 +174,13 @@ In priority order (all pre-scoped in `parity-gaps.md` / notes):
    collision and exact `check_margins`; the port's bird doesn't
    (`enemy-movement.md` marks this the "next step"). Port both; gate
    with a seeded flight into a brick.
+   *Half done (2026-08-09):* the reaction is traced in full and the
+   `LAA44` walk is ported (`enemy_home_step`, host-tested) and wired to
+   the dispatch `handling_bird_obj` now has. What remains is the
+   DETECTION that fills `enemy_home_target` — a `laffc_sweep` call that
+   latches the snapped position instead of calling `brick_hit_resolve`,
+   plus the `flag_2` random re-target. Until then the branch is
+   unreachable and enemy flight is unchanged.
 2. **MAGNET catch for secondary balls:** the primary-ball stuck system
    spans ~32 sites; catching the unified secondaries means mirroring it
    per-ball. Deliberately deferred as substantial new code for the

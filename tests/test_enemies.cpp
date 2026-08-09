@@ -8,6 +8,7 @@
 
 #include <stdarg.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "../src/enemies.cpp"
@@ -218,6 +219,82 @@ static void test_rng_sources_are_not_crossed() {
     report("rng_sources_not_crossed", before, "current vs sample    ok");
 }
 
+/* --- the brick-hit walk (LAA44) ------------------------------------
+ *
+ * The QEMU gates cannot reach this at all yet: nothing sets the target,
+ * so the mode is unreachable in-game until the hit detection lands.
+ * These drive it directly, over every offset that fits the playfield. */
+
+static void test_home_walk_converges() {
+    const int before = failures;
+    int not_cleared = 0, overshot = 0, too_slow = 0;
+
+    for (int tx = 0x10; tx < 0xE0; tx += 7) {
+        for (int ty = 8; ty < 0xB0; ty += 11) {
+            for (int dx = -20; dx <= 20; dx += 5) {
+                if (tx + dx < 0) continue;   /* off the left edge */
+                Object o = alien(0, 0);
+                o.x_coord = u8(tx + dx);
+                o.y_coord = u8(ty - 6);
+                EnemyHomeTarget t = { u8(tx), u8(ty) };
+
+                /* Bound: |dx| when x is the longer axis, else |dy| + 1.
+                 * Allow a little slack and check the exact shape below. */
+                const int budget = 64;
+                int steps = 0;
+                for (; steps < budget && t.y != 0; steps++) {
+                    const int px = o.x_coord, py = o.y_coord;
+                    enemy_home_step(o, t);
+                    if (t.y == 0) break;          /* arrived and cleared */
+                    /* Never move away from, or past, the target. */
+                    if (abs(int(o.x_coord) - tx) > abs(px - tx)) overshot++;
+                    if (abs(int(o.y_coord) - ty) > abs(py - ty)) overshot++;
+                    /* At most one pixel per axis per step. */
+                    if (abs(int(o.x_coord) - px) > 1) overshot++;
+                    if (abs(int(o.y_coord) - py) > 1) overshot++;
+                }
+                if (t.y != 0) { not_cleared++; continue; }
+                if (o.x_coord != tx || o.y_coord != ty) not_cleared++;
+                const int want = (abs(dx) > 6) ? abs(dx) : 7;
+                if (steps + 1 != want) too_slow++;
+            }
+        }
+    }
+    check(overshot == 0, "%d steps moved away from, past, or more than "
+                         "one pixel toward the target\n", overshot);
+    check(not_cleared == 0, "%d walks did not land on the target and "
+                            "clear the word\n", not_cleared);
+    check(too_slow == 0, "%d walks took the wrong number of steps "
+                         "(expect max(|dx|,|dy|), +1 when y is not "
+                         "shorter than x)\n", too_slow);
+    report("home_walk_converges", before, "1px/axis, lands, clears");
+}
+
+/* The ONE clamp LAA44 has, and it is written back to the shared word. */
+static void test_home_target_x_clamped_left() {
+    const int before = failures;
+    Object o = alien(0, 0);
+    o.x_coord = 0x40;
+    o.y_coord = 0x30;
+    EnemyHomeTarget t = { 0x02, 0x30 };
+    enemy_home_step(o, t);
+    check(t.x == 0x10, "target x %02X was not clamped to $10\n", t.x);
+    check(o.x_coord == 0x3F, "alien x %02X did not step toward the "
+                             "clamped target\n", o.x_coord);
+
+    /* No matching clamp on the right or on y — asserting the absence
+     * stops someone "fixing" the asymmetry back out of parity. */
+    EnemyHomeTarget high = { 0xF0, 0xC0 };
+    Object far_ = alien(0, 0);
+    far_.x_coord = 0x10;
+    far_.y_coord = 0x10;
+    enemy_home_step(far_, high);
+    check(high.x == 0xF0 && high.y == 0xC0,
+          "a high target was clamped to %02X,%02X; LAA44 clamps only "
+          "the low x\n", high.x, high.y);
+    report("home_target_x_clamped_left", before, "low x only, written back");
+}
+
 int main() {
     printf("enemies tests\n");
     test_turns_the_shorter_way();
@@ -225,6 +302,8 @@ int main() {
     test_margins_aim_inward();
     test_targets_stay_six_bit();
     test_rng_sources_are_not_crossed();
-    printf("\n%s\n", failures ? "FAILED" : "5 tests, 0 failed");
+    test_home_walk_converges();
+    test_home_target_x_clamped_left();
+    printf("\n%s\n", failures ? "FAILED" : "7 tests, 0 failed");
     return failures ? 1 : 0;
 }

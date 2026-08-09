@@ -429,6 +429,57 @@ the band (`y < $80`, and `y + height >= $20`).
 This also explains the earlier `LAA7B = $0000` reading: no brick had
 been hit in that capture, so the homing branch was correctly not taken.
 
+#### Correction: what the alien actually experiences
+
+The section above stops one instruction early, and that instruction
+changes the meaning. `LD (LAA7B),HL` does not RET — it FALLS THROUGH:
+
+    LD L,(IX+$02) / LD H,(IX+$04) / LD (LAA7B),HL
+    LB1C3:
+      LD HL,$0000        ; <- SELF-MODIFIED; see below
+      LD (IX+$02),L
+      LD (IX+$04),H
+      RET
+
+`LB1C3+$01` is not the constant it reads as. It is written at `LAFFC_7`
+(`LD L,(IX+$02) / LD H,(IX+$04) / LD (LB1C3+$01),HL`) with the object's
+position at LAFFC ENTRY, and read back at `LAFFC_39`. So the fallthrough
+means "put the object back where it started this frame".
+
+The other thing I missed is WHEN LAFFC_30 is reached. Its four
+predecessors `LAFFC_26`..`LAFFC_29` each snap ONE axis to the struck
+cell's edge, `CALL change_direction`, and then `JP LAFFC_30`. There is
+no other way in. So by the time the sprite_set test runs, the object has
+ALREADY been reflected and snapped.
+
+Putting those together, a bird that hits a brick gets:
+
+  1. `dir` reflected by `change_direction` — kept
+  2. position snapped to the cell edge — recorded in `LAA7B`, then
+     **undone**, back to where the alien was at frame entry
+  3. `flag_2` set, so the handler tail re-targets at random
+
+and then, for the next few frames, `LAA44` walks it from where it was to
+where the snap would have put it, one pixel per axis per frame, with
+steering, movement and collision all skipped. On arrival `LAA7B` clears
+and normal flight resumes.
+
+So it is not a different mode in the sense of different rules — it is
+the same bounce a ball gets, ANIMATED over the few frames the snap
+distance takes instead of applied in one. The snap is at most 16px in x
+and 8 in y, so the walk is short. "Switches the alien into another mode
+entirely", in the section above, oversells it.
+
+The walk itself (`LAA44`, ported as `enemy_home_step` in
+`src/enemies.cpp`) is small and has three details worth keeping:
+
+  - the "too far right" case is `DEC / DEC` falling through into
+    `LAA44_1`'s `INC` — a net -1, so both directions move one pixel
+  - the y branches both `RET`, so the arrival test is only reached on a
+    frame where y was already equal
+  - the only clamp is a LOW one on x (`CP $10`), and it is written back
+    into `LAA7B`; there is no clamp on the right or on y
+
 #### RESOLVED: dir $00 moving the alien UP was my own setup
 
 In the same capture, with `dir` poked to `$00` and the target pinned to

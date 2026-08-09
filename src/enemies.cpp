@@ -47,3 +47,42 @@ void enemy_target_away_from_margins(Object &o) {
         enemy_pick_new_target(o);
     }
 }
+
+/* --- the brick-hit home target (orig LAA7B / LAA44) ------------------
+ *
+ * One global word, shared by every alien, holding a POSITION rather than
+ * an angle. While it is set the alien does not steer, move or collide:
+ * it walks to that position a pixel at a time and then resumes. See the
+ * trace in notes/enemy-movement.md for how a brick hit fills it in. */
+EnemyHomeTarget enemy_home_target = { 0, 0 };
+
+void enemy_home_step(Object &o, EnemyHomeTarget &t) {
+    /* LAA44: `LD A,L / CP $10 / JR NC / LD L,$10 / LD (LAA7B),HL` —
+     * only the LOW clamp exists, and it is written back, so every later
+     * call sees the clamped value. It keeps the walk out of the left
+     * border; there is no matching clamp on the right or on y. */
+    if (t.x < 0x10) t.x = 0x10;
+
+    /* LAA44_0. The "too far right" case does DEC,DEC and then falls
+     * THROUGH LAA44_1's INC, so it is a net -1: both directions move one
+     * pixel. Equality skips the INC entirely by jumping to LAA44_2. */
+    if (o.x_coord != t.x) {
+        if (o.x_coord > t.x) o.x_coord = u8(o.x_coord - 2);
+        o.x_coord = u8(o.x_coord + 1);
+    }
+
+    /* LAA44_2. Both y branches RET, so the arrival test below is reached
+     * only on a frame where y was ALREADY equal. */
+    if (o.y_coord != t.y) {
+        o.y_coord = u8(o.y_coord + (o.y_coord > t.y ? -1 : 1));
+        return;
+    }
+
+    /* LAA44_4: `CP L / RET NZ`, against the x we may have just moved —
+     * so arrival lands on the frame x reaches the target, not the one
+     * after. Clearing the word is what hands the alien back to normal
+     * flight; y == 0 is the "no target" marker the caller tests. */
+    if (o.x_coord != t.x) return;
+    t.x = 0;
+    t.y = 0;
+}

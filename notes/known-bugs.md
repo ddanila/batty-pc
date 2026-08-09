@@ -918,3 +918,57 @@ if someone verifies the original and the values change, the test fails
 and forces the decision to be explicit rather than silent. That is the
 useful state for an unresolved question: the current behaviour is
 recorded and cannot drift unnoticed.
+
+## #17 — test-enemy-descend fails about two runs in three
+
+Found 2026-08-09, while checking that a change to `handling_bird_obj`
+had not moved anything. The gate reports:
+
+    frame 8: sprite_set=09 x=168 y=8 dir=0x10 spd=1 target=0x29 [FAIL]
+             (expect x=168 y=8 dir=0x10 spd=1 target=0x10)
+
+x, y, dir and speed are all right; only `target` (the steering angle in
+`bonus_applied`) is wrong, and only on the frame the alien finishes its
+8px entry slide and starts to traverse.
+
+### It is not the change that surfaced it
+
+Measured, because "my change broke a gate" and "my change ran a flaky
+gate" look identical from one failure:
+
+  - WITHOUT the change (`git stash` + rebuild): 3 runs, **2 failed**
+  - WITH it: 4 runs (one parallel retry, two full `-k parity-check`
+    sweeps, one alone), **0 failed**
+
+The change only adds a branch on `enemy_home_target.y`, which nothing
+sets yet, so it cannot affect enemy flight either way. The gate is
+flaky; the run order made it look otherwise.
+
+### The mechanism, as far as it is pinned
+
+`target=0x29` means a re-pick ran. Steering is gated on
+`pit_frame_counter & 3` — the port's stand-in for the original's
+`counter_misc`, a GLOBAL counter, exactly as the original gates it. So
+whether the steer fires on capture-frame 8 depends on the counter's
+PHASE when the alien is seeded, and that phase depends on how long boot
+took. Under load, boot takes a different number of ticks and the phase
+lands elsewhere.
+
+This is the same coupling PLAN.md's WS6 item 4 defers as "blocked on a
+boot-phase-normalized comparison harness". It is not a port bug: the
+original is phase-dependent too. It is the GATE that needs to pin the
+phase rather than hope for it.
+
+### Why this matters more than one flaky gate
+
+`parity-check-parallel` retries a failure once alone and prints
+`(starved when parallel)` when the retry passes. That message is a
+GUESS, and here it was the wrong one — the retry did not pass because it
+was alone, it passed because it was a coin flip. A retry that relabels
+nondeterminism as contention hides exactly the class of gate that most
+needs finding. Any gate that only passes on retry should be suspected of
+this until measured, not explained away by the runner.
+
+Not fixed. Fixing it properly is the WS6-4 harness work: seed the alien
+at a known counter phase, or capture the phase and expect the steer
+frame it implies.
