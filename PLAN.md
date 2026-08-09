@@ -540,6 +540,19 @@ original artifact:
    the `LBE8B` port, not more data — and the sprites at `$6B17..` need a
    new asset extraction the way `separator.bin` did.
 
+   *And the attrs the port actually uses.* `paint_frame_to_buff` takes
+   its PIXELS from `frame_l1.bin` but its ATTRS from `level_attrs.bin` —
+   all three `paint_strip_to_buff` calls pass `lattr`. The frame blob's
+   own attr sections are loaded and never read: **138 bytes per cycle,
+   552 in all, dead payload**, and their presence in the layout implies
+   the opposite. Worth removing, but it means editing a checked-in
+   binary and `extract_frame.py` together, so it is its own change.
+
+   The cells that DO matter — `level_attrs.bin`'s char row 0 across the
+   top, and columns 0 and 31 down char rows 3..23 — come from the same
+   sprites: 1110 bytes over 15 levels, verified. That takes
+   `level_attrs.bin` to 6510 of 11520 derived, 56.5%.
+
    Remaining unverified: the `border_horizontal_addon` AND-strip at
    `scr_buff+$101`, which modifies pixels after the sprites land.
 2. **`level_attrs.bin` residue** — brick-body attrs are already

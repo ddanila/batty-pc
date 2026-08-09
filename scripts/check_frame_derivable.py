@@ -90,6 +90,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 GFX = ROOT / "original/disasm/gfx/sprites_color_1.asm"
 FRAME = ROOT / "assets/frame_l1.bin"
+ATTRS = ROOT / "assets/level_attrs.bin"
+N_LEVELS = 15
 
 # set_border_horizontal's eight entries, in order.
 SEQUENCE = [
@@ -289,10 +291,58 @@ def main() -> int:
                   f"want {want:02X} got {got:02X}")
         return 1
 
-    total = checked + side_checked + attr_checked
+    # --- the attrs the PORT actually uses --------------------------
+    # paint_frame_to_buff takes its pixels from frame_l1.bin but its
+    # ATTRS from level_attrs.bin — all three paint_strip_to_buff calls
+    # pass `lattr`. The frame blob's own attr sections are loaded and
+    # never read (138 bytes per cycle, 552 in all; see PLAN.md WS7).
+    #
+    # So the cells that matter are level_attrs.bin's: char row 0 across
+    # the top, and columns 0 and 31 down char rows 3..23. Those come
+    # from the same sprites, and this is the half of the check that
+    # constrains what the game draws.
+    la = ATTRS.read_bytes()
+    if len(la) != N_LEVELS * 768:
+        raise SystemExit(f"FAIL: level_attrs.bin is {len(la)} bytes, "
+                         f"expected {N_LEVELS * 768}")
+    used_checked = 0
+    for lvl in range(N_LEVELS):
+        band = la[lvl * 768:(lvl + 1) * 768]
+        x = 0
+        for name in SEQUENCE:
+            aw, _, av = attr_block(raw_sprite(asm, name))
+            for i in range(aw):
+                want, got = av[i], band[0 * 32 + x + i]
+                used_checked += 1
+                if got != want:
+                    bad.append((lvl, "level_attrs top", 0, x + i, want, got))
+            x += aw
+        for base, ls, rs in placements:
+            _, ah, lav = attr_block(ls)
+            _, _, rav = attr_block(rs)
+            for i in range(ah):
+                cr = base // 8 - i
+                if not (3 <= cr <= 23):
+                    continue
+                for col, av in ((0, lav), (31, rav)):
+                    want, got = av[i], band[cr * 32 + col]
+                    used_checked += 1
+                    if got != want:
+                        bad.append((lvl, "level_attrs side", cr, col,
+                                    want, got))
+
+    if bad:
+        print(f"FAIL: {len(bad)} frame attribute bytes do not match.\n")
+        for lvl, name, row, bx, want, got in bad[:12]:
+            print(f"  {name} lvl/cycle {lvl} row {row} col {bx}: "
+                  f"want {want:02X} got {got:02X}")
+        return 1
+
+    total = checked + side_checked + attr_checked + used_checked
     print(f"PASS frame_derivable: all {total} frame bytes "
           f"({checked} top px + {side_checked} side px + {attr_checked} "
-          f"attrs, {N_CYCLES} cycles) are set_border_horizontal and the "
+          f"blob attrs + {used_checked} level_attrs cells over "
+          f"{N_LEVELS} levels) are set_border_horizontal and the "
           f"bold/thin side pair, drawn upward")
     return 0
 
