@@ -538,9 +538,10 @@ have.
 
 ---
 
-## #15 — the game-over hold never expires (observed under QEMU)
+## #15 — the game-over hold does not expire in any reasonable time
 
-**Found 2026-08-09, not fixed. Open. Cause not established.**
+**Found 2026-08-09. Investigated 2026-08-09. Still open; cause not
+established. An earlier guess recorded here was REFUTED — see below.**
 
 `play_game_over` shows the screen and then waits:
 
@@ -552,44 +553,54 @@ while (bios_ticks() - start < 65UL) {
 }
 ```
 
-65 BIOS ticks at 18.2 Hz is about 3.6 s, after which the sequence should
-continue to `input_new_record_name` when the score was beaten.
+65 BIOS ticks at 18.2 Hz is about 3.6 s.
 
-**Observed**: with the score beaten and no key sent, the game-over screen
-was still on display 11 s after it appeared — captures at 15, 17, 19, 22
-and 25 s are pixel-identical. The port had not moved on.
+**Observed**: the game-over screen is up by 8 s into the run and is
+pixel-identical at every 2 s sample through 40 s. It does yield
+immediately to a keypress, and the screen that follows is exactly the
+name-entry layout `input_new_record_name` draws — so the code after the
+hold is fine and it really is the hold that sits there.
 
-### Why this matters beyond the screen
+### The refuted guess
 
-It is why `input_new_record_name` still has NO visual coverage. Every
-other screen in the game now has some. Name entry is only reachable
-through this hold, and a gate cannot get past it without sending the key
-that also dismisses what it wanted to capture.
+This entry originally guessed that `bios_ticks()` returns a constant,
+reasoning that the hold is its only live user (every other `bios_ticks`
+timeout goes through `TIMED_OUT`, gated on `auto_advance`, which is never
+assigned) and so nothing else would notice.
 
-### What is and is not established
+**That is wrong.** A `clocks=bios<N>_pit<N>` line was added to PROBE.TXT
+and read back from three separate runs:
 
-`bios_ticks()` is INT 1Ah AH=0 through `int386`, reflected to real mode
-by DOS32A. This hold is its only use on a live path: every other
-`bios_ticks` timeout goes through
-
-```c
-#define TIMED_OUT(start, ticks) (auto_advance && (bios_ticks() - ...))
+```
+wait= 6s  clocks=bios275796_pit0
+wait=12s  clocks=bios275923_pit0
+wait=20s  clocks=bios276142_pit0
 ```
 
-and `auto_advance` is never assigned, so those comparisons are dead. That
-means nothing else would notice if `bios_ticks()` returned a constant —
-which would make this loop infinite except for the keypress, matching
-what was seen.
+`bios_ticks()` advances. The guess is dead and the instrument stays in
+the probe.
 
-NOT established: whether `bios_ticks()` actually fails to advance, or
-whether something else holds the loop. NOT checked on real hardware or on
-a different emulator. The observation is solid; the cause is a guess and
-is labelled as one.
+(`pit0` is not a second bug — `pin_replay_frame_counter` pins that
+counter so replays are deterministic.)
 
-### Why it has not been chased further
+### What is still not known
 
-A player always presses a key, so the timeout firing or not is invisible
-in normal play — this is a testability defect first and a behaviour
-defect only maybe. Settling it means either instrumenting `bios_ticks`
-through the probe or booting on real hardware, neither of which is the
-small self-contained step that found it.
+Those three numbers come from three separate boots, so the differences
+mix guest run time with host time between runs, and no honest tick RATE
+can be derived from them. What is solid: the counter moves, and 65 of
+its ticks take longer than 32 s of wall clock. Whether the rate the port
+sees is far below 18.2 Hz — the INT 8 chaining described above
+`bios_ticks` aims to keep the BIOS counter at 18.2 Hz while the PIT runs
+at 50 Hz — or whether something else holds the loop, needs a measurement
+INSIDE one run. The probe writes once per run, so that needs a second
+instrument.
+
+### Consequences
+
+`blink_phase()` is `(bios_ticks() >> 1) & 1`, so the name-entry cursor
+blinks at whatever rate this actually is. Visible, minor, and nobody has
+compared it to the Spectrum.
+
+For gates it is now a non-issue: `test-name-entry-visual` presses one key
+instead of waiting for a timeout that does not come, and that key is
+documented there as deliberate rather than incidental.

@@ -5,18 +5,19 @@ test. Started 2026-08-07.
 
 ## Where this stands
 
-The full suite runs **56/56 green** — nine clean runs now, the
-latest covering both sides of the high-score branch.
+The full suite runs **57/57 green** — ten clean runs now, the
+latest adding the last screen that had no visual coverage.
 Six of the seven defects this refactor surfaced are closed; #14 is open
 because settling it needs ground truth the port does not have.
 
-Gate count 51 → 56 this session: `test-blast-dirty-redraw`,
+Gate count 51 → 57 this session: `test-blast-dirty-redraw`,
 `test-game-over`, `test-stuck-ball-offset`, `test-visual-checkpoints`
 `test-invariant-owners`, `test-ball-sign-cache-owner` and
-`test-game-over-visual`, each covering something nothing reached before.
+`test-game-over-visual` and `test-name-entry-visual`, each covering
+something nothing reached before.
 
-`main.cpp`: 7,747 → 6,842 lines (-11.9%) across 14 modules. `make test-fast`
-runs every host test and source gate in seconds; `--full` is 56 gates
+`main.cpp`: 7,747 → 6,848 lines (-11.8%) across 14 modules. `make test-fast`
+runs every host test and source gate in seconds; `--full` is 57 gates
 in under six minutes.
 
 Line counts here are `wc -l`, measured against `wc -l` at `e0bb447` (the
@@ -105,7 +106,7 @@ happened, and `make test-video` caught it.
 | 1a | `replay_parse` — the BATTY_REPLAY_* value formats | 75 | **done** — 7 tests |
 | 1 | replay / probe scaffolding | ~430 | **last** — see below |
 
-`main.cpp`: 7,747 → 6,842 (`wc -l`; see the status block on why this is not Watcom's count).
+`main.cpp`: 7,747 → 6,848 (`wc -l`; see the status block on why this is not Watcom's count).
 100 host tests + source gates, all via `make test-fast` in seconds.
 
 ### Stage 5b: one destroyed-cell reset, not two
@@ -650,15 +651,30 @@ so a reset added later cannot clobber them. That is the same ordering
 mistake as the PlayerState rename earlier in this refactor: inserting
 code above a line that resets what it just set.
 
-**Open, and the reason name entry still has no visual gate**: the
-game-over hold does not expire under QEMU. Without `BATTY_HOLD_GAME_OVER`
-the screen should give way after 65 BIOS ticks (~3.6 s) and run
-`input_new_record_name`; it was still showing game over 11 s later. That
-hold is the only user of `bios_ticks()` on a live path — every other
-`bios_ticks` timeout is behind `auto_advance`, which is never assigned,
-so those are dead code. Whether `bios_ticks()` fails to advance under
-DOS32A/QEMU or something else holds the loop is NOT established, and it
-has not been checked on real hardware. Recorded in known-bugs.md #15.
+**Every screen in the game now has visual coverage.** Name entry was the
+last, and reaching it took a stack: one life, no ball (death on frame 1),
+a seeded score to beat the high score — and then one key, because of the
+hold below.
+
+A guess written into known-bugs #15 was REFUTED by measuring it. The
+entry claimed `bios_ticks()` returns a constant, reasoned from it being
+the only live user (every other `bios_ticks` timeout is behind
+`auto_advance`, never assigned). Adding `clocks=bios<N>_pit<N>` to
+PROBE.TXT showed it advancing across three runs. The instrument stays in
+the probe; the guess is deleted rather than quietly softened.
+
+What survives is the observation, which is stronger than the guess ever
+was: the game-over screen is up by 8 s and pixel-identical at every 2 s
+sample through 40 s, where 65 BIOS ticks should be 3.6 s — but it yields
+to a keypress at once, and what follows is exactly the name-entry layout.
+Deriving a tick RATE from those three numbers is not possible, because
+they come from three separate boots and mix guest time with host time.
+Said in the entry rather than glossed.
+
+**Superseded, kept for the record**: the
+game-over hold does not expire; a gate presses one key instead. The
+cause is still open — see known-bugs.md #15 for what was measured and
+what was refuted.
 
 The game-over screen had no visual coverage at all, and `test-game-over`
 said so in its own docstring. The blocker was never the assertions — it

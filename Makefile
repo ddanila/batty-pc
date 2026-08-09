@@ -1230,6 +1230,11 @@ test-game-over:
 test-game-over-visual:
 	python3 scripts/test_game_over_visual.py
 
+# The last screen that had no visual coverage. Needs a seeded score to
+# beat the high score, and one key to leave the game-over hold (#15).
+test-name-entry-visual:
+	python3 scripts/test_name_entry_visual.py
+
 test-stuck-ball-offset:
 	python3 scripts/test_stuck_ball_offset.py
 

@@ -3882,6 +3882,12 @@ static void write_replay_probe(void) {
             enemy_arrival_repicks, enemy_margin_repicks,
             enemy_turn_calls);
     fprintf(f, "brik_anim_ticks=%lu\n", probe.brik_anim_ticks);
+    /* Both clocks, side by side, to settle known-bugs #15: the game-over
+     * hold is the only live user of bios_ticks() and it never expires
+     * under QEMU. If bios advances while pit does, the hold is not a
+     * clock problem; if it stays put, blink_phase() is dead too. */
+    fprintf(f, "clocks=bios%lu_pit%lu\n",
+            bios_ticks(), (unsigned long)pit_frame_counter);
     fprintf(f, "magnet_state=count%02X_on%02X%02X%02X%02X_ball0_c%02X_d%02X_e%02X_i%02X\n",
             (unsigned)magnets.count,
             (unsigned)magnets.on_state[0], (unsigned)magnets.on_state[1],
