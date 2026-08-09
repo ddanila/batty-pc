@@ -230,3 +230,48 @@ void reset_destroyed_cell_attrs(const u8 *cells,
         }
     }
 }
+
+/* Put back what a row-scoped repaint disturbed at its edges.
+ *
+ * A full ascending paint gets these for free: each row's print
+ * overwrites the previous row's edge bytes as it goes. Painting only
+ * [r0, r1] stops short, so the boundary rows keep whatever the bg
+ * repaint left. Getting this wrong is what known-bugs #1 and #2 were.
+ *
+ * The comments' numbers are the order these were FOUND, not the order
+ * they run; they are applied bottom-edge first because each later one
+ * overwrites part of the earlier one's output.
+ */
+void repair_band_row_boundaries(const u8 *cells,
+                                       int r0, int r1) {
+    int col;
+    /* Edge fix-up 1: row r1's print zeroed its bottom-edge row, which in
+     * the full ascending paint is overwritten by row r1+1's body row 0
+     * where that brick is live — re-paint those two bytes plus the
+     * side-edge bit clears print_one_brik would apply on that row. */
+    if (r1 + 1 < FIELD_ROWS) repaint_row_body_top(cells, r1 + 1);
+    /* Edge fix-up 4: row r1's body row 7 (pixel row 39+8*r1, bg-erased
+     * and re-painted above) is canonically overwritten by row r1+1's
+     * TOP-edge zeros where that brick is live — re-apply them. */
+    if (r1 + 1 < FIELD_ROWS) repaint_row_top_edge(cells, r1 + 1);
+    /* Edge fix-up 3: print's brik_shadow_c(r1) dimmed char row 5+r1,
+     * which is row r1+1's CELL row — in the full ascending paint, row
+     * r1+1's own print re-brightens its live cells' attrs right after.
+     * Re-apply that write since r1+1 isn't printed here. */
+    if (r1 + 1 < FIELD_ROWS) repaint_row_attrs(cells, r1 + 1);
+    /* Edge fix-up 2: a destroyed cell in row r0 sits under row r0-1's
+     * bottom-edge zeros; the caller's bg repaint erased them — restore
+     * where the brick above is live. */
+    if (r0 > 0) {
+        unsigned int hl = 0x401u + (unsigned int)r0 * 0x100u;
+        for (col = 0; col < FIELD_COLS; col++) {
+            if ((cells[r0 * FIELD_COLS + col] & 0x80)
+                && !(cells[(r0 - 1) * FIELD_COLS + col] & 0x80)) {
+                scr_buff[hl]     = 0;
+                scr_buff[hl + 1] = 0;
+            }
+            hl += 2;
+        }
+    }
+
+}

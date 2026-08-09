@@ -63,4 +63,11 @@ void repaint_row_top_edge(const u8 *cells, int row);
  * shadow, which dimmed the same cells. */
 void repaint_row_attrs(const u8 *cells, int row);
 
+/* Put back what a row-scoped repaint disturbed at its edges. A full
+ * ascending paint gets these for free — each row's print overwrites the
+ * previous row's edge bytes as it goes — so painting only [r0, r1]
+ * leaves the boundary rows holding whatever the background repaint
+ * left. Getting this wrong is what known-bugs #1 and #2 were. */
+void repair_band_row_boundaries(const u8 *cells, int r0, int r1);
+
 #endif /* BATTY_BRICKS_H */

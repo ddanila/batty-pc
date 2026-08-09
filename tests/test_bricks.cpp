@@ -161,12 +161,11 @@ static void test_scoped_repaint_equals_full() {
         memset(attr_buff, 0, sizeof(attr_buff));
         for (int row = 0; row < FIELD_ROWS; row++) {
             paint_brick_rows(cells, row, row);
-            /* What the ascending full paint would do next. */
-            if (row + 1 < FIELD_ROWS) {
-                repaint_row_body_top(cells, row + 1);
-                repaint_row_top_edge(cells, row + 1);
-                repaint_row_attrs(cells, row + 1);
-            }
+            /* Exactly what main.cpp's incremental band rebuild does
+             * after a scoped repaint — all four edge repairs, not a
+             * hand-copied subset. This test used to replicate three of
+             * them and omit the r0 bottom-edge restore. */
+            repair_band_row_boundaries(cells, row, row);
         }
         if (memcmp(full_scr, scr_buff, sizeof(full_scr)) != 0 ||
             memcmp(full_attr, attr_buff, sizeof(full_attr)) != 0)
@@ -286,6 +285,61 @@ static void test_destroyed_cell_shadow_follows_left_neighbour() {
     report("destroyed_cell_shadow", before, "live/gone neighbour  ok");
 }
 
+/* The edge repairs only matter when a repaint STOPS at a boundary.
+ *
+ * scoped_repaint_equals_full above walks every row ascending, so row
+ * r+1's own paint does whatever the repairs would have done — remove
+ * any repair and that test stays green (verified by mutation). It
+ * proves row-by-row == full, which holds either way.
+ *
+ * This paints ONE window and stops, which is what the incremental band
+ * rebuild does, then compares the window's canonical rows against the
+ * full paint. That is the property known-bugs #1 and #2 violated. */
+static void test_window_repaint_matches_full_at_its_edges() {
+    const int before = failures;
+    int differing = 0;
+    for (int level = 0; level < LEVELS; level++) {
+        const u8 *cells = level_cells(level);
+
+        memset(scr_buff, 0, sizeof(scr_buff));
+        memset(attr_buff, 0, sizeof(attr_buff));
+        paint_bricks(cells);
+        u8 full_scr[SCR_BUFF_SIZE], full_attr[ATTR_BUFF_SIZE];
+        memcpy(full_scr, scr_buff, sizeof(full_scr));
+        memcpy(full_attr, attr_buff, sizeof(full_attr));
+
+        for (int r0 = 0; r0 + 2 < FIELD_ROWS; r0++) {
+            const int r1 = r0 + 2;
+            memset(scr_buff, 0, sizeof(scr_buff));
+            memset(attr_buff, 0, sizeof(attr_buff));
+            paint_brick_rows(cells, r0, r1);
+            repair_band_row_boundaries(cells, r0, r1);
+
+            /* The rows the rebuild captures: the window's bodies plus
+             * r1's bottom edge, and the shared top-edge row above. */
+            bool same = true;
+            for (int y = 32 + r0 * 8; same && y <= 40 + r1 * 8; y++) {
+                if (memcmp(&full_scr[y * BYTES_PER_ROW + 1],
+                           &scr_buff[y * BYTES_PER_ROW + 1], 30) != 0)
+                    same = false;
+            }
+            /* Attrs too: repaint_row_attrs exists to re-brighten the
+             * shared boundary row, and comparing only pixels leaves it
+             * unguarded. */
+            for (int cr = 4 + r0; same && cr <= 5 + r1; cr++) {
+                if (memcmp(&full_attr[cr * ATTR_COLS + 1],
+                           &attr_buff[cr * ATTR_COLS + 1], 30) != 0)
+                    same = false;
+            }
+            if (!same) differing++;
+        }
+    }
+    check(differing == 0,
+          "%d level/window pairs: a window repaint differs from the full "
+          "paint inside its own rows\n", differing);
+    report("window_repaint_matches_full", before, "15 levels x 10 windows ok");
+}
+
 int main(int argc, char **argv) {
     const char *levels_path = argc > 1 ? argv[1] : "assets/levels.bin";
     printf("bricks tests\n");
@@ -300,6 +354,7 @@ int main(int argc, char **argv) {
     test_colour_and_shadow();
     test_destroyed_cells_reset_but_sentinels_survive();
     test_destroyed_cell_shadow_follows_left_neighbour();
-    printf("\n%s\n", failures ? "FAILED" : "7 tests, 0 failed");
+    test_window_repaint_matches_full_at_its_edges();
+    printf("\n%s\n", failures ? "FAILED" : "8 tests, 0 failed");
     return failures ? 1 : 0;
 }

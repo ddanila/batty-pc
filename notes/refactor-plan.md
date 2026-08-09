@@ -10,7 +10,7 @@ latest covering the compose-order unification, which merged the two
 redraw paths' copies of the `$9AD0` slot sequence. All five defects
 this refactor surfaced are closed.
 
-`main.cpp`: 7,746 → 6,856 lines (-11%) across 14 modules. `make test-fast`
+`main.cpp`: 7,746 → 6,812 lines (-12%) across 14 modules. `make test-fast`
 runs every host test and source gate in seconds; `--full` is 54 gates
 in under six minutes.
 
@@ -76,7 +76,7 @@ happened, and `make test-video` caught it.
 | 3b | collision geometry/effects split | 166 | **done** — 7 more tests |
 | 4 | `assets` | 167 | **done** — 6 tests |
 | 5 | `bricks` — the compositor | 278 | **done** — 5 tests, byte-exact vs 15 captured screens |
-| 5b | level paint / band orchestration | ~200 | **started** — destroyed-cell reset moved to `bricks` with 2 tests; compose and edge repairs named |
+| 5b | level paint / band orchestration | ~155 | **started** — destroyed-cell reset and edge repairs moved to `bricks`, 3 new tests |
 | 6a | `objects` — the 22-byte descriptor + slots | 60 | **done** — 5 tests |
 | 6b-i | `weapons` — bullets + blasts | 95 | **done** — 6 tests |
 | 6b-ii | `enemies` — steering | 145 | **done** — 5 tests |
@@ -564,6 +564,31 @@ of three mutations tried, two failed to COMPILE under `-Werror` (an
 unused parameter, an unused variable) and only the third reached the
 test. Worth knowing which guard is doing the work — `-Werror` is
 catching more of these than the tests are.
+
+`repair_band_row_boundaries` followed it into `bricks.cpp` — the
+`repaint_row_*` primitives it drives were already there — and pointing
+the existing test at it exposed something worse than duplication.
+
+`scoped_repaint_equals_full` looked like it guarded the edge repairs. It
+does not: **removing any of the three leaves it green** (mutation-
+checked). It walks every row ascending, so row r+1's own paint does
+whatever the repair would have done. It proves row-by-row equals full,
+which holds either way. The repairs only matter when a repaint STOPS at
+a boundary — which is what the incremental band rebuild does and what
+known-bugs #1 and #2 violated.
+
+`window_repaint_matches_full` is that test: paint ONE window over
+15 levels x 10 windows, repair, compare the window's own rows against
+the full paint. Dropping `repaint_row_body_top` fails it; so does
+dropping `repaint_row_attrs`, but only after the comparison was extended
+to attributes as well as pixels — comparing pixels alone left it
+unguarded.
+
+`repaint_row_top_edge` remains unguarded, and looks equivalent rather
+than untested: it writes zeros over bytes the window paint has already
+zeroed, so its removal is invisible by construction here. Either it is
+redundant or it matters in a configuration these windows do not reach.
+Recorded rather than assumed either way.
 
 `release_brick_hit_anim_if_gone` came from the same pass: the stepper
 and the renderer both freed a slot whose brick had been destroyed. Note
