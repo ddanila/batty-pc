@@ -126,9 +126,11 @@ and `laffc-decode.md` for the detailed trail.
   advance frame, $14 >>= 1, $15 = $14 + 1; die at frame 4` — all matched
   in the port's death-spark loop (verified by code-comparison; the recent
   "Fix death spark direction math" commit's `change_direction` B-mask
-  reflect is correct). Single-player only: the original's `LBC10_4`
-  2-player branch (shift 5 sparks by `bat_2.x - bat_1.x` when
-  `game_mode==2`) has no port equivalent — out of scope (port is 1P).
+  reflect is correct). The `LBC10_4` Double Play branch — translate the ODD-indexed
+  half of the ten sparks by `bat_2.x - bat_1.x`, so each bat explodes
+  with five — is ported as of 2026-08-09 and gated inside
+  `test-death-sparks`. It had been parked here as "out of scope (port is
+  1P)"; the port has `game_mode` now. See notes/double-play.md.
 - **Enemy bomb drop** (`bomb_appear` $A989, shared by `handling_bird` and
   `handling_ufo`) — byte-exact gate. Mirrors the original: (1) returns if a
   bonus/bomb is already falling — the original shares the single

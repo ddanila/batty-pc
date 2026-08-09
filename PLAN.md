@@ -344,10 +344,16 @@ flag and XORs it after every award, so the surviving bricks alternate
 очки"). With it ported, all five sites pass a real side and the
 `SIDE_ACTIVE` sentinel is gone; the gate asserts it stays gone.
 
-**WS3's scoring is complete.** What is left of the workstream is bat 2's
-INPUT (`p2_dev` selects nothing — see WS1), `handling_ball`'s bat-2
-deflection branch, bonus ownership via `object_bat_2+$14`, and the
-`LBC10_4` death-spark shift.
+**Stage 6 done (2026-08-09): the death-spark split.** `LBC10_4`
+translates the ODD-indexed half of the ten seeded sparks by
+`bat_2.x - bat_1.x`, so each bat explodes with five. It is a split, not
+a second spawn. `parity-status.md` had it parked as "out of scope (port
+is 1P)". Gated inside `test-death-sparks`.
+
+**WS3's scoring and effects are complete.** What is left of the
+workstream is bat 2's INPUT (`p2_dev` selects nothing — see WS1),
+`handling_ball`'s bat-2 deflection branch, and bonus ownership via
+`object_bat_2+$14`.
 
 **Why after WS2:** WS2 builds the per-player state plumbing (HUD,
 banner, hi-score) that Double Play reuses; Double Play then adds the

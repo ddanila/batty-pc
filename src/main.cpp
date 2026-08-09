@@ -6289,6 +6289,25 @@ static void spawn_death_sparks(void) {
         death_sparks[i].duration_base = 0x18;     /* (IX+$14) at spawn */
         dir = (unsigned char)((dir + 5) & 0x3F);
     }
+    /* Double Play blows BOTH bats up. LBC10_4 walks the seeded slots
+     * from object_ball_2 — the SECOND one — stepping two objects at a
+     * time, five times, and adds a self-modified delta to each x:
+     *
+     *   LD A,(object_bat_1+$02) / LD C,A
+     *   LD A,(object_bat_2+$02) / SUB C / LD (LBCE6+$01),A
+     *   ...
+     *   LD IX,object_ball_2 / LD DE,$0016 / LD B,$05
+     *   LBC10_4: LD A,(IX+$02) / LBCE6: ADD A,$00 / LD (IX+$02),A
+     *            ADD IX,DE / ADD IX,DE / DJNZ LBC10_4
+     *
+     * The delta is bat 2's x minus bat 1's, so the ODD-indexed half of
+     * the fan is translated onto bat 2 and each bat ends up with five
+     * sparks. It is not a second spawn: the same ten are split. */
+    if (game_mode == 2) {
+        const int delta = (int)objects[OBJ_BAT_2].x_coord - (int)BAT_X;
+        for (i = 1; i < DEATH_SPARK_COUNT; i += 2)
+            death_sparks[i].x_q88 += (long)delta << 8;
+    }
 }
 
 /* Advance one death spark. False once it has expired — off the bottom,

@@ -181,3 +181,40 @@ keeps the alternation, which is the same behaviour.
 With this ported, every one of the five sites passes a real side and the
 `SIDE_ACTIVE` sentinel is gone. `check_two_player_state` asserts it
 stays gone: a sentinel with no callers is an invitation to add one.
+
+
+## The death sparks split across both bats (2026-08-09)
+
+`LBC10` seeds ten object slots as `anim_spark` around bat 1. In Double
+Play `LBC10_4` then translates half of them onto bat 2:
+
+    LD A,(object_bat_1+$02) / LD C,A
+    LD A,(object_bat_2+$02) / SUB C / LD (LBCE6+$01),A
+    ...
+    LD A,(game_mode) / CP $02 / JR NZ,LBC10_5
+    LD IX,object_ball_2 / LD DE,$0016 / LD B,$05
+    LBC10_4:
+      LD A,(IX+$02)
+    LBCE6:
+      ADD A,$00            ; self-modified with the delta above
+      LD (IX+$02),A
+      ADD IX,DE / ADD IX,DE
+      DJNZ LBC10_4
+
+It starts at `object_ball_2` — the SECOND seeded slot — and steps two
+objects at a time, five times, so it moves the odd-indexed half. The
+delta is `bat_2.x - bat_1.x`. Five sparks stay on bat 1 and five land on
+bat 2.
+
+It is a SPLIT, not a second spawn: both bats explode with half a fan
+each, not a full one. `parity-status.md` had this parked as "out of
+scope (port is 1P)".
+
+Ported in `spawn_death_sparks` as a post-pass over the odd indices,
+which is the same set — the port seeds `death_sparks[i]` in the same
+order the original seeds its object slots.
+
+The gate for it had to be ANCHORED to `spawn_death_sparks`' body. The
+first version checked `if (game_mode == 2) {` against the whole file,
+where `reset_level_state` has the identical line, so mutating the
+spark one to `>= 1` survived.

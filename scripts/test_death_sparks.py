@@ -67,6 +67,39 @@ def main() -> int:
     compact = "".join(src.split())
     physics_compact = "".join(PHYSICS.read_text().split())
 
+    # LBC10_4: in Double Play the fan is SPLIT, not duplicated — every
+    # other seeded slot is translated by bat_2.x - bat_1.x so five
+    # sparks land on each bat. Starting at object_ball_2 (the second
+    # slot) is why the loop starts at 1, and `i += 2` is the original's
+    # double `ADD IX,DE`.
+    # Anchored to spawn_death_sparks' own body. Checking the whole file
+    # let `if (game_mode == 2) {` match reset_level_state's identical
+    # line, so mutating THIS one to `>= 1` survived.
+    start = src.index("static void spawn_death_sparks(void) {")
+    depth, i = 0, src.index("{", start)
+    for j in range(i, len(src)):
+        if src[j] == "{":
+            depth += 1
+        elif src[j] == "}":
+            depth -= 1
+            if depth == 0:
+                break
+    spawn = "".join(src[i:j + 1].split())
+
+    for needle, why in (
+        ("if (game_mode == 2) {",
+         "the split is mode-$02 only — LBC10_4 sits behind `CP $02`"),
+        ("for (i = 1; i < DEATH_SPARK_COUNT; i += 2)",
+         "LBC10_4 starts at object_ball_2 and steps TWO objects, five "
+         "times; starting at 0 or stepping 1 moves the wrong half"),
+        ("(int)objects[OBJ_BAT_2].x_coord - (int)BAT_X",
+         "the delta is `LD A,(object_bat_2+$02) / SUB C` with C = "
+         "bat 1's x — reversing it puts both fans on the left"),
+    ):
+        if "".join(needle.split()) not in spawn:
+            raise SystemExit(f"FAIL: `{needle}` is gone — {why}")
+    print("PASS death_sparks_double_play: the fan splits across both bats")
+
     if "#define DEATH_SPARK_COUNT 10" not in src:
         raise SystemExit("FAIL: LBC10 spark count must stay at ten object slots")
     if "#define DEATH_SPARK_BODY_W 0x08" not in src:
