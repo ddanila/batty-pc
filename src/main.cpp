@@ -5027,16 +5027,11 @@ static void redraw_full_with_ball(unsigned char level_idx) {
 
     render_brick_effects_and_mark();
 
-    /* Moving objects in the ORIGINAL's slot-paint order ($9AD0 table,
-     * call_for_all_obj walks it low->high, so later slots paint ON TOP):
-     *   balls 1-3 < bullets < bats < bonus/bomb/pts400 (shared $9B80
-     *   slot) < ENEMY ($9B96) < rocket ($9BAC).
-     * The two compose paths used to disagree (simple drew enemy before
-     * the bomb, full after) — with a fresh bomb still overlapping its
-     * parent UFO the paths rendered different pixels (the f50 21px A/B
-     * delta, notes/bird-render-parity.md). The enemy paints OVER the
-     * bomb/bonus; the rocket paints over everything. */
+    /* Slot-paint order and why it is shared: see compose_moving_objects. */
     compose_moving_objects(bg_attr);
+    /* The rocket is the last slot ($9BAC) and paints over everything.
+     * It lives here rather than in the shared function because it is
+     * full-path-only — see there. */
     if (rocket.active) {
         unsigned int spr = current_rocket_spr();
         render_rocket_to_buff();
@@ -5167,6 +5162,25 @@ static void render_enemy_to_buff_and_mark(unsigned char bg_attr) {
  * render_bullet_to_buff no longer carries animation state — it did
  * until known-bugs #10 was fixed, and a bare call would then have
  * advanced the shared phase. */
+/* Compose the moving objects in the ORIGINAL's slot-paint order (the
+ * $9AD0 table; call_for_all_obj walks it low->high, so later slots paint
+ * ON TOP):
+ *
+ *   balls 1-3 < bullets < bats < bonus/bomb/pts400 (they share the $9B80
+ *   slot) < ENEMY ($9B96) < rocket ($9BAC)
+ *
+ * Both redraw paths call this, which is the point: they used to each
+ * implement the order and had DRIFTED APART — the dirty path drew the
+ * enemy first, the full path last. With a fresh bomb still overlapping
+ * its parent UFO the two rendered different pixels (the f50 21px A/B
+ * delta, notes/bird-render-parity.md). One implementation cannot drift
+ * from itself.
+ *
+ * The rocket ($9BAC, last, paints over everything) is deliberately NOT
+ * here: it is full-path-only. `entities_need_redraw` returns true while
+ * it is active and `can_redraw_ball_with_simple_objects` bails on it, so
+ * no dirty-path frame ever needs to compose it, and only
+ * `redraw_full_with_ball` does. */
 static void compose_moving_objects(unsigned char bg_attr) {
     render_extra_balls_to_buff(bg_attr);
     render_bullet_to_buff();
@@ -5178,13 +5192,9 @@ static void compose_moving_objects(unsigned char bg_attr) {
 
 
 static void render_simple_objects_to_buff_and_mark(unsigned char bg_attr) {
-    /* Same slot-paint ORDER as redraw_full_with_ball and the original's
-     * $9AD0 object table (later slots paint on top): balls < bullets <
-     * bomb/bonus/pts400 (shared $9B80 slot) < ENEMY. The paths used to
-     * disagree (this one drew the enemy FIRST), so a fresh bomb still
-     * overlapping its parent UFO rendered differently on the dirty path
-     * vs the full path — the f50 21px A/B delta
-     * (notes/bird-render-parity.md). */
+    /* The dirty path's object tier. Identical to the full path's by
+     * construction — both go through compose_moving_objects, which is
+     * where the slot order and its provenance are documented. */
     compose_moving_objects(bg_attr);
 }
 

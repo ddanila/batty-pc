@@ -14,7 +14,7 @@ Gate count 51 → 55 this session: `test-blast-dirty-redraw`,
 and `test-invariant-owners`, each covering something nothing reached
 before.
 
-`main.cpp`: 7,746 → 6,848 lines (-12%) across 14 modules. `make test-fast`
+`main.cpp`: 7,746 → 6,858 lines (-11%) across 14 modules. `make test-fast`
 runs every host test and source gate in seconds; `--full` is 54 gates
 in under six minutes.
 
@@ -616,6 +616,26 @@ row-scoped — now live beside the primitives they drive. What is left in
 `main.cpp` is the two thin wrappers that turn a level index into
 `(cells, lattr, bg_attr)`, which is the only thing the module could not
 know.
+
+The slot-paint order had THREE explanations of itself. Once the two
+compose paths were unified behind `compose_moving_objects`, each caller
+kept its own copy of the $9AD0 provenance and the f50 21px A/B delta
+that motivated it — including a one-line wrapper whose entire body is
+the shared call. Copies of a comment drift exactly like copies of code;
+the explanation now lives on the function that enforces the order, and
+the callers point at it.
+
+Doing that surfaced something undocumented: the rocket ($9BAC) is named
+in the order but composed OUTSIDE the shared function. The reason is 150
+lines away — `entities_need_redraw` returns true while the rocket is
+active and `can_redraw_ball_with_simple_objects` bails on it, so no
+dirty-path frame can ever need to compose one. It is full-path-only by
+construction, and now says so.
+
+Comment-only changes are verifiable as such: build, `git stash`,
+rebuild, `cmp` the two EXEs. Byte-identical is proof the emitted code
+did not move, which is stronger than reading the diff and stronger than
+any gate could be.
 
 `step_ball` went 101 → 52 lines by lifting out its two self-contained
 blocks: `deflect_ball_off_bat` (snap to rest height, then CATCH or
