@@ -16,7 +16,7 @@ Gate count 51 → 59 this session: `test-blast-dirty-redraw`,
 `test-game-over-visual` and `test-name-entry-visual`, each covering
 something nothing reached before.
 
-`main.cpp`: 7,747 → 6,825 lines (-11.9%) across 15 modules. `make test-fast`
+`main.cpp`: 7,747 → 6,823 lines (-11.8%) across 15 modules. `make test-fast`
 runs every host test and source gate in seconds; `--full` is 59 gates
 in under six minutes.
 
@@ -106,7 +106,7 @@ happened, and `make test-video` caught it.
 | 1a | `replay_parse` — the BATTY_REPLAY_* value formats | 75 | **done** — 7 tests |
 | 1 | replay / probe scaffolding | ~430 | **started** — 5 overrides out in `replay`, 6 host tests; the rest need the state first |
 
-`main.cpp`: 7,747 → 6,825 (`wc -l`; see the status block on why this is not Watcom's count).
+`main.cpp`: 7,747 → 6,823 (`wc -l`; see the status block on why this is not Watcom's count).
 100 host tests + source gates, all via `make test-fast` in seconds.
 
 ### Stage 5b: one destroyed-cell reset, not two
@@ -669,6 +669,22 @@ and the gate was extended in the same commit to press LEFT and require
 the letter row to change, since placement alone would look identical
 whether `step_name_letter` worked or not. Mutation-checked by making the
 LEFT arm a no-op.
+
+A comment block in `main.cpp` listed the gun, triple-ball, rocket and
+kill-aliens bonuses as "deferred" and claimed the port supported four
+effects. All TEN are implemented, each with an arm in `bonus_apply` and
+gate coverage. The block also pointed at `map_orig_to_our_bonus`, a
+function renamed to `bonus_from_original` long ago, and kept a second
+copy of a mapping that `bonus_codes.{cpp,h}` owns.
+
+It was true once. Nothing re-read it, so it became confidently wrong —
+the failure this file already has a section about, found this time in
+the source rather than in the notes. The replacement points at the
+authority instead of duplicating it, and says what was wrong so the next
+reader knows the block has been checked rather than merely reformatted.
+
+Comment-only, and provably so: build, `git stash`, rebuild, `cmp` —
+byte-identical EXEs.
 
 `.PHONY` was the fourth hand-maintained list found out of sync: 85 of
 109 task targets, with everything added in the last stretch missing —

@@ -743,30 +743,28 @@ static unsigned char high_score_name[3] = { 0x0A, 0x0A, 0x0A };
  * read/write under QEMU's if=floppy mode, so writes survive a reboot
  * as long as the disk image isn't rebuilt by `make floppy`. */
 
-/* Power-up state: a single falling bonus on screen at a time. The
- * original (notes/plan-gameplay.md Phase H) drives this via
- * bonus_table_first/second + generate_new_bonus + set_bonus at $9866;
- * we hold a simpler 1-slot version until the object descriptor port
- * (M3 proper) lands. The slow-ball effect uses a tick countdown that
- * runs at the PIT frame rate (50 Hz). */
+/* Power-up state: one falling bonus on screen at a time, which is what
+ * the original does too — it shares object_bonus between the bonus and
+ * the enemy's bomb. The drop itself comes from bonus_table_first/second
+ * + generate_new_bonus + set_bonus at $9866. The slow-ball effect uses a
+ * tick countdown at the PIT frame rate (50 Hz). */
 /* Catch hit-box. The visible bonus sprite is 24 px wide x 13 rows
  * tall (with a drop-shadow band), but we run the bat-collision
  * against the central body region only — 16 wide x 8 tall — so a
  * marginal "shadow touched the bat" doesn't register as a catch. */
 #define BONUS_W_PX        16
 #define BONUS_H_PX        8
-/* Original game bonus codes from set_bonus / bonus_table_* at $9E4A:
- *   $01 gun        (deferred - needs bullet system)
- *   $02 triple_ball (deferred - needs multi-ball)
- *   $03 ?
- *   $04 slow_ball  -> our SLOW
- *   $05 extra_life -> our LIFE
- *   $06 rocket     (deferred - needs handling_rocket)
- *   $07 smash      -> our BIG_BALL
- *   $08 ?          -> mapped to BIG_BAT (placeholder)
- *   $09 kill_aliens (deferred)
- * map_orig_to_our_bonus translates a table draw to one of our 4
- * supported effects; unsupported codes get rolled away in pick. */
+/* The original's bonus codes (set_bonus / bonus_table_* at $9E4A) are
+ * translated by bonus_from_original in bonus_codes.{cpp,h}, which is the
+ * authority — do not keep a second copy of the mapping here.
+ *
+ * All ten are implemented; every one has an arm in bonus_apply and gate
+ * coverage (test-bonus-effects, -effects2, -typepick). An earlier
+ * version of this comment listed gun, triple_ball, rocket and
+ * kill_aliens as deferred and claimed four supported effects. That was
+ * true once and had not been true for a long time, which is exactly the
+ * failure mode notes/refactor-plan.md warns about: a comment nobody
+ * re-reads becomes confidently wrong. */
 
 /* bonus_table_first / bonus_table_second - byte-exact copies of the
  * 32-byte tables at $9E5A / $9E6A. The lower 4 bits of random_number
