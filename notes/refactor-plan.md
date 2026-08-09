@@ -53,7 +53,7 @@ happened, and `make test-video` caught it.
 | 6b-i | `weapons` — bullets + blasts | 95 | **done** — 6 tests |
 | 6b-ii | `enemies` — steering | 145 | **done** — 5 tests |
 | 6b-iii | `bonus_codes` — original <-> port numbering | 40 | **done** — 4 tests |
-| 6b-iv | bonus effects, rocket, sparks | ~500 | **started** — `blast_active_alien` split out; rest needs the game-state step below |
+| 6b-iv | bonus effects, rocket, sparks | ~180 | **done** — every switch arm is a named call or a two-liner |
 | 7 | `hud` — glyphs, markup, score | 175 | **done** — 6 tests |
 | 8 | `sound` — queue + envelopes | 366 | **done** — 7 tests; had NO coverage before |
 | 9 | `run_level` decomposition | 684 -> 370 | **in progress** — prologue, input, bat steering, scoring extracted |
@@ -61,7 +61,7 @@ happened, and `make test-video` caught it.
 | 1a | `replay_parse` — the BATTY_REPLAY_* value formats | 75 | **done** — 7 tests |
 | 1 | replay / probe scaffolding | ~430 | **last** — see below |
 
-`main.cpp`: 7,746 → 6,870. 100 host tests + source gates, all via `make test-fast` in seconds.
+`main.cpp`: 7,746 → 6,866. 100 host tests + source gates, all via `make test-fast` in seconds.
 
 ### Stage 5b: one destroyed-cell reset, not two
 
@@ -511,6 +511,13 @@ to protect, violated three commits after naming it. Inert today, because
 the port's ball object handler is a stub, but `call_for_all_obj`
 dispatches on `sprite_set` and the probe dumps those objects. It uses
 the helper now.
+
+`apply_slow_bonus` and `apply_multi_ball_bonus` finished `bonus_apply`:
+every arm of the switch is now a named call or a two-liner, so the
+function reads as the list of effects it is. Both are ball-side bonuses
+that clear the bat's own bonus byte, and the multi-ball one does so even
+when the extras are already out — the original writes `$FF` before
+testing anything, so the early return sits after it.
 
 `bounce_enemy_off_margins` did for the alien what
 `bounce_ball_off_side_walls` did for the ball: three near-identical

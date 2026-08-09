@@ -3041,6 +3041,35 @@ static void blast_active_alien(void) {
     sound_queue(SND_ALIEN_BLAST);
 }
 
+/* SLOW is ball-side: it drops every ball to the minimum speed and
+ * clears the bat's bonus, since the bat tracks nothing here. It does
+ * NOT reset the speed-up ramp, so the ball starts climbing back toward
+ * $06 from the next $94 tick — which is how SLOW wears off.
+ * orig: LA67B_7, plus the `LD (IY+$14),$FF` on that path */
+static void apply_slow_bonus(void) {
+    set_bat_bonus(0xFF);
+    objects[OBJ_BALL_1].speed = BALL_SPEED;
+    objects[OBJ_BALL_2].speed = BALL_SPEED;
+    objects[OBJ_BALL_3].speed = BALL_SPEED;
+}
+
+/* Two extra balls on top of the primary, for three in play. Also
+ * ball-side, so it clears the bat's bonus the same way — and it does so
+ * even when the extras are already out, matching the original, which
+ * writes $FF before testing anything.
+ * orig: LA67B_8 $A67B */
+static void apply_multi_ball_bonus(void) {
+    set_bat_bonus(0xFF);
+    if (ball.extra2_active || ball.extra3_active) return;
+
+    const ExtraBallDirs dirs = extra_ball_dirs(delta_to_dir(ball.dx, ball.dy));
+    spawn_extra_ball(OBJ_BALL_2, BALL_X, BALL_Y, dirs.second);
+    spawn_extra_ball(OBJ_BALL_3, BALL_X, BALL_Y, dirs.third);
+    ball.extra2_active = 1;
+    ball.extra3_active = 1;
+    sound_queue(SND_TRIPLE_BALL);
+}
+
 /* Apply the effect that comes with `type`. Catching the same type
  * while already active extends the duration. */
 static void bonus_apply(unsigned char type) {
@@ -3061,21 +3090,7 @@ static void bonus_apply(unsigned char type) {
     }
     switch (type) {
         case BONUS_TYPE_LIFE:     player.lives++; life_dropped_this_round = 1; break;
-        case BONUS_TYPE_SLOW:
-            /* Original at line 3108 (SLOW path): `LD (IY+\$14),\$FF` —
-             * overwrites bat.bonus_applied to \$FF (= no bat-side state)
-             * after the universal assignment. SLOW is ball-side; the
-             * bat doesn't track it. */
-            set_bat_bonus(0xFF);
-            /* Original LA67B_7: SLOW sets ALL ball speeds to $02 (the
-             * minimum) — `LD A,$02; LD (object_ball_1+$07),A` etc. It
-             * does NOT reset the speed-up ramp counter, so the ball
-             * starts climbing back toward $06 from the next $94 tick
-             * (SLOW wears off). */
-            objects[OBJ_BALL_1].speed = BALL_SPEED;
-            objects[OBJ_BALL_2].speed = BALL_SPEED;
-            objects[OBJ_BALL_3].speed = BALL_SPEED;
-            break;
+        case BONUS_TYPE_SLOW:     apply_slow_bonus();      break;
         case BONUS_TYPE_BIG_BAT:  bat.big_ticks  = BIG_BAT_DURATION;
                                   bat.extra_target  = BAT_BIG_EXTRA_PX;
                                   sound_queue(SND_BAT_RESIZE_1);
@@ -3105,26 +3120,7 @@ static void bonus_apply(unsigned char type) {
              * fires. Cleared automatically when another bonus is
              * caught (since bat.bonus_applied is rewritten). */
             break;
-        case BONUS_TYPE_MULTI_BALL:
-            /* Spawn two extra balls at the primary's current position
-             * for a 3-ball total (port of LA67B_8 / "triple ball" at
-             * $A67B). Directions come from the original low-nibble
-             * split: primary d=$04 -> extras $0C/$08, primary d=$08
-             * -> $0C/$04, otherwise -> $08/$04, preserving quadrant. */
-            /* Original at LA67B_8 (\$3074): `LD (IY+\$14),\$FF` after
-             * setting balls_quantity = 3 — overwrites bat.bonus_applied
-             * to \$FF (TRIPLE_BALL is ball-side, not bat-side). */
-            set_bat_bonus(0xFF);
-            if (!ball.extra2_active && !ball.extra3_active) {
-                const ExtraBallDirs dirs =
-                    extra_ball_dirs(delta_to_dir(ball.dx, ball.dy));
-                spawn_extra_ball(OBJ_BALL_2, BALL_X, BALL_Y, dirs.second);
-                spawn_extra_ball(OBJ_BALL_3, BALL_X, BALL_Y, dirs.third);
-                ball.extra2_active = 1;
-                ball.extra3_active = 1;
-                sound_queue(SND_TRIPLE_BALL);
-            }
-            break;
+        case BONUS_TYPE_MULTI_BALL: apply_multi_ball_bonus(); break;
         default: break;
     }
 }
