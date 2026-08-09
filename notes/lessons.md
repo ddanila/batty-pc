@@ -503,3 +503,26 @@ The fix was to delete the duplicate, not to add more test cases. A
 condition tested in two places has one owner and one echo, and mutation
 testing cannot tell you which is which — it just reports the echo as
 covered.
+
+**Check the plan against the disassembly before building from it.**
+PLAN.md's WS3 said Double Play splits the court into halves with "each
+bat confined to its half" and listed "per-bat margin clamps at the
+divider" as work to do. Neither exists. `handling_bat_no_transform`
+calls `check_left_margin` and `check_right_margin` — the same two the
+alien uses, over the full playfield — and both bats go through the same
+`handling_bat`, differing only in which object and control word.
+
+That plan text was written from watching the game, and watching is how
+the enemy's reflect-and-re-aim got invented too: a bat that mostly stays
+on its side because that is where its ball is looks confined. The cost
+of checking was twenty minutes; the cost of not checking would have been
+a mechanic in the port that the original does not have, plus gates
+pinning it.
+
+What the halves actually control is SCORING — `need_change_player` from
+`x AND $80`, and `add_points_to_score` swapping the score blocks around
+`score_update`. The plan had missed that entirely. So the check did not
+just remove work, it found the real work.
+
+Applies to my own PLAN.md entries as much as to inherited ones: a
+roadmap written from observation is a hypothesis.

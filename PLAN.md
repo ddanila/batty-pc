@@ -286,15 +286,32 @@ moment bat 1 moved to x=56 the runs stopped being comparable at all —
 the ball auto-launches off a bat in a different place, so by 9 s they
 have destroyed different bricks and the diff is the whole screen.
 
-**What:** The distinctive mode: both bats on screen at once, court
-split into halves with a divider, each bat confined to its half, one
-shared ball, shared pool of 3 lives. Needs: bat_2 render + input
-(second device from `p2_dev`), per-bat margin clamps at the divider,
-`handling_ball`'s bat-2 deflection branch, bonus ownership
-(`object_bat_2+$14` paths already partially maintained in the port),
-and the `LBC10_4` death-spark branch (shift 5 sparks by
-`bat_2.x - bat_1.x`) that `parity-status.md` explicitly parked as
-"out of scope (port is 1P)".
+**What:** The distinctive mode: both bats on screen at once, a divider,
+one shared ball, shared pool of 3 lives. Needs: bat_2 render + input
+(second device from `p2_dev`), `handling_ball`'s bat-2 deflection
+branch, side-attributed scoring, bonus ownership (`object_bat_2+$14`
+paths already partially maintained in the port), and the `LBC10_4`
+death-spark branch (shift 5 sparks by `bat_2.x - bat_1.x`) that
+`parity-status.md` explicitly parked as "out of scope (port is 1P)".
+
+**Two things this section used to say, both wrong** (traced 2026-08-09,
+before anything was built on them — see notes/double-play.md):
+
+- *"each bat confined to its half"* and *"per-bat margin clamps at the
+  divider"*. There are no such clamps. `handling_bat_no_transform` calls
+  `check_left_margin` and `check_right_margin`, the same two the alien
+  uses, over the full playfield; both bats run through the same
+  `handling_bat` and differ only in which object and control word. Both
+  can cross the middle and occupy the same half. Adding confinement
+  would have been an invented mechanic — the same mistake as the enemy's
+  reflect-and-re-aim, which sat in the port for months.
+- The halves are a SCORING rule, which this section missed entirely.
+  `handling_bat` (and four other sites) records `need_change_player` from
+  the object's `x AND $80`, and `add_points_to_score` swaps the two
+  score blocks around `score_update` when it is set. So in Double Play
+  **points are credited by WHERE the event happened, not by whose bat
+  did it**: a brick broken on the right half scores for player 2 even if
+  player 1 sent the ball there.
 
 **Why after WS2:** WS2 builds the per-player state plumbing (HUD,
 banner, hi-score) that Double Play reuses; Double Play then adds the
