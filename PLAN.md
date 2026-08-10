@@ -16,7 +16,7 @@ The port is "100%" when all of the following hold:
 |---|-----------|-------|
 | 1 | All three game modes work: 1 Player, 2 Players (alternating), Double Play (simultaneous split-court co-op) | 1P and 2P done; Double Play has its court, both bats, ball physics, scoring and INPUT (2026-08-10); bonus ownership and bat-2 catch remain |
 | 2 | Menu semantics match the original (0 starts the selected game directly; A/B input-device cycling affects play) | Key 0 starts the game (`test-menu-start`); the device byte is per-player state but still selects nothing |
-| 3 | Core gameplay byte-exact where an oracle exists (ball, bat, collision, RNG, enemy, bonuses, scoring) | **Done** — regression-locked by 101 gates |
+| 3 | Core gameplay byte-exact where an oracle exists (ball, bat, collision, RNG, enemy, bonuses, scoring) | **Done** — regression-locked by 102 gates |
 | 4 | Full game FLOW gated end-to-end: level-clear → next, life-loss → respawn, game-over → initials, level wrap | **Done** — `test-level-advance`, `test-life-loss`, `test-game-over-visual`, `test-name-entry-visual` |
 | 5 | Sound faithful to the original's 5-slot beeper queue (envelope/timing, not just effect IDs) | ids, slot count, pitches and envelope ARITHMETIC faithful; durations still round to 20 ms because the sound clock is the 50 Hz frame counter |
 | 6 | All assets derived from the tape at build time; no captured emulator blobs | **Done** — all 13 loaded assets build from `original/blocks/`, held by `test-asset-provenance` |
@@ -444,16 +444,22 @@ Gated by `test-double-play-input` (4 rows) and the host-side
 `double_play_court_clamps`. New harness knob `BATTY_HOLD_KEYS` seeds
 held keys into `key_state[]`.
 
-**What remains in WS3:** the bonus WIDTH and LASER state. Bat 2 catches
-bonuses, is paid for them, and keeps the bonus BYTE to itself
-(`test-double-play-bonus-catch`, 2026-08-10) — `set_bat_bonus` writes
-only the catching bat, and effects belonging to the BALL check both
-bytes as `LA27E` does.
+**WS3 is COMPLETE (2026-08-10).** Bat 2 catches bonuses, is paid for
+them, keeps the bonus BYTE to itself, and now WIDENS on its own BIG_BAT:
+`bats[2]` holds the width per bat, `render_bat_of` draws either, the
+redraw path tracks both, and `tick_bat_resize` ramps them off one shared
+gate as `counter_misc` does.
 
-What is left is that `bat.extra_px`, `bat.extra_target` and
-`bat.big_ticks` are one bat's worth of state, so BIG_BAT caught by bat 2
-is guarded to bat 1 and widens nobody. Still wrong, less wrong than
-widening the other player's bat.
+Gated by `test-double-play-bonus-catch`, `test-double-play-bat2-redraw`
+and `test-double-play-bat2-width`, the last two of which are PIXEL
+gates — bat 2 spent a day with correct state and a sprite frozen at
+level entry, which no probe row could see.
+
+The LASER is the one bonus with no bat-2 story yet: bat 2 shows the gun
+sprite when it holds the bonus, but firing is bat 1's
+(`try_fire_laser` reads bat 1 and fires from `BAT_X`), and bat 2 has no
+fire input. That is a WS1 dependency — the device selection decides what
+player 2's fire key even is — rather than a bonus-ownership one.
 
 The original separates them with `bonus_flag_swap` — exchanging
 `bonus_flag` with `bonus_flag_copy` around every bat-2 call so the

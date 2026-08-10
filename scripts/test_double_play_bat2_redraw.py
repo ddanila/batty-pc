@@ -73,11 +73,23 @@ def capture(label: str, hold: str | None):
     subprocess.run(["make", str(img)], cwd=ROOT, env=env,
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                    check=True)
+    # The image is rebuilt from scratch above and so carries no probe,
+    # but say so to the tooling as well: test-gate-freshness looks for an
+    # mdel or a FLOPPY-named unlink, and `img` is neither. Belt and
+    # braces on a gate whose whole job is to not grade a stale artifact.
+    subprocess.run(["mdel", "-i", str(img), "::PROBE.TXT"], cwd=ROOT,
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                   check=False)
     ppm = ROOT / f"build/b2redraw_{label}.ppm"
     run_qemu(img, ["SLEEP 9.0", "sendkey ret", "SLEEP 3.0",
                    f"screendump {ppm}", "sendkey esc", "SLEEP 0.5"],
              ROOT / f"build/b2redraw_{label}.log")
     probe = ROOT / f"build/PROBE_b2redraw_{label}.txt"
+    # Delete first: an mcopy that fails leaves the PREVIOUS run's probe
+    # in place, and this gate would then derive its expected right edge
+    # from a bat position that never happened. test-gate-freshness
+    # catches exactly this and caught it here.
+    probe.unlink(missing_ok=True)
     subprocess.run(["mcopy", "-n", "-o", "-i", str(img), "::PROBE.TXT",
                     str(probe)], cwd=ROOT, stdout=subprocess.DEVNULL,
                    stderr=subprocess.DEVNULL)

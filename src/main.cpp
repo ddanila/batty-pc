@@ -1056,7 +1056,8 @@ static unsigned char random_lo(unsigned int r) { return (unsigned char)r; }
  * keys off bat.bonus_applied == \$00, with no auto-expire. The bat
  * stays wide until another bonus is caught or the ball is lost.
  * Setting to UINT_MAX-ish so the timer-based expiration never fires;
- * big_bat_active() AND with bat.bonus_applied does the real gating. */
+ * big_bat_active_of() AND with the bat's bonus_applied does the real
+ * gating. */
 #define BIG_BAT_DURATION  0xFFFFu
 /* Original smash_counter expires at $F8 and advances only on every
  * other counter_misc value while the big-ball sprite is being printed. */
@@ -1074,7 +1075,7 @@ static BonusState bonus = {0, 0, 0, 0, {0, 0}};
  * object+$13). Bumps every active ball's speed at $94; see the model
  * comment above and ball_speed_ramp_tick(). */
 static int big_ball_active(void);    /* forward — defined below */
-static int big_bat_active(void);     /* forward — defined below */
+static int big_bat_active_of(int b); /* forward — defined below */
 /* Bat resize animation — bat.extra_px ramps 0..8 toward bat.extra_target
  * (port of bat_resize at $9D2C). The rate and endpoints are documented
  * on tick_bat_resize, which is where the gating lives; this comment used
@@ -3754,16 +3755,14 @@ static void bonus_apply(unsigned char type, int bat_idx) {
         case BONUS_TYPE_LIFE:     player.lives++; life_dropped_this_round = 1; break;
         case BONUS_TYPE_SLOW:     apply_slow_bonus(bat_idx); break;
         case BONUS_TYPE_BIG_BAT:
-            /* The WIDTH is bat-1 state: `bat.extra_px`, `extra_target`
-             * and `big_ticks` are one bat's worth, so there is nowhere
-             * to put bat 2's. Guarded rather than applied anyway —
-             * before the bonus byte split, a BIG_BAT caught by bat 2
-             * widened BAT 1, which is a wrong bat rather than a missing
-             * one. Now it widens nobody, and that is the visible face
-             * of WS3's last open item. */
-            if (bat_idx == OBJ_BAT_1) {
-                bat1.big_ticks     = BIG_BAT_DURATION;
-                bat1.extra_target  = BAT_BIG_EXTRA_PX;
+            /* The CATCHING bat widens. This was guarded to bat 1 while
+             * the width was one bat's worth of state — first widening
+             * the wrong bat, then, after the bonus byte split, widening
+             * nobody at all. `bats[]` ended that. */
+            {
+                BatState &st = bats[BAT_SLOT(bat_idx)];
+                st.big_ticks    = BIG_BAT_DURATION;
+                st.extra_target = BAT_BIG_EXTRA_PX;
                 sound_queue(SND_BAT_RESIZE_1);
             }
             break;
@@ -3847,9 +3846,9 @@ static int big_ball_active(void) {
  * bat-resize state machine in handling_bat_no_transform reads the byte
  * each frame. Catching another bonus immediately ends the wide-bat
  * state via the bat.extra_target = 0 target below in step_bonus. */
-static int big_bat_active(void) {
-    return bat1.big_ticks > 0
-        && objects[OBJ_BAT_1].bonus_applied == 0x00;
+static int big_bat_active_of(int b) {
+    return bats[BAT_SLOT(b)].big_ticks > 0
+        && objects[b].bonus_applied == 0x00;
 }
 /* Collision body stays 8x7 even with BIG_BALL active — original at
  * $9D5A_1 sets bat.bonus_applied=$07 and swaps the sprite to
@@ -3870,21 +3869,32 @@ static int eff_ball_size(void) { return BALL_W_PX; }
  * the centred body by 2 px, so every-2-ticks gives the original's
  * 1 px/frame and its ~16-frame full grow. Ungated it grew twice as fast
  * as the disassembly prescribes. */
-static void tick_bat_resize(void) {
-    static unsigned char resize_gate = 0;
-
-    if (bat1.big_ticks > 0) {
-        bat1.big_ticks--;
-        if (bat1.big_ticks == 0 || !big_bat_active()) {
-            bat1.extra_target = 0;
-            bat1.big_ticks = 0;            /* keep the two in sync */
+static void tick_bat_resize_of(int b, int step) {
+    BatState &st = bats[BAT_SLOT(b)];
+    if (st.big_ticks > 0) {
+        st.big_ticks--;
+        if (st.big_ticks == 0 || !big_bat_active_of(b)) {
+            st.extra_target = 0;
+            st.big_ticks = 0;              /* keep the two in sync */
         }
     }
+    if (!step) return;
+    if (st.extra_px < st.extra_target) st.extra_px++;
+    else if (st.extra_px > st.extra_target) st.extra_px--;
+}
+
+/* Both bats ramp off the SAME every-other-frame gate. The original picks
+ * its resize step from `counter_misc`, one global frame counter, so two
+ * growing bats stay in step with each other rather than each keeping
+ * private phase. */
+static void tick_bat_resize(void) {
+    static unsigned char resize_gate = 0;
+    int step;
 
     resize_gate++;
-    if ((resize_gate & 1) != 0) return;
-    if (bat1.extra_px < bat1.extra_target) bat1.extra_px++;
-    else if (bat1.extra_px > bat1.extra_target) bat1.extra_px--;
+    step = ((resize_gate & 1) == 0);
+    tick_bat_resize_of(OBJ_BAT_1, step);
+    if (game_mode == 2) tick_bat_resize_of(OBJ_BAT_2, step);
 }
 
 /* BIG_BALL expiry, on every other PIT tick. orig: smash_counter $F8 at

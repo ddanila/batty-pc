@@ -75,7 +75,7 @@ BONUS_X, BONUS_Y = 186, 158      # above bat 2's body at $B0..$CC, y=$AD
 #   short drop away and give it 30.
 
 
-def probe(mode: str, btype: int = 7):
+def probe(mode: str, btype: int = 7, frame: int = FRAME):
     Path(ROOT / FLOPPY).unlink(missing_ok=True)
     out = ROOT / "build/PROBE_dpbon.txt"
     out.unlink(missing_ok=True)
@@ -86,12 +86,12 @@ def probe(mode: str, btype: int = 7):
         f"BATTY_HIDE_BALL=1 BATTY_SUPPRESS_NO_BALL_DEATH=1 "
         f"BATTY_REPLAY_BAT_OBJECT={BAT} "
         f"BATTY_REPLAY_BONUS={btype},{BONUS_X},{BONUS_Y} "
-        f"BATTY_VISUAL_PROBE_FRAMES={FRAME}"
+        f"BATTY_VISUAL_PROBE_FRAMES={frame}"
     )
     subprocess.run(f"{env} make {FLOPPY}", shell=True, cwd=ROOT,
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     subprocess.run([sys.executable, "scripts/capture_frame_timeline.py",
-                    "--floppy", FLOPPY, "--frames", str(FRAME), "--wait-key",
+                    "--floppy", FLOPPY, "--frames", str(frame), "--wait-key",
                     "--out", "build/tl_dpbon"], cwd=ROOT,
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     subprocess.run(["mcopy", "-n", "-i", FLOPPY, "::PROBE.TXT", str(out)],
@@ -151,6 +151,18 @@ def main() -> int:
           f"${SEED_BAT1_BONUS:02X}/$03 — the catching bat keeps it, and "
           f"bat 1 still holds exactly what the seed gave it. Before the "
           f"split both read $03)")
+
+    got = probe("2", 2, frame=60)    # BIG_BAT, original code $00
+    if got is None:
+        print("  BIG_BAT on bat 2: NO PROBE.TXT [FAIL]")
+        return 1
+    _, _, _, _, b1b, b2b = got
+    good = (b2b == 0x00 and b1b == SEED_BAT1_BONUS)
+    ok = ok and good
+    print(f"  BIG_BAT on bat 2:     bat1=${b1b:02X} bat2=${b2b:02X} "
+          f"[{'PASS' if good else 'FAIL'}] (expect "
+          f"${SEED_BAT1_BONUS:02X}/$00 — BIG_BAT is bat 2's; the WIDTH it "
+          f"drives is gated by test-double-play-bat2-width)")
 
     if ok:
         print("PASS double_play_bonus_catch: bat 2 catches the bonus, is "

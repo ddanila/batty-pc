@@ -911,3 +911,57 @@ run rather than hardcoded.
 It is shaped for the actual failure, which was not "bat 2 never moved"
 but "bat 2 moved 4 px and froze". A gate asserting merely that something
 changed would have passed against the bug.
+
+
+## WS3 is complete: the width follows the catching bat (2026-08-10)
+
+`bonus_apply`'s BIG_BAT case writes `bats[BAT_SLOT(bat_idx)]`, and
+`tick_bat_resize` ramps both bats off the SAME every-other-frame gate —
+the original picks its step from `counter_misc`, one global frame
+counter, so two growing bats stay in step rather than each keeping
+private phase.
+
+`big_bat_active_of(b)` replaces the bat-1-only version; the wrapper went
+because nothing else used it.
+
+That closes the last item in the workstream. The path it took is worth
+keeping as a shape: the byte split first, then the state array, then the
+renderer, then the redraw path, then this. Each step was verifiable on
+its own and the last one is nine lines.
+
+### Two gates, and both of them are pixel gates
+
+`test-double-play-bat2-width` drops a BIG_BAT on bat 2 and compares the
+bat row against a no-bonus run. What it asserts is a PROPERTY:
+
+  * every changed pixel lies inside bat 2's WIDENED footprint, and
+  * both 8 px side lobes contain at least one change.
+
+Not equality with the lobes, and not "all 16 lobe pixels". Two earlier
+drafts asserted each of those and failed against a correct build:
+
+  - at `extra_px >= 8` the renderer swaps to `SPR_BAT_BIG`, a 48 px
+    sprite with its own interior texture, so the BODY differs from the
+    32 px one as well;
+  - the bat is textured, so a lobe column can match the background it
+    replaced and never register as changed. 13 of 16 changed, which says
+    nothing about correctness either way.
+
+The separate bat-1 check — no changed pixel below x $80 — is the half
+that fails if the width goes to the wrong bat, which is exactly what the
+mutation test confirms.
+
+### The process mistake, repeated
+
+The `tick_bat_resize` edits did not land the first time: a multi-edit
+script asserted its way out partway through, and because its single
+`write_text` is at the END, nothing at all was written. I then applied
+only the follow-up edit and assumed the earlier ones had stuck.
+
+The symptom was bat 2 catching BIG_BAT, taking the bonus byte, and not
+growing — with the code I "had just written" reading correctly on
+screen because I was looking at the one edit that DID apply.
+
+Same shape as the `bats[OBJ_BAT_1]` bug an hour earlier: verify what is
+in the file, not what the script was supposed to put there. `grep -c`
+for the new symbol costs nothing.

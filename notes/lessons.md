@@ -786,3 +786,23 @@ pixel difference to span both footprints, with the right edge derived
 from the object's actual x in the same run.
 
 Ask what the bug would look like, not just whether the feature works.
+
+## A multi-edit script that aborts writes NOTHING (2026-08-10)
+
+My edit scripts collect changes in a string and `write_text` once at the
+end. When an assertion fails partway — a needle that no longer matches —
+NONE of the earlier edits land, including the ones that matched.
+
+Twice today I then applied the failing edit on its own and carried on,
+believing the rest had stuck. The second time cost a full debugging
+round: bat 2 caught BIG_BAT, took the bonus byte, and did not grow. The
+code I "had just written" read correctly when I looked, because I looked
+at the one edit that DID apply.
+
+**Verify the file, not the script's intent.** `grep -c` for a symbol the
+edit introduces costs nothing and answers it exactly. The build is not
+enough: a missing edit usually still compiles, which is the whole
+problem.
+
+Related: the `bats[OBJ_BAT_1]` out-of-bounds above. Both are the same
+failure — trusting what I meant to write over what is on disk.

@@ -817,6 +817,7 @@ parity-check-full:
 	$(MAKE) test-extra-ball-owner
 	$(MAKE) test-double-play-bonus-catch
 	$(MAKE) test-double-play-bat2-redraw
+	$(MAKE) test-double-play-bat2-width
 	$(MAKE) test-stuck-auto-launch
 	$(MAKE) test-bat-redraw-window
 	$(MAKE) test-ball-left-wall-escape
@@ -1422,6 +1423,11 @@ test-double-play-bonus-catch:
 # object was always right — only the drawing was stale.
 test-double-play-bat2-redraw:
 	python3 scripts/test_double_play_bat2_redraw.py
+
+# WS3's last item: BIG_BAT widens the bat that CAUGHT it. Pixel gate —
+# bat 2's growth is drawn, and bat 1's half of the court does not move.
+test-double-play-bat2-width:
+	python3 scripts/test_double_play_bat2_width.py
 
 # A ball left on the bat launches itself after STUCK_TIMEOUT (192)
 # ticks. Nothing gated this: mutating the counter so it never fires
