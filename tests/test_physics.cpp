@@ -383,6 +383,56 @@ static void field_destroy(int row, int col) {
     field_cells[row * FIELD_COLS + col] = 0x80;
 }
 
+/* laffc_sweep's left clamp: `a = new_x - FIELD_X0; if (a < 0) a = 0;`.
+ *
+ * CHARACTERISATION of unreachable-but-deliberate code. Deleting the
+ * clamp survived all 76 QEMU gates on 2026-08-10, which answered an
+ * open question in notes/refactor-plan.md — nothing guards it — and the
+ * follow-up answered why nothing needs to.
+ *
+ * `a` feeds only `x_pen_in_cell`, and that feeds only
+ * `straddles_x = (x_pen_in_cell + ball_w) >= BRICK_W_PX`. Clamped and
+ * unclamped therefore differ only when `a < BRICK_W_PX - ball_w`:
+ *
+ *   - the ball is 8 px wide, so 16 - 8 = 8 and `a` would have to be
+ *     below 8 while negative — impossible, the two conditions exclude
+ *     each other. The ball can never reach it at all.
+ *   - the enemy is 24 px, so `a < -8`, i.e. `new_x < 0`. The enemy's
+ *     x is a u8 clamped to >= $08 by check_margins every frame and it
+ *     moves a few px per frame, so `new_x` bottoms out near 5.
+ *
+ * Unreachable through either caller. It stays because `laffc_sweep` is
+ * a pure function that should not depend on its callers' clamping, and
+ * this test is what makes a future caller passing a negative x a
+ * deliberate change rather than a silent one. */
+static void test_laffc_left_clamp_is_flat() {
+    const int before = failures;
+    field_fill(true);
+    /* Column 0 EMPTY so the straddle branch is the one under test. With
+     * a full field `standing(row, 0)` is true, the branch never runs,
+     * and x_pen_in_cell — the only thing the clamp feeds — is never
+     * read. The first draft filled everything and the mutant survived
+     * the test as well as the QEMU suite. */
+    field_destroy(0, 0);
+    const BrickField field(field_cells);
+    const int y = FIELD_Y0 + 4;
+    int differing = 0;
+    for (int w = 8; w <= 24; w += 8) {
+        const LaffcHit at_edge = laffc_sweep(field, 0x08, w, 7, FIELD_X0, y);
+        for (int x = FIELD_X0 - 40; x < FIELD_X0; x++) {
+            const LaffcHit out = laffc_sweep(field, 0x08, w, 7, x, y);
+            if (out.hit != at_edge.hit || out.col != at_edge.col
+                || out.cell_x != at_edge.cell_x)
+                differing++;
+        }
+    }
+    check(differing == 0,
+          "%d of the left-of-field positions resolved to a different "
+          "column than FIELD_X0 does; the clamp is what flattens them\n",
+          differing);
+    report("laffc_left_clamp_is_flat", before, "3 widths x 40 px     ok");
+}
+
 /* A ball entirely outside the band must never report a hit, whatever the
  * grid looks like — the cheapest possible guard against a stray index. */
 static void test_sweeps_miss_outside_the_band() {
@@ -905,6 +955,7 @@ int main() {
     test_motion_accel_fraction_carries();
     test_motion_accel_fast_variant_caps();
     test_motion_accel_clamp_is_equality_not_ge();
+    test_laffc_left_clamp_is_flat();
     test_sweeps_miss_outside_the_band();
     test_sweeps_miss_empty_field();
     test_hits_name_a_standing_cell();

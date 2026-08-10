@@ -925,3 +925,28 @@ residual, not just the new gap.** The whole point of a "do not reopen"
 list is that people stop re-deriving the trade-off — which means the
 trade-off recorded there has to stay current, and it is the one entry
 nobody re-reads precisely because it says the question is closed.
+
+## A test that never reaches the code under test passes anyway (2026-08-10)
+
+Answering whether `laffc_sweep`'s left clamp is guarded, I wrote a host
+test sweeping `new_x` left of `FIELD_X0` and comparing the resolved
+column against the edge case. It passed. The mutation that deletes the
+clamp ALSO passed it.
+
+The clamped value feeds exactly one expression, and that expression
+lives inside `if (!field.standing(row, col))`. My test filled the whole
+grid, so `standing(row, 0)` was true, the branch never ran, and the
+value under test was never read. The test exercised the function and
+missed the line.
+
+`field_destroy(0, 0)` fixed it and the mutant died.
+
+**A test aimed at one line should be checked against a mutation of that
+line, not against its own green.** Green means the assertions hold on
+the path taken; it says nothing about which path that was. This is the
+cheapest possible use of mutate.py — one line, one run — and it is the
+difference between a test and a decoration.
+
+Related: `check_floppy_assets` and `check_known_bugs_table` were both
+found to have haystacks narrower than the text they read. Same family —
+the check ran, and ran past the thing it was for.

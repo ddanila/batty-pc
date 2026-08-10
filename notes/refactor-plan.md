@@ -1163,9 +1163,35 @@ having checked. A claim published on evidence from a tool later found
 faulty is not automatically wrong, but it is unverified until re-run —
 and "it probably still holds" is not a result.
 
-Still open and still unclaimed: whether `laffc_sweep`'s left-boundary
-term is guarded by anything. One trajectory gate does not catch it;
-whether any of the other 58 do would cost a third full-suite run.
+~~Still open and still unclaimed: whether `laffc_sweep`'s left-boundary
+term is guarded by anything.~~ **Answered 2026-08-10.** The full-suite
+run cost seven minutes: deleting `if (a < 0) a = 0;` survives all 76
+QEMU gates. Nothing guards it.
+
+And nothing needed to, which took longer to establish than the run did.
+`a` feeds only `x_pen_in_cell`, which feeds only
+`straddles_x = (x_pen_in_cell + ball_w) >= BRICK_W_PX`, so clamped and
+unclamped differ only when `a < BRICK_W_PX - ball_w`:
+
+- the BALL is 8 px wide, so that is `a < 8` while `a` is also negative —
+  and `bounce_ball_off_side_walls` clamps x to $08 = `FIELD_X0` before
+  `laffc_collision` runs, so `a >= 0` always. Unreachable twice over.
+- the ENEMY is 24 px, so `a < -8`, i.e. `new_x < 0`. Its call site is
+  unclamped — `enemy_brick_reaction` runs BEFORE `enemy_check_margins`,
+  which is the original's `LAD69 -> LAFFC -> check_margins` order — but
+  x is a u8 clamped to >= $08 every frame and the bird moves a few px
+  per frame, so `new_x` bottoms out near 5.
+
+So it is an equivalent mutant in practice: unreachable through either
+caller, and deliberate rather than dead, because `laffc_sweep` is a pure
+function that should not depend on its callers' clamping.
+
+`laffc_left_clamp_is_flat` in `tests/test_physics.cpp` pins it, so a
+future caller passing a negative x becomes a deliberate change instead
+of a silent one. **That test needed column 0 EMPTY:** with a full field
+`standing(row, 0)` is true, the straddle branch never runs, and the only
+consumer of the clamped value is never read — the first draft filled
+everything and the mutant survived the host test too.
 
 #### mutate.py was reporting on stale DOS builds
 
