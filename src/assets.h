@@ -1,9 +1,7 @@
 /* assets — reading the game's data files off the floppy.
  *
  * Every asset is a headerless blob whose layout the reader already knows,
- * so loading is "give me exactly this many bytes or fail". Nothing here
- * interprets what it read; that belongs to whichever module owns the
- * format.
+ * so loading is "give me exactly this many bytes or fail".
  *
  * A short or missing file is always a failure rather than a partial load,
  * because a half-read sprite blob renders as garbage that looks like a

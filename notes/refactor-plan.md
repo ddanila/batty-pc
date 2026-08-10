@@ -5,9 +5,9 @@ test. The stage table below is complete.
 
 ## Where this stands
 
-**The code.** `main.cpp`: 7,747 → 7,756 lines (`wc -l`) across 15 modules —
-net flat. Extraction added headers and comments and took it up to 8,420; the
-comment sweep gave that back by dropping prose that only restated the code.
+**The code.** `main.cpp`: 7,747 → 7,593 lines (`wc -l`) across 15 modules —
+net flat. Extraction added headers and comments and took it up to 8,420; two
+comment sweeps gave that back by dropping prose that only restated the code.
 The longest function is `run_level` at 113 lines, an orchestrator of named
 phases.
 

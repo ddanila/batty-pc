@@ -1,12 +1,5 @@
 /* zxvga — ZX Spectrum display emulation on VGA mode 13h.
  *
- * This is the video engine: everything that turns the Spectrum's
- * *attribute* display model into VGA pixels, including its defining
- * artefact, COLOUR CLASH. Game content (bricks, bat, HUD, background
- * tiles, level assets) lives in main.cpp and only talks to this module
- * through the buffers and calls declared here.
- *
- *
  * THE DISPLAY MODEL
  * -----------------
  * The Spectrum's screen is two separate planes:
@@ -20,49 +13,18 @@
  *              Layout: flash(1) bright(1) paper(3) ink(3)
  *                bit  7      6        5..3      2..0
  *
- * Colour is therefore stored at 1/64th the resolution of the pixels.
- * Every one of the 64 pixels in a cell must be either that cell's ink
- * or that cell's paper — no exceptions. That constraint IS colour
- * clash: draw a sprite over a background of a different colour and the
- * sprite takes the cell's colours, or repaints the whole cell in its
- * own. Batty depends on this everywhere (a bird flying over the brick
- * band is drawn in the BRICKS' colours), so the port reproduces the
- * model exactly rather than rendering sprites in their "own" colour.
+ * Colour is therefore stored at 1/64th the resolution of the pixels. Every
+ * one of the 64 pixels in a cell must be either that cell's ink or that
+ * cell's paper — no exceptions. That constraint IS colour clash: draw a
+ * sprite over a background of a different colour and the sprite takes the
+ * cell's colours, or repaints the whole cell in its own. Batty depends on
+ * this everywhere (a bird flying over the brick band is drawn in the
+ * BRICKS' colours), so the port reproduces the model exactly rather than
+ * rendering sprites in their "own" colour.
  *
- * The consequence for callers, and the invariant worth protecting:
- *
- *   - blit_masked_to_scr_buff() writes PIXELS ONLY. It never touches
- *     attr_buff, so anything drawn with it clashes into whatever
- *     colours its cells already carry. This mirrors the original's
- *     print_obj_to_buff ($B82C) and is what every moving object uses.
- *   - blit_sprite_attrs_to_buff_clipped() is the ONLY function here
- *     that writes attributes, and it recolours whole 8x8 cells because
- *     that is the only granularity the hardware has.
- *
- * (These two are covered by tests/test_zxvga.cpp and by the
- * test-sprite-attr-parity / test-enemy-attr-parity gates.)
- *
- *
- * THE OUTPUT PATH
- * ---------------
- * buff_to_vga() / buff_to_vga_rect_bytes() expand the two planes into
- * mode 13h's 8-bit-per-pixel framebuffer: for each (pixel byte, cell
- * attribute) pair, 8 palette indices, table-driven so a whole nibble is
- * one 32-bit store.
- *
- * FLASH IS NOT EMULATED. The table is indexed by `attr & 0x7F`, which
- * drops bit 7, so a flashing attribute renders as its steady state. The
- * game's own blink effects are done by rewriting attributes.
- *
- * Because a full-screen expansion is 49152 VGA byte writes, the engine
- * tracks dirty spans (mark_dirty_*) and flushes only those.
- *
- *
- * PORTABILITY
- * -----------
- * On DOS `vga` points at 0xA0000; under any other compiler it points at a
- * host buffer, which is what lets tests/test_zxvga.cpp exercise this exact
- * source natively. That one guard is the only target-specific thing here. */
+ * FLASH IS NOT EMULATED. The expansion table is indexed by `attr & 0x7F`,
+ * which drops bit 7, so a flashing attribute renders as its steady state.
+ * The game's own blink effects are done by rewriting attributes. */
 
 #ifndef ZXVGA_H
 #define ZXVGA_H
@@ -88,8 +50,8 @@ const int SCR_BUFF_SIZE  = BYTES_PER_ROW * PLAYFIELD_H;   /* 6144 */
 const int ATTR_BUFF_SIZE = ATTR_COLS * ATTR_ROWS;         /* 768 */
 
 /* --- The attribute byte ----------------------------------------------- */
-/* Palette index of a cell's ink / paper. Bit 6 is BRIGHT, which selects
- * the upper half of the 16-entry palette; bit 7 is FLASH and is ignored. */
+/* Bit 6 is BRIGHT, which selects the upper half of the 16-entry palette;
+ * bit 7 is FLASH and is ignored. */
 inline u8 attr_ink(u8 attr)   { return u8((attr & 7) | ((attr & 0x40) >> 3)); }
 inline u8 attr_paper(u8 attr) { return u8(((attr >> 3) & 7) | ((attr & 0x40) >> 3)); }
 
@@ -97,17 +59,13 @@ inline u8 attr_paper(u8 attr) { return u8(((attr >> 3) & 7) | ((attr & 0x40) >> 
 /* The original's sprite format, verbatim from the program at $7A8C+:
  *   byte 0            width in BYTES (so 8x that in pixels)
  *   byte 1            height in rows
- *   then h*w pairs    (mask_byte, pixel_byte), row-major
- *
- * Constructible straight from a `const u8 *`, so call sites that already
- * hold sprite data need no ceremony. */
+ *   then h*w pairs    (mask_byte, pixel_byte), row-major */
 class Sprite {
 public:
     Sprite(const u8 *data) : d(data) {}
     int width_bytes() const { return d[0]; }
     int width_px()    const { return d[0] * 8; }
     int height()      const { return d[1]; }
-    /* (mask, pixel) pairs, width_bytes() of them per row. */
     const u8 *pixels() const { return d + 2; }
 private:
     const u8 *d;
@@ -116,8 +74,7 @@ private:
 /* --- The video mode --------------------------------------------------- */
 
 /* Owns the video mode for its lifetime: mode 13h and the ZX palette on
- * construction, text mode on destruction. Declaring one in main() means no
- * return path can leave the display in a graphics mode. */
+ * construction, text mode on destruction. */
 class ZxDisplay {
 public:
     ZxDisplay();
@@ -127,9 +84,9 @@ private:
     ZxDisplay &operator=(const ZxDisplay &);
 };
 
-/* The mode 13h framebuffer. Game code writes through this directly only
- * for the few things that bypass the attribute plane (glyphs, whole-screen
- * asset blits); everything else goes through the two planes below. */
+/* The mode 13h framebuffer. On DOS this points at 0xA0000; under any other
+ * compiler it points at a host buffer, which is what lets the host tests
+ * exercise this exact source natively. */
 extern u8 *vga;
 
 void fill(int x, int y, int w, int h, u8 c);
@@ -151,7 +108,8 @@ void buff_to_vga();
 void buff_to_vga_rect_bytes(int y0, int h, int byte_lo, int byte_hi);
 
 /* Pixels only — never touches attr_buff, so what it draws clashes into
- * whatever colours its cells already carry. */
+ * whatever colours its cells already carry. orig: print_obj_to_buff $B82C,
+ * and what every moving object uses. */
 void blit_masked_to_scr_buff(const Sprite &sprite, int x_px, int y_px);
 
 /* Straight to VGA in caller-supplied colours, bypassing the attribute
@@ -159,17 +117,18 @@ void blit_masked_to_scr_buff(const Sprite &sprite, int x_px, int y_px);
 void blit_masked_sprite(const Sprite &sprite, int x_px, int y_px,
                         u8 ink, u8 paper);
 
-/* The only attribute writer: recolours whole 8x8 cells, because that is
- * the only granularity colour has. Callers must mark dirty with
+/* The only attribute writer: recolours whole 8x8 cells, because that is the
+ * only granularity colour has. Callers must mark dirty with
  * mark_dirty_cell_rect_px, not mark_dirty_rect_px. */
 void blit_sprite_attrs_to_buff_clipped(int x_px, int y_px, int w_px, int h_px,
                                        u8 attr,
                                        int clip_left_px, int clip_right_px);
 
 /* --- Dirty-rectangle tracking ---------------------------------------- */
-/* Per pixel row we keep up to DIRTY_SLOTS disjoint byte-column spans, so
- * two far-apart sprites on the same row don't force a flush of
- * everything between them. DIRTY_NONE marks an unused slot. */
+/* A full-screen expansion is 49152 VGA byte writes, so the engine flushes
+ * only what changed. Per pixel row we keep up to DIRTY_SLOTS disjoint
+ * byte-column spans, so two far-apart sprites on the same row don't force a
+ * flush of everything between them. DIRTY_NONE marks an unused slot. */
 const u8  DIRTY_NONE  = 0xFF;
 const int DIRTY_SLOTS = 2;
 
@@ -177,8 +136,6 @@ extern u8  dirty_min_byte[DIRTY_SLOTS][PLAYFIELD_H];
 extern u8  dirty_max_byte[DIRTY_SLOTS][PLAYFIELD_H];
 extern u8  prev_dirty_min_byte[DIRTY_SLOTS][PLAYFIELD_H];
 extern u8  prev_dirty_max_byte[DIRTY_SLOTS][PLAYFIELD_H];
-/* Pixel-row spans of the current and previous frames' marks, so the
- * per-frame restore and carry scan only the rows that matter. */
 extern int cur_dirty_y_lo, cur_dirty_y_hi;
 extern int prev_dirty_y_lo, prev_dirty_y_hi;
 

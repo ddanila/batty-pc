@@ -19,9 +19,6 @@ namespace {
 bool muted = false;
 unsigned long (*clock_now)() = 0;
 unsigned long clock_hz = 50;   /* the game's PIT frame counter */
-/* One envelope (the magnet zip) is noise, so it consumes the game RNG.
- * Injected rather than reached for, so the sequence a test sees is
- * its own. */
 u8 (*random_byte)() = 0;
 
 unsigned int  ticks_left = 0;
@@ -82,11 +79,7 @@ void sound_beep2_bd(unsigned char b, unsigned char d) {
 
 /* orig: sound_beep_cont_d ($C25C) — D square-wave cycles of half-period
  * E. One `sound_beep` is one cycle; a DJNZ that loops is 13 T-states,
- * so the whole thing is D * 2 * E * 13 T-states at 3.5 MHz.
- *
- * Discarding D gives every effect one tick, which at 50 Hz is 20 ms
- * against the original's 3 to 9 ms. The arithmetic below is honest; what
- * still rounds it to a single tick is the clock rate, not this. */
+ * so the whole thing is D * 2 * E * 13 T-states at 3.5 MHz. */
 /* The PIT divisor for half-period E. Original period is proportional to
  * E: 1193180 / (3500000 / (26*E)) = 8.86*E, and 9*E is the close
  * integer form. (26 = 2 * 13, a full cycle of DJNZ turns.) */
@@ -152,8 +145,7 @@ int tick_one(Slot *s) {
             return s->state == 0;
         }
 
-        /* play_sound_LC122 ($C122) is a LOOP, and the port used to play
-         * one beep of it:
+        /* play_sound_LC122 ($C122) is a LOOP:
          *
          *     play_sound_LC122:
          *       ... derive B,D from (C XOR E) ... CALL sound_beep2
@@ -161,14 +153,11 @@ int tick_one(Slot *s) {
          *
          * C counts DOWN, and B and D are recomputed from `C XOR E` each
          * turn, so it is a descending sweep of C beeps — nine for
-         * BALL_START, four for SHOT. The port fired the first one and
-         * cleared the slot, dropping 8/9 and 3/4 of each effect.
+         * BALL_START, four for SHOT.
          *
-         * Ported as a per-frame sweep with `state` holding C, which is
-         * how every other multi-frame effect here already works. It is
-         * one beep per frame instead of the original's back-to-back
-         * run — the same approximation the rest of the queue makes, and
-         * the one WS5's open decision is about. */
+         * Ported as a per-frame sweep with `state` holding C: one beep per
+         * frame instead of the original's back-to-back run, the same
+         * approximation the rest of the queue makes. */
         case SND_BALL_START: {
             /* $C116: C=$09, E=$14. */
             sound_play_lc122(s->state, 0x14);
@@ -259,14 +248,7 @@ void sound_tick() {
 
 /* --- Sound queue (port of sounds_queue at $C0B8 + play_sounds_queue) ---
  *
- * 5 slots, each tracks a sound id + per-sound state byte. snd_q_push
- * adds an event; snd_q_tick is called from the 50 Hz frame body and
- * dispatches each active slot to its play_sound_<id> handler.
- * Single-shot sounds clear their slot on first tick; multi-frame
- * sounds (live-add ascending sweep, ball-launch / shot descending
- * sweep) advance state per frame and clear when exhausted.
- *
- * Each handler mirrors the D/E/B/C parameters of the original's
+ * Each handler above mirrors the D/E/B/C parameters of the original's
  * play_sound_<event> routine (sound.asm at $C0F3+). */
 
 void sound_play_metal_brik() { sound_beep_cont_d(0x18, 0x30); }

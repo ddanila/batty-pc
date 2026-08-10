@@ -1,9 +1,8 @@
 /* hud — text, the markup screens, and the score/indicator furniture.
  *
  * These draw STRAIGHT TO VGA, not through the two planes: they sit in the
- * border and HUD areas the playfield compositor never touches, so there
- * is no attribute cell to clash into and no dirty tracking to do.
- *
+ * border and HUD areas the playfield compositor never touches, so there is
+ * no attribute cell to clash into and no dirty tracking to do.
  *
  * MARKUP
  * ------
@@ -28,8 +27,7 @@
 
 #include "types.h"
 
-/* --- Art ------------------------------------------------------------- */
-/* The module renders from these; the caller loads them. */
+/* --- Art: rendered from here, loaded by the caller -------------------- */
 
 const int FONT_GLYPHS = 43;
 const int FONT_ROWS   = 6;      /* 8x6; the char cell's top 2 rows are pad */
@@ -45,7 +43,6 @@ extern unsigned markup_len;
  * codes draw nothing rather than reading past the font. */
 void draw_glyph(int x, int y, u8 colour, u8 code);
 
-/* Replay the loaded markup stream onto the screen. */
 void render_markup();
 
 /* True for a byte that starts a record — see the decode above. */

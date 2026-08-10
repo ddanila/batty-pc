@@ -53,11 +53,8 @@ Object objects[N_OBJECTS] = {
 };
 
 
-/* Port of ix_buf_addr_calc at $B684. Computes the scr_buff offset
- * from (x_coord, y_coord) and stores it in the descriptor's +0A/+0B
- * fields. Our scr_buff is row-major (32 B per row, 192 rows), so the
- * offset is y*32 + x/8. We pack big-endian into +0A:+0B to match the
- * original's H:L convention. */
+/* Port of ix_buf_addr_calc at $B684. Packed big-endian into +0A:+0B to
+ * match the original's H:L convention. */
 void object_update_buffer_offset(Object &o) {
     unsigned int off = (unsigned int)o.y_coord * 32u
                      + (unsigned int)(o.x_coord >> 3);

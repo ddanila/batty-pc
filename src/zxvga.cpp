@@ -3,14 +3,6 @@
  * Read zxvga.h first: it documents the attribute/colour-clash model this
  * file implements and the invariants callers rely on.
  *
- * Sections:
- *   §1  VGA surface        — mode set, DAC palette, rectangle fill
- *   §2  Attribute model    — attr byte -> ink/paper -> expansion tables
- *   §3  ZX framebuffer     — scr_buff / attr_buff
- *   §4  Clash blit to VGA  — the two planes -> 8bpp pixels
- *   §5  Dirty rectangles   — track and flush only what changed
- *   §6  Masked blits       — pixels-only (clashing) vs attribute writes
- *
  * Compiled into the DOS build via main.cpp, and standalone by
  * tests/test_zxvga.cpp under a host compiler — the __WATCOMC__ guard picks
  * the VGA surface (real hardware vs a plain array). */
@@ -118,8 +110,6 @@ ZxDisplay::~ZxDisplay() { set_mode(0x03); }
 /* §2  Attribute model                                                   */
 /* ===================================================================== */
 
-/* Ink colour of an attribute whose paper is known to be 0 — the glyph and
- * markup renderers draw on a black cell, so only the ink matters. */
 u8 attr_to_palette(u8 attr) { return attr_ink(attr); }
 
 static u8 ink_table[256];
@@ -183,8 +173,6 @@ inline u8 *vga_at(int x, int y) {
 /* §4  Clash blit to VGA                                                 */
 /* ===================================================================== */
 
-/* Where the module's share of the render profile is tallied
- * (write_profile_report in main.c prints these). */
 unsigned long prof_vga_rects = 0;
 unsigned long prof_vga_bytes = 0;
 
@@ -211,10 +199,8 @@ void buff_to_vga() {
     }
 }
 
-/* Same expansion over a byte-column-aligned sub-rectangle: rows
- * [y0, y0+h) and byte columns [byte_lo, byte_hi]. Byte columns are also
- * character-cell columns, so a rect can never split a cell horizontally
- * and the attribute lookup stays valid. */
+/* Byte columns are also character-cell columns, so a rect can never split a
+ * cell horizontally and the attribute lookup stays valid. */
 void buff_to_vga_rect_bytes(int y0, int h, int byte_lo, int byte_hi) {
     int y_end = y0 + h;
     if (byte_lo < 0) byte_lo = 0;
@@ -399,15 +385,13 @@ void flush_dirty_to_vga(void) {
 /* §6  Masked blits                                                      */
 /* ===================================================================== */
 
-/* Composite one byte of sprite over one byte of the pixel plane. */
 inline void apply_mask(u8 &dest, u8 mask, u8 pixels) {
     dest = u8((~mask & dest) | (mask & pixels));
 }
 
-/* Masked blit into the 1-bit scr_buff: per destination byte,
- *   scr_buff' = (~mask & scr_buff) | (mask & pixels)
- * so mask=1 bits take the sprite's bit (which buff_to_vga later resolves
- * to the cell's ink or paper) and mask=0 bits are PRESERVED — transparent.
+/* Masked blit into the 1-bit scr_buff: mask=1 bits take the sprite's bit
+ * (which buff_to_vga later resolves to the cell's ink or paper) and mask=0
+ * bits are PRESERVED — transparent.
  *
  * ATTRIBUTES ARE NOT TOUCHED — that is the point. A sprite drawn this way
  * inherits each cell's existing ink/paper, i.e. it clashes, exactly as the
@@ -462,10 +446,7 @@ void blit_masked_to_scr_buff(const Sprite &sprite, int x_px, int y_px) {
  *
  *   mask=1, pixel=0  ->  ink    (the sprite's solid body)
  *   mask=1, pixel=1  ->  paper  (its internal texture)
- *   mask=0           ->  background preserved (transparent)
- *
- * Pixel-at-a-time rather than byte-at-a-time because the destination is
- * 8 bits per pixel, so there is nothing to pack. */
+ *   mask=0           ->  background preserved (transparent) */
 void blit_masked_sprite(const Sprite &sprite, int x_px, int y_px,
                                u8 ink, u8 paper) {
     const int w = sprite.width_bytes();
@@ -490,11 +471,8 @@ void blit_masked_sprite(const Sprite &sprite, int x_px, int y_px,
     }
 }
 
-/* The ONLY attribute writer in this module (print_sprite_attrib's
- * clipped form). Recolours every 8x8 cell the rect touches — cells are
- * the finest granularity colour has, so a sprite that sets attrs
- * repaints its neighbours' pixels too. Callers that use this must mark
- * dirty with mark_dirty_cell_rect_px, not mark_dirty_rect_px. */
+/* print_sprite_attrib's clipped form. A sprite that sets attrs repaints its
+ * neighbours' pixels too — see zxvga.h. */
 void blit_sprite_attrs_to_buff_clipped(int x_px, int y_px, int w_px, int h_px,
                                               u8 attr,
                                               int clip_left_px, int clip_right_px) {

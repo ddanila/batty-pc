@@ -1,8 +1,6 @@
-/* level — the brick grid's shape, shared by everything that reads it.
- *
- * The collision sweeps and the compositor must agree on where a brick is
- * to the pixel, so the geometry lives here rather than in either of them.
- */
+/* level — the brick grid's shape. The collision sweeps and the compositor
+ * must agree on where a brick is to the pixel, so the geometry lives here
+ * rather than in either of them. */
 
 #ifndef BATTY_LEVEL_H
 #define BATTY_LEVEL_H

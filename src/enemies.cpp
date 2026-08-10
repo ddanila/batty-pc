@@ -50,10 +50,9 @@ void enemy_repick_target_current(Object &o) {
 
 /* --- the brick-hit home target (orig LAA7B / LAA44) ------------------
  *
- * One global word, shared by every alien, holding a POSITION rather than
- * an angle. While it is set the alien does not steer, move or collide:
- * it walks to that position a pixel at a time and then resumes. See the
- * trace in notes/enemy-movement.md for how a brick hit fills it in. */
+ * While it is set the alien does not steer, move or collide: it walks to
+ * that position a pixel at a time and then resumes. See the trace in
+ * notes/enemy-movement.md for how a brick hit fills it in. */
 EnemyHomeTarget enemy_home_target = { 0, 0 };
 
 void enemy_home_step(Object &o, EnemyHomeTarget &t) {

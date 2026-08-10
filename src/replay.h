@@ -1,15 +1,7 @@
-/* Replay overrides.
- *
- * This holds the BATTY_REPLAY_* seeders that depend ONLY on state other
- * modules already own: `objects` (objects.h), the bullet and blast
- * arrays (weapons.h), and the RNG (rng.h). That is the whole boundary —
- * the bonus, pts400, rocket, big-ball, multiball and brick seeders write
- * structs that still live in main.cpp, so moving them means moving the
- * state first.
- *
- * Value parsing lives one level down in replay_parse.{cpp,h}, which has
- * no game state at all: replay_parse turns a string into numbers,
- * replay applies them. */
+/* Replay overrides — the BATTY_REPLAY_* seeders whose state other modules
+ * already own. The bonus, pts400, rocket, big-ball, multiball and brick
+ * seeders write structs that still live in main.cpp, so moving them here
+ * means moving the state first. */
 #ifndef BATTY_REPLAY_H
 #define BATTY_REPLAY_H
 

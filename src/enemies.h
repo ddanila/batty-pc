@@ -25,9 +25,7 @@
  *
  * The original ticks its RNG once per frame and lets consumers read it;
  * a consumer that advances on read eats the sequence faster and
- * desynchronises everything downstream. Both are injected here rather
- * than reached for, so this distinction is visible instead of implied.
- * See notes/rng-model.md. */
+ * desynchronises everything downstream. See notes/rng-model.md. */
 
 #ifndef BATTY_ENEMIES_H
 #define BATTY_ENEMIES_H
@@ -43,7 +41,6 @@ void enemy_set_random(u8 (*current)(), u8 (*sample)());
  * arrival, pick a fresh target. */
 void enemy_turn_towards_target(Object &o);
 
-/* Choose a target at random. */
 void enemy_pick_new_target(Object &o);
 
 /* Re-target off the CURRENT random number (orig LAA7D_1), which is what

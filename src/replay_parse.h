@@ -5,13 +5,10 @@
  * them: a comma-separated integer list ("x,y", "type,x,y", "col,row,val")
  * and a hex blob of raw object bytes.
  *
- * These are pure: they take the value, not the variable. main.cpp does
- * the getenv. That is what makes them testable on the host, which
- * matters because a parser that silently half-succeeds would seed a
- * state nobody intended and the gate would report a game bug.
- *
- * Both are ALL-OR-NOTHING by design. A malformed value leaves `out`
- * untouched and the caller applies nothing.
+ * Both are ALL-OR-NOTHING by design: a malformed value leaves `out`
+ * untouched and the caller applies nothing. A parser that silently
+ * half-succeeded would seed a state nobody intended, and the gate would
+ * report it as a game bug.
  */
 
 #ifndef BATTY_REPLAY_PARSE_H
