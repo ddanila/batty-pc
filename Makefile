@@ -816,6 +816,7 @@ parity-check-full:
 	$(MAKE) test-extra-ball-bat2
 	$(MAKE) test-extra-ball-owner
 	$(MAKE) test-double-play-bonus-catch
+	$(MAKE) test-double-play-bat2-redraw
 	$(MAKE) test-stuck-auto-launch
 	$(MAKE) test-bat-redraw-window
 	$(MAKE) test-ball-left-wall-escape
@@ -1416,6 +1417,11 @@ test-extra-ball-owner:
 # the CATCHING bat. A/B on BATTY_GAME_MODE with the bonus over bat 2.
 test-double-play-bonus-catch:
 	python3 scripts/test_double_play_bonus_catch.py
+
+# WS3: bat 2's SPRITE must follow its object. A pixel gate, because the
+# object was always right — only the drawing was stale.
+test-double-play-bat2-redraw:
+	python3 scripts/test_double_play_bat2_redraw.py
 
 # A ball left on the bat launches itself after STUCK_TIMEOUT (192)
 # ticks. Nothing gated this: mutating the counter so it never fires

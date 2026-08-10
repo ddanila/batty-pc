@@ -84,6 +84,7 @@ FULL_EXTRA_GATES = [
     "test-secondary-ball-catch",
     "test-extra-ball-bat2", "test-extra-ball-owner",
     "test-double-play-bonus-catch",
+    "test-double-play-bat2-redraw",
     "test-stuck-auto-launch",
     "test-bat-redraw-window",
     "test-ball-left-wall-escape", "test-l3-replay-seed",

@@ -861,3 +861,53 @@ collision extents are ready for it; what wants checking first is the
 dirty-redraw path, which knows bat 1's bounds
 (`redraw_bat`, `bat_sprite_bounds`) and draws bat 2 only on a full
 compose. A widening bat 2 could leave residue there.
+
+## Bat 2's sprite was frozen at level entry (2026-08-10)
+
+**A visible defect that a green gate was hiding.**
+
+`test-double-play-input` proved bat 2 steers, by reading `object_bat_2`
+out of the probe. That was true and insufficient: the object moved the
+whole way while the SPRITE stayed where the level-entry compose put it.
+
+Measured with a screendump: object at `$DC`, sprite still at `$B4`.
+
+### Why
+
+`render_bat_2` was called from exactly one place — `compose_level_scene`,
+which runs at level entry. None of the per-frame redraw paths knew about
+it. And `bat_moved` was `BAT_X != BAT_PREV_X`, bat 1's x alone, so a
+frame in which only player 2 moved took `redraw_frame`'s early-out and
+drew nothing at all.
+
+The `$B4` rather than `$B0` is the tell: bat 2 had taken one step before
+the entry compose ran, and that one step is all that was ever drawn.
+
+### The fix
+
+- `render_bats()` draws both, and every bat-band path calls it.
+- `bat_changed(b)` compares a bat against what was last DRAWN — x, y,
+  width, bonus byte, fire ticks — and `bat_moved` and
+  `bat_needs_full_redraw` both use it for both bats, so the dirty and
+  full paths cannot disagree about whether the band is stale.
+- `remember_bat_draw_state_of(b)` keeps that cache per bat, using the
+  object's own `prev_x` as its last-drawn x, exactly as bat 1 did.
+- Both redraw windows widen to cover whatever bat 2 vacated and whatever
+  it now covers. One window serves both bats because they share the
+  band; the cost is a wide flush when they are at opposite ends, which
+  is what the full path would have paid anyway.
+
+### The lesson, and it is about the gate not the code
+
+A state gate cannot see a rendering bug. `test-double-play-input`
+asserted everything about bat 2 except the only thing that was wrong.
+
+`test-double-play-bat2-redraw` is a PIXEL gate: it diffs a run with
+bat 2 driven right against one with it still, and requires the
+difference to span both footprints — the one it vacated and the one it
+now covers, with the right edge derived from `object_bat_2` in the same
+run rather than hardcoded.
+
+It is shaped for the actual failure, which was not "bat 2 never moved"
+but "bat 2 moved 4 px and froze". A gate asserting merely that something
+changed would have passed against the bug.

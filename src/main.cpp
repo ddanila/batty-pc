@@ -2292,12 +2292,32 @@ static void bat_sprite_bounds(int x, int extra, int *x0, int *x1) {
     *x1 = x + BAT_W_BYTES * 8 + e;
 }
 
+static void remember_bat_draw_state_of(int b) {
+    BatState &st = bats[BAT_SLOT(b)];
+    objects[b].prev_x   = objects[b].x_coord;   /* = last DRAWN x */
+    st.drawn_extra_px   = st.extra_px;
+    st.drawn_y          = (int)objects[b].y_coord;
+    st.drawn_bonus      = objects[b].bonus_applied;
+    st.drawn_fire_ticks = st.fire_anim_ticks;
+}
+
 static void remember_bat_draw_state(void) {
-    BAT_PREV_X = BAT_X;
-    bat1.drawn_extra_px = bat1.extra_px;
-    bat1.drawn_y = BAT_Y;
-    bat1.drawn_bonus = objects[OBJ_BAT_1].bonus_applied;
-    bat1.drawn_fire_ticks = bat1.fire_anim_ticks;
+    remember_bat_draw_state_of(OBJ_BAT_1);
+    if (game_mode == 2) remember_bat_draw_state_of(OBJ_BAT_2);
+}
+
+/* Both bats, wherever the bat band is drawn. `render_bat_2` early-outs
+ * outside mode $02, so this is safe on every path.
+ *
+ * Before 2026-08-10 bat 2 was drawn ONLY by compose_level_scene, which
+ * runs at level entry — so steering moved the object and left the
+ * picture where it started. `test-double-play-input` did not see it: it
+ * reads object_bat_2 out of the probe, which was moving correctly the
+ * whole time. Measured with a screendump: object at $DC, sprite at
+ * $B4. */
+static void render_bats(unsigned char cycle, unsigned char attr) {
+    render_bat(cycle, attr);
+    render_bat_2(attr);
 }
 
 /* Two pixels that walk back and forth along the bat — the original's
@@ -5736,6 +5756,22 @@ static void redraw_bat(unsigned char cycle, unsigned char bg_attr) {
     bat_sprite_bounds(BAT_X, bat1.extra_px, &new_x0, &new_x1);
     if (new_x0 < old_x0) old_x0 = new_x0;
     if (new_x1 > old_x1) old_x1 = new_x1;
+    /* In Double Play the window has to span whatever bat 2 vacated and
+     * whatever it now covers, or its old sprite is never painted over.
+     * Both bats share the band, so one window serves — at the cost of a
+     * wide flush when they are at opposite ends, which is the same cost
+     * the full path would pay anyway. */
+    if (game_mode == 2 && object_active(objects[OBJ_BAT_2])) {
+        const BatState &st2 = bats[BAT_SLOT(OBJ_BAT_2)];
+        bat_sprite_bounds((int)objects[OBJ_BAT_2].prev_x, st2.drawn_extra_px,
+                          &new_x0, &new_x1);
+        if (new_x0 < old_x0) old_x0 = new_x0;
+        if (new_x1 > old_x1) old_x1 = new_x1;
+        bat_sprite_bounds((int)objects[OBJ_BAT_2].x_coord, st2.extra_px,
+                          &new_x0, &new_x1);
+        if (new_x0 < old_x0) old_x0 = new_x0;
+        if (new_x1 > old_x1) old_x1 = new_x1;
+    }
     byte_lo = old_x0 >> 3;
     byte_hi = (old_x1 + 7) >> 3;
     byte_lo--;
@@ -5748,7 +5784,7 @@ static void redraw_bat(unsigned char cycle, unsigned char bg_attr) {
                             byte_lo, byte_hi - 1);
     restore_inner_border_line(BAT_Y, BAT_H_PX, byte_lo, byte_hi - 1);
     paint_frame_to_buff(cycle, current_level_idx_var);
-    render_bat(cycle, bg_attr);
+    render_bats(cycle, bg_attr);
     render_running_dot();
     render_lives(cycle, bg_attr);
     buff_to_vga_rect_bytes(BAT_Y, BAT_H_PX, byte_lo, byte_hi - 1);
@@ -5917,12 +5953,18 @@ static void render_brick_effects_and_mark(void) {
 /* Anything about the bat that changes its pixels, not just its position:
  * a resize, a caught bonus (the body sprite carries it) or a laser
  * fire-animation frame all need the whole body redrawn. */
+static int bat_changed(int b) {
+    const BatState &st = bats[BAT_SLOT(b)];
+    return (objects[b].x_coord != objects[b].prev_x)
+        || ((int)objects[b].y_coord != st.drawn_y)
+        || (st.extra_px != st.drawn_extra_px)
+        || (objects[b].bonus_applied != st.drawn_bonus)
+        || (st.fire_anim_ticks != st.drawn_fire_ticks);
+}
+
 static int bat_needs_full_redraw(void) {
-    return (BAT_X != BAT_PREV_X)
-        || (BAT_Y != bat1.drawn_y)
-        || (bat1.extra_px != bat1.drawn_extra_px)
-        || (objects[OBJ_BAT_1].bonus_applied != bat1.drawn_bonus)
-        || (bat1.fire_anim_ticks != bat1.drawn_fire_ticks);
+    return bat_changed(OBJ_BAT_1)
+        || (game_mode == 2 && bat_changed(OBJ_BAT_2));
 }
 
 /* Draw the bat on the full path and mark what it dirtied. When the body
@@ -5938,11 +5980,26 @@ static void compose_bat_full(unsigned char cycle, unsigned char bg_attr,
         restore_static_cache_rect_bytes(bat1.drawn_y, 13,
                                         old_x0 >> 3, (old_x1 - 1) >> 3);
         mark_dirty_rect_px(old_x0, bat1.drawn_y, old_x1 - old_x0, 13);
+        if (game_mode == 2 && object_active(objects[OBJ_BAT_2])) {
+            const BatState &st2 = bats[BAT_SLOT(OBJ_BAT_2)];
+            bat_sprite_bounds((int)objects[OBJ_BAT_2].prev_x,
+                              st2.drawn_extra_px, &old_x0, &old_x1);
+            restore_static_cache_rect_bytes(st2.drawn_y, 13,
+                                            old_x0 >> 3, (old_x1 - 1) >> 3);
+            mark_dirty_rect_px(old_x0, st2.drawn_y, old_x1 - old_x0, 13);
+        }
     }
 
-    render_bat(cycle, bg_attr);
+    render_bats(cycle, bg_attr);
     render_running_dot();
 
+    if (game_mode == 2 && object_active(objects[OBJ_BAT_2])) {
+        const BatState &st2 = bats[BAT_SLOT(OBJ_BAT_2)];
+        bat_sprite_bounds((int)objects[OBJ_BAT_2].x_coord, st2.extra_px,
+                          &bat_x0, &bat_x1);
+        mark_dirty_rect_px(bat_x0, (int)objects[OBJ_BAT_2].y_coord,
+                           bat_x1 - bat_x0, 13);
+    }
     bat_sprite_bounds(BAT_X, bat1.extra_px, &bat_x0, &bat_x1);
     if (bat_full_dirty) {
         bat_sprite_bounds(BAT_PREV_X, bat1.drawn_extra_px, &old_x0, &old_x1);
@@ -6234,7 +6291,7 @@ static void redraw_bat_dirty(unsigned char cycle, unsigned char bg_attr) {
                                 bat_x0 >> 3, (bat_x1 - 1) >> 3);
         restore_inner_border_line(BAT_Y, BAT_H_PX,
                                   bat_x0 >> 3, (bat_x1 - 1) >> 3);
-        render_bat(cycle, bg_attr);
+        render_bats(cycle, bg_attr);
         render_running_dot();
         mark_dirty_rect_px(bat_x0, BAT_Y, bat_x1 - bat_x0, BAT_H_PX);
     } else {
@@ -6242,7 +6299,7 @@ static void redraw_bat_dirty(unsigned char cycle, unsigned char bg_attr) {
                                 bat_x0 >> 3, (bat_x1 - 1) >> 3);
         restore_inner_border_line(BAT_Y + 6, 1,
                                   bat_x0 >> 3, (bat_x1 - 1) >> 3);
-        render_bat(cycle, bg_attr);
+        render_bats(cycle, bg_attr);
         render_running_dot();
         mark_dirty_rect_px(bat_x0, BAT_Y + 6, bat_x1 - bat_x0, 1);
     }
@@ -8011,7 +8068,16 @@ static state_t run_level(void) {
                 if (bat1.extra_px != bat1.extra_target) bat_moved = 1;
             }
 
-            if (BAT_X != BAT_PREV_X) {
+            /* Either bat. `bat_changed` compares against what was last
+             * DRAWN, so it covers bat 2's steering, its width and its
+             * sprite — and it is the same test the full path uses, so
+             * the two cannot disagree about whether the band is stale.
+             *
+             * With bat 1's x alone, a Double Play frame in which only
+             * player 2 moved took the early-out in redraw_frame and drew
+             * nothing at all. */
+            if (bat_changed(OBJ_BAT_1)
+                || (game_mode == 2 && bat_changed(OBJ_BAT_2))) {
                 bat_moved = 1;
             }
             if (dbg.bat_full_redraw && bat_moved) {

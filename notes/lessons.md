@@ -760,3 +760,29 @@ real element instead of off the end.
 **When a new array is indexed by an existing enum, check the enum's
 VALUES, not its names.** `bats[OBJ_BAT_1]` reads perfectly and is
 nonsense. The names carry the domain; only the numbers carry the range.
+
+## A state gate cannot see a rendering bug (2026-08-10)
+
+`test-double-play-input` proved bat 2 steers by reading `object_bat_2`
+out of the probe. Green, and correct about everything it looked at. The
+sprite meanwhile never moved after level entry — object at `$DC`, bat
+drawn at `$B4` — because bat 2 was drawn only by `compose_level_scene`
+and `bat_moved` was bat 1's x alone.
+
+The gate asserted everything about bat 2 except the only thing wrong
+with it, and it did so while I was writing commit messages saying bat 2
+now steers. It does; it just could not be seen to.
+
+**When a feature's output is pixels, at least one gate has to read
+pixels.** Probe rows are cheaper, more precise and easier to debug, and
+they are the right default — but a feature whose whole point is visible
+needs one gate that looks at the visible thing.
+
+The corollary is about gate SHAPE. The failure was not "bat 2 never
+moved", it was "bat 2 moved 4 px and froze" — one step taken before the
+entry compose ran. A gate asserting merely that the screen changed would
+have passed against the bug. `test-double-play-bat2-redraw` requires the
+pixel difference to span both footprints, with the right edge derived
+from the object's actual x in the same run.
+
+Ask what the bug would look like, not just whether the feature works.
