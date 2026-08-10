@@ -145,9 +145,13 @@ int tick_one(Slot *s) {
             if ((s->state & 3) == 0) {
                 sound_beep_cont_d(0x03, (unsigned char)(s->state + 0x14));
             }
-            if (s->state == 0) return 1;
+            /* DEC / DEC / RET NZ — the original decrements FIRST and
+             * clears the slot only when the counter reaches zero, so
+             * state $00 is never reached with a beep. Testing for zero
+             * before the decrement (as this did) added a ninth beep at
+             * the lowest pitch, E = $14. Eight is right. */
             s->state -= 2;
-            return 0;
+            return s->state == 0;
         }
 
         /* play_sound_LC122 ($C122) is a LOOP, and the port used to play

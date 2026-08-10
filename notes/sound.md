@@ -208,3 +208,59 @@ The 20 ms floor. Each beep still rounds up to one 50 Hz tick, so a
 nine-beep sweep now takes nine frames where the original takes about
 9 * 0.5 ms inside one. The sweep is right; the timebase is still the
 open question.
+
+## Every queued effect audited against its routine (2026-08-10)
+
+Finding the LC122 loop by accident was worth asking whether more of the
+queue had been flattened. Walked `original/disasm/routines/sound.asm`
+routine by routine against `tick_one`.
+
+**No other collapsed loops.** `play_sound_normall_brik`,
+`play_sound_metal_brik`, `play_sound_bat_beat` and
+`play_sound_bat_resize_2` are a single `sound_beep_cont_d` and a slot
+clear. `play_sound_live_add`, `play_sound_08` (SPARK_FANOUT),
+`play_sound_bat_resize_1` and `play_sound_triple_ball` are one beep per
+frame with their counter in `(IX+$01)`, which is exactly the shape the
+port uses. Only `play_sound_LC122` looped, and it is the one that was
+wrong.
+
+The audit did turn up two more things.
+
+### live_add played a ninth beep
+
+    play_sound_live_add:
+      ... beep when (IX+$01) AND $03 == 0 ...
+    play_sound_07_0:
+      DEC (IX+$01) / DEC (IX+$01) / RET NZ / LD (IX+$00),$00
+
+DEC, DEC, then test. The port tested for zero BEFORE decrementing, so it
+reached state $00 with the counter still live and beeped once more at
+the lowest pitch, E = $14. The original's last beep is at state $04:
+eight beeps, not nine. Fixed, and the sweep LENGTHS are now asserted —
+9 frames for BALL_START, 4 for SHOT, 16 for LIVE_ADD.
+
+### bat_resize_1 has a guard the port does not
+
+    play_sound_bat_resize_1:
+      LD A,(bonus_flag) / AND A / RET NZ
+
+With `bonus_flag` non-zero the original skips the beep AND leaves the
+counter alone, so the shrink sweep PAUSES while a bonus transition is in
+flight. The port has no `bonus_flag`: it is a transient bitfield the
+original sets to $80 when a new bonus lands on a machine-gun bat and to
+$01 when the machine gun itself is caught (`LA67B_2`, `$A67B`), read
+by `handling_bat`'s resize path as well.
+
+Not ported, and not a one-liner — it needs the port to model
+`bonus_flag`, which is a bat-state question rather than a sound one.
+Recorded here as the last known divergence in the queue.
+
+### A length test does not cover a sweep
+
+Pinning the frame counts left a live mutant: passing a constant `C` to
+the beep instead of the counter keeps all nine frames and flattens the
+pitch to one note. `sweeps_last_multiple_frames` now also requires the
+period to CHANGE across the sweep, which catches it.
+
+Worth remembering — "it runs for nine frames" and "it is a nine-step
+sweep" are different claims, and only the first is obvious to assert.

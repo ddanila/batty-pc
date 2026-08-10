@@ -549,7 +549,16 @@ this one was missed.
 
 Both fixed; the two effects are per-frame sweeps like the other six, and
 the host test that had them filed as one-frame "clicks" is corrected.
-This does NOT touch the decision below — it makes the thing being
+
+**Then the whole queue was audited** routine by routine against
+`sound.asm`. No other collapsed loops. Two further findings: `live_add`
+played a NINTH beep (the original decrements before testing for zero, so
+eight is right), and `play_sound_bat_resize_1`'s `LD A,(bonus_flag) /
+AND A / RET NZ` guard is not ported — it needs the port to model
+`bonus_flag`, a bat-state question rather than a sound one, and it is
+now the last known divergence in the queue.
+
+None of this touches the decision below; it makes the thing being
 decided about complete. See notes/sound.md.
 
 **Half of that is now fixed.** `sound_beep_cont_d` computes the real

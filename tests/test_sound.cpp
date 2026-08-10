@@ -140,6 +140,55 @@ static void test_sweeps_last_multiple_frames() {
         check(frames_alive > 1, "event %02X finished in %d frame(s)\n",
               sweeps[i], frames_alive);
     }
+
+    /* The LENGTHS, not just "more than one frame". Each is the loop
+     * counter in the original's play_sound_ routine, and the port had
+     * two of them wrong without this: BALL_START and SHOT ran for ONE
+     * frame (play_sound_LC122's `DEC C / JR NZ` was not ported), and
+     * LIVE_ADD ran one frame long (it tested its counter for zero
+     * before decrementing rather than after). */
+    struct { u8 id; int frames; const char *why; } lengths[] = {
+        { SND_BALL_START, 9,  "C=$09 at $C116" },
+        { SND_SHOT,       4,  "C=$04 at $C235" },
+        { SND_LIVE_ADD,   16, "$20 counter, -2 a frame, cleared at 0" },
+    };
+    for (unsigned i = 0; i < sizeof(lengths) / sizeof(lengths[0]); i++) {
+        reset();
+        sound_queue(lengths[i].id);
+        int n = 0;
+        while (queued_slots() && n < 400) {
+            sound_frame(); fake_clock++; sound_tick(); n++;
+        }
+        check(n == lengths[i].frames,
+              "event %02X ran %d frames, expected %d (%s)\n",
+              lengths[i].id, n, lengths[i].frames, lengths[i].why);
+    }
+
+    /* And the PITCH has to move. play_sound_LC122 recomputes B and D
+     * from `C XOR E` every turn, so the nine beeps are a descending
+     * sweep, not the same beep nine times.
+     *
+     * The length check above does NOT cover this: passing a constant C
+     * to the beep instead of the counter leaves the frame count at nine
+     * and flattens the sweep. That mutation survived until this ran. */
+    const u8 swept[] = { SND_BALL_START, SND_SHOT };
+    for (unsigned i = 0; i < sizeof(swept) / sizeof(swept[0]); i++) {
+        reset();
+        sound_queue(swept[i]);
+        unsigned int first = 0, distinct = 0, prev = 0;
+        for (int n = 0; queued_slots() && n < 400; n++) {
+            sound_frame(); fake_clock++; sound_tick();
+            if (sound_test_last_period != prev) {
+                distinct++;
+                prev = sound_test_last_period;
+            }
+            if (first == 0) first = sound_test_last_period;
+        }
+        check(distinct > 1,
+              "event %02X played one pitch for its whole sweep "
+              "(period %u); C XOR E should move it every turn\n",
+              swept[i], first);
+    }
     /* The clicks must stay clicks. */
     /* Genuine one-call effects: their play_sound_ routine has no loop.
      * Check that against the disassembly before adding to this list —
