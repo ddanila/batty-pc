@@ -44,6 +44,53 @@ static bool write_file(const char *path, const u8 *bytes, unsigned n) {
     return put == n;
 }
 
+/* asset_load_chunked must not read past the caller's scratch buffer.
+ *
+ *     unsigned piece = size - done;
+ *     if (piece > scratch_size) piece = scratch_size;
+ *     if (fread(scratch, 1, piece, f) != piece) ...
+ *
+ * One step off — `piece > scratch_size + 1` — and every full chunk
+ * freads scratch_size + 1 bytes into a buffer that holds scratch_size.
+ *
+ * `test_chunked_matches_whole` cannot see it: the extra byte is read AND
+ * copied, so `dest` still ends up byte-identical to a whole-file load.
+ * Only the overflow is wrong, and only a guarded buffer shows it. Found
+ * by a 2026-08-10 mutation sweep over clamp bounds. */
+static void test_chunked_respects_the_scratch_size() {
+    const int before = failures;
+    /* The size matters. `piece` only exceeds scratch_size by ONE when
+     * the remaining bytes are exactly scratch_size + 1, and the
+     * remainder walks size, size-64, size-128 ... So the file is
+     * 64 * 3 + 65 = 257 bytes, which reaches a remainder of 65 on its
+     * last full chunk. A round 300 never does, and the first draft used
+     * it and saw nothing. */
+    u8 src[257];
+    for (unsigned i = 0; i < sizeof(src); i++) src[i] = u8(i * 11 + 5);
+    check(write_file(TMP, src, sizeof(src)), "could not write the fixture\n");
+
+    /* The buffer is bigger than the size we declare, so a one-byte
+     * overrun lands on a sentinel instead of on someone else's data. */
+    u8 guarded[80];
+    memset(guarded, 0xA5, sizeof(guarded));
+    const unsigned declared = 64;
+
+    u8 dest[257];
+    check(asset_load_chunked(TMP, dest, sizeof(dest), guarded, declared),
+          "the chunked load failed outright\n");
+    check(memcmp(dest, src, sizeof(src)) == 0,
+          "the chunked load returned the wrong bytes\n");
+
+    int clobbered = 0;
+    for (unsigned i = declared; i < sizeof(guarded); i++)
+        if (guarded[i] != 0xA5) clobbered++;
+    check(clobbered == 0,
+          "the load wrote %d bytes past the %u it was given\n",
+          clobbered, declared);
+
+    report("chunked_respects_scratch", before, "64 of 80 used        ok");
+}
+
 /* A short file must fail outright, leaving no partially-filled buffer for
  * the caller to mistake for data. */
 static void test_short_file_fails() {
@@ -232,6 +279,7 @@ int main() {
     printf("assets tests\n");
     test_short_file_fails();
     test_missing_file_fails();
+    test_chunked_respects_the_scratch_size();
     test_chunked_matches_whole();
     test_chunked_short_file_fails();
     test_variable_reports_size();

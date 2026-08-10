@@ -1518,6 +1518,27 @@ mutation: go far enough out and both sides of the boundary agree.** The
 useful value is always the boundary itself, and "deliberately out of
 range" is not a substitute for it.
 
+**The clamp sweep, closed.** 21 idioms, 6 caught outright, 15 triaged:
+
+| | |
+|---:|---|
+| 11 | real, fixed |
+| 2 | knowingly untested — `mark_dirty_bytes`' `y_start < 0` and the attr blit's `row_hi`, both real out-of-bounds writes a host build cannot observe |
+| 2 | equivalent, derived |
+
+The last two: `asset_load_chunked`'s scratch bound is REAL — one step off
+and every full chunk `fread`s `scratch_size + 1` bytes into a buffer
+holding `scratch_size`. `test_chunked_matches_whole` could never see it,
+because the extra byte is read AND copied so `dest` still matches a
+whole-file load; only a guarded buffer shows it. And the fixture size
+matters: `piece` exceeds `scratch_size` by exactly one only when the
+remainder is `scratch_size + 1`, so the file is 257 bytes (64*3 + 65),
+not a round 300 that never hits it.
+
+`sound.cpp`'s `ticks > 60000` cap is equivalent: the longest single beep
+in the game is `metal_brik` at 8557 us, so at the host suite's 1 MHz
+clock the largest tick count is 8557 and the cap cannot be reached.
+
 `mark_dirty_bytes`' clamps needed a different observation point.
 `flush_dirty_slot_to_vga` loops `y = 0; y < PLAYFIELD_H`, so a row
 marked at -1 or at PLAYFIELD_H is never READ back and the screen looks
