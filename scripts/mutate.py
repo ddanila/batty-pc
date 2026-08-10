@@ -90,6 +90,25 @@ BUILD_ERROR_MARKERS = (
 )
 
 
+SANITIZER_MARKERS = (
+    "AddressSanitizer",
+    "LeakSanitizer",
+    "runtime error:",        # UBSan
+)
+
+
+def looks_like_a_sanitizer_report(out: str) -> bool:
+    """A sanitiser abort is a DETECTION, not a broken build.
+
+    It has to be tested first: ASan prints `ERROR: AddressSanitizer:`,
+    which contains the `error:` marker below. Without this check every
+    sanitiser catch under `make test-asan` is reported as "the mutated
+    source did not build" — which is how the first run of the ASan
+    target scored its own successes as tooling failures.
+    """
+    return any(m in out for m in SANITIZER_MARKERS)
+
+
 def looks_like_a_build_failure(out: str) -> bool:
     """Did the target fail to COMPILE rather than fail its assertions?
 
@@ -133,7 +152,8 @@ def main() -> int:
                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         out = r.stdout.decode("utf-8", "replace")
         caught = r.returncode != 0
-        if caught and looks_like_a_build_failure(out):
+        if (caught and not looks_like_a_sanitizer_report(out)
+                and looks_like_a_build_failure(out)):
             build_failed = True
     finally:
         f.write_text(original)

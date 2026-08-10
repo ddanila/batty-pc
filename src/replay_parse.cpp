@@ -39,9 +39,16 @@ bool replay_parse_hex_bytes(const char *spec, u8 *out, int n) {
     int i;
     if (spec == NULL) return false;
     for (i = 0; i < n; i++) {
+        /* Check the HIGH nibble before reading the low one. Reading both
+         * first walks one byte past the terminator on any spec that ends
+         * mid-pair — including the empty string, where `spec[1]` is off
+         * the end of the literal. AddressSanitizer caught it on the
+         * first run of `make test-asan`; the values come from BATTY_*
+         * environment variables, so a short one reaches it. */
         const int hi = hex_nibble(spec[i * 2]);
+        if (hi < 0) return false;
         const int lo = hex_nibble(spec[i * 2 + 1]);
-        if (hi < 0 || lo < 0) return false;
+        if (lo < 0) return false;
         out[i] = (u8)((hi << 4) | lo);
     }
     return spec[n * 2] == '\0';

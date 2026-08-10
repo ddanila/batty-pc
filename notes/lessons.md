@@ -1229,3 +1229,24 @@ place to look rather than a cleverer assertion.** Pixels, buffers,
 counters and the state itself are all candidate observation points, and
 they have different blind spots — the flush hides row corruption, the
 array hides nothing about rows but says nothing about pixels.
+
+
+## Reach for the tool when the fixture stops working (2026-08-10)
+
+Nine memory-safety defects came out of the mutation sweeps, and every
+one needed a bespoke fixture: a brick grid with a phantom row on each
+side, a scratch buffer declared smaller than it is, a rect computed so
+one index lands exactly one past an array. That is real work per
+defect, and two defects defeated it entirely — writes outside a static
+array that nothing inside the program can observe.
+
+`make test-asan` — one Makefile target, `-fsanitize=address,undefined`
+over the existing suites — catches both without a fixture at all, and
+found an unrelated real bug in `replay_parse_hex_bytes` on its first
+run.
+
+The signal to notice was the tenth fixture. Building the ninth was
+fine; by the tenth the pattern was obvious and the answer was a
+different tool, not another clever buffer. **When the same shape of
+scaffolding appears three or four times, stop and ask what tool makes
+the scaffolding unnecessary.**

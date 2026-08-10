@@ -493,17 +493,25 @@ static void test_attr_blit_clamps_to_the_grid(void) {
           "an unclamped col_lo wrote into the previous attr row's last "
           "cell: %02X\n", attr_buff[0 * ATTR_COLS + (ATTR_COLS - 1)]);
 
-    /* The ROW clamp cannot be caught from here, and pretending otherwise
-     * would be worse than saying so. `row_hi == ATTR_ROWS` makes the
-     * loop write `attr_buff[24 * ATTR_COLS + c]` — past the end of a
-     * 768-byte global, into whatever the linker put next. Nothing
-     * inside attr_buff changes, so no assertion on it can tell.
+    /* The ROW clamp writes PAST attr_buff, so no assertion on the buffer
+     * can see it — but AddressSanitizer can, and `make test-asan` builds
+     * this file with it.
      *
-     * The check below is still worth keeping as a plain regression
-     * guard — a rect below the grid must not write INSIDE attr_buff
-     * either — but it does not kill the `row_hi > ATTR_ROWS` mutant,
-     * and notes/testing.md records that rather than leaving a reader to
-     * assume this line covers it. */
+     * The rect has to make `row_hi` come out at exactly ATTR_ROWS:
+     * y = 190, h = 8 gives row_lo 23 and row_hi (197 / 8) = 24, so the
+     * loop runs 23..24 and the second pass is the overflow. Under a
+     * plain build this just draws the last cell row; under ASan the
+     * mutant aborts.
+     *
+     * This is why the row clamp stopped being "knowingly untested" —
+     * an unobservable write needs a sanitiser, not a cleverer
+     * assertion. */
+    memset(attr_buff, 0x77, sizeof(attr_buff));
+    blit_sprite_attrs_to_buff_clipped(16, 190, 16, 8, 0x66, 0, PLAYFIELD_W);
+    CHECK(attr_buff[(ATTR_ROWS - 1) * ATTR_COLS + 2] != 0x77,
+          "the last cell row should still be written normally\n");
+
+    /* And a rect entirely below the grid still writes nothing. */
     memset(attr_buff, 0x77, sizeof(attr_buff));
     blit_sprite_attrs_to_buff_clipped(16, ATTR_ROWS * CELL_PX + 8, 16, 16,
                                       0x22, 0, PLAYFIELD_W);

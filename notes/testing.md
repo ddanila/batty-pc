@@ -1523,7 +1523,7 @@ range" is not a substitute for it.
 | | |
 |---:|---|
 | 11 | real, fixed |
-| 2 | knowingly untested — `mark_dirty_bytes`' `y_start < 0` and the attr blit's `row_hi`, both real out-of-bounds writes a host build cannot observe |
+| 2 | were "knowingly untested" — both now caught, see below |
 | 2 | equivalent, derived |
 
 The last two: `asset_load_chunked`'s scratch bound is REAL — one step off
@@ -1629,3 +1629,41 @@ positions that are interesting to a player; boundaries are interesting
 to a compiler. Mutation is what connects the two, and the disassembly
 is what says which side of the boundary is right — all four had a
 `JR NC` or a `JR C` settling it in one line.
+
+
+## AddressSanitizer (`make test-asan`)
+
+Three mutation sweeps found nine memory-safety defects, every one caught
+by a hand-built guarded fixture — a grid with a phantom row on each
+side, a scratch buffer declared larger than it is passed. Two could not
+be caught at all: `mark_dirty_bytes`' `y_start < 0` writes one byte
+BEFORE a static array, and the attr blit's `row_hi` writes past
+`attr_buff`. Neither is observable from a normal host build.
+
+`make test-asan` rebuilds every host suite with
+`-fsanitize=address,undefined` and runs them. Both mutants now die, and
+no fixture was needed for either — only a rect that reaches the boundary
+(`y = 190, h = 8` puts `row_hi` at exactly ATTR_ROWS).
+
+**It found a real bug on its first run**, before any of that:
+`replay_parse_hex_bytes` read both nibbles of a pair before checking
+either, so a spec ending mid-pair — including the empty string — read
+one byte past the terminator. The values come from `BATTY_*` environment
+variables, so a short one reaches it. Fixed by checking the high nibble
+first.
+
+Not part of `test-fast`: it needs its own build of every suite, so it
+doubles the compile. Run it before touching anything that indexes a
+buffer.
+
+### It also broke mutate.py's build-failure check
+
+ASan prints `ERROR: AddressSanitizer:`, which contains the `error:`
+marker the build-failure detector looks for — so the first sanitiser
+catches were reported as "the mutated source did not build". The
+detector now tests for sanitiser markers FIRST and treats them as a
+detection.
+
+A nice illustration of the same hazard the detector exists for: a signal
+that looks like failure can come from anywhere, and "which kind of
+failure" has to be decided explicitly.

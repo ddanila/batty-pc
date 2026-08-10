@@ -1293,6 +1293,47 @@ test-source-gates:
 	$(MAKE) test-no-orphan-gates
 	$(MAKE) test-plan-table-fresh
 
+# The host suites again, under AddressSanitizer + UBSan.
+#
+# Three mutation sweeps found nine memory-safety defects — overreads past
+# the brick grid, a read before it, writes into the next attr row, a
+# scratch-buffer overrun. Every one was caught by hand-built guarded
+# fixtures, and TWO could not be caught at all: mark_dirty_bytes'
+# `y_start < 0` writes one byte before a static array, and the attr
+# blit's `row_hi` writes past attr_buff. Neither is observable from a
+# normal host build, and both are recorded in notes/testing.md as
+# knowingly untested.
+#
+# A sanitiser sees both without any fixture at all, and stands watch over
+# everything the suites already do.
+#
+# NOT part of test-fast: it needs its own build of every suite, so it
+# doubles the compile. Run it before touching anything that indexes a
+# buffer, and in the pre-merge sweep.
+#
+# Deleting the binaries first is required, not tidiness: the .cpp files
+# have not changed, so make would otherwise reuse the plain ones and
+# report a clean run that never had a sanitiser in it. The second delete
+# puts the tree back so the next ordinary `make test-fast` rebuilds
+# without ASan.
+#
+# `find -type f` rather than `rm -f build/test_*`: the QEMU gates keep
+# their captures in build/test_<name>/ DIRECTORIES, and rm would fail on
+# them. mutate.py's clear_test_binaries has the same note for the same
+# reason.
+ASAN_FLAGS = -std=c++98 -O1 -g -fsanitize=address,undefined \
+             -fno-omit-frame-pointer -fno-sanitize-recover=all \
+             -Wall -Wextra -Werror -Wno-unused-function
+
+test-asan:
+	@find build -maxdepth 1 -type f -name 'test_*' -delete
+	$(MAKE) HOSTCXXFLAGS="$(ASAN_FLAGS)" test-video test-rng test-physics \
+	        test-assets test-bricks test-sound test-hud-unit test-objects \
+	        test-weapons test-enemies test-bonus-codes test-scoring \
+	        test-replay test-replay-parse
+	@find build -maxdepth 1 -type f -name 'test_*' -delete
+	@echo "test-asan: all host suites green under ASan + UBSan"
+
 # Everything that needs no emulator: the host module tests plus the source
 # gates. Seconds, and it is what CI checks.
 test-fast: test-video test-rng test-physics test-assets test-bricks \
