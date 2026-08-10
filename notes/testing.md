@@ -1402,6 +1402,31 @@ Both are unreachable through today's callers (every one passes
 precisely why they are worth asserting: that is a fact about the
 callers, not the clamps.
 
+Also real and now pinned: `blit_masked_to_scr_buff`'s `right >= 0`. A
+sprite straddling the LEFT edge at an unaligned x has `left = -1`
+(dropped) and `right = 0` — the row's first byte, which must still be
+written. Two things had to be got right to see it: `x = -8` does not
+work (shift 0 takes the aligned branch, so use -7), and the sprite must
+be ONE byte wide, because a second column writes byte 0 through the
+`left` guard and masks the one under test.
+
+**The remaining six are all EARLY-OUTS, and all equivalent in output**
+— `y0 >= y_end`, `y_start >= end`, `width <= 0`, `x_start >= x_end`,
+`h <= 0`, `x1 <= x0`. The argument is one sentence and covers all of
+them: relaxing an early-out can only cause MORE work, never less. A
+degenerate rect then either runs a zero-trip loop, or widens a dirty
+range, or bumps a profiling counter — it cannot skip a pixel that
+should have been drawn.
+
+And the output claim is not just reasoning: `dirty_flush_equiv_full`
+compares a dirty flush against a full repaint, so a mutation that
+NARROWED the refresh would fail it. All six pass it, which is what
+"equivalent in output" means here.
+
+**That closes the sweep.** 51 candidates, 16 caught outright, 35
+survivors triaged: 17 real and fixed, 1 knowingly untestable (the attr
+row clamp writes past a global), 17 equivalent with a derivation each.
+
 The `hud` attribute one needed two attempts and the reason generalises:
 "code $40 draws nothing" is satisfied by an UNRECOGNISED code too, since
 both fall through. What separates them is that an attribute does

@@ -1115,3 +1115,26 @@ So the arithmetic has to be run backwards from the comparison: what
 input makes this expression exactly equal to that constant? For the attr
 blit, `col_hi = (x1 - 1) / 8 == 32` means `x1` in 257..264, so the rect
 is `x = 250, w = 10` and not something comfortably enormous.
+
+## One argument can retire a whole class of survivors (2026-08-10)
+
+Six of the last mutation survivors were early-out guards — `y0 >= y_end`,
+`width <= 0`, `x1 <= x0` and so on. Triaging them one at a time would
+have meant six traces through six functions.
+
+They share a property that settles all six at once: **relaxing an
+early-out can only cause MORE work, never less.** A degenerate rect that
+gets through then runs a zero-trip loop, or widens a dirty range, or
+bumps a profiling counter. None of those can skip a pixel that should
+have been drawn.
+
+And the output claim did not rest on that reasoning alone.
+`dirty_flush_equiv_full` compares a dirty flush against a full repaint,
+so any mutation that NARROWED the refresh would fail it. All six pass —
+which is what makes "equivalent in output" a measurement rather than an
+opinion.
+
+The general move: before triaging survivors individually, look for a
+STRUCTURAL property they share. Six one-off traces is not six times the
+value of one argument that covers them, and it is much easier to get one
+of the six subtly wrong.

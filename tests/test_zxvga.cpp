@@ -229,6 +229,50 @@ static void test_blit_stays_in_playfield(void) {
     end("borders intact");
 }
 
+/* A sprite straddling the LEFT edge still writes byte 0.
+ *
+ * `blit_masked_to_scr_buff` splits each source byte across two
+ * destination bytes when x is not byte-aligned:
+ *
+ *     const int left  = start_col + col;      // start_col = x_px >> 3
+ *     const int right = left + 1;
+ *     if (left  >= 0 && left  < BYTES_PER_ROW) ...
+ *     if (right >= 0 && right < BYTES_PER_ROW) ...
+ *
+ * At `x_px = -7` the shift is 1 and `start_col` is -1, so the first
+ * source byte has `left = -1` (correctly dropped) and `right = 0` —
+ * the row's first byte, which must still be written. `right > 0`
+ * silently loses it.
+ *
+ * x = -8 does NOT exercise this: the shift is 0 and the aligned branch
+ * runs instead. The existing clipping test uses -8, which is why this
+ * survived. */
+static void test_scr_blit_writes_byte_zero_from_the_left(void) {
+    int y;
+    begin("scr_blit_left_straddle");
+
+    /* ONE byte wide. A 2-byte sprite writes byte 0 from its SECOND
+     * column via the `left` guard, which masks the one under test — the
+     * first draft did that and the mutant survived. With a single
+     * column, `right` is the only path to byte 0. */
+    static u8 solid[2 + 2 * 1 * 4];
+    solid[0] = 1; solid[1] = 4;
+    for (unsigned i = 2; i < sizeof(solid); i++) solid[i] = 0xFF;
+    const Sprite spr(solid);
+
+    memset(scr_buff, 0, SCR_BUFF_SIZE);
+    blit_masked_to_scr_buff(spr, -7, 20);      /* shift 1, start_col -1 */
+
+    int wrote_byte0 = 0;
+    for (y = 20; y < 24; y++)
+        if (scr_row(y)[0] != 0) wrote_byte0++;
+    CHECK(wrote_byte0 == 4,
+          "a sprite straddling the left edge wrote byte 0 on %d of 4 "
+          "rows; the `right >= 0` guard is what allows it\n",
+          wrote_byte0);
+    end("byte 0 written");
+}
+
 /* The attr blit's cell clamps keep it inside attr_buff.
  *
  *     if (col_hi >= ATTR_COLS) col_hi = ATTR_COLS - 1;
@@ -733,6 +777,7 @@ int main(int argc, char **argv) {
     test_clash_expansion_vs_ula();
     test_flash_bit_ignored();
     test_blit_stays_in_playfield();
+    test_scr_blit_writes_byte_zero_from_the_left();
     test_attr_blit_clamps_to_the_grid();
     test_sprite_blit_clips_to_playfield();
     test_rect_flush_equiv_full();
