@@ -444,10 +444,16 @@ Gated by `test-double-play-input` (4 rows) and the host-side
 `double_play_court_clamps`. New harness knob `BATTY_HOLD_KEYS` seeds
 held keys into `key_state[]`.
 
-**What remains in WS3:** the bonus EFFECT. Bat 2 now catches bonuses
-and is paid for them (`test-double-play-bonus-catch`, 2026-08-10), but
-`set_bat_bonus` still writes both `bonus_applied` bytes and the width
-and laser state are bat-1 globals.
+**What remains in WS3:** the bonus WIDTH and LASER state. Bat 2 catches
+bonuses, is paid for them, and keeps the bonus BYTE to itself
+(`test-double-play-bonus-catch`, 2026-08-10) — `set_bat_bonus` writes
+only the catching bat, and effects belonging to the BALL check both
+bytes as `LA27E` does.
+
+What is left is that `bat.extra_px`, `bat.extra_target` and
+`bat.big_ticks` are one bat's worth of state, so BIG_BAT caught by bat 2
+is guarded to bat 1 and widens nobody. Still wrong, less wrong than
+widening the other player's bat.
 
 The original separates them with `bonus_flag_swap` — exchanging
 `bonus_flag` with `bonus_flag_copy` around every bat-2 call so the

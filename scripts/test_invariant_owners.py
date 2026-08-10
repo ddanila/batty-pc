@@ -39,8 +39,15 @@ OWNED = [
      "draws a ball that is never stepped, or steps one never drawn"),
     ("objects[OBJ_BALL_3].sprite_set = 0x82;", 1, "hide_extra_balls",
      "as above, for the third ball"),
-    ("objects[OBJ_BAT_1].bonus_applied = code;", 1, "set_bat_bonus",
-     "the bat's bonus lives in both bat objects and they must not disagree"),
+    ("objects[bat].bonus_applied = code;", 1, "set_bat_bonus",
+     "the CATCHING bat's bonus byte. This entry used to read "
+     "`objects[OBJ_BAT_1].bonus_applied = code;` and justify itself with "
+     "'the bat's bonus lives in both bat objects and they must not "
+     "disagree' — which was wrong. The original keeps the two APART: "
+     "LA67B_0 runs inside bonus_flag_swap for a bat-2 catch, so only the "
+     "catching bat's byte moves, and effects that belong to the BALL "
+     "(LA27E's big-ball test) read both bytes instead of relying on a "
+     "mirror. Corrected 2026-08-10; see notes/double-play.md"),
     ("e->sprite_set = 0x0A;", 1, "blast_active_alien",
      "the alien-to-blast transition was once copied four times"),
     ("rocket.x = BAT_X + 4;", 1, "place_rocket_on_bat",

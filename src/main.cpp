@@ -3526,16 +3526,26 @@ static void hide_objects_for_rocket_clear(void) {
     }
 }
 
-/* The bat's active bonus lives in BOTH bat objects — object_bat_1 and
- * the second bat the original keeps for the rocket flight — and they
- * must not disagree, so nothing writes one without the other. $FF means
- * "no bat-side effect".
+/* The CATCHING bat's active bonus. $FF means "no bat-side effect".
  *
- * The one exception is the ROCKET catch's INC (IY+$14), which increments
- * each in place; see attach_rocket_to_bat. */
-static void set_bat_bonus(unsigned char code) {
-    objects[OBJ_BAT_1].bonus_applied = code;
-    objects[OBJ_BAT_2].bonus_applied = code;
+ * This used to write BOTH bats, justified by a comment claiming bat 2
+ * was "the second bat the original keeps for the rocket flight" and
+ * that the two "must not disagree". Both halves were wrong.
+ * `object_bat_2` is player 2's bat, and the original keeps the two
+ * bytes deliberately APART — `LA67B_0` runs inside `bonus_flag_swap`
+ * for a bat-2 catch, so only the catching bat's byte moves.
+ *
+ * What the original does instead, where an effect belongs to the BALL
+ * rather than to a bat, is check both. LA27E's big-ball test is the
+ * model:
+ *
+ *     LD A,(object_bat_1+$14) / CP $07 / JR Z,set_big_ball
+ *     LD A,(object_bat_2+$14) / CP $07 / JR NZ,obj_processing
+ *
+ * and the expiry a few lines later clears each byte independently.
+ * `big_ball_active` follows that shape. */
+static void set_bat_bonus(int bat, unsigned char code) {
+    objects[bat].bonus_applied = code;
 }
 
 /* Sit the rocket on the bat, ready to fly: x = bat_x + 4, or + 12 when
@@ -3568,8 +3578,11 @@ static void attach_rocket_to_bat(void) {
      * by one, which silently cancels whatever bat-side bonus was
      * active (CATCH $03 -> $04, LASER $01 -> $02, both inert). This is
      * why bonus_apply's universal assignment skips ROCKET. */
+    /* INC (IY+$14) with IY the CATCHING bat. Only bat 1 can catch a
+     * rocket in the port — the rocket flight is bat-1 state throughout
+     * (place_rocket_on_bat reads BAT_X) — so this stays explicit rather
+     * than parameterised, and says why. */
     objects[OBJ_BAT_1].bonus_applied++;
-    objects[OBJ_BAT_2].bonus_applied++;
 }
 
 /* Turn the alien on screen into its death blast — the ONE place that
@@ -3608,8 +3621,8 @@ static void blast_active_alien(int side_x) {
  * NOT reset the speed-up ramp, so the ball starts climbing back toward
  * $06 from the next $94 tick — which is how SLOW wears off.
  * orig: LA67B_7, plus the `LD (IY+$14),$FF` on that path */
-static void apply_slow_bonus(void) {
-    set_bat_bonus(0xFF);
+static void apply_slow_bonus(int bat) {
+    set_bat_bonus(bat, 0xFF);
     objects[OBJ_BALL_1].speed = BALL_SPEED;
     objects[OBJ_BALL_2].speed = BALL_SPEED;
     objects[OBJ_BALL_3].speed = BALL_SPEED;
@@ -3620,8 +3633,8 @@ static void apply_slow_bonus(void) {
  * even when the extras are already out, matching the original, which
  * writes $FF before testing anything.
  * orig: LA67B_8 $A67B */
-static void apply_multi_ball_bonus(void) {
-    set_bat_bonus(0xFF);
+static void apply_multi_ball_bonus(int bat) {
+    set_bat_bonus(bat, 0xFF);
     if (ball.extra2_active || ball.extra3_active) return;
 
     /* The primary's DIR BYTE, not a direction reconstructed from the sign
@@ -3645,7 +3658,8 @@ static void apply_multi_ball_bonus(void) {
 
 /* Apply the effect that comes with `type`. Catching the same type
  * while already active extends the duration. */
-static void bonus_apply(unsigned char type, int catcher_x) {
+static void bonus_apply(unsigned char type, int bat) {
+    const int catcher_x = (int)objects[bat].x_coord;
     /* Original get_bonus at $A67B: every catch awards 400 points and
      * plays a sound — sound_live_add ($07) for the LIFE bonus, the
      * resize-2 beep ($0C) for everything else (push_resize_sound at
@@ -3659,15 +3673,25 @@ static void bonus_apply(unsigned char type, int catcher_x) {
      * LASER clears the LASER state. */
     if (type != BONUS_TYPE_ROCKET) {
         unsigned char orig_code = bonus_to_original(type);
-        set_bat_bonus(orig_code);
+        set_bat_bonus(bat, orig_code);
     }
     switch (type) {
         case BONUS_TYPE_LIFE:     player.lives++; life_dropped_this_round = 1; break;
-        case BONUS_TYPE_SLOW:     apply_slow_bonus();      break;
-        case BONUS_TYPE_BIG_BAT:  bat.big_ticks  = BIG_BAT_DURATION;
-                                  bat.extra_target  = BAT_BIG_EXTRA_PX;
-                                  sound_queue(SND_BAT_RESIZE_1);
-                                  break;
+        case BONUS_TYPE_SLOW:     apply_slow_bonus(bat);   break;
+        case BONUS_TYPE_BIG_BAT:
+            /* The WIDTH is bat-1 state: `bat.extra_px`, `extra_target`
+             * and `big_ticks` are one bat's worth, so there is nowhere
+             * to put bat 2's. Guarded rather than applied anyway —
+             * before the bonus byte split, a BIG_BAT caught by bat 2
+             * widened BAT 1, which is a wrong bat rather than a missing
+             * one. Now it widens nobody, and that is the visible face
+             * of WS3's last open item. */
+            if (bat == OBJ_BAT_1) {
+                ::bat.big_ticks     = BIG_BAT_DURATION;
+                ::bat.extra_target  = BAT_BIG_EXTRA_PX;
+                sound_queue(SND_BAT_RESIZE_1);
+            }
+            break;
         case BONUS_TYPE_BIG_BALL: ball.big_ticks = BIG_BALL_DURATION; break;
         case BONUS_TYPE_KILL_ALIENS:
             /* bat.bonus_applied = \$09 is already set above; enemy_prepare
@@ -3695,7 +3719,7 @@ static void bonus_apply(unsigned char type, int catcher_x) {
              * fires. Cleared automatically when another bonus is
              * caught (since bat.bonus_applied is rewritten). */
             break;
-        case BONUS_TYPE_MULTI_BALL: apply_multi_ball_bonus(); break;
+        case BONUS_TYPE_MULTI_BALL: apply_multi_ball_bonus(bat); break;
         default: break;
     }
 }
@@ -3722,8 +3746,13 @@ static int eff_bat_right(void) { return BAT_X + BAT_BODY_W + bat.extra_px; }
  * very next frame. We add a timer (~10 s, mirrors smash_counter wrap at
  * \$F8) as an OR with the bat state so the effect ends either way. */
 static int big_ball_active(void) {
+    /* EITHER bat: SMASH is a property of the BALL, and the original
+     * tests both bytes before deciding (LA27E, quoted on
+     * set_bat_bonus). With the bonus byte no longer mirrored, a SMASH
+     * caught by bat 2 would otherwise stop working. */
     return ball.big_ticks > 0
-        && objects[OBJ_BAT_1].bonus_applied == 0x07;
+        && (objects[OBJ_BAT_1].bonus_applied == 0x07
+            || objects[OBJ_BAT_2].bonus_applied == 0x07);
 }
 /* BIG_BAT is active iff bat.bonus_applied == \$00 in the original — the
  * bat-resize state machine in handling_bat_no_transform reads the byte
@@ -3775,9 +3804,15 @@ static void tick_bat_resize(void) {
 static void tick_big_ball_timer(void) {
     if (ball.big_ticks == 0 || (pit_ticks() & 1UL) != 0) return;
     ball.big_ticks--;
-    if (ball.big_ticks == 0 && objects[OBJ_BAT_1].bonus_applied == 0x07) {
-        set_bat_bonus(0xFF);
-    }
+    if (ball.big_ticks != 0) return;
+    /* Per byte, exactly as LA27E's expiry does it: test bat 1's for $07
+     * and clear it, then test bat 2's and clear that. A bat whose byte
+     * holds some OTHER bonus must keep it — this is a SMASH expiry, not
+     * a general reset. */
+    if (objects[OBJ_BAT_1].bonus_applied == 0x07)
+        set_bat_bonus(OBJ_BAT_1, 0xFF);
+    if (objects[OBJ_BAT_2].bonus_applied == 0x07)
+        set_bat_bonus(OBJ_BAT_2, 0xFF);
 }
 
 /* The floating reward marker left behind by a catch. Always the +400
@@ -3860,8 +3895,7 @@ static void step_bonus(void) {
     bonus.y += motion_accel_step(&bonus.motion, FALL_DE_SLOW, FALL_CAP_SLOW);
     caught_by = bonus_catching_bat(bonus.x, bonus.y, BONUS_W_PX, BONUS_H_PX);
     if (caught_by >= 0) {
-        bonus_apply(bonus.type,           /* effect + catch sound */
-                    (int)objects[caught_by].x_coord);
+        bonus_apply(bonus.type, caught_by);   /* effect + catch sound */
         bonus.active = 0;
         /* LA67B_1 sets need_change_player from the CATCHING bat's x, so
          * the 400 follows the bat that got it. It used to be BAT_X
@@ -4243,7 +4277,7 @@ static void apply_replay_pts400_override(void) {
 static void apply_replay_bigball(void) {
     if (getenv("BATTY_REPLAY_BIGBALL") == NULL) return;
     ball.big_ticks = BIG_BALL_DURATION;
-    set_bat_bonus(0x07);
+    set_bat_bonus(OBJ_BAT_1, 0x07);
 }
 
 /* Bake two extra balls (multi-ball) for the deterministic extra-ball dirty
@@ -6792,7 +6826,8 @@ static void respawn_primary_ball(void) {
      * for the Y offset was 1 px too high. */
     BALL_Y = BAT_Y - BALL_H_PX;
     primary_ball_set_velocity(+1, -BALL_SPEED);
-    set_bat_bonus(0xFF);
+    set_bat_bonus(OBJ_BAT_1, 0xFF);
+    set_bat_bonus(OBJ_BAT_2, 0xFF);
     bat.big_ticks  = 0;
     ball.big_ticks = 0;
     ball.speed_ramp = 0;     /* fresh life: ball restarts at base speed */
@@ -7033,7 +7068,8 @@ static void reset_level_state(unsigned char lvl_idx) {
     run_dot_frame = 0x0E;               /* matches running_dot_frame_1up reset */
     bat.extra_px   = 0;
     bat.extra_target  = 0;
-    set_bat_bonus(0xFF);
+    set_bat_bonus(OBJ_BAT_1, 0xFF);
+    set_bat_bonus(OBJ_BAT_2, 0xFF);
     /* Mirror all_var_init's `clear_hl_buff` of sounds_queue at line
      * 5984 — sounds in-flight at level entry shouldn't bleed into
      * the new round. */
@@ -7082,7 +7118,8 @@ static void apply_replay_overrides(void) {
      * round — the extras outlive the code that spawned them, so a bat
      * that picks up MAGNET afterwards can catch them. Seeding the
      * spawn and catching the MAGNET reproduces that order. */
-    if (getenv("BATTY_REPLAY_MULTIBALL") != NULL) apply_multi_ball_bonus();
+    if (getenv("BATTY_REPLAY_MULTIBALL") != NULL)
+        apply_multi_ball_bonus(OBJ_BAT_1);
     replay_apply_object("BATTY_REPLAY_ENEMY_OBJECT", OBJ_ENEMY);
     apply_replay_bonus_override();
     replay_apply_bomb();

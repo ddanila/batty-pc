@@ -19,16 +19,26 @@ Mode 2, MAGNET seeded on the bats, ball aimed down-right at bat 2's
 resting place, exactly the geometry `test-double-play-bat2` uses for the
 deflection case:
 
-  subject  a CATCH bonus dropped onto bat 1 at (118,167) and picked up
-           within two frames -> the ball STOPS on bat 2: y is the caught
-           rest height and it does not move between two probe frames
+  subject  a CATCH bonus seeded ALREADY OVERLAPPING bat 2 at (186,168),
+           so it is picked up on frame 1 -> the ball, arriving around
+           frame 12, STOPS on bat 2: y is the caught rest height and it
+           does not move between the two probe frames
   control  no bonus -> the ball deflects UP and keeps moving
 
-The bonus is caught by BAT 1 and reaches bat 2 because `set_bat_bonus`
-writes BOTH bats. That sharing is the open divergence (the original
-applies a bonus to the CATCHING bat only), and this gate depends on it:
-when ownership splits, the seed has to drop the bonus on bat 2 instead.
-Said here so the change is a one-line edit and not a mystery.
+The bonus used to be dropped on BAT 1, because `set_bat_bonus` wrote
+both bats and the code reached bat 2 for free. That mirror was the open
+divergence, and this docstring said so: "when ownership splits, the seed
+has to drop the bonus on bat 2 instead."
+
+It split on 2026-08-10 and this gate failed in the same sweep, exactly
+there. Predicting a test's future failure in its own docstring is worth
+the two lines it costs — the fix was mechanical instead of a hunt.
+
+Reseeding took two goes: dropped at y=158 the bonus is still falling at
+frame 12 (the fall accelerates from a standing start and covers about
+six pixels in twenty frames), so the MAGNET was not up yet when the ball
+arrived and the ball simply bounced. Seeded at 168 it overlaps the bat
+immediately and is caught on frame 1.
 
 The two-frame comparison is the point. A single frame cannot tell a
 caught ball from one that happens to be at the rest height on its way
@@ -75,7 +85,7 @@ def probe(magnet: bool, frame: int):
         f"BATTY_REPLAY_COUNTER=0 BATTY_REPLAY_BALL_STUCK=0 "
         f"BATTY_REPLAY_BAT_OBJECT={BAT} "
         f"BATTY_REPLAY_BALL_OBJECT={ball_seed()} "
-        f"{'BATTY_REPLAY_BONUS=5,118,167 ' if magnet else ''}"
+        f"{'BATTY_REPLAY_BONUS=5,186,168 ' if magnet else ''}"
         f"BATTY_VISUAL_PROBE_FRAMES={frame}"
     )
     subprocess.run(f"{env} make {FLOPPY}", shell=True, cwd=ROOT,

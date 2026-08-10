@@ -727,3 +727,57 @@ twenty frames. Seeded at 158 with a 30-frame window it lands.
 Both were visible only because the gate prints `bonus_state` alongside
 the scores. A gate that printed the score alone would have said
 "not caught" in both cases and sent the next reader to the wrong code.
+
+
+## Ported: the bonus BYTE stays on the catching bat (2026-08-10)
+
+`set_bat_bonus` wrote BOTH `bonus_applied` bytes, justified by a comment
+saying bat 2 was "the second bat the original keeps for the rocket
+flight" and that the two "must not disagree".
+
+**Both halves were wrong.** `object_bat_2` is player 2's bat, and the
+original keeps the bytes deliberately APART — `LA67B_0` runs inside
+`bonus_flag_swap` for a bat-2 catch, so only the catching bat's byte
+moves.
+
+What the original does where an effect belongs to the BALL rather than
+to a bat is check both. `LA27E`'s big-ball test is the model:
+
+    LD A,(object_bat_1+$14) / CP $07 / JR Z,set_big_ball
+    LD A,(object_bat_2+$14) / CP $07 / JR NZ,obj_processing
+
+and its expiry a few lines on clears each byte independently, testing
+each for $07 first — a bat holding some OTHER bonus keeps it.
+`big_ball_active` and `tick_big_ball_timer` follow both shapes now.
+
+Level entry and respawn clear both, which is a reset rather than an
+expiry and so needs no test.
+
+### What this does NOT split, and why
+
+The WIDTH and the LASER. `bat.extra_px`, `bat.extra_target` and
+`bat.big_ticks` are one bat's worth of state, so BIG_BAT caught by bat 2
+is now GUARDED to bat 1 and widens nobody.
+
+That is still wrong, and it is less wrong than before: previously a
+BIG_BAT caught by bat 2 widened BAT 1. A wrong bat became a missing one.
+The remaining fix needs two copies of everything a bonus touches, which
+is what `bonus_flag_swap` presupposes, and it is the last item in WS3.
+
+### Two gates encoded the old claim, and both said so
+
+`test-invariant-owners` carried the "must not disagree" sentence as the
+REASON for its one-writer rule, and failed with exactly that text
+printed back. `test-double-play-bat2-catch` dropped its CATCH bonus on
+bat 1 and relied on the mirror to reach bat 2 — and its docstring had
+predicted this: *"when ownership splits, the seed has to drop the bonus
+on bat 2 instead."*
+
+Both fixes were mechanical because both gates said what they assumed.
+Writing down what a test depends on, especially when you expect it to
+change, converts a future debugging session into an edit.
+
+Reseeding the second one took two goes: at y=158 the bonus is still
+falling when the ball arrives at frame 12, so the MAGNET was not up yet
+and the ball simply bounced. Seeded at 168 it overlaps the bat on frame
+1 and is caught immediately.
