@@ -66,7 +66,8 @@ ASSETS  = assets/loading.bin assets/hi_score.bin assets/main_menu.bin \
           assets/hud_sprites.bin \
           assets/levels.bin assets/level_attrs.bin \
           assets/bg_tile.bin assets/frame_l1.bin \
-          assets/sprites.bin assets/separator.bin assets/border.bin \
+          assets/sprites.bin assets/sprites_low.bin \
+          assets/separator.bin assets/border.bin \
           assets/random_seed.bin
 HISCORE_SNAP      ?= build/snapshots/20260513T202038Z/screen.scr
 MAINMENU_SNAP     ?= build/snapshots/20260513T202041Z/screen.scr
@@ -322,6 +323,20 @@ assets/separator.bin: original/blocks/03_DATA_headless.dat.bin Makefile
 	@python3 -c "open('$@','wb').write(open('$<','rb').read()[0x122A:0x128C])"
 	@echo "wrote $@ ($$(wc -c < $@) bytes, spr_separator)"
 
+# The three sprites BELOW sprites.bin's base: spr_bomb ($786A, 66 B),
+# spr_magnet_circle_off ($78AC, 140 B) and spr_magnet_circle_on ($7938,
+# 242 B). They are contiguous with each other and with separator.bin and
+# sprites.bin above them — $786A..$8D46 is one unbroken sprite bank in the
+# original, and $7A8C is a boundary this port chose, not one the tape has.
+#
+# These three used to be 78 lines of hex in main.cpp, transcribed by hand
+# because they were "outside our SPRITES.BIN range". They are outside a
+# range we drew ourselves, so the fix is to extract them like everything
+# else rather than to keep a second mechanism for them.
+assets/sprites_low.bin: original/blocks/03_DATA_headless.dat.bin Makefile
+	@python3 -c "open('$@','wb').write(open('$<','rb').read()[0x106A:0x122A])"
+	@echo "wrote $@ ($$(wc -c < $@) bytes, bomb + both magnet circles)"
+
 assets/sprites.bin: original/blocks/03_DATA_headless.dat.bin Makefile
 	@python3 -c "import sys; b=bytearray(open('$<','rb').read()[0x128c:0x2546]); \
 		b[0x0CED]=0x11; b[0x0CEF]=0x30; \
@@ -372,6 +387,7 @@ $(FLOPPY_OUT): $(FLOPPY_EXE) $(ASSETS) $(FLOPPY_SRC)
 	mcopy -i $@ -o assets/levels.bin ::LEVELS.BIN
 	mcopy -i $@ -o assets/bg_tile.bin ::BGTILE.BIN
 	mcopy -i $@ -o assets/sprites.bin ::SPRITES.BIN
+	mcopy -i $@ -o assets/sprites_low.bin ::SPRLOW.BIN
 	mcopy -i $@ -o assets/separator.bin ::SEPARAT.BIN
 	mcopy -i $@ -o assets/border.bin ::BORDER.BIN
 	mcopy -i $@ -o assets/random_seed.bin ::RANDOM.BIN
@@ -444,6 +460,7 @@ $(TEST_FLOPPY_OUT): $(FLOPPY_TEST_EXE) $(ASSETS) $(FLOPPY_SRC)
 	mcopy -i $@ -o assets/levels.bin ::LEVELS.BIN
 	mcopy -i $@ -o assets/bg_tile.bin ::BGTILE.BIN
 	mcopy -i $@ -o assets/sprites.bin ::SPRITES.BIN
+	mcopy -i $@ -o assets/sprites_low.bin ::SPRLOW.BIN
 	mcopy -i $@ -o assets/separator.bin ::SEPARAT.BIN
 	mcopy -i $@ -o assets/border.bin ::BORDER.BIN
 	mcopy -i $@ -o assets/random_seed.bin ::RANDOM.BIN

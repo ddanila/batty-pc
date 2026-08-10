@@ -54,10 +54,10 @@ def drop_placeholder(b: bytes) -> bytes:
     return b"\x00" + b[:15]
 
 CASES = [
+    # spr_bomb ($786A), spr_magnet_circle_off ($78AC) and _on ($7938) were
+    # here until they moved into assets/sprites_low.bin. They are checked
+    # on the other side now, by check_asset_provenance.py.
     # --- exact slices -------------------------------------------------
-    ("spr_bomb_data",       "src/main.cpp",    0x786A,  66, EXACT),
-    ("spr_magnet_off",      "src/main.cpp",    0x78AC, 140, EXACT),
-    ("spr_magnet_on",       "src/main.cpp",    0x7938, 242, EXACT),
     ("bonus_table_first",   "src/main.cpp",    0x9E4A,  32, EXACT),
     # NOT $9E6A: the tape holds `first` twice, at $9E4A and $9E6A, so a
     # read there returns a convincing copy of the wrong table.
