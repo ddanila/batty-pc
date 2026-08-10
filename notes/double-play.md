@@ -845,8 +845,10 @@ the same x, y, 32x13 attr window and `SPR_BAT_NORMAL` the copy did.
 the gun-mounted sprite. It could not before, and it should — the
 original picks each bat's sprite from that bat's own state
 (`(IX+$01)`, set in `handling_bat`, which runs per bat). Reachable since
-the bonus byte stopped being mirrored. Not gated: no scenario yet drops
-a LASER on bat 2.
+the bonus byte stopped being mirrored. **Gated 2026-08-10** by
+`test-double-play-bat2-gun`, once `test-double-play-bat2-laser` had
+built the scenario this note said did not exist yet — one capture, and
+the hole named here was closed the same day it was named.
 
 ### The lint caught it, correctly
 

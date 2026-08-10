@@ -874,3 +874,29 @@ scripts, and read each hit.** Past tense is fine and often required.
 Present tense is a lie with a citation attached, and a tool that scans
 raw text cannot tell you which is which — a name that survives only in
 the prose that is wrong about it looks exactly like a name in use.
+
+## "Not gated" is a note to write and then a note to delete (2026-08-10)
+
+Landing bat 2's shared renderer I wrote: *"a bat 2 holding LASER now
+shows the gun-mounted sprite ... Not gated: no scenario yet drops a
+LASER on bat 2."* Honest at the time — building that scenario was more
+work than the change.
+
+Two commits later, `test-double-play-bat2-laser` built exactly that
+scenario for a different reason. The hole then cost ONE capture to
+close, and it closed the same day it was named.
+
+The habit worth keeping is both halves:
+
+- **write it.** An ungated behaviour that nobody records is
+  indistinguishable from one nobody thought about, and the note is what
+  makes the cost visible later.
+- **re-read it.** The precondition that made gating expensive is
+  usually removed by some later commit, and nothing announces that. The
+  note went stale in the good direction — the work got cheaper — which
+  is the kind of staleness nobody goes looking for.
+
+Same shape as `test-double-play-bat2-catch`'s docstring predicting its
+own failure when bonus ownership split. A note about a future condition
+is worth writing precisely because it turns a future search into a
+future edit.

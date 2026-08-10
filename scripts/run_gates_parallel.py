@@ -87,6 +87,7 @@ FULL_EXTRA_GATES = [
     "test-double-play-bat2-redraw",
     "test-double-play-bat2-width",
     "test-double-play-bat2-laser",
+    "test-double-play-bat2-gun",
     "test-stuck-auto-launch",
     "test-bat-redraw-window",
     "test-ball-left-wall-escape", "test-l3-replay-seed",

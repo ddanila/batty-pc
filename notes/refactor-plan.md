@@ -12,10 +12,10 @@ reason rather than for want of effort — see the end of this section.
 modules. The longest function is `run_level` at 113 lines, and it is an
 orchestrator of named phases, which is what it should be.
 
-**The tests.** 104 gates, indexed in `notes/testing.md` and kept complete
+**The tests.** 105 gates, indexed in `notes/testing.md` and kept complete
 by `test-gate-index`. They fall in three groups:
 
-  - 75 QEMU gates — **`python3 scripts/run_gates_parallel.py --full`**,
+  - 76 QEMU gates — **`python3 scripts/run_gates_parallel.py --full`**,
     ~7 min. Plain `make parity-check-parallel` runs only the 8-gate
     PARITY_CHECK subset in ~100 s; this line named it as the 67-gate
     sweep until 2026-08-10, and that error is part of how a red gate
