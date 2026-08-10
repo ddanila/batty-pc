@@ -1457,6 +1457,25 @@ half, and `<=` moves it. It is the vertical twin of the left/right gate
 at dir $10 — both hinge on exactly one direction value, and both went
 untested for the same reason.
 
+**`repair_band_row_boundaries`' three row guards** are the other real
+find, and all three are MEMORY guards:
+
+    if (r1 + 1 < FIELD_ROWS) repaint_row_top_edge(cells, r1 + 1);
+    if (r1 + 1 < FIELD_ROWS) repaint_row_attrs(cells, r1 + 1);
+    if (r0 > 0) { ... cells[(r0 - 1) * FIELD_COLS + col] ... }
+
+Relaxed, they read a row past the grid and a row before it. Every
+existing caller passes an interior window, so none of the three had ever
+had to fire in a test. `repair_row_guards` puts the grid inside a buffer
+with a known row on each side and calls the full window, so the mutants
+read something predictable and act on it while the correct code cannot
+look at either.
+
+That brings the memory guards found by mutation to SEVEN — four in
+`bricks.cpp`, two in `zxvga.cpp`, one in `laffc_sweep`'s neighbourhood.
+Boundary mutation reads as a hunt for off-by-one pixels; in this
+codebase it has mostly been a hunt for reads and writes outside arrays.
+
 The candidate filter also needs work: `#include <stdio.h>` matched, and
 `while (...)` conditions were not excluded the way `for (...)` was. The
 include lines became ERRORs rather than silent junk only because

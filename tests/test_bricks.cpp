@@ -240,6 +240,51 @@ static void test_colour_and_shadow() {
  * brick keeps its colour until this resets it. The empty-cell sentinel
  * $C0 must survive: it carries the per-side-strip colours, and treating
  * it as destroyed would repaint the frame's edge cells. */
+/* repair_band_row_boundaries' two row guards are MEMORY guards.
+ *
+ *     if (r1 + 1 < FIELD_ROWS) repaint_row_top_edge(cells, r1 + 1);
+ *     if (r0 > 0) { ... cells[(r0 - 1) * FIELD_COLS + col] ... }
+ *
+ * Relaxed to `<=` and `>=` they read a row past the grid and a row
+ * before it. Both survived the 2026-08-10 strict-comparison sweep,
+ * which is unsurprising: every existing caller passes an interior
+ * window, so neither guard has ever had to fire in a test.
+ *
+ * Deterministic rather than hoping for a crash: the grid sits inside a
+ * buffer with a known row on each side, so the mutant reads something
+ * predictable and acts on it, while the correct code cannot look at
+ * either. */
+static void test_repair_row_guards_stay_inside_the_grid() {
+    const int before = failures;
+    u8 buf[(FIELD_ROWS + 2) * FIELD_COLS];
+    for (unsigned i = 0; i < sizeof(buf); i++) buf[i] = 0x05;   /* all alive */
+    u8 *field = buf + FIELD_COLS;          /* one phantom row on each side */
+
+    /* r0 == 0 with row 0 DESTROYED: the `r0 > 0` block, if it ran,
+     * would see the phantom row above as alive and zero two scr_buff
+     * bytes at row 0's top. */
+    for (int c = 0; c < FIELD_COLS; c++) field[0 * FIELD_COLS + c] = 0x80;
+
+    memset(scr_buff, 0xEE, SCR_BUFF_SIZE);
+    repair_band_row_boundaries(field, 0, FIELD_ROWS - 1);
+
+    /* hl = 0x401 + r0 * 0x100 with r0 = 0. */
+    check(scr_buff[0x401] == 0xEE && scr_buff[0x402] == 0xEE,
+          "the `r0 > 0` guard let the row-above fix-up run at r0 = 0 and "
+          "zero scr_buff from a phantom row: %02X %02X\n",
+          scr_buff[0x401], scr_buff[0x402]);
+
+    /* And the other end: r1 + 1 == FIELD_ROWS. repaint_row_top_edge for
+     * a row 12 would read the phantom row BELOW the grid — alive here —
+     * and zero scr_buff at 0x401 + 12 * 0x100 - 32. */
+    check(scr_buff[0xFE1] == 0xEE && scr_buff[0xFE3] == 0xEE,
+          "the `r1 + 1 < FIELD_ROWS` guard let the top-edge fix-up run "
+          "for a row past the grid: %02X %02X\n",
+          scr_buff[0xFE1], scr_buff[0xFE3]);
+
+    report("repair_row_guards", before, "r0 = 0, r1 = last    ok");
+}
+
 /* paint_brick_band_rows repaints row r0-1's SHADOW, and `r0 - 1 >= 0`
  * is what lets row 0 be that neighbour.
  *
@@ -717,6 +762,7 @@ int main(int argc, char **argv) {
     test_destroyed_bricks_leave_nothing();
     test_painting_stays_in_the_band();
     test_colour_and_shadow();
+    test_repair_row_guards_stay_inside_the_grid();
     test_band_rows_repaints_the_shadow_above();
     test_reset_covers_the_window_top_from_inside();
     test_reset_column_zero_has_no_left_neighbour();
