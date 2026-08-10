@@ -153,6 +153,7 @@ help:
 	@echo "  assets        decode original/*.scr into assets/"
 	@echo "  floppy        pack $(EXE) + assets onto $(FLOPPY_OUT)"
 	@echo "  run           build the floppy and boot it in QEMU (our recreation)"
+	@echo "  run-dosbox    boot the floppy in DOSBox-X (fastest to start)"
 	@echo "  run-86box     boot the floppy in 86Box (needs BOX86_MACHINE=<386-class>)"
 	@echo "  profile-auto  run deterministic headless QEMU render profile"
 	@echo "  profile-86box run 86Box with BATTY_RENDER_PROFILE=1 (sound off)"
@@ -632,6 +633,14 @@ run:
 	rm -f $(FLOPPY_OUT)
 	$(MAKE) $(FLOPPY_OUT)
 	bash scripts/run.sh $(FLOPPY_OUT)
+
+run-dosbox:
+	rm -f $(FLOPPY_OUT)
+	$(MAKE) $(FLOPPY_OUT)
+	DOSBOX_BIN="$(DOSBOX_BIN)" \
+	DOSBOX_CYCLES="$(DOSBOX_CYCLES)" \
+	DOSBOX_CONF="$(DOSBOX_CONF)" \
+	bash scripts/run_dosbox.sh $(FLOPPY_OUT)
 
 run-86box:
 	rm -f $(FLOPPY_OUT)

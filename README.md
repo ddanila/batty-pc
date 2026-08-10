@@ -100,10 +100,22 @@ The resolved parity history is documented in
 brew install mtools qemu
 make floppy   # builds build/batty.exe + assets, packs build/batty.img
 make run      # boots in QEMU
+make run-dosbox # boots in DOSBox-X (brew install dosbox-x)
 make run-86box # boots in 86Box (set BOX86_MACHINE to a 386-class machine)
 make test     # headless visual-regression (boots, drives keys, pixel-diffs)
 make parity-check # test + byte-exact LAFFC collision gate (gameplay frame parity)
 ```
+
+`make run-dosbox` BOOTS the image rather than mounting it and running
+`BATTY.EXE`: the build-time `BATTY_*` switches live in the floppy's
+`AUTOEXEC.BAT`, and DOSBox-X's own shell never runs a mounted image's
+AUTOEXEC — so the shorter invocation is the one that silently drops
+every switch you set. It ignores your personal `dosbox-x.conf` by
+default (`DOSBOX_CONF` overrides) so a conf pinning a 286 or CGA cannot
+fail in a way that looks like the port's fault. Cycles default to `max`;
+the game paces itself off its own 50 Hz PIT programming, so cycles buy
+headroom inside a frame rather than speed. `DOSBOX_CYCLES=12000` is
+roughly a 386DX-40 if you want period-representative timing.
 
 `make run-86box` defaults to the locally built SDL frontend at
 `/home/ddanila/.local/86box/bin/86Box` and writes its VM config under
