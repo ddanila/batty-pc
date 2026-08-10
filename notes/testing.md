@@ -1518,6 +1518,21 @@ mutation: go far enough out and both sides of the boundary agree.** The
 useful value is always the boundary itself, and "deliberately out of
 range" is not a substitute for it.
 
+`mark_dirty_bytes`' clamps needed a different observation point.
+`flush_dirty_slot_to_vga` loops `y = 0; y < PLAYFIELD_H`, so a row
+marked at -1 or at PLAYFIELD_H is never READ back and the screen looks
+perfect. But `dirty_min_byte` is `[DIRTY_SLOTS][PLAYFIELD_H]`, so a
+write at `[slot][PLAYFIELD_H]` lands in the NEXT slot's row 0 — visible
+by counting marked entries across the whole array rather than by
+looking at pixels. `end > PLAYFIELD_H` and `byte_hi > 31` both die that
+way.
+
+`y_start < 0` does not, and the reason is worth recording: its stray
+write goes to `[0][-1]`, one byte before the array, because slot 0 is
+what an empty row picks. Only `[1][-1]` would land inside. **Knowingly
+untested**, alongside the attr blit's `row_hi` — both are real
+out-of-bounds writes that a host build cannot see without a sanitiser.
+
 Three more clamps in `blit_sprite_attrs_to_buff_clipped` fell to the
 same treatment, and the two CLIP ones matter most: they are what keeps
 the blit off the side-frame's attribute cells, which is the whole reason

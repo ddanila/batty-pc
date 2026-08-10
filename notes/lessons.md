@@ -1207,3 +1207,25 @@ the third time this session the same shape has bitten — passing `$FF` to
 a clamp that wraps at 8 bits, and a rect giving `col_hi = 38` where the
 bound is 32. The instinct to "make it clearly invalid" picks values that
 cannot distinguish anything.
+
+## Look for the observation point, not just the assertion (2026-08-10)
+
+`mark_dirty_bytes` clamps three things, and the obvious way to check
+them — mark an out-of-range rect, flush, assert nothing escapes the
+playfield — catches none of them. `flush_dirty_slot_to_vga` loops
+`y = 0; y < PLAYFIELD_H`, so a row marked at -1 or at PLAYFIELD_H is
+never read back. The screen is perfect and the array is corrupt.
+
+The observation point that works is the ARRAY. `dirty_min_byte` is
+`[DIRTY_SLOTS][PLAYFIELD_H]`, so a write at `[slot][PLAYFIELD_H]` lands
+in the next slot's row 0 — counting marked entries across the whole
+array sees it immediately.
+
+Two of the three died to that. The third writes `[0][-1]`, one byte
+before the array, and stays invisible.
+
+**When an assertion cannot see a defect, the answer is often a different
+place to look rather than a cleverer assertion.** Pixels, buffers,
+counters and the state itself are all candidate observation points, and
+they have different blind spots — the flush hides row corruption, the
+array hides nothing about rows but says nothing about pixels.

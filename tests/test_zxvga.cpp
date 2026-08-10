@@ -251,6 +251,88 @@ static void test_blit_stays_in_playfield(void) {
     end("borders intact");
 }
 
+/* mark_dirty_bytes' clamps, boundary-exact, checked through the FLUSH.
+ *
+ *     if (byte_hi > 31)          byte_hi = 31;
+ *     if (y_start < 0)           y_start = 0;
+ *     if (end > PLAYFIELD_H)     end = PLAYFIELD_H;
+ *
+ * Each guards an index into the per-row dirty arrays or a byte column.
+ * Relaxed by one they write `dirty_min_byte[slot][-1]`,
+ * `[PLAYFIELD_H]`, or record byte column 32 — and the flush then paints
+ * a row or a byte outside the playfield, which the border sentinel can
+ * see even though the array corruption itself cannot.
+ *
+ * The dirty tests otherwise only ever mark rects generated INSIDE the
+ * playfield, so none of these clamps had been exercised. Boundary-exact
+ * again: y_start = -1 and end = PLAYFIELD_H + 1, not some comfortably
+ * invalid number that both forms clamp. */
+static int count_marked_rows(void) {
+    int slot, y, n = 0;
+    for (slot = 0; slot < DIRTY_SLOTS; slot++)
+        for (y = 0; y < PLAYFIELD_H; y++)
+            if (dirty_min_byte[slot][y] != DIRTY_NONE) n++;
+    return n;
+}
+
+static void test_dirty_marks_clamp_at_their_bounds(void) {
+    int x, y, escaped = 0;
+    begin("dirty_mark_clamps");
+    init_pal_tables();
+    randomize_buffers();
+
+    /* Counted through the ARRAY, not the flush. flush_dirty_slot_to_vga
+     * loops `y = 0; y < PLAYFIELD_H`, so a row written at -1 or at
+     * PLAYFIELD_H is never READ back and the screen looks fine. But
+     * dirty_min_byte is [DIRTY_SLOTS][PLAYFIELD_H], so those writes
+     * land in the NEIGHBOURING slot's row — visible by counting marked
+     * entries across the whole array. */
+    /* y_start = -1 is checked but NOT killed by this, and the difference
+     * is worth stating. The stray write goes to dirty_min_byte[0][-1] —
+     * one byte before the whole array, not into a neighbouring slot —
+     * because slot 0 is the one an empty row picks. Only a write at
+     * [1][-1] would land inside, and getting slot 1 chosen needs slot 0
+     * occupied and unmergeable at that row.
+     *
+     * So this row count passes under the mutation. Kept as a plain
+     * regression guard; notes/testing.md records the clamp as
+     * knowingly untested, alongside the attr blit's row_hi. */
+    clear_dirty_ranges(dirty_min_byte, dirty_max_byte);
+    mark_dirty_bytes(-1, 2, 0, 0);          /* y_start one above the top */
+    CHECK(count_marked_rows() == 1,
+          "y_start = -1 marked %d rows; only row 0 is inside\n",
+          count_marked_rows());
+
+    clear_dirty_ranges(dirty_min_byte, dirty_max_byte);
+    mark_dirty_bytes(PLAYFIELD_H - 1, 2, 0, 0);   /* end one past bottom */
+    CHECK(count_marked_rows() == 1,
+          "end = PLAYFIELD_H + 1 marked %d rows; only the last row is "
+          "inside\n", count_marked_rows());
+
+    /* byte_hi one past the last column. This one the flush DOES clamp
+     * again in buff_to_vga_rect_bytes, so it cannot escape to the
+     * screen — the assertion is that the recorded span is legal. */
+    clear_dirty_ranges(dirty_min_byte, dirty_max_byte);
+    mark_dirty_bytes(0, 1, 0, BYTES_PER_ROW);
+    CHECK(dirty_max_byte[0][0] < BYTES_PER_ROW,
+          "byte_hi was recorded as %d, past the last byte column\n",
+          dirty_max_byte[0][0]);
+
+    /* And the screen still stays inside the playfield. */
+    memset(vga, 0xAA, SCREEN_W * SCREEN_H);
+    flush_dirty_to_vga();
+    for (y = 0; y < SCREEN_H; y++)
+        for (x = 0; x < SCREEN_W; x++) {
+            int inside = (x >= BORDER_X && x < BORDER_X + PLAYFIELD_W &&
+                          y >= BORDER_Y && y < BORDER_Y + PLAYFIELD_H);
+            if (!inside && vga[y * SCREEN_W + x] != 0xAA) escaped++;
+        }
+    CHECK(escaped == 0,
+          "a dirty mark one step outside its bounds flushed %d bytes "
+          "outside the playfield\n", escaped);
+    end("marks clamped");
+}
+
 /* The playfield's first row and first column DO get drawn.
  *
  *     if (x < 0 || x >= PLAYFIELD_W)  continue;
@@ -878,6 +960,7 @@ int main(int argc, char **argv) {
     test_clash_expansion_vs_ula();
     test_flash_bit_ignored();
     test_blit_stays_in_playfield();
+    test_dirty_marks_clamp_at_their_bounds();
     test_sprite_blit_draws_the_first_row_and_column();
     test_scr_blit_writes_byte_zero_from_the_left();
     test_attr_blit_clamps_to_the_grid();
