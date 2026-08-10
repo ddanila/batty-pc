@@ -1284,3 +1284,48 @@ was the label: the counter's `qemu` bucket is defined as "whatever the
 parallel runner lists", which is now 76 QEMU gates plus one host gate.
 The count stays derived; the notes say "sweep" and a comment in the
 script says why the old word is off by one gate.
+
+
+## A transition has two halves; count both (2026-08-10)
+
+`notes/parity-gaps.md` listed life-loss as a covered game-flow
+transition on the strength of `test-life-loss`. That gate counts life
+INDICATORS: it proves a life was TAKEN. What the player gets BACK —
+`respawn_primary_ball`'s eleven resets: bat re-centred, ball re-stuck,
+bonus bytes cleared, ramp and cooldown zeroed — was pinned by nothing,
+for as long as the transition had been ticked off.
+
+The generalisation: a gate named after a transition tends to test the
+edge, not the destination. Ask what STATE the transition is supposed to
+produce, and whether anything reads it.
+
+Three things this cost, each worth keeping:
+
+**A blocking animation defeats a wall-clock frame budget, silently.**
+`play_bat_explosion` runs the spark loop and LBC10's 45-tick pause
+inside its own inner loop, never reaching `visual_checkpoint_tick` — so
+a death adds about a second the harness does not know about. Every
+checkpoint was missed, and because `enter_level` writes a probe too,
+PROBE.TXT still held a complete, well-formed, entirely stale
+level-entry snapshot: `probe_phase=init` and every field exactly what
+the seed put there. A gate reading it would have passed. `probe_phase`
+exists precisely to tell those apart — read it, or set
+`BATTY_SERIAL_PROBE=1` in the gate itself rather than hoping the runner
+sets it.
+
+**Bisect the env, do not stare at the code.** Five single-variable runs
+proved each knob innocent; the sixth, all of them together, reproduced
+it. That located the interaction in about the time one more read of
+`run_level` would have taken, and the answer was not in `run_level`.
+
+**Mutation-test the assertions you are proudest of.** Eight were
+written. Five killed their mutant. Three — speed ramp, extra-bat
+target, big-ball ticks — were already 0 in the scenario, so asserting
+they were 0 afterwards asserted nothing, and they were deleted rather
+than left reading as coverage. Two more mutants survived for reasons
+worth writing down instead of chasing: the respawn's own `BALL_Y` line
+is dead by frame 1 because `rest_ball_on_bat` recomputes it every
+frame, and `stuck_bat = OBJ_BAT_1` is equivalent in a mode-0 scenario
+because bat 2 is inactive there. **A PASS line that cannot fail is
+worse than no line at all** — it is counted as coverage by whoever
+reads the gate next, which is how this whole item started.

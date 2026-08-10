@@ -1632,6 +1632,9 @@ test-name-entry-visual:
 test-life-loss:
 	python3 scripts/test_life_loss.py
 
+test-life-respawn:
+	python3 scripts/test_life_respawn.py
+
 # Level-clear -> next, and the level index wrapping at N_LEVELS. Both
 # reachable only because BATTY_REPLAY_CLEAR_BRICKS empties the grid.
 test-level-advance:

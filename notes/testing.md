@@ -8,7 +8,7 @@
 > — in milliseconds. See [`video-engine.md`](video-engine.md).
 >
 > The QEMU gates below cost ~10 s per boot; `make parity-check-parallel`
-> runs all 77 gates of the full sweep in about six minutes (76 QEMU
+> runs all 78 gates of the full sweep in about six minutes (77 QEMU
 > plus `test-asan`, which is host-only but belongs to the same sweep).
 >
 > (This paragraph read "`make test-video` is the one gate here that
@@ -395,6 +395,9 @@ mentioned nowhere in this file, including several of the oldest.
 - `test-stuck-auto-launch` — a held ball launches itself after 192 ticks.
   byte, and `delta_to_dir` has no production caller (known-bugs #14).
 - `test-doc-links` — every file path cited in a comment or note exists.
+- `test-life-respawn` — a death gives back a centred bat, a fresh ball
+  on it and no leftover bonuses (`test-life-loss` covers only the life
+  being taken).
 - `test-host-tests-wired` — every host suite runs under `make test-fast`.
 - `test-asan` — the same 14 suites rebuilt under ASan + UBSan. Not a
   source gate but listed here because it is wired into the full sweep:

@@ -18,7 +18,7 @@ The port is "100%" when all of the following hold:
 |---|-----------|-------|
 | 1 | All three game modes work: 1 Player, 2 Players (alternating), Double Play (simultaneous split-court co-op) | **Done** (2026-08-10) — all three, with Double Play's court, both bats, split-keyboard input, ball physics, catches, scoring and per-bat bonuses |
 | 2 | Menu semantics match the original (0 starts the selected game directly; A/B input-device cycling affects play) | Key 0 starts the game (`test-menu-start`); the device byte is per-player state but still selects nothing |
-| 3 | Core gameplay byte-exact where an oracle exists (ball, bat, collision, RNG, enemy, bonuses, scoring) | **Done** — regression-locked by 106 gates |
+| 3 | Core gameplay byte-exact where an oracle exists (ball, bat, collision, RNG, enemy, bonuses, scoring) | **Done** — regression-locked by 107 gates |
 | 4 | Full game FLOW gated end-to-end: level-clear → next, life-loss → respawn, game-over → initials, level wrap | **Done** — `test-level-advance`, `test-life-loss`, `test-game-over-visual`, `test-name-entry-visual` |
 | 5 | Sound faithful to the original's 5-slot beeper queue (envelope/timing, not just effect IDs) | ids, slot count, pitches and envelope ARITHMETIC faithful; durations still round to 20 ms because the sound clock is the 50 Hz frame counter |
 | 6 | All assets derived from the tape at build time; no captured emulator blobs | **Done** — all 13 loaded assets build from `original/blocks/`, held by `test-asset-provenance` |
@@ -505,6 +505,27 @@ retro-gated.
 
 **Exit:** a `test-flow-*` family in `parity-check-full` covering the
 four transitions (plus mode-specific variants as WS2/WS3 land).
+
+**Status 2026-08-10: all four transitions are gated.** Not under a
+`test-flow-*` prefix — they landed one at a time alongside the work that
+needed them, and renaming working gates to match a plan's naming idea
+would churn the index for nothing:
+
+  level-clear -> next level  `test-level-advance`
+  the L15 wrap               `test-level-advance` (same run; it asserts
+                             the identity `current_level == round % 15`
+                             across the boundary)
+  game-over -> initials      `test-name-entry-visual`, plus
+                             `test-game-over` for the sequence's shape
+  life-loss -> respawn       `test-life-loss` (a life is taken) and
+                             `test-life-respawn` (what the player gets
+                             back), 2026-08-10
+
+The last of those was the gap. `test-life-loss` counts life indicators,
+so for months the respawn half — `respawn_primary_ball`'s eleven resets
+— was pinned by nothing at all. Two of its lines are still unpinned and
+`test-life-respawn`'s docstring says which and why, rather than
+asserting them vacuously.
 
 ## WS5 — Sound: faithful beeper-queue port
 

@@ -344,9 +344,17 @@ invariants (see notes/testing.md for the full list). Now covered:
 All five game-FLOW transitions now have end-to-end coverage:
 game-over and the hi-score name entry visually
 (`test-game-over-visual`, `test-name-entry-visual`), life-loss by an A/B
-on the death (`test-life-loss`), and level-clear -> next plus the level
-wrap by `test-level-advance`, which uses `BATTY_REPLAY_CLEAR_BRICKS` to
-empty the grid at entry.
+on the death (`test-life-loss`) and the respawn that follows it
+(`test-life-respawn`), and level-clear -> next plus the level wrap by
+`test-level-advance`, which uses `BATTY_REPLAY_CLEAR_BRICKS` to empty
+the grid at entry.
+
+`test-life-respawn` is new on 2026-08-10 and this paragraph overstated
+things until it existed. Life-loss was called covered on the strength of
+`test-life-loss`, which counts life INDICATORS — it proves a life was
+taken and says nothing about what the player gets back, so
+`respawn_primary_ball`'s eleven resets were unpinned the whole time. A
+transition has two halves and only one of them was being counted.
 
 The byte-exact frame-step oracle is built for L3 and L5; the
 poke-`$B7EA`+`$BA24` recipe generalizes it to any level when more are

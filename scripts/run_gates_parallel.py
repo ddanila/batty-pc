@@ -67,7 +67,7 @@ FULL_EXTRA_GATES = [
     "test-laffc-levels-sane", "test-hud", "test-round-banner-border",
     "test-brick-flash", "test-death-sparks", "test-rocket-bonus",
     "test-game-over",
-    "test-game-over-visual", "test-name-entry-visual", "test-life-loss", "test-level-advance", "test-stuck-ball-offset", "test-invariant-owners",
+    "test-game-over-visual", "test-name-entry-visual", "test-life-loss", "test-life-respawn", "test-level-advance", "test-stuck-ball-offset", "test-invariant-owners",
     "test-bonus-fall", "test-bomb-fall", "test-pts400-fall", "test-bullet-fly",
     "test-laser-cadence", "test-enemy-anim", "test-bonus-drop",
     "test-bonus-effects", "test-bonus-effects2", "test-bonus-typepick",
