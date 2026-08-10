@@ -1039,12 +1039,24 @@ checking it.
    is not on the image, which is an `apt-get install qemu-system-x86`
    away, not a blocker.
 
-   **Next step (not taken here — it is a job, not a step):** install
-   qemu, run a two-gate smoke with `-accel kvm`, and compare its wall
-   clock against the ~9 min TCG measurement that closed this. If it
-   lands in the tens of seconds the QEMU smoke comes back; if KVM turns
-   out to be present-but-unusable, that is the answer too, and this
-   entry gets the evidence rather than another inference.
+   **That next step landed the same day.** `qemu-smoke-kvm` is a second
+   CI job: it installs qemu + mtools, checks that QEMU can actually OPEN
+   /dev/kvm rather than merely see it, and runs two gates
+   (`test-ball-left-wall-escape`, `test-stuck-ball-offset`) with
+   `BATTY_QEMU_ACCEL=kvm`, timed. The knob is new and inert when unset,
+   so every existing caller still gets QEMU's default TCG.
+
+   **It is `continue-on-error` and nothing depends on it.** That is
+   deliberate: `main` was red for 165 runs because a failure nobody
+   watched went unnoticed for a day, and putting an experiment in
+   blocking position would be that mistake made in advance. The figure
+   to beat is the ~9 minutes a two-gate smoke took under TCG.
+
+   **Open, and the decision is yours:** read the job's timings off a
+   run, and if they are good, promote it — make it gate, and widen it
+   from two gates toward the 78-gate sweep. If KVM turns out usable but
+   not much faster, the honest outcome is to keep CI emulator-free and
+   record that with numbers this time.
 
    Worth noting what this cost: one `ls -l /dev/kvm`. The conclusion it
    overturned had stood since before GitHub's 2024 change and had been

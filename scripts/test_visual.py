@@ -9,6 +9,7 @@ through our ZX palette. Pixel-identical => PASS.
 Returns exit code = number of failed checkpoints.
 """
 import argparse
+import os
 import subprocess
 import sys
 import time
@@ -135,6 +136,22 @@ def run_qemu(floppy: Path, script: list, log_path: Path, serial_path=None):
         '-monitor', 'stdio',
         '-no-reboot',
     ]
+    # BATTY_QEMU_ACCEL=kvm asks for hardware acceleration. Unset means
+    # QEMU's default, which is TCG — so every existing caller is
+    # unaffected, and macOS (no /dev/kvm) needs no special case.
+    #
+    # It exists for CI: the QEMU job was dropped when hosted runners had
+    # no KVM and a two-gate smoke took ~9 min under TCG, and on
+    # 2026-08-10 a probe found /dev/kvm present on ubuntu-latest after
+    # all. Measuring the difference needs a way to ask for it.
+    #
+    # Only this spawn site takes the knob. run_profile_auto.py,
+    # visualise_levels.py and run.sh also start QEMU and are left alone:
+    # the first two are measurement tools whose numbers are comparable
+    # only within one accelerator, and run.sh is interactive.
+    accel = os.environ.get('BATTY_QEMU_ACCEL')
+    if accel:
+        cmd += ['-accel', accel]
     if serial_path is not None:
         Path(serial_path).write_bytes(b'')   # truncate prior markers
         cmd += ['-serial', f'file:{serial_path}']
@@ -176,7 +193,6 @@ def test_floppy(default: str = "build/batty-test.img") -> str:
     """The test floppy image path. Honours BATTY_TEST_FLOPPY so the parallel
     runner can give each concurrent gate its own image (scripts/
     run_gates_parallel.py); defaults to the shared serial path."""
-    import os
     return os.environ.get("BATTY_TEST_FLOPPY", default)
 
 
@@ -387,7 +403,6 @@ def main():
     # `BATTY_LEVEL=N make test` actually compares L_N render vs L_N GT.
     # Defaults to L1 when unset / invalid. The matching env passthrough on
     # the DOS side is in the test floppy's AUTOEXEC.BAT (see Makefile).
-    import os
     level_env = (os.environ.get('BATTY_LEVEL') or '').strip()
     try:
         level_n = int(level_env) if level_env else 1

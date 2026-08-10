@@ -101,3 +101,56 @@ jobs:
           command -v qemu-system-i386 >/dev/null \
             && qemu-system-i386 -accel help 2>&1 \
             || echo "qemu-system-i386 not installed on this image"
+
+  # A MEASUREMENT, not a gate — continue-on-error, and nothing depends on
+  # it. The question it answers is the one PLAN.md WS8.1 has been asking:
+  # now that /dev/kvm turns out to be present on hosted runners, is a QEMU
+  # gate viable here? The figure to beat is the ~9 minutes a two-gate
+  # smoke took under TCG, which is what got the QEMU job dropped.
+  #
+  # It does not gate on purpose. main was red for 165 runs because a
+  # failure nobody was watching went unnoticed for a day; landing an
+  # experiment in blocking position would be the same mistake in advance.
+  # Promote it once the timings are in and stable — that is a decision to
+  # take with numbers, in a separate commit.
+  qemu-smoke-kvm:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch the disassembly submodule (only that one)
+        run: git submodule update --init --depth 1 original/disasm
+      - name: Install QEMU and mtools
+        # Not on the runner image; the probe step in the other job says so.
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq qemu-system-x86 mtools
+      - name: Confirm KVM is actually usable, not just present
+        # `ls /dev/kvm` says the node exists. This says QEMU can open it.
+        # Without the group membership the accelerator silently is not
+        # available and the run below would quietly be a TCG run wearing a
+        # KVM label — which would produce a timing worth nothing.
+        run: |
+          qemu-system-i386 -accel help
+          ls -l /dev/kvm
+          id
+          # No bootable media and -nodefaults, so a QEMU that STARTED just
+          # sits there and timeout kills it: exit 124 means KVM was
+          # accepted. A QEMU that could not open /dev/kvm exits at once
+          # with "Could not access KVM kernel module", giving some other
+          # code — so the two outcomes are distinguishable, and neither
+          # hangs the job.
+          set +e
+          timeout 5 qemu-system-i386 -accel kvm -display none -m 4 \
+            -monitor none -nodefaults
+          rc=$?
+          set -e
+          echo "qemu -accel kvm exit code: $rc (124 = ran until timeout = KVM ok)"
+          test "$rc" = "124" || echo "WARNING: KVM was not usable; the timing below is a TCG timing"
+      - name: Two-gate smoke under KVM, timed
+        env:
+          BATTY_QEMU_ACCEL: kvm
+        run: |
+          set -x
+          time make test-ball-left-wall-escape
+          time make test-stuck-ball-offset
