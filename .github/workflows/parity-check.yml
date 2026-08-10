@@ -32,6 +32,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Fetch the disassembly submodule (only that one)
+        # `make test-fast` runs source gates that read the CityAceE
+        # disassembly: test-kinnock parses its expected text straight out
+        # of txt/txt_kinnock.asm rather than copying it, and
+        # check_frame_derivable / check_sound_ids / notes_symbols read it
+        # too. actions/checkout does not fetch submodules by default, so
+        # those gates could not have passed here — they simply were not
+        # reached until CI started running the whole suite.
+        #
+        # Named explicitly rather than `submodules: true` on the checkout:
+        # the other submodule is tools/zesarux, the emulator's full source
+        # tree, and CI does not run the ZEsarUX-oracle gates. --depth 1
+        # because no gate reads its history.
+        run: git submodule update --init --depth 1 original/disasm
       - name: Build the DOS test EXE (compile check, in-tree linux-amd64 OpenWatcom)
         run: make build/batty-test.exe
       - name: Host tests and source gates (no emulator)
