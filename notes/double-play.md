@@ -365,9 +365,10 @@ Two things are entangled with it, and neither is small:
   the primary ball and bat 1 (`catch_ball_on_bat` reads `BAT_X`,
   `ball.stuck_offset_x` is a single value). PLAN.md WS6 item 2 already
   scopes that at ~32 sites.
-- the width bonuses are bat-1 globals (`bat.extra_px`,
-  `bat.extra_target`, `bat.big_ticks`), so "give it to one bat" has
-  nowhere to put the other bat's state.
+- the width bonuses were bat-1 globals (`bat.extra_px`,
+  `bat.extra_target`, `bat.big_ticks`), so "give it to one bat" had
+  nowhere to put the other bat's state. (Both bullets are past tense as
+  of 2026-08-10: `bats[2]` and the per-ball stuck fields removed them.)
 
 Splitting those is the work. Recording the divergence is not a
 substitute for doing it, but an inaccurate comment claiming bat 2's
@@ -698,11 +699,15 @@ KILL_ALIENS' 350, both of which sat inside `bonus_apply` reading
 precisely so both awards are on the same probe: 400 + 5000 = 5400, and
 all of it on 2UP.
 
-### What is still shared, and it is the bigger half
+### What was still shared at THIS point, and it was the bigger half
 
-The EFFECT. `set_bat_bonus` writes both `bonus_applied` bytes, and the
+*(Past tense as of later the same day — the width and laser followed,
+see the sections below. Left in sequence because the order the pieces
+landed in is the useful part.)*
+
+The EFFECT. `set_bat_bonus` wrote both `bonus_applied` bytes, and the
 width and laser state (`bat.extra_px`, `bat.extra_target`,
-`bat.big_ticks`) are bat-1 globals with nowhere to put bat 2's.
+`bat.big_ticks`) were bat-1 globals with nowhere to put bat 2's.
 
 The original keeps them apart with `bonus_flag_swap` around the bat-2
 call — it exchanges `bonus_flag` with `bonus_flag_copy`, so `LA67B_0`
@@ -753,16 +758,19 @@ each for $07 first — a bat holding some OTHER bonus keeps it.
 Level entry and respawn clear both, which is a reset rather than an
 expiry and so needs no test.
 
-### What this does NOT split, and why
+### What this commit did NOT split
+
+*(Past tense: the width and the laser both followed within hours — see
+the sections below.)*
 
 The WIDTH and the LASER. `bat.extra_px`, `bat.extra_target` and
-`bat.big_ticks` are one bat's worth of state, so BIG_BAT caught by bat 2
-is now GUARDED to bat 1 and widens nobody.
+`bat.big_ticks` were one bat's worth of state, so at this point a
+BIG_BAT caught by bat 2 was GUARDED to bat 1 and widened nobody.
 
-That is still wrong, and it is less wrong than before: previously a
-BIG_BAT caught by bat 2 widened BAT 1. A wrong bat became a missing one.
-The remaining fix needs two copies of everything a bonus touches, which
-is what `bonus_flag_swap` presupposes, and it is the last item in WS3.
+Still wrong, and less wrong than before: previously it widened BAT 1. A
+wrong bat had become a missing one. The remaining fix needed two copies
+of everything a bonus touches, which is what `bonus_flag_swap`
+presupposes — and that is what `bats[2]` became.
 
 ### Two gates encoded the old claim, and both said so
 

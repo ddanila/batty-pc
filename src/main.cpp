@@ -1076,7 +1076,8 @@ static BonusState bonus = {0, 0, 0, 0, {0, 0}};
  * comment above and ball_speed_ramp_tick(). */
 static int big_ball_active(void);    /* forward — defined below */
 static int big_bat_active_of(int b); /* forward — defined below */
-/* Bat resize animation — bat.extra_px ramps 0..8 toward bat.extra_target
+/* Bat resize animation — a bat's extra_px ramps 0..8 toward its
+ * extra_target (both in bats[BAT_SLOT(b)])
  * (port of bat_resize at $9D2C). The rate and endpoints are documented
  * on tick_bat_resize, which is where the gating lives; this comment used
  * to carry a second copy saying the port only "roughly" matched, which
@@ -2270,10 +2271,12 @@ static void render_bat(unsigned char cycle, unsigned char attr) {
  * so Double Play does not add a bat beside the existing one — it moves
  * bat 1 left and puts bat 2 on the right, one per half.
  *
- * Rendered with the PLAIN sprite: `bat.extra_px`, the gun frames and
- * the resize sides are all bat-1 state, and bonus ownership for bat 2
- * is a later WS3 item (`object_bat_2+$14`). Drawing it big or armed
- * before that state exists would be inventing behaviour. */
+ * This used to say bat 2 was "rendered with the PLAIN sprite" because
+ * the width, the gun frames and the resize sides were all bat-1 state.
+ * That was true when written and stopped being true on 2026-08-10:
+ * `bats[2]` gives bat 2 its own width, `set_bat_bonus` gives it its own
+ * bonus byte, and `render_bat_of` draws whichever bat it is handed —
+ * big, armed or plain, off that bat's own state. */
 static void render_bat_2(unsigned char attr) {
     if (game_mode != 2 || !object_active(objects[OBJ_BAT_2])) return;
     /* Identical output to the hand-rolled version while bat 2's
@@ -3817,7 +3820,7 @@ static void bonus_apply(unsigned char type, int bat_idx) {
     }
 }
 
-/* Current effective bat geometry (varies with bat.big_ticks). */
+/* Current effective bat geometry (varies with that bat's big_ticks). */
 /* spr_bat_big is 48 px wide (6 bytes) vs spr_bat_normal's 32 px (4
  * bytes). Keep the bat visually centred on BAT_X by rendering big
  * bat 8 px further left; hitbox widens correspondingly. */
@@ -3864,7 +3867,7 @@ static int big_ball_active(void) {
 /* BIG_BAT is active iff bat.bonus_applied == \$00 in the original — the
  * bat-resize state machine in handling_bat_no_transform reads the byte
  * each frame. Catching another bonus immediately ends the wide-bat
- * state via the bat.extra_target = 0 target below in step_bonus. */
+ * state via the extra_target = 0 below in tick_bat_resize_of. */
 static int big_bat_active_of(int b) {
     return bats[BAT_SLOT(b)].big_ticks > 0
         && objects[b].bonus_applied == 0x00;
@@ -3884,7 +3887,7 @@ static int eff_ball_size(void) { return BALL_W_PX; }
  * silent — the resize cue comes from the replacing catch, not the
  * shrink.
  *
- * The ramp is gated every other tick: one step of bat.extra_px changes
+ * The ramp is gated every other tick: one step of extra_px changes
  * the centred body by 2 px, so every-2-ticks gives the original's
  * 1 px/frame and its ~16-frame full grow. Ungated it grew twice as fast
  * as the disassembly prescribes. */

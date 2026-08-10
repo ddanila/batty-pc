@@ -640,6 +640,38 @@ lists every backticked `snake_case` identifier in `notes/*.md` that
 nothing in `src/`, `tests/`, `scripts/`, the Makefile or the
 disassembly defines.
 
+### Its corpus is RAW TEXT, comments included — so it under-reports
+
+Measured 2026-08-10, after four present-tense claims rotted in one day
+and this tool reported none of them.
+
+`known_identifiers()` scans `src/`, `tests/`, `scripts/`, the Makefile
+and the disassembly for anything matching an identifier, with no attempt
+to skip comments or docstrings. So a name counts as "defined" if it
+appears ANYWHERE in that text — including in a stale comment, and
+including in the docstring of the very gate whose claim has rotted.
+
+Worked example from that day: `bat` became `bats[2]` with a `bat1`
+macro, and the code was rewritten accordingly, but the COMMENTS in
+`src/main.cpp` still said `bat.extra_px`. Three occurrences, all in
+comments, and that is enough to make the name look defined.
+
+Two consequences worth knowing before trusting a clean run:
+
+- it catches only names that vanished from every file, which is much
+  weaker than "no longer defined";
+- a stale name quoted in a gate's own docstring masks itself, and gate
+  docstrings are exactly where a false present-tense claim does the most
+  damage, because the next reader treats them as authority.
+
+Extending it to member references (`bat.extra_px`) was tried the same
+day and reverted: `foo.bar` also matches filenames — four of six new
+hits were `zrcp.py`, `brick_bitmaps.bin` and friends — and the
+self-masking above defeats it anyway. Adding noise to a report that
+exists for human triage makes it worse. **The four rots that day were
+found by grepping for the renamed symbols by hand, which is what a
+rename should always be followed by.**
+
 **It is a report, not a gate, on purpose.** It currently names ~35
 identifiers and most are legitimate: past-tense history this repo
 deliberately keeps (the sentence describing `static_bg_dirty`'s rename

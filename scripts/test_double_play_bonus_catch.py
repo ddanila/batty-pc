@@ -41,16 +41,21 @@ original keeps the bytes deliberately apart — `LA67B_0` runs inside
 So a MAGNET caught by bat 2 must make BAT 2 sticky and leave bat 1
 alone. Row three drops a CATCH bonus on bat 2 and reads both bytes.
 
-### What this still does NOT cover
+### What this covers, and what covers the rest
 
-The WIDTH and LASER. `bat.extra_px`, `bat.extra_target` and
-`bat.big_ticks` are one bat's worth of state, so BIG_BAT caught by bat 2
-now widens NOBODY — guarded, rather than widening bat 1 as it did
-before. A wrong bat became a missing one, which is the visible face of
-WS3's last open item.
+This gate is about WHO CATCHES, WHO IS PAID and WHO KEEPS THE BYTE.
+
+The EFFECTS each got their own gate the same day: the width is
+`test-double-play-bat2-width` and the laser is
+`test-double-play-bat2-laser`, both PIXEL gates because both are
+visible. Until those landed this docstring said the width and laser
+"are one bat's worth of state, so BIG_BAT caught by bat 2 now widens
+NOBODY" — true when written, false a few hours later, and left standing
+in a GATE, where a false present-tense claim is at its most convincing.
 
 The original separates all of it with `bonus_flag_swap` around every
 bat-2 call, which presupposes two copies of everything a bonus touches.
+That is now what `bats[2]` gives it.
 """
 import os
 import re

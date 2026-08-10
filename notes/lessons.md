@@ -835,3 +835,37 @@ mechanical precondition of the rot (here, "was it opened?") rather than
 trying to verify the content. `test-notes-numbers` has never been the
 thing that went stale, because numbers get checked. Prose does not, so
 gate the reading of it instead.
+
+## A rename is not done until you grep the PROSE (2026-08-10)
+
+Renaming `bat` to `bats[2]` + a `bat1` macro, I rewrote the code lines
+with a scripted substitution that deliberately skipped comment lines —
+so as not to mangle sentences describing the ORIGINAL's `bat.bonus_applied`
+concept, which is a fair thing to name.
+
+The result was six stale `bat.<field>` mentions left in `src/` comments
+and four in notes/ and a gate docstring, three of them present-tense
+claims that were now false. The worst was on `render_bat_2`: "rendered
+with the PLAIN sprite: `bat.extra_px`, the gun frames and the resize
+sides are all bat-1 state" — by then bat 2 had its own width, its own
+bonus byte and a shared renderer that draws it big or armed.
+
+`notes_symbols.py`, the tool that exists for exactly this, reported
+NONE of it. Two reasons, both worth knowing:
+
+- it only matches bare backticked identifiers, so `bat.extra_px` is
+  invisible to it;
+- its corpus is raw text INCLUDING comments, so a name still mentioned
+  in a stale comment counts as "defined". Three of the six occurrences
+  were in `src/` comments, and that was enough.
+
+Extending it to member references was tried and reverted: `foo.bar` also
+matches filenames (four of six new hits were `zrcp.py` and friends), and
+the self-masking defeats it anyway. Recorded in notes/testing.md so the
+next person does not re-derive it.
+
+**So: after a rename, grep for the OLD name across src, notes and
+scripts, and read each hit.** Past tense is fine and often required.
+Present tense is a lie with a citation attached, and a tool that scans
+raw text cannot tell you which is which — a name that survives only in
+the prose that is wrong about it looks exactly like a name in use.
