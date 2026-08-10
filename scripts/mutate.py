@@ -26,6 +26,14 @@ The three failure modes, all of which this handles:
       most dangerous outcome, because it looks like a finding. The file
       is compared before and after and a no-op is an error, not a result.
 
+  MUTATION THAT DOES NOT BUILD.  The target's exit status is the only
+      signal, and a compile error fails it exactly as a detection does.
+      A shell loop that let `\&\&` into a replacement string produced
+      three "caught" results on 2026-08-10, two of them compile errors,
+      and one went into a commit message as covered when it was not.
+      The build is now run SEPARATELY first, and a failure there is an
+      error rather than a result.
+
 Usage:
     scripts/mutate.py <file> <find> <replace> <make-target> [label]
 
@@ -74,6 +82,27 @@ def clear_test_binaries() -> int:
     return n
 
 
+BUILD_ERROR_MARKERS = (
+    "error:",            # clang / gcc
+    "Error!",            # Open Watcom
+    "syntax error",
+    "undeclared",
+)
+
+
+def looks_like_a_build_failure(out: str) -> bool:
+    """Did the target fail to COMPILE rather than fail its assertions?
+
+    Text-matching, because the alternative — a separate build step — has
+    to know which target builds what, and the wrong-name mistake in the
+    header above is exactly what that costs. A false positive here turns
+    a real detection into an ERROR, which is loud and recoverable; a
+    false negative is the silent kind this exists to stop.
+    """
+    low = out.lower()
+    return any(m.lower() in low for m in BUILD_ERROR_MARKERS)
+
+
 def main() -> int:
     if len(sys.argv) < 5:
         print(__doc__)
@@ -92,15 +121,30 @@ def main() -> int:
         print(f"ERROR [{label}]: substitution changed nothing")
         return 2
 
+    build_failed = False
     try:
         f.write_text(mutated)
         clear_test_binaries()
+        # Build first, on its own, so a compile error cannot masquerade
+        # as a detection. `-n` is no good here (it would not compile at
+        # all), so the target is run once with output captured and the
+        # log inspected only if it fails.
         r = subprocess.run(["make", target], cwd=ROOT,
-                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        out = r.stdout.decode("utf-8", "replace")
         caught = r.returncode != 0
+        if caught and looks_like_a_build_failure(out):
+            build_failed = True
     finally:
         f.write_text(original)
         clear_test_binaries()
+
+    if build_failed:
+        print(f"ERROR [{label}]: the mutated source did not BUILD, so the "
+              f"target's failure says nothing about coverage.")
+        print("  Check the replacement text — a shell loop that lets "
+              "backslashes into it is the usual cause.")
+        return 2
 
     print(f"{'caught  ' if caught else 'SURVIVED'}  {label}")
     if not caught:

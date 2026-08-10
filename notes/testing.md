@@ -1228,11 +1228,20 @@ was reported as covered in a commit message and was not: re-run with
 correct quoting, it survives, and `col >= 0` reads the byte BEFORE the
 grid for row 0. Now fixed (`reset_column_zero`) and pinned.
 
-**So: after a batch, re-run any survivor-turned-caught singly, with the
-strings quoted so the shell cannot touch them.** Or check that the
-mutated file still builds. A green target is not evidence until you know
-the binary changed — which is the same trap as
-`make | grep -i error` matching the word inside "no errors".
+**Fixed in the tool the same day.** `mutate.py` now inspects the
+target's output and reports ERROR, not "caught", when the mutated source
+did not compile. Verified three ways: a deliberately broken replacement
+reports ERROR, a real detection still reports caught, and a QEMU gate
+still reports caught — that last one matters because `make` prints
+"Error 1" on any failure, so the markers are `error:` and `Error!`
+rather than the bare word.
+
+The exhaustive `>=` sweep predates the fix but is unaffected: it built
+its replacements in Python, and `>=` -> `>` always compiles.
+
+The habit stands anyway — a green target is not evidence until you know
+the binary changed, which is the same trap as `make | grep -i error`
+matching the word inside "no errors".
 
 **The method that works**, learned the hard way twice in that pass:
 
