@@ -1071,3 +1071,26 @@ function whose own tests would still pass.
 
 The four are recorded in notes/testing.md rather than left implicit,
 because "we checked and it was fine" is not the same as knowing why.
+
+## "Caught" can mean "did not compile" (2026-08-10)
+
+`mutate.py` applies a replacement, runs a make target and reads its exit
+status. A replacement that does not COMPILE fails the target, and that
+is indistinguishable from a test detecting the mutation.
+
+Driving batches from a shell loop, I wrote `&&` in the replacement as
+`\&\&`. The backslashes survived the quoting and went into the source.
+Three results came back "caught"; two were compile errors, and one of
+those — `bricks.cpp`'s `left_live = (col > 0) && ...` — went into a
+commit message as covered. It was not. Re-run properly it survives, and
+`col >= 0` reads the byte before the grid on row 0.
+
+The tell was available and I walked past it: three consecutive "caught"
+results on lines nothing new had tested. That should have been
+surprising rather than satisfying.
+
+**Re-run any "caught" you did not expect, singly, with the strings
+quoted so the shell cannot reach them.** Same shape as
+`make | grep -i error` matching the word inside "no errors": a green
+signal is not evidence until you know the thing you meant to change
+actually changed.

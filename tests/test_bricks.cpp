@@ -240,6 +240,82 @@ static void test_colour_and_shadow() {
  * brick keeps its colour until this resets it. The empty-cell sentinel
  * $C0 must survive: it carries the per-side-strip colours, and treating
  * it as destroyed would repaint the frame's edge cells. */
+/* Column 0 has no left neighbour, and the guard that says so is also a
+ * memory guard.
+ *
+ *     left_live = (col > 0) && !(cells[row * FIELD_COLS + col - 1] & 0x80);
+ *
+ * With `col >= 0` the expression reads `cells[row * FIELD_COLS - 1]` —
+ * the last cell of the PREVIOUS row, and for row 0 the byte before the
+ * array entirely. A destroyed cell in column 0 then gets the dimmed
+ * shadow attr or the plain one depending on unrelated memory.
+ *
+ * Made deterministic by putting the grid inside a larger buffer with a
+ * known ALIVE byte in front of it, so the mutant reliably reads "live"
+ * and dims; the correct code cannot look there at all.
+ *
+ * Found 2026-08-10. It had been reported as caught once before, wrongly
+ * — see the note in notes/testing.md on mutations that fail to
+ * COMPILE. */
+static void test_reset_column_zero_has_no_left_neighbour() {
+    const int before = failures;
+    const u8 BG = 0x45;
+    u8 buf[1 + FIELD_ROWS * FIELD_COLS];
+    buf[0] = 0x05;                       /* a LIVE byte in front */
+    u8 *field = buf + 1;
+    for (int i = 0; i < FIELD_ROWS * FIELD_COLS; i++) field[i] = 0x05;
+    field[0 * FIELD_COLS + 0] = 0x80;    /* destroyed, column 0, row 0 */
+
+    memset(attr_buff, 0x77, sizeof(attr_buff));
+    reset_destroyed_cell_attrs(field, BG, 0, FIELD_ROWS - 1, 3, 16);
+
+    const int cr = 4 + 0, cc1 = 1 + 2 * 0;
+    check(attr_buff[cr * ATTR_COLS + cc1] == BG,
+          "a destroyed cell in column 0 has NO left neighbour, so its "
+          "left char takes the plain background %02X, not the dimmed "
+          "%02X; got %02X\n", BG, (u8)(BG & 0xBF),
+          attr_buff[cr * ATTR_COLS + cc1]);
+    report("reset_column_zero", before, "no left neighbour    ok");
+}
+
+/* The row guard is a MEMORY guard, and it fires on every full-window
+ * call.
+ *
+ *     for (row = r0 - 1; row <= r1 + 1; row++)
+ *         if (row < 0 || row >= FIELD_ROWS) continue;
+ *
+ * `r1 + 1` is `FIELD_ROWS` whenever the caller passes the whole band —
+ * which `paint_brick_band` does every level entry — so without
+ * `>= FIELD_ROWS` the loop reads `cells[FIELD_ROWS * FIELD_COLS + col]`,
+ * fifteen bytes past a 180-byte array, and writes attrs from whatever
+ * it finds.
+ *
+ * Deterministic here rather than hoping for a crash: the grid is a row
+ * LONGER than the real one, with that extra row marked destroyed. The
+ * correct code never looks at it; the mutant reads it and writes char
+ * row 16. Every real row is left ALIVE so nothing else can write there.
+ *
+ * Found by the 2026-08-10 inclusive-comparison sweep. */
+static void test_reset_row_guard_stops_at_the_grid() {
+    const int before = failures;
+    const u8 BG = 0x45;
+    u8 field[(FIELD_ROWS + 1) * FIELD_COLS];
+    for (int i = 0; i < FIELD_ROWS * FIELD_COLS; i++) field[i] = 0x05;
+    for (int c = 0; c < FIELD_COLS; c++)
+        field[FIELD_ROWS * FIELD_COLS + c] = 0x80;   /* the phantom row */
+
+    memset(attr_buff, 0x77, sizeof(attr_buff));
+    reset_destroyed_cell_attrs(field, BG, 0, FIELD_ROWS - 1, 3, 16);
+
+    int touched = 0;
+    for (int cc = 0; cc < ATTR_COLS; cc++)
+        if (attr_buff[16 * ATTR_COLS + cc] != 0x77) touched++;
+    check(touched == 0,
+          "char row 16 had %d cells written from a phantom brick row past "
+          "the end of the grid\n", touched);
+    report("reset_row_guard", before, "no read past the grid ok");
+}
+
 /* The PARTIAL window's upper edge: a destroyed cell one row ABOVE the
  * window still owns the window's first char row, because that row is
  * its SHADOW row.
@@ -572,6 +648,8 @@ int main(int argc, char **argv) {
     test_destroyed_bricks_leave_nothing();
     test_painting_stays_in_the_band();
     test_colour_and_shadow();
+    test_reset_column_zero_has_no_left_neighbour();
+    test_reset_row_guard_stops_at_the_grid();
     test_reset_covers_the_window_top_from_above();
     test_destroyed_cells_reset_but_sentinels_survive();
     test_destroyed_cell_shadow_follows_left_neighbour();

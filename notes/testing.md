@@ -1214,6 +1214,26 @@ Two mutations were caught immediately (`laffc_bounce`'s face mask, the
 brick shadow row), which is the useful control: the pass is not just
 finding weak spots everywhere.
 
+### A mutation that fails to COMPILE reports as "caught"
+
+`mutate.py` runs a make target and reads its exit status. A replacement
+string that does not compile fails the target, and that is
+indistinguishable from a test detecting the change.
+
+This bit on 2026-08-10. Driving batches from a shell loop, `&&` inside
+the replacement was written `\&\&`, which survived the quoting and went
+into the file. Three results came back "caught" and two of them were
+compile errors. One — `bricks.cpp`'s `left_live = (col > 0) && ...` —
+was reported as covered in a commit message and was not: re-run with
+correct quoting, it survives, and `col >= 0` reads the byte BEFORE the
+grid for row 0. Now fixed (`reset_column_zero`) and pinned.
+
+**So: after a batch, re-run any survivor-turned-caught singly, with the
+strings quoted so the shell cannot touch them.** Or check that the
+mutated file still builds. A green target is not evidence until you know
+the binary changed — which is the same trap as
+`make | grep -i error` matching the word inside "no errors".
+
 **The method that works**, learned the hard way twice in that pass:
 
 1. mutate, run, and take "SURVIVED" as a question rather than a verdict;
