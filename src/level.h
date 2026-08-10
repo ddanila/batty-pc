@@ -17,10 +17,11 @@ const int FIELD_ROWS  = 12;
 const int FIELD_X0    = 0x08;
 const int FIELD_Y0    = 0x20;
 /* Left/top edge of the last cell, and the first pixel past the band. The
- * original tests against these as literals ($E8, $78, $80). */
-const int FIELD_X_LAST = FIELD_X0 + (FIELD_COLS - 1) * BRICK_W_PX;   /* $E8 */
-const int FIELD_Y_LAST = FIELD_Y0 + (FIELD_ROWS - 1) * BRICK_H_PX;   /* $78 */
-const int FIELD_Y_END  = FIELD_Y0 + FIELD_ROWS * BRICK_H_PX;         /* $80 */
+ * original tests against these as literals; the asserts below are what
+ * pin each one to the value it must have. */
+const int FIELD_X_LAST = FIELD_X0 + (FIELD_COLS - 1) * BRICK_W_PX;
+const int FIELD_Y_LAST = FIELD_Y0 + (FIELD_ROWS - 1) * BRICK_H_PX;
+const int FIELD_Y_END  = FIELD_Y0 + FIELD_ROWS * BRICK_H_PX;
 
 ZX_STATIC_ASSERT(FIELD_X_LAST == 0xE8, "column edge must match the original");
 ZX_STATIC_ASSERT(FIELD_Y_LAST == 0x78, "row edge must match the original");

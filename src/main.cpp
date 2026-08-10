@@ -389,7 +389,7 @@ static const unsigned char spr_magnet_on[242] = {
  * magnets despite being level index 0. */
 #define MAGNETS_MAX_PER_LEVEL 4
 static const unsigned char magnets_per_level[N_LEVELS][1 + 2*MAGNETS_MAX_PER_LEVEL] = {
-    { 0 },                                                     /* L1 (= L3 dup) */
+    { 0 },                                                     /* L1  */
     { 1, 0x74,0x2C, 0,0, 0,0, 0,0 },                           /* L2  */
     { 0 },                                                     /* L3  */
     { 1, 0x74,0x7C, 0,0, 0,0, 0,0 },                           /* L4  */
@@ -512,7 +512,7 @@ struct BrickFlashState {
     int           y;
 };
 static BrickFlashState brick_flash = {0, 0, 0};
-static void render_brick_flash_to_buff(void);    /* forward decl — defined alongside brick_collision */
+static void render_brick_flash_to_buff(void);    /* defined alongside brick_collision */
 
 /* Original briks_data: up to five simultaneous hard-brick shimmer
  * animations after a non-destroying hit. The slot counter mirrors the
@@ -640,7 +640,7 @@ static unsigned long high_score = 0;
  * ball is being handled and `handling_ball` runs once per ball object.
  * Slot 0..2 = OBJ_BALL_1..3, as for the stuck and mag_* arrays. */
 static unsigned char ball_owner_side[3] = {0, 0, 0};   /* 0 = 1UP, 1 = 2UP */
-static unsigned char ball_start_right = 0;     /* the alternating flag */
+static unsigned char ball_start_right = 0;
 
 /* orig: add_points_to_score ($018D). In Double Play the score goes to the
  * side the event happened on, not to whoever is "active". The original
@@ -715,7 +715,7 @@ static ProbeState probe;
  * object slots and steps them through different code — step_extra_ball,
  * not step_ball. */
 struct BallState {
-    int          dx, dy;              /* primary ball, whole pixels */
+    int          dx, dy;
     /* Only [0] is ever non-zero today: an extra ball is spawned in
      * flight and nothing can catch it, because catch_ball_on_bat is only
      * reachable from the primary's path. Widening it is the structural
@@ -870,8 +870,8 @@ struct BonusState {
     motion_acc_t  motion;
 };
 static BonusState bonus = {0, 0, 0, 0, {0, 0}};
-static int big_ball_active(void);    /* forward — defined below */
-static int big_bat_active_of(int b); /* forward — defined below */
+static int big_ball_active(void);
+static int big_bat_active_of(int b);
 
 /* "+400" floating-marker state spawned on bonus catch (port of
  * sprite_set $0B transition at $A6BA + handling_400pts at $A58D).
@@ -905,11 +905,11 @@ static PtsMarkerState pts_marker = {0, 0, 0, {0, 0}, 0, 0};
  * sprites_blob. */
 #define SPRITES_BLOB_SIZE 0x12BA
 static unsigned char sprites_blob[SPRITES_BLOB_SIZE];
-#define SPR_BIG_BALL     (0x7A8C - 0x7A8C)   /* = 0x000 */
-#define SPR_LIVES        (0x7AFC - 0x7A8C)   /* = 0x070 */
-#define SPR_BALL_NORMAL  (0x7B16 - 0x7A8C)   /* = 0x08a */
-#define SPR_BAT_NORMAL   (0x7E38 - 0x7A8C)   /* = 0x3ac */
-#define SPR_BAT_BIG      (0x7F42 - 0x7A8C)   /* = 0x4b6 */
+#define SPR_BIG_BALL     (0x7A8C - 0x7A8C)
+#define SPR_LIVES        (0x7AFC - 0x7A8C)
+#define SPR_BALL_NORMAL  (0x7B16 - 0x7A8C)
+#define SPR_BAT_NORMAL   (0x7E38 - 0x7A8C)
+#define SPR_BAT_BIG      (0x7F42 - 0x7A8C)
 #define SPR_BAT_GUN      (0x8188 - 0x7A8C)   /* laser-cannon bat (resting) */
 #define SPR_BAT_GUN_1    (0x7FE0 - 0x7A8C)   /* firing anim frame 1 */
 #define SPR_BAT_GUN_2    (0x804A - 0x7A8C)   /* firing anim frame 2 */
@@ -926,16 +926,16 @@ static unsigned char sprites_blob[SPRITES_BLOB_SIZE];
 #define SPR_BULLET_BLAST_2 (0x7E04 - 0x7A8C)
 #define SPR_BULLET_BLAST_3 (0x7E14 - 0x7A8C)
 #define SPR_BULLET_BLAST_4 (0x7E26 - 0x7A8C)
-#define SPR_UFO_1        (0x83B0 - 0x7A8C)   /* = 0x924 */
-#define SPR_UFO_2        (0x8406 - 0x7A8C)   /* = 0x97a */
-#define SPR_UFO_3        (0x8462 - 0x7A8C)   /* = 0x9d6 */
-#define SPR_UFO_4        (0x84C4 - 0x7A8C)   /* = 0xa38 */
-#define SPR_UFO_5        (0x852C - 0x7A8C)   /* = 0xaa0 */
-#define SPR_UFO_6        (0x859A - 0x7A8C)   /* = 0xb0e */
-#define SPR_BIRD_1       (0x860E - 0x7A8C)   /* = 0xb82 */
-#define SPR_BIRD_2       (0x866A - 0x7A8C)   /* = 0xbde */
-#define SPR_BIRD_3       (0x86C6 - 0x7A8C)   /* = 0xc3a */
-#define SPR_BIRD_4       (0x8722 - 0x7A8C)   /* = 0xc96 */
+#define SPR_UFO_1        (0x83B0 - 0x7A8C)
+#define SPR_UFO_2        (0x8406 - 0x7A8C)
+#define SPR_UFO_3        (0x8462 - 0x7A8C)
+#define SPR_UFO_4        (0x84C4 - 0x7A8C)
+#define SPR_UFO_5        (0x852C - 0x7A8C)
+#define SPR_UFO_6        (0x859A - 0x7A8C)
+#define SPR_BIRD_1       (0x860E - 0x7A8C)
+#define SPR_BIRD_2       (0x866A - 0x7A8C)
+#define SPR_BIRD_3       (0x86C6 - 0x7A8C)
+#define SPR_BIRD_4       (0x8722 - 0x7A8C)
 #define SPR_BIRD_5       (0x8778 - 0x7A8C)   /* = 0xcec (frame-7 pose; h=17 at
                                               * runtime — the gfx_inverse overrun
                                               * patch in the Makefile asset rule) */
@@ -962,12 +962,12 @@ static const unsigned int spr_ufo_frames[10]  = {
     SPR_UFO_6, SPR_UFO_5, SPR_UFO_4, SPR_UFO_3, SPR_UFO_2
 };
 
-#define SPR_400_POINTS   (0x7ABE - 0x7A8C)   /* = 0x032 */
-#define SPR_BLAST_1      (0x87E6 - 0x7A8C)   /* = 0xd5a */
-#define SPR_BLAST_2      (0x881C - 0x7A8C)   /* = 0xd90 */
-#define SPR_BLAST_3      (0x8852 - 0x7A8C)   /* = 0xdc6 */
-#define SPR_BLAST_4      (0x888C - 0x7A8C)   /* = 0xe00 */
-#define SPR_BLAST_5      (0x88CE - 0x7A8C)   /* = 0xe42 */
+#define SPR_400_POINTS   (0x7ABE - 0x7A8C)
+#define SPR_BLAST_1      (0x87E6 - 0x7A8C)
+#define SPR_BLAST_2      (0x881C - 0x7A8C)
+#define SPR_BLAST_3      (0x8852 - 0x7A8C)
+#define SPR_BLAST_4      (0x888C - 0x7A8C)
+#define SPR_BLAST_5      (0x88CE - 0x7A8C)
 
 /* L4's spark enemy — 5 decaying frames at $8342..$83A6. Same
  * mask+pix layout as the alien/blast sprites. */
@@ -1713,7 +1713,7 @@ static bool enemy_check_margins(Object *o, int *nx, int *ny,
     return true;
 }
 
-static void bomb_appear(Object *o);     /* forward decl */
+static void bomb_appear(Object *o);
 
 /* LAFFC as the ALIEN reaches it. `LAFFC_30` tests the object's
  * sprite_set and only $02 (the ball) takes the destroy-and-score path,
@@ -1976,7 +1976,7 @@ static void render_bats(unsigned char cycle, unsigned char attr) {
  *
  * Frame counter layout: bit 7 = direction (1 = walking toward smaller
  * frame values, 0 = larger), bits 6..0 = current frame in [9, w-10]. */
-#define RUN_DOT_ROW_OFF  0x1660     /* scr_buff row 179, col 0 */
+#define RUN_DOT_ROW_OFF  0x1660
 static unsigned char run_dot_frame = 0x0E;   /* matches running_dot_frame_1up DEFB $0E */
 static const unsigned char run_dot_mask[8] = {
     0x7F, 0xBF, 0xDF, 0xEF, 0xF7, 0xFB, 0xFD, 0xFE
@@ -3927,8 +3927,8 @@ static const unsigned char prop_uneven[6] = { 0x09, 0xF0, 0x70, 0x18, 0x0C, 0x01
 static const unsigned char prop_even[6]   = { 0x08, 0x60, 0x90, 0x18, 0x10, 0x01 };
 static const unsigned char prop_x_coord[4]= { 0x40, 0xA8, 0x40, 0xA8 };
 
-static void play_bat_explosion(unsigned char level_idx);   /* forward */
-static void respawn_primary_ball(void);                     /* forward */
+static void play_bat_explosion(unsigned char level_idx);
+static void respawn_primary_ball(void);
 
 static unsigned int replay_probe_screen_addr_for_brick(int col, int row) {
     unsigned int x = 8u + (unsigned int)col * 16u;
