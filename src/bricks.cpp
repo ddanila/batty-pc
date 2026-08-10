@@ -311,6 +311,24 @@ void repair_band_row_boundaries(const u8 *cells,
 
 }
 
+/* Contract, and why the paint and capture windows differ: bricks.h. */
+void band_rebuild_window(int lo, int hi,
+                         int *r0, int *r1,
+                         int *py_capture0, int *py_paint0, int *py1,
+                         int *cr0, int *cr1) {
+    const int R0 = (lo > 0) ? lo - 1 : 0;
+    const int R1 = (hi + 1 < FIELD_ROWS) ? hi + 1 : FIELD_ROWS - 1;
+    *r0 = R0;
+    *r1 = R1;
+    *py_capture0 = BRICK_BAND_Y_TOP + R0 * 8;
+    /* The only asymmetry: with no row above, row 0's shared top-edge row
+     * has no other owner, so it is repainted rather than inherited. */
+    *py_paint0 = (R0 == 0) ? *py_capture0 : *py_capture0 + 1;
+    *py1 = 40 + R1 * 8;
+    *cr0 = 4 + R0;
+    *cr1 = 5 + R1;
+}
+
 void paint_brick_band(const u8 *cells, const u8 *lattr, u8 bg_attr) {
     /* The per-level attrs cover char rows 3..16: the brick band plus the
      * frame's side strips and the pre-dimmed shadow rows. */

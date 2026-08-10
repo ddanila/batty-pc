@@ -8,20 +8,21 @@ test. Started 2026-08-07.
 The stage table below is complete except stage 1, which is blocked for a
 reason rather than for want of effort — see the end of this section.
 
-**The code.** `main.cpp`: 7,747 → 8,370 lines (net -1 as of the last
-refactor stage; the 16 lines since are `BATTY_INFINITE_LIVES`, which is
-a feature and not this plan's work) across 15 modules. The longest function is `run_level` at 113 lines, and it is an
+**The code.** `main.cpp`: 7,747 → 8,420 lines (net -1 as of the last
+refactor stage; the 66 lines since are `BATTY_INFINITE_LIVES` and the
+three redraw fixes it exposed, which are features and bugs rather than
+this plan's work) across 15 modules. The longest function is `run_level` at 113 lines, and it is an
 orchestrator of named phases, which is what it should be.
 
-**The tests.** 107 gates, indexed in `notes/testing.md` and kept complete
+**The tests.** 109 gates, indexed in `notes/testing.md` and kept complete
 by `test-gate-index`. They fall in three groups:
 
-  - 78 sweep gates (77 QEMU + `test-asan`) — **`python3 scripts/run_gates_parallel.py --full`**,
+  - 79 sweep gates (78 QEMU + `test-asan`) — **`python3 scripts/run_gates_parallel.py --full`**,
     ~7 min. Plain `make parity-check-parallel` runs only the 8-gate
     PARITY_CHECK subset in ~100 s; this line named it as the 67-gate
     sweep until 2026-08-10, and that error is part of how a red gate
     went unnoticed for ten commits (see notes/known-bugs.md #18).
-  - 29 emulator-free source gates plus 14 host suites — `make test-fast`,
+  - 30 emulator-free source gates plus 14 host suites — `make test-fast`,
     seconds. CI runs exactly this.
   - 3 ZEsarUX-oracle gates — `make parity-check-full`.
 

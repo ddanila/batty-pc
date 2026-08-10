@@ -93,8 +93,13 @@ def main() -> int:
     print("PASS high_score_not_per_player: PlayerState holds no high score")
 
     hud = body_of(code, "static void render_hud_to_buff(void) {")
+    # The y argument is HUD_SCORE_Y since 2026-08-10 (it was the literal
+    # 0x15). Accept either: this gate is about WHICH SLOT SHOWS WHOSE
+    # SCORE, and pinning the y coordinate here only made it fail when the
+    # constant was named — a gate failing for a reason it does not care
+    # about teaches people to edit gates rather than read them.
     slots = re.findall(r"draw_score_digits_original\(\s*0x([0-9A-Fa-f]+)\s*,"
-                       r"\s*0x[0-9A-Fa-f]+\s*,\s*([^)]+)\)", hud)
+                       r"\s*(?:0x[0-9A-Fa-f]+|HUD_SCORE_Y)\s*,\s*([^)]+)\)", hud)
     want = {"10": "players[0].score", "68": "high_score",
             "C0": "players[1].score"}
     got = {x.upper(): "".join(v.split()) for x, v in slots}

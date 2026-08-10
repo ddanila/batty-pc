@@ -17,6 +17,9 @@
 | #17 | `test-enemy-descend` failed about two runs in three | fixed 2026-08-09 — the gate asserts the implication, and `BATTY_REPLAY_COUNTER` pins the phase |
 | #18 | `test-enemy-brick-residue` red since `ec8c03d`: the dirty redraw leaves 92 px of residue | fixed 2026-08-10 — the partial rebuild now restores both boundary char rows' neighbour contributions |
 | #19 | ENTER bound to bat 2's right made `test-double-play-court` flake between a 207 and 211 px extent | fixed 2026-08-10 — ENTER dropped from the bat-2 cluster; it is the port's attract-chain key |
+| #20 | destroying a brick in the TOP row leaves a solid black line where it was | fixed 2026-08-10 — the incremental band rebuild never erased pixel row 31; `test_bricks.cpp` |
+| #21 | after a death the bat comes back in fragments and magnets stay missing | fixed 2026-08-10 — the post-death repaint was riding on the life counter changing; `test-respawn-redraw` |
+| #22 | the bottom five rows of every score digit keep the previous score | fixed 2026-08-10 — the in-place HUD patch was shorter than the digits; `test-hud-patch-extent` (source gate — no screendump here has a score on it) |
 
 **Nothing here is open.** #14's port-side half is fixed and gated; what
 remains of it is a QUESTION about the original that cannot be answered
@@ -1191,3 +1194,125 @@ no such tolerance, which is the only reason it got fixed.
 **A gate written around a defect makes the defect permanent.** When a
 measurement comes out two ways, the question is which behaviour is
 right, not which bounds cover both.
+
+
+## #20 — the top brick row leaves a line behind
+
+Every standing brick zeroes the pixel row ABOVE its body. For brick row
+r that is pixel row `31 + 8r`, and for row 0 it is row 31.
+
+The incremental band rebuild widens its window by one brick row on each
+side, and deliberately does NOT erase the shared top-edge row at the
+top of that window: for any interior row that pixel row belongs to the
+brick above, which is not being re-composited, so erasing it would drop
+the neighbour's bottom edge. `print` re-zeroes it under the live bricks
+below and the content is canonical.
+
+Row 0 is the case that rule does not cover. The window cannot widen
+upwards past row 0, so when a top-row brick is destroyed the row being
+re-composited is the same row whose top edge is at 31 — and there is no
+brick above to own those zeros. Nobody erases them, and the rebuild then
+CAPTURES row 31 into the static background cache, which is what turns a
+one-frame smear into a black line that stays for the rest of the level.
+
+Reported from play: "on first level some solid horizontal leftover line
+persists from the top level of blocks when those are destroyed."
+
+`band_rebuild_window` in `src/bricks.cpp` now owns the paint window and
+the capture window as one decision, with the r0 == 0 asymmetry stated
+where it can be read. Two host tests hold it.
+
+### Why the existing test could not see it
+
+`test_window_repaint_matches_full_at_its_edges` compares a scoped
+repaint against a full paint across exactly these rows, on every level,
+for ten windows each. It has been green throughout.
+
+It `memset`s `scr_buff` to 0 first, and the residue is made OF zeros. A
+leftover the same value as the background is not a leftover as far as
+the comparison is concerned. The new test paints on 0xFF.
+
+This is the third time a measurement in this repo has failed by picking
+a background the defect could hide in — `test-life-loss` counting "lit
+pixels" where the playfield is not colour 0, `test-game-over-visual`
+before it. **When a test's baseline can equal the defect's signature,
+the test is measuring its own memset.**
+
+
+## #21 — the bat comes back in pieces after a death
+
+`play_bat_explosion` throws sparks across the playfield and takes the
+bat off screen. `respawn_primary_ball` then puts everything back — and
+nothing it restores looks CHANGED to the per-frame dirty tests. The bat
+returns to `BAT_X_INIT` with `prev_x` already equal to it, at the same
+y, the same width, the same bonus byte, so `bat_changed()` is false and
+`compose_bat_full` flushes a single row of running dots over a bat that
+is not on the screen. It stays a fragment until the player moves, which
+makes `x != prev_x` true.
+
+Magnets are worse: they repaint when they toggle, so after a death a
+magnet is simply absent until it happens to toggle or a ball passes
+through it.
+
+This was live for months and nobody saw it, because losing a life
+changes the life counter and `refresh_static_background` rebuilds the
+whole cache on `lives_dirty` — the indicators live in the bat band, not
+the patchable strip. The repaint the explosion needed arrived for free,
+from a counter it has nothing to do with.
+
+`BATTY_INFINITE_LIVES` (2026-08-10) removed the counter change, and the
+defect surfaced within minutes of someone playing the build. The fix is
+`invalidate_static_cache_after_death()`, called at the end of the
+explosion: the thing that overwrote the screen is the thing that says
+so. `lives_dirty` goes back to meaning what its name says.
+
+### The part worth remembering
+
+The bug was not in the code the switch touched. `BATTY_INFINITE_LIVES`
+suppresses one decrement; it does not draw anything. What it removed was
+an ACCIDENTAL DEPENDENCY — a repaint that had never been asked for, and
+arrived because two unrelated things happened to coincide on every code
+path anyone had run.
+
+Those are invisible while the coincidence holds. The only reason this
+one became visible is that a switch broke the coincidence, and the only
+reason it got fixed is that someone played the game. No gate in the
+suite was looking, and the suite was green.
+
+
+## #22 — the bottom of every score digit is stale
+
+When the score changes on a level with no magnets, the HUD is patched in
+place rather than rebuilt — `update_static_hud_top` repaints the top
+strip, copies it into the background cache and marks it dirty. The strip
+was `FRAME_TOP_H_PX` = 24 rows.
+
+The digits are printed at y = `$15` (21) and are 8 rows tall, so they
+reach row 28. Rows 24..28 — the bottom five rows of every digit — were
+neither re-cached nor flushed, and kept the previous score's pixels
+until something else forced a full rebuild.
+
+Reported from play as "numbers are not rendered fully sometimes, a bit,
+this is very hard to tell", which is exactly right: the top three rows
+of each digit update normally, and digits differ least at the bottom.
+
+`HUD_PATCH_H_PX` is now derived from `HUD_SCORE_Y + HUD_DIGIT_H_PX`
+rather than borrowed from the frame height.
+
+### The coverage hole this exposed, which is bigger than the bug
+
+The visual-test executable is compiled `-dBATTY_SCORELESS_HUD` (the
+`build/%-test.obj` rule), because the ground-truth capture pipeline NOPs
+the original's score block. `render_hud_to_buff` is an empty function
+there.
+
+Every QEMU gate in this repo runs on the test floppy. So **not one
+screendump in the suite has a score on it.** The digits — one of the few
+things on screen a player reads rather than watches — have no visual
+coverage of any kind, and a gate for this defect could not be written
+without giving the test build a HUD and re-baselining every visual gate
+that exists.
+
+`test-hud-patch-extent` holds the arithmetic instead, and says in its own
+docstring that it is a substitute. Closing the hole properly is real
+work and is not done.

@@ -1330,6 +1330,7 @@ test-source-gates:
 	$(MAKE) test-shimmer-one-pass
 	$(MAKE) test-gate-freshness
 	$(MAKE) test-switch-defaults
+	$(MAKE) test-hud-patch-extent
 	$(MAKE) test-host-tests-wired
 	$(MAKE) test-gate-index
 	$(MAKE) test-doc-links
@@ -1689,6 +1690,18 @@ test-life-loss:
 
 test-life-respawn:
 	python3 scripts/test_life_respawn.py
+
+# What the screen looks like after a death when the LIFE COUNT did not
+# change — the case that made the post-death repaint's dependency on
+# lives_dirty visible. Reported from play, not from a gate.
+test-respawn-redraw:
+	python3 scripts/test_respawn_redraw.py
+
+# The in-place HUD patch must cover every row the score digits occupy.
+# A source gate: the visual executable is built -dBATTY_SCORELESS_HUD, so
+# no screendump in this repo has a score on it. See the script.
+test-hud-patch-extent:
+	python3 scripts/check_hud_patch_extent.py
 
 # Level-clear -> next, and the level index wrapping at N_LEVELS. Both
 # reachable only because BATTY_REPLAY_CLEAR_BRICKS empties the grid.

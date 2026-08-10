@@ -218,6 +218,20 @@ static unsigned char bot_p2[BOTSPR_W_BYTES * BOTSPR_H];
 #define HUD_SPR_2UP      0x0032
 #define HUD_SPR_HI       0x0064
 #define HUD_SCORE_DIGITS 0x0086
+/* Where the score digits sit, and how far down they reach. The original
+ * prints them at y=$15 and each glyph is 8 pixel rows, so the last row
+ * they touch is 28 — FIVE rows BELOW the 24-row top frame.
+ *
+ * That gap was a real defect: the in-place HUD patch (update_static_hud_top,
+ * taken whenever a score changes on a magnet-free level) copied and
+ * flushed FRAME_TOP_H_PX rows, so rows 24..28 of every digit — the lower
+ * half of the glyph — kept the PREVIOUS score's pixels in the cache and
+ * on screen until something else forced a full rebuild. Subtle, because
+ * the top three rows updated normally and digits differ least at the
+ * bottom. known-bugs.md #22. */
+#define HUD_SCORE_Y      0x15
+#define HUD_DIGIT_H_PX   8
+#define HUD_PATCH_H_PX   (HUD_SCORE_Y + HUD_DIGIT_H_PX)   /* rows 0..28 */
 static unsigned char hud_sprites[HUD_SPRITES_SIZE];
 
 
@@ -2866,26 +2880,24 @@ static void rebuild_band_cache_rows(unsigned char level_idx,
                                     unsigned char bg_attr, unsigned char cycle,
                                     int lo, int hi) {
     int y, cr;
-    /* Incremental: re-composite [R0, R1] = the dirty brick rows
-     * widened by one row each side, so every attr/pixel the window
-     * inherits from a neighbour row is re-derived rather than left
-     * stale (see render_brick_band_rows' boundary notes). Pixel
-     * window = the rows' bodies + R1's bottom-edge row; the shared
-     * top-edge row (31 + 8*R0) is not bg-erased — print re-zeros it
-     * only under live R0 bricks, which is the canonical content. */
-    int R0  = (lo > 0) ? lo - 1 : 0;
-    int R1  = (hi + 1 < LVL_ROWS) ? hi + 1 : LVL_ROWS - 1;
-    int py0 = 32 + R0 * 8;
-    int py1 = 40 + R1 * 8;
-    int cr0 = 4 + R0;
-    int cr1 = 5 + R1;
+    /* Incremental: re-composite [R0, R1] = the dirty brick rows widened
+     * by one row each side, so every attr/pixel the window inherits from
+     * a neighbour row is re-derived rather than left stale (see
+     * render_brick_band_rows' boundary notes).
+     *
+     * The paint window and the capture window differ by one pixel row at
+     * the top, and which one it is depends on R0 — band_rebuild_window
+     * owns that rule and tests/test_bricks.cpp gates it. This used to be
+     * four expressions here, and the r0 == 0 case was missing. */
+    int R0, R1, py_cap0, py0, py1, cr0, cr1;
+    band_rebuild_window(lo, hi, &R0, &R1, &py_cap0, &py0, &py1, &cr0, &cr1);
     paint_bg_window_to_buff(bg_attr, cycle, py0, py1 - py0 + 1, 1, 30);
     /* The bg repaint erased the border line; put it back before the
      * bricks, which then overwrite it — the canonical order. */
     restore_inner_border_line(py0, py1 - py0 + 1, 1, 30);
     render_brick_band_rows(level_idx, R0, R1, cr0, cr1);
     /* Capture from the shared top-edge row down (print touches it). */
-    for (y = py0 - 1; y <= py1; y++) {
+    for (y = py_cap0; y <= py1; y++) {
         memcpy(&bg_scr_buff[(y << 5) + 1], &scr_buff[(y << 5) + 1], 30);
     }
     for (cr = cr0; cr <= cr1; cr++) {
@@ -2893,7 +2905,7 @@ static void rebuild_band_cache_rows(unsigned char level_idx,
     }
     /* Flush every pixel row of every recomposited attr cell, plus
      * the shared top-edge pixel row (same rule as the full branch). */
-    mark_dirty_bytes(py0 - 1, (cr1 * 8 + 7) - (py0 - 1) + 1, 0, 31);
+    mark_dirty_bytes(py_cap0, (cr1 * 8 + 7) - py_cap0 + 1, 0, 31);
     prof.band_rows += (unsigned long)(cr1 - cr0 + 1);
 }
 
@@ -2916,6 +2928,14 @@ static void build_static_brick_band_cache(unsigned char level_idx) {
                                 : (unsigned long)((t0 - t1) + 23864u);
     prof.band_rebuilds++;
     cache.band_dirty = 0;
+}
+
+/* Everything on screen is suspect — rebuild the static cache whole and
+ * push every row. The one caller is the end of the bat explosion; the
+ * reasoning for why it cannot be left implicit is there. */
+static void invalidate_static_cache_after_death(void) {
+    cache.bg_dirty = 1;
+    cache.full_flush = 1;
 }
 
 static void mark_static_bg_cache_dirty(void) {
@@ -3012,7 +3032,7 @@ static void update_static_hud_top(unsigned char level_idx) {
     paint_frame_to_buff(cycle, level_idx);
     render_hud_to_buff();
     restore_top_frame_center(cycle, level_idx);
-    for (y = 0; y < FRAME_TOP_H_PX; y++) {
+    for (y = 0; y < HUD_PATCH_H_PX; y++) {
         memcpy(&bg_scr_buff[y << 5], &scr_buff[y << 5], 32);
     }
     for (cr = 0; cr < FRAME_TOP_H_PX / 8; cr++) {
@@ -6067,7 +6087,17 @@ static void compose_bat_full(unsigned char cycle, unsigned char bg_attr,
  * be patched in place instead, but only on levels with no magnets,
  * since a magnet may overlap the HUD rows and would be repainted over.
  * A lives change always forces one, because the indicators sit in the
- * bat band rather than the patchable strip. */
+ * bat band rather than the patchable strip.
+ *
+ * That last rule is about the INDICATORS and nothing else. It is not a
+ * general "something happened, repaint" hook, though it worked as one by
+ * accident for months: every bat explosion was followed by a life
+ * decrement, so the rebuild the explosion needed arrived for free and no
+ * caller had to ask for it. The first build where a death did not change
+ * the counter (BATTY_INFINITE_LIVES) left the bat in fragments and the
+ * magnets missing. The death path now asks explicitly —
+ * invalidate_static_cache_after_death — and this stays what its name
+ * says it is. */
 static void refresh_static_background(unsigned char level_idx) {
     const int score_dirty = (players[0].score != cache.drawn_score[0]
                           || players[1].score != cache.drawn_score[1]
@@ -6104,7 +6134,8 @@ static void refresh_static_background(unsigned char level_idx) {
         cache.drawn_score[0] = players[0].score;
         cache.drawn_score[1] = players[1].score;
         cache.drawn_high_score = high_score;
-        mark_dirty_bytes(0, FRAME_TOP_H_PX, 0, 31);
+        /* The digits reach to row 28, not row 23 — HUD_PATCH_H_PX. */
+        mark_dirty_bytes(0, HUD_PATCH_H_PX, 0, 31);
     }
 }
 
@@ -6409,7 +6440,7 @@ static void draw_score_digits_original(int x, int y, unsigned long value) {
     for (i = 0; i < 6; i++) {
         const unsigned char *digit = hud_sprites + HUD_SCORE_DIGITS + 2 + digits[i] * 16;
         int row;
-        for (row = 0; row < 8; row++) {
+        for (row = 0; row < HUD_DIGIT_H_PX; row++) {
             int py = y + row;
             unsigned char mask = digit[row * 2];
             unsigned char pix = digit[row * 2 + 1];
@@ -6426,9 +6457,9 @@ static void render_hud_to_buff(void) {
     blit_masked_to_scr_buff(hud_sprites + HUD_SPR_1UP, 0x1C, 0x0C);
     blit_masked_to_scr_buff(hud_sprites + HUD_SPR_2UP, 0xCC, 0x0C);
     blit_masked_to_scr_buff(hud_sprites + HUD_SPR_HI,  0x78, 0x0C);
-    draw_score_digits_original(0x10, 0x15, players[0].score);
-    draw_score_digits_original(0x68, 0x15, high_score);
-    draw_score_digits_original(0xC0, 0x15, players[1].score);
+    draw_score_digits_original(0x10, HUD_SCORE_Y, players[0].score);
+    draw_score_digits_original(0x68, HUD_SCORE_Y, high_score);
+    draw_score_digits_original(0xC0, HUD_SCORE_Y, players[1].score);
 }
 #else
 static void render_hud_to_buff(void) {
@@ -7164,6 +7195,25 @@ static void play_bat_explosion(unsigned char level_idx) {
         }
     }
     sound_stop_all();
+    /* The sparks flew over the whole playfield and the bat is gone, so
+     * the screen no longer matches anything the per-frame dirty tests
+     * track. Say so.
+     *
+     * This has to be stated because NOTHING that comes back from
+     * respawn_primary_ball looks changed to those tests: the bat returns
+     * to BAT_X_INIT with prev_x set to match, at the same y, the same
+     * width, the same bonus byte — so bat_changed() is false and
+     * compose_bat_full flushes one row of running dots over a bat that
+     * is not on screen. The magnets are worse: they only repaint when
+     * they toggle, so a magnet stays missing until it happens to.
+     *
+     * It LOOKED fine for months because losing a life changes the life
+     * counter, and refresh_static_background rebuilds the whole cache on
+     * lives_dirty for the sake of the indicators. The repaint was riding
+     * on a counter it has nothing to do with. BATTY_INFINITE_LIVES
+     * removed the counter change and the bat came back in fragments —
+     * reported from actual play, not from a gate. known-bugs.md #21. */
+    invalidate_static_cache_after_death();
 }
 
 

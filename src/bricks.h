@@ -110,4 +110,33 @@ void repaint_row_attrs(const u8 *cells, int row);
  * left. Getting this wrong is what known-bugs #1 and #2 were. */
 void repair_band_row_boundaries(const u8 *cells, int r0, int r1);
 
+/* The geometry of an incremental band rebuild: which brick rows get
+ * re-composited, which pixel rows the caller must repaint from
+ * background first, and which pixel rows it then captures into its
+ * static cache.
+ *
+ * The two pixel windows are NOT the same, and that is the whole reason
+ * this is a function rather than four expressions at the call site.
+ *
+ * `py_capture0` is the top-edge row SHARED between brick row r0 and the
+ * row above it: repaint_row_top_edge writes it from the row below, so
+ * the rebuild has to capture it. Whether it may also be ERASED first
+ * depends on whether a row above exists:
+ *
+ *   r0 > 0   the row above owns that pixel row's content and is not
+ *            being re-composited. Erasing it would drop the neighbour's
+ *            bottom edge, so repainting starts one row LOWER and print
+ *            re-zeros it under r0's live bricks.
+ *   r0 == 0  there is no row above. The zeros there belong to row 0's
+ *            own bricks, so when one of those is destroyed nobody
+ *            rewrites the row — it has to be erased with the rest.
+ *
+ * Missing the r0 == 0 case leaves a solid black line where the top
+ * brick row used to be, baked into the static cache and therefore
+ * permanent. known-bugs.md #20. */
+void band_rebuild_window(int lo, int hi,
+                         int *r0, int *r1,
+                         int *py_capture0, int *py_paint0, int *py1,
+                         int *cr0, int *cr1);
+
 #endif /* BATTY_BRICKS_H */

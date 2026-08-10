@@ -1,14 +1,14 @@
 # Visual regression test
 
 > **`make test-fast` needs no emulator and runs in seconds** — 14 host
-> test suites plus 29 source gates. Start there; it is also exactly what
+> test suites plus 30 source gates. Start there; it is also exactly what
 > CI runs. `make test-video` is one of those suites: it compiles the
 > video engine (`src/zxvga.cpp`) with the host compiler and checks the
 > ZX attribute/colour-clash model exhaustively — every attr x every byte
 > — in milliseconds. See [`video-engine.md`](video-engine.md).
 >
 > The QEMU gates below cost ~10 s per boot; `make parity-check-parallel`
-> runs all 78 gates of the full sweep in about six minutes (77 QEMU
+> runs all 79 gates of the full sweep in about six minutes (78 QEMU
 > plus `test-asan`, which is host-only but belongs to the same sweep).
 >
 > (This paragraph read "`make test-video` is the one gate here that
@@ -398,6 +398,15 @@ mentioned nowhere in this file, including several of the oldest.
 - `test-life-respawn` — a death gives back a centred bat, a fresh ball
   on it and no leftover bonuses (`test-life-loss` covers only the life
   being taken).
+- `test-respawn-redraw` — after a death the bat and the magnets are
+  drawn the same whether or not the life count changed. The post-death
+  repaint used to ride on `lives_dirty`; with `BATTY_INFINITE_LIVES` the
+  bat came back in fragments (known-bugs #21).
+- `test-hud-patch-extent` — the in-place HUD patch covers every row the
+  score digits occupy. A SOURCE gate, and not by preference: the visual
+  executable is built `-dBATTY_SCORELESS_HUD`, so `render_hud_to_buff` is
+  empty in every QEMU gate and no screendump in this repo has a score on
+  it. The digits have no visual coverage at all (known-bugs #22).
 - `test-host-tests-wired` — every host suite runs under `make test-fast`.
 
 **CI is a second compiler, and it is authoritative for one thing.**

@@ -581,6 +581,117 @@ static void test_window_repaint_matches_full_at_its_edges() {
 }
 
 
+/* Destroying a brick in the TOP row must not leave its top edge behind.
+ *
+ * Each live brick zeroes the pixel row ABOVE its body — row 31 for brick
+ * row 0. For any other row that pixel row is shared with the brick above
+ * and belongs to it, so an incremental rebuild deliberately does not
+ * erase it. Row 0 has no row above: the zeros are its own, and when it
+ * is destroyed nobody rewrites them. They then get captured into the
+ * static background cache, which is what makes the leftover permanent
+ * rather than a one-frame flicker.
+ *
+ * test_window_repaint_matches_full_at_its_edges cannot see this, and the
+ * reason is worth keeping: it memsets scr_buff to 0 and compares against
+ * a full paint on the same zeroed buffer, so a residue made OF zeros is
+ * indistinguishable from its own background. Same lesson as the life
+ * indicator's density measurement — pick a background the defect cannot
+ * hide in. Here that is 0xFF.
+ *
+ * known-bugs.md #20. */
+static void test_top_row_destroy_leaves_no_edge() {
+    const int before = failures;
+    const u8 BG = 0xFF;
+    int differing = 0;
+    int exercised = 0;
+
+    for (int level = 0; level < LEVELS; level++) {
+        u8 cells[FIELD_ROWS * FIELD_COLS];
+        u8 after[FIELD_ROWS * FIELD_COLS];
+        memcpy(cells, level_cells(level), sizeof(cells));
+
+        int col = -1;
+        for (int c = 0; c < FIELD_COLS; c++) {
+            if (!(cells[c] & 0x80)) { col = c; break; }
+        }
+        if (col < 0) continue;              /* no live brick in row 0 */
+        exercised++;
+        memcpy(after, cells, sizeof(after));
+        after[col] |= 0x80;                 /* the hit */
+
+        /* What the FULL rebuild would show once the brick is gone. */
+        memset(scr_buff, BG, sizeof(scr_buff));
+        paint_bricks(after);
+        u8 full_scr[SCR_BUFF_SIZE];
+        memcpy(full_scr, scr_buff, sizeof(full_scr));
+
+        /* What the INCREMENTAL rebuild shows: start from the screen as
+         * it was with the brick alive, then repaint exactly the window
+         * rebuild_band_cache_rows repaints, and capture what it
+         * captures. */
+        memset(scr_buff, BG, sizeof(scr_buff));
+        paint_bricks(cells);
+
+        int r0, r1, cap0, paint0, py1, cr0, cr1;
+        band_rebuild_window(0, 0, &r0, &r1, &cap0, &paint0, &py1, &cr0, &cr1);
+        for (int y = paint0; y <= py1; y++) {
+            memset(&scr_buff[y * BYTES_PER_ROW + 1], BG, 30);
+        }
+        paint_brick_rows(after, r0, r1);
+        repair_band_row_boundaries(after, r0, r1);
+
+        for (int y = cap0; y <= py1; y++) {
+            if (memcmp(&full_scr[y * BYTES_PER_ROW + 1],
+                       &scr_buff[y * BYTES_PER_ROW + 1], 30) != 0) {
+                differing++;
+                break;
+            }
+        }
+    }
+
+    check(exercised > 0,
+          "no level has a live brick in row 0 — this test exercised nothing\n");
+    check(differing == 0,
+          "%d level(s): destroying a top-row brick left pixels the full "
+          "rebuild does not have\n", differing);
+    report("top_row_destroy_no_edge", before, "every level's top row ok");
+}
+
+/* The paint window may only differ from the capture window where a row
+ * above actually owns the shared pixel row. Stated separately from the
+ * behaviour test above because it is the RULE, and a future change that
+ * keeps the pixels right by accident should still have to restate it. */
+static void test_band_window_paints_what_it_captures() {
+    const int before = failures;
+    for (int lo = 0; lo < FIELD_ROWS; lo++) {
+        for (int hi = lo; hi < FIELD_ROWS; hi++) {
+            int r0, r1, cap0, paint0, py1, cr0, cr1;
+            band_rebuild_window(lo, hi, &r0, &r1, &cap0, &paint0, &py1,
+                                &cr0, &cr1);
+            check(cap0 == BRICK_BAND_Y_TOP + r0 * 8,
+                  "lo=%d hi=%d: capture starts at %d, not the shared "
+                  "top-edge row %d\n",
+                  lo, hi, cap0, BRICK_BAND_Y_TOP + r0 * 8);
+            if (r0 == 0) {
+                check(paint0 == cap0,
+                      "lo=%d hi=%d: r0 is 0, so nothing above owns row "
+                      "%d — it must be repainted, not inherited "
+                      "(paint starts at %d)\n", lo, hi, cap0, paint0);
+            } else {
+                check(paint0 == cap0 + 1,
+                      "lo=%d hi=%d: row %d belongs to brick row %d and "
+                      "must not be erased (paint starts at %d)\n",
+                      lo, hi, cap0, r0 - 1, paint0);
+            }
+            check(cr0 == 4 + r0 && cr1 == 5 + r1,
+                  "lo=%d hi=%d: char rows %d..%d do not span the pixel "
+                  "window\n", lo, hi, cr0, cr1);
+        }
+    }
+    report("band_window_paints_what_it_captures", before,
+           "every (lo, hi) row window ok");
+}
+
 /* The two "is this brick there" rules must stay different.
  *
  * BrickField::standing is `!(cell & 0x80)` — an undestructible brick is
@@ -771,6 +882,8 @@ int main(int argc, char **argv) {
     test_destroyed_cells_reset_but_sentinels_survive();
     test_destroyed_cell_shadow_follows_left_neighbour();
     test_window_repaint_matches_full_at_its_edges();
+    test_top_row_destroy_leaves_no_edge();
+    test_band_window_paints_what_it_captures();
     test_attrs_generate_without_the_capture();
     test_live_count_vs_solid();
     test_band_bounds_follow_the_field_geometry();
