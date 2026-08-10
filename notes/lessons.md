@@ -1482,3 +1482,38 @@ Related: this is the second time in one session that a long-standing
 claim fell to one command — `grep -rn 8086 notes/` for the build-target
 rot, `ls -l /dev/kvm` here. Both claims were about things OUTSIDE the
 code, which is exactly where no gate was ever going to look.
+
+
+## Three wrong answers to one question, each cheaper than the last (2026-08-10)
+
+WS8.1 asked whether hosted CI could run the QEMU gates. The answer went:
+
+  1. **"Hosted runners have no KVM."** Written into the workflow header
+     and PLAN.md, true when measured, and left to age for two years.
+  2. **"Hosted runners DO have KVM."** From `ls -l /dev/kvm` finding the
+     node present. I committed that as the finding — and it was half of
+     one. The node exists; access does not.
+  3. **"`/dev/kvm` is present but not accessible as shipped."** From
+     QEMU's own words: `Could not access KVM kernel module: Permission
+     denied`. The runner user is not in the `kvm` group.
+
+Each step cost less than the one before, and each was only reachable by
+actually running the thing. Step 2 in particular felt like a decisive
+result and was published as one, when what I had was a file listing.
+
+**A capability check has to exercise the capability.** `ls` on a device
+node tests the filesystem, not the permission, not the driver, not
+whether the process may open it. The check that settled it ran QEMU and
+read its stderr — and even that took two attempts, because my first
+version inferred success from an exit code that was ambiguous
+(a QEMU with no bootable device has its own reasons to exit 1).
+
+With the udev rule in, a gate that takes 11.0 s locally takes 11.5 s on
+the runner. The TCG figure that closed this item in 2024 was ~9 minutes
+for a two-gate smoke. So the item was blocked for two years by a
+premise that was, by the end, wrong in two independent ways — and every
+piece of evidence that overturned it came from one CI run each.
+
+The wider habit: when a plan entry says "re-test this if it ever gets
+cheap", the re-test is usually already cheap and the entry is the
+reason nobody checked.

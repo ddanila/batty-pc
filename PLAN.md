@@ -1052,11 +1052,37 @@ checking it.
    blocking position would be that mistake made in advance. The figure
    to beat is the ~9 minutes a two-gate smoke took under TCG.
 
-   **Open, and the decision is yours:** read the job's timings off a
-   run, and if they are good, promote it — make it gate, and widen it
-   from two gates toward the 78-gate sweep. If KVM turns out usable but
-   not much faster, the honest outcome is to keep CI emulator-free and
-   record that with numbers this time.
+   **MEASURED 2026-08-10, and the answer is yes.** Two things had to be
+   fixed first, each found by a run rather than by reasoning:
+
+   - `/dev/kvm` is present but NOT accessible as shipped — the runner
+     user is not in the `kvm` group, giving `Could not access KVM
+     kernel module: Permission denied`. The udev rule from GitHub's own
+     Android-emulator docs fixes it in place (`usermod -aG kvm` cannot:
+     group membership does not reach the running shell).
+   - the runner image has no QEMU, no mtools and no Pillow.
+
+   With those in, `qemu-smoke-kvm` is green and the number is:
+
+   | gate | TCG (2024 calibration) | KVM (2026-08-10) | local |
+   |---|---|---|---|
+   | a 2-gate smoke | ~9 min, still flaked | **11.5 s** | 11.0 s |
+
+   **KVM runs the gates at local speed.** The premise that closed this
+   item is gone twice over — not just "no KVM" but also "too slow to be
+   worth it".
+
+   Honest caveat on the smoke's composition: `test-stuck-ball-offset`
+   turned out to be a SOURCE gate (0.037 s), so what was actually timed
+   is one QEMU gate at 11.5 s against a local 11.0 s. That is the
+   comparison that matters, but the job should pick a genuinely
+   emulator-bound second gate before anyone quotes "two gates".
+
+   **Open, and yours to decide:** promote the job from
+   `continue-on-error` to gating, and widen it from a smoke toward the
+   78-gate sweep. At local speed the full sweep is ~7.7 min of runner
+   time, which is a real cost per push but no longer a technical
+   barrier. A middle option is the 8-gate `parity-check` subset.
 
    Worth noting what this cost: one `ls -l /dev/kvm`. The conclusion it
    overturned had stood since before GitHub's 2024 change and had been
