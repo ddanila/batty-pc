@@ -78,7 +78,13 @@ static void test_bad_int_lists_change_nothing() {
 
 static void test_hex_blobs_parse() {
     const int before = failures;
-    u8 out[4];
+    /* Zeroed, not just declared: `check(cond, fmt, ...)` evaluates its
+     * format arguments whether or not `cond` held, so a parse that
+     * FAILED leaves these read uninitialised — UB, and a failure
+     * message full of garbage exactly when it needs to be readable.
+     * GCC's -Werror=uninitialized rejects it; Apple clang does not,
+     * which is why it took a CI run on ubuntu to surface. */
+    u8 out[4] = {0, 0, 0, 0};
     check(replay_parse_hex_bytes("01A2b3FF", out, 4)
           && out[0] == 0x01 && out[1] == 0xA2 && out[2] == 0xB3 && out[3] == 0xFF,
           "mixed-case blob gave %02X%02X%02X%02X\n",
@@ -91,7 +97,7 @@ static void test_hex_blobs_parse() {
      *   'a' 'f'   lowercase
      *   'A' 'F'   uppercase
      */
-    u8 ends[3];
+    u8 ends[3] = {0, 0, 0};
     check(replay_parse_hex_bytes("09afAF", ends, 3)
           && ends[0] == 0x09 && ends[1] == 0xAF && ends[2] == 0xAF,
           "range-end blob gave %02X%02X%02X, expected 09AFAF\n",
@@ -128,7 +134,7 @@ static void test_bad_hex_blobs_rejected() {
  * env still produces a usable ascending sequence. */
 static void test_frame_lists_parse() {
     const int before = failures;
-    unsigned int f[8];
+    unsigned int f[8] = {0, 0, 0, 0, 0, 0, 0, 0};
 
     check(replay_parse_frame_list("20,40,60", f, 8) == 3
           && f[0] == 20 && f[1] == 40 && f[2] == 60,
@@ -144,7 +150,7 @@ static void test_frame_lists_parse() {
  * deltas the port subtracts are never zero or negative. */
 static void test_frame_lists_stay_ascending() {
     const int before = failures;
-    unsigned int f[8];
+    unsigned int f[8] = {0, 0, 0, 0, 0, 0, 0, 0};
     static const char *specs[] = {
         "20,20,40",     /* repeat */
         "20,10,40",     /* backwards */
@@ -174,7 +180,7 @@ static void test_frame_lists_respect_max() {
      * test that corrupts its own stack cannot report anything — the
      * first version of this test smashed the failure counter and
      * reported success while the parser wrote 6 values into 4 slots. */
-    unsigned int f[8];
+    unsigned int f[8] = {0, 0, 0, 0, 0, 0, 0, 0};
     for (int i = 0; i < 8; i++) f[i] = 0xDEAD;
 
     const int n = replay_parse_frame_list("10,20,30,40,50,60", f, 3);

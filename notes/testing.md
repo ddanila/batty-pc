@@ -399,6 +399,15 @@ mentioned nowhere in this file, including several of the oldest.
   on it and no leftover bonuses (`test-life-loss` covers only the life
   being taken).
 - `test-host-tests-wired` — every host suite runs under `make test-fast`.
+
+**CI is a second compiler, and it is authoritative for one thing.**
+`.github/workflows/parity-check.yml` runs `make test-fast` and
+`make test-asan` on ubuntu-latest, where `c++` is g++. Nothing local
+can stand in for it: Apple clang and g++ disagree about uninitialized
+analysis, and that gap kept `main` red for 163 runs (2026-08-09 06:25
+to 2026-08-10) while every local sweep was green. **Read the run after
+you push** — `gh run list --limit 3` is enough. A green local sweep is
+not the same claim as a green CI.
 - `test-asan` — the same 14 suites rebuilt under ASan + UBSan. Not a
   source gate but listed here because it is wired into the full sweep:
   nine memory-safety defects had each needed a bespoke fixture, and two

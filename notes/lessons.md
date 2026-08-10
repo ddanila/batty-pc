@@ -1378,3 +1378,58 @@ identifiers were still reported afterwards, because the fix was to keep
 the history and put it in the past tense — which is what this repo
 wants. `notes_symbols.py` measures citations, not rot. Judging it by
 whether the number falls would push toward deleting the record.
+
+
+## CI was red for 163 runs and I never looked (2026-08-10)
+
+`main`'s last green run was 2026-08-09 06:25. Every push since — 163
+runs, about 24 hours, every commit in this loop — was red, and I found
+out only because I happened to add a CI step and glanced at the result.
+
+**The break was caused by the commit that made CI honest.** `659e9fc4`
+("ci: run the whole fast suite, and stop keeping three copies of the
+list") replaced four hand-named targets with `make test-fast`. Before
+it, CI compiled 1 of 14 suites; after it, all 14 — and the first thing
+the newly-reached `tests/test_replay_parse.cpp` did was fail to compile
+under g++:
+
+    check(replay_parse_hex_bytes("01A2b3FF", out, 4) && out[0] == ...,
+          "mixed-case blob gave %02X...", out[0], out[1], out[2], out[3]);
+
+`check(cond, fmt, ...)` evaluates its format arguments regardless of
+`cond`, so a parse that FAILED leaves `out` read-uninitialised. Real UB,
+and a failure message full of garbage exactly when it needs to be
+readable. Apple clang says nothing; g++'s `-Werror=uninitialized`
+rejects it. Three sites, three arrays.
+
+Three things worth keeping:
+
+**Local green and CI green are different claims.** Everything I ran all
+night was genuinely green — on one compiler, on one platform. "The
+suite passes" was true and "CI passes" was false for a day. I reported
+the first as if it covered the second, in about twenty commit messages.
+
+**Fixing the observability of a thing will surface what it was hiding,
+and that is the moment to watch it.** A commit whose entire point is
+"CI was checking 1 of 14 suites" should be followed by looking at the
+run. I wrote the commit and moved on, so the finding it bought sat
+unread for a day.
+
+**Push is not the end of the task.** Every iteration of this loop ended
+at `git push` and a green local sweep. The loop had no step that looked
+at what the push did — so the one signal that was telling me something
+new was the one signal nothing consumed. Same shape as
+`test-enemy-brick-residue` sitting red for ten commits, and as
+`test-asan` being a target nobody ran: **a check whose result nobody
+reads is not a check.** Third time this exact lesson has come up in
+this file, and the first time it was about my own habits rather than
+the repo's wiring.
+
+The narrowing fix in the repo: `HOST_WARN_EXTRA` adds clang's
+`-Wconditional-uninitialized` locally, so this class dies before a
+push. It is gated on `$(HOSTCXX) --version | grep -ci clang` — g++ does
+not know the flag and would fail on an unrecognised option, which would
+turn a warning-parity fix into the breakage it exists to prevent.
+It cannot close the gap fully: g++'s `-Wmaybe-uninitialized` and
+clang's analyses genuinely differ, and the only honest way to know what
+g++ thinks is to read the CI run.

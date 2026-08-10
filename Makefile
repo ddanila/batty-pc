@@ -1079,7 +1079,24 @@ test-laffc-levels-sane:
 # Milliseconds, so the clash model can be checked exhaustively (every attr
 # x every byte) rather than sampled through a 10 s QEMU boot.
 HOSTCXX      ?= c++
-HOSTCXXFLAGS ?= -std=c++98 -O1 -Wall -Wextra -Werror -Wno-unused-function
+# Clang-only, added because its absence cost a day. CI compiles these
+# suites with g++, whose -Wuninitialized is stricter than Apple clang's
+# default, and it rejected three `check(cond, fmt, arr[0], ...)` calls
+# where a FAILED parse left `arr` unread-but-read. Locally everything was
+# green, so CI went red on 2026-08-09 and stayed red for 163 runs.
+#
+# -Wconditional-uninitialized is clang's version of that analysis. Gated
+# on the compiler because g++ does not know the flag and would fail the
+# build on an unrecognised option — turning a warning-parity fix into the
+# very breakage it is meant to prevent.
+HOST_CXX_IS_CLANG := $(shell $(HOSTCXX) --version 2>/dev/null | grep -ci clang)
+ifeq ($(HOST_CXX_IS_CLANG),0)
+HOST_WARN_EXTRA =
+else
+HOST_WARN_EXTRA = -Wconditional-uninitialized
+endif
+HOSTCXXFLAGS ?= -std=c++98 -O1 -Wall -Wextra -Werror -Wno-unused-function \
+                $(HOST_WARN_EXTRA)
 VIDEO_TEST     = build/test_zxvga
 VIDEO_TEST_SRC = tests/test_zxvga.cpp src/zxvga.cpp src/zxvga.h src/types.h
 
@@ -1339,7 +1356,7 @@ test-source-gates:
 # reason.
 ASAN_FLAGS = -std=c++98 -O1 -g -fsanitize=address,undefined \
              -fno-omit-frame-pointer -fno-sanitize-recover=all \
-             -Wall -Wextra -Werror -Wno-unused-function
+             -Wall -Wextra -Werror -Wno-unused-function $(HOST_WARN_EXTRA)
 
 test-asan:
 	@find build -maxdepth 1 -type f -name 'test_*' -delete
