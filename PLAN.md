@@ -1024,12 +1024,31 @@ checking it.
    self-hosted runner, or accept local-only (documented dead end for
    TCG stands — don't retry TCG).
 
-   *Probe added 2026-08-10.* The workflow's last step prints `/dev/kvm`,
-   the cpuinfo virtualization flags and `qemu-system-i386 -accel help`
-   on every run, and cannot fail the build. Asking cost one step; the
-   assumption had stood unmeasured since before the 2024 change. Read
-   the answer off any recent run before choosing between a QEMU smoke,
-   a self-hosted runner, and local-only.
+   **ANSWERED 2026-08-10, and the assumption was false.** A probe step
+   in the workflow reported, on `ubuntu-latest`:
+
+       == /dev/kvm ==
+       crw-rw---- 1 root kvm 10, 232 Aug 10 06:55 /dev/kvm
+       == vmx/svm in cpuinfo ==
+       4
+       == qemu accelerators ==
+       qemu-system-i386 not installed on this image
+
+   So hosted runners DO expose `/dev/kvm`, and the "no KVM -> TCG"
+   premise that got the QEMU job dropped no longer holds. QEMU itself
+   is not on the image, which is an `apt-get install qemu-system-x86`
+   away, not a blocker.
+
+   **Next step (not taken here — it is a job, not a step):** install
+   qemu, run a two-gate smoke with `-accel kvm`, and compare its wall
+   clock against the ~9 min TCG measurement that closed this. If it
+   lands in the tens of seconds the QEMU smoke comes back; if KVM turns
+   out to be present-but-unusable, that is the answer too, and this
+   entry gets the evidence rather than another inference.
+
+   Worth noting what this cost: one `ls -l /dev/kvm`. The conclusion it
+   overturned had stood since before GitHub's 2024 change and had been
+   restated confidently in the workflow's own header comment.
 
    *CI also gained `make test-asan` the same day* — host-only, ~7s, and
    the first time the suites are compiled by something other than Apple

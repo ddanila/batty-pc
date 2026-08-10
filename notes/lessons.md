@@ -1448,3 +1448,37 @@ says so.
 catch, before the fix, not after.** And the gap does not close: g++'s
 `-Wmaybe-uninitialized` and clang's analyses genuinely differ, so the
 only honest way to know what g++ thinks is to read the CI run.
+
+
+## `ls -l /dev/kvm` overturned a two-year-old conclusion (2026-08-10)
+
+The QEMU gates were dropped from CI because hosted runners had no KVM,
+fell back to TCG, and a two-gate smoke took ~9 minutes and still flaked.
+That conclusion was written into the workflow's header comment, restated
+in PLAN.md WS8.1, and treated as settled for long enough that the plan
+described re-testing it as a task needing an hour.
+
+The probe was one step, four commands, and it cannot fail the build:
+
+    crw-rw---- 1 root kvm 10, 232 Aug 10 06:55 /dev/kvm
+
+`/dev/kvm` is there. The premise is false. (QEMU itself is not on the
+image, which is an apt-get away.)
+
+**A conclusion about someone else's infrastructure has an expiry date
+you do not control.** GitHub enabled nested virtualization on Linux
+runners in 2024; nothing notified this repo, and nothing would have.
+The note recording the conclusion even said the conclusion might be
+out of date — and that sentence sat there being right for months,
+because "might be out of date" reads as a caveat rather than as work.
+
+The cheap version of the check is worth building even when the
+expensive version is not. Installing qemu and running a KVM smoke is a
+real piece of work and still is. Printing whether the device node
+exists is four commands, and it is what turned "we should re-test this
+sometime" into a measurement with a date on it.
+
+Related: this is the second time in one session that a long-standing
+claim fell to one command — `grep -rn 8086 notes/` for the build-target
+rot, `ls -l /dev/kvm` here. Both claims were about things OUTSIDE the
+code, which is exactly where no gate was ever going to look.

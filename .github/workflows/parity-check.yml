@@ -10,8 +10,14 @@ on:
 # gates pass. That's quick and reliable on hosted runners.
 #
 # The QEMU gates are NOT run in CI. Calibration (runs 27697521157 /
-# 27705593245) showed hosted GitHub runners (no KVM -> TCG emulation) can't
-# run them reliably: first the wall-clock frame waits made every gate diverge
+# 27705593245) showed hosted GitHub runners could not run them reliably.
+#
+# CAVEAT, measured 2026-08-10: that calibration's premise is now WRONG.
+# The probe step below reports `/dev/kvm` PRESENT on ubuntu-latest, so
+# "no KVM -> TCG emulation" no longer describes these runners. The
+# timings below were taken under TCG and stand only for TCG. Re-measure
+# with `-accel kvm` before treating any of it as current. What follows
+# is why the job was dropped, not why it must stay dropped: first the wall-clock frame waits made every gate diverge
 # (now fixed by the BATTY_SERIAL_PROBE COM1 frame-completion signal, which is
 # frame-exact at any speed), but on TCG the boots are so slow that even a
 # 2-gate smoke takes ~9 min and still flaked on probe capture. A practical
