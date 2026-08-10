@@ -1194,3 +1194,35 @@ invariant, and the multi-checkpoint probe.
 
 Wall time is still set by `test-levels-sweep` at 267s, so the suite
 cannot drop below ~4.5 minutes without splitting that gate.
+
+## Mutation sampling as its own activity (2026-08-10)
+
+The gates are written per feature, so they cover what someone thought to
+assert. Sampling mutations over already-tested code covers what nobody
+did.
+
+One afternoon's pass over `src/physics.cpp` and `src/bricks.cpp`, seven
+mutations, four survivors:
+
+- `laffc_sweep`'s left clamp — genuinely equivalent (unreachable through
+  either caller), characterised rather than gated;
+- its row-scan wrap test, its left/right direction gate, and its corner
+  tie-break — all real, all pinned, all confirmed against the
+  disassembly first.
+
+Two mutations were caught immediately (`laffc_bounce`'s face mask, the
+brick shadow row), which is the useful control: the pass is not just
+finding weak spots everywhere.
+
+**The method that works**, learned the hard way twice in that pass:
+
+1. mutate, run, and take "SURVIVED" as a question rather than a verdict;
+2. decide equivalent-or-gap by reading the DISASSEMBLY, not the port —
+   three of four survivors had the port already correct;
+3. get the test's input from a DIFFERENTIAL dump (build both variants,
+   diff their output over a neighbourhood), never by deriving it or by
+   reading the function's own output;
+4. re-run the same mutation against the new test. Two of the four tests
+   passed while the mutant still survived, and only this step said so.
+
+Step 3 and step 4 are the ones that were skipped and had to be redone.

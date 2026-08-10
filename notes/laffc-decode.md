@@ -845,3 +845,31 @@ Now the row-0 brick's top face is open, the ball reflects up
 (`dir ($10^$3F)+1 = $30`). Gate: `make test-ball-no-tunnel` (found it on
 L5/L7 row-0 metal; the default subset pins those). L3 byte-exact ball
 parity unaffected (test-laffc-ball-frame1 green at f1/5/40/100/150).
+
+## Three untested edges, found by mutation (2026-08-10)
+
+A sampling pass over host-tested code turned up three survivors in
+`laffc_sweep`, all boundary conditions, all real:
+
+| mutation | differs when | why it matters |
+|---|---|---|
+| `a + BRICK_H_PX > 0xFF` -> `> 0xFE` | `new_y - band_y == 9` | invents a hit one px past the brick |
+| `(dir+$10)&$3F >= $20` -> `> $20` | `dir == $10` | swaps LEFT/RIGHT face at pure vertical |
+| `y_pen >= x_pen` -> `>` | exact corner tie | flips ties to a vertical bounce |
+
+Each was checked against the disassembly before being pinned, and each
+time the port turned out to be RIGHT — `JR NC` after `CP $20` in phases
+5 and 6, and the borrow-based band walk in phase 4. What was missing was
+any test that could tell.
+
+The `dir == $10` one is the sharpest. The BALL never carries $10 —
+`bat_dir_index` skips it deliberately, and notes/bat-deflection.md
+records that a synthetic $10 ball does not return cleanly — so it reads
+like unreachable code. The ENEMY carries it (straight down) and runs the
+same sweep through `enemy_brick_reaction`. A value that is impossible
+for one caller is ordinary for another.
+
+Pinned by `laffc_row_scan_edge`, `laffc_dir_gate_ge_at_vertical` and
+`laffc_corner_tie_goes_horizontal` in `tests/test_physics.cpp`. All
+three cases came from differential dumps — run both variants over a
+neighbourhood, diff, take the first few — rather than from derivation.

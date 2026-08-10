@@ -383,6 +383,69 @@ static void field_destroy(int row, int col) {
     field_cells[row * FIELD_COLS + col] = 0x80;
 }
 
+/* The row scan's 8-bit wrap test is `> $FF`, and one pixel decides it.
+ *
+ * The original walks the bands with an 8-bit subtract and uses the
+ * BORROW rather than a signed compare, which the port reproduces as
+ * `a = (band_y - new_y) & 0xFF` plus `a + BRICK_H_PX > 0xFF`. Written
+ * out, that is `new_y - band_y <= 8`: a ball whose top is more than a
+ * brick's height below the band top is past that row, not in it.
+ *
+ * `> $FE` accepts nine, and invents a hit one pixel beyond the brick.
+ * Mutation found it — the whole host suite passed with the phantom row
+ * in place. The pair below is the exact edge: 40 is the last row-0
+ * position, 41 is the first miss. */
+static void test_laffc_row_scan_edge_is_one_brick() {
+    const int before = failures;
+    field_fill(false);
+    field_cells[0 * FIELD_COLS + 1] = 0x01;
+    const BrickField field(field_cells);
+
+    const LaffcHit last = laffc_sweep(field, 0x00, 8, 7, 16, 40);
+    check(last.hit && last.row == 0,
+          "y=40 should still be row 0: hit=%d row=%d\n",
+          (int)last.hit, last.row);
+
+    const LaffcHit past = laffc_sweep(field, 0x00, 8, 7, 16, 41);
+    check(!past.hit,
+          "y=41 is nine px below the band top and the brick is eight "
+          "tall, so it must MISS; got hit=%d row=%d cell_y=%d\n",
+          (int)past.hit, past.row, past.cell_y);
+
+    report("laffc_row_scan_edge", before, "40 hits, 41 misses   ok");
+}
+
+/* The left/right direction gate is `>=`, and dir $10 is the only value
+ * that can tell.
+ *
+ * LAFFC_15 rotates the direction and compares:
+ *
+ *     ADD A,$10 / AND $3F / CP $20
+ *     JR NC,LAFFC_16     ; >= $20: RES 0,D  (drop the LEFT face)
+ *     RES 1,D            ;  < $20: drop the RIGHT face
+ *
+ * `(dir + $10) & $3F == $20` happens only at dir $10 — straight down —
+ * so `>=` and `>` agree everywhere else. The ball never carries $10
+ * (bat_dir_index skips it deliberately), but the ENEMY does, and it
+ * runs the same sweep through enemy_brick_reaction.
+ *
+ * Found by mutation: `>` passed the whole host suite. 239 positions at
+ * dir $10 change, and these five are the first of them. */
+static void test_laffc_dir_gate_is_ge_at_vertical() {
+    const int before = failures;
+    field_fill(false);
+    field_cells[0 * FIELD_COLS + 1] = 0x01;
+    const BrickField field(field_cells);
+    for (int ny = 26; ny <= 30; ny++) {
+        const LaffcHit h = laffc_sweep(field, 0x10, 8, 7, 16, ny);
+        check(h.hit && h.face_mask == 0x04,
+              "dir $10 at (16,%d): hit=%d mask=%02X, expected the UP face "
+              "(04). `>` instead of `>=` gives 01\n",
+              ny, (int)h.hit, h.face_mask);
+    }
+    report("laffc_dir_gate_ge_at_vertical", before, "dir $10, 5 rows      ok");
+}
+
 /* The corner tie-break: equal penetration bounces HORIZONTALLY.
  *
  * When both an x face and a y face survive the direction gate,
@@ -1007,6 +1070,8 @@ int main() {
     test_motion_accel_fraction_carries();
     test_motion_accel_fast_variant_caps();
     test_motion_accel_clamp_is_equality_not_ge();
+    test_laffc_row_scan_edge_is_one_brick();
+    test_laffc_dir_gate_is_ge_at_vertical();
     test_laffc_corner_tie_goes_horizontal();
     test_laffc_left_clamp_is_flat();
     test_sweeps_miss_outside_the_band();
