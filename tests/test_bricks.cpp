@@ -240,6 +240,75 @@ static void test_colour_and_shadow() {
  * brick keeps its colour until this resets it. The empty-cell sentinel
  * $C0 must survive: it carries the per-side-strip colours, and treating
  * it as destroyed would repaint the frame's edge cells. */
+/* paint_brick_band_rows repaints row r0-1's SHADOW, and `r0 - 1 >= 0`
+ * is what lets row 0 be that neighbour.
+ *
+ * The window's first char row cr0 = 4+r0 is also row r0-1's shadow row
+ * (5 + r0-1). The base-band copy wipes it, so the shadow has to go back
+ * — that is the known-bugs #18 fix. With `r0 - 1 > 0` the repaint is
+ * skipped when r0 == 1, and row 0's shadow is lost.
+ *
+ * r0 == 1 is reachable: the caller sets R0 = lo - 1, so any dirty band
+ * starting at brick row 2 produces it.
+ *
+ * A live brick's shadow clears bit 6 of the two chars one column to its
+ * right, so the assertion is that char row 5 goes DIM under a live
+ * brick in row 0. */
+static void test_band_rows_repaints_the_shadow_above() {
+    const int before = failures;
+    const u8 BG = 0x45;
+    u8 cells[FIELD_ROWS * FIELD_COLS];
+    for (int i = 0; i < FIELD_ROWS * FIELD_COLS; i++) cells[i] = 0x80;
+    cells[0 * FIELD_COLS + 5] = 0x05;        /* one LIVE brick in row 0 */
+
+    /* Base band: plain background everywhere, undimmed. */
+    static u8 lattr[ATTR_ROWS * ATTR_COLS];
+    memset(lattr, BG, sizeof(lattr));
+
+    memset(attr_buff, 0x77, sizeof(attr_buff));
+    memset(scr_buff, 0, sizeof(scr_buff));
+    /* Window rows 1..2 -> char rows 5..7. Row 0 is the neighbour above. */
+    paint_brick_band_rows(cells, lattr, BG, 1, 2, 5, 7);
+
+    /* paint_shadow_row for row 0 writes char row 5 at cols 2+2c and
+     * 3+2c for the live brick at column 5. */
+    const int cc = 3 + 2 * 5;
+    check((attr_buff[5 * ATTR_COLS + cc] & 0x40) == 0,
+          "char row 5 is row 0's shadow row and must have bit 6 cleared "
+          "under the live brick; got %02X\n",
+          attr_buff[5 * ATTR_COLS + cc]);
+    report("band_rows_shadow_above", before, "r0 == 1, row 0 above ok");
+}
+
+/* The window's OWN first row writes too: `cr >= cr0`.
+ *
+ * `reset_covers_window_top` covers the row ABOVE the window, whose
+ * shadow lands on cr0 via the `cr + 1` test. This is the other half —
+ * a destroyed cell IN row r0, whose own char row IS cr0, guarded by
+ * `cr >= cr0`. With `>` it is skipped and the base-band copy stands.
+ *
+ * Row r0-1 is left ALIVE here so only the row under test can write
+ * there, which is what makes the two halves independent. */
+static void test_reset_covers_the_window_top_from_inside() {
+    const int before = failures;
+    const u8 BG = 0x45;
+    u8 field[FIELD_ROWS * FIELD_COLS];
+    for (int i = 0; i < FIELD_ROWS * FIELD_COLS; i++) field[i] = 0x05;
+
+    const int r0 = 2, col = 3;
+    field[r0 * FIELD_COLS + col] = 0x80;      /* destroyed, IN the window */
+
+    memset(attr_buff, 0x77, sizeof(attr_buff));
+    reset_destroyed_cell_attrs(field, BG, r0, 3, 4 + r0, 9);
+
+    const int cc1 = 1 + 2 * col;
+    check(attr_buff[(4 + r0) * ATTR_COLS + cc1] == (u8)(BG & 0xBF),
+          "a destroyed cell in the window's FIRST row must write its own "
+          "char row: got %02X, expected %02X\n",
+          attr_buff[(4 + r0) * ATTR_COLS + cc1], (u8)(BG & 0xBF));
+    report("reset_covers_window_top_inside", before, "cr == cr0            ok");
+}
+
 /* Column 0 has no left neighbour, and the guard that says so is also a
  * memory guard.
  *
@@ -648,6 +717,8 @@ int main(int argc, char **argv) {
     test_destroyed_bricks_leave_nothing();
     test_painting_stays_in_the_band();
     test_colour_and_shadow();
+    test_band_rows_repaints_the_shadow_above();
+    test_reset_covers_the_window_top_from_inside();
     test_reset_column_zero_has_no_left_neighbour();
     test_reset_row_guard_stops_at_the_grid();
     test_reset_covers_the_window_top_from_above();

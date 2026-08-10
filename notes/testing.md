@@ -1353,6 +1353,21 @@ Re-running the twelve physics lines still standing:
 That leaves the honest count for physics: **1 open**, plus 3 dead and
 1 equivalent-by-construction.
 
+**`bricks.cpp` resolved (2026-08-10):** 4 survivors, 3 real, 1
+equivalent.
+
+| line | verdict |
+|---|---|
+| `row >= FIELD_ROWS` | REAL — a 15-byte overread on every full-window call |
+| `left_live = (col > 0)` | REAL — reads before the array on row 0 |
+| `cr >= cr0` | REAL — the window's own first row stops writing |
+| `r0 - 1 >= 0` | REAL — row 0's shadow lost when the window starts at row 1 |
+| `cr0 <= 4 + (r1 + 1)` | equivalent — callers set `cr0 = 4+R0`, `r1 = R1`, `R0 <= R1`, so both forms hold for every reachable call |
+
+Two of the four were MEMORY guards, which is worth noting: this class of
+mutation is usually read as an off-by-one in behaviour, and half of what
+it found here was an out-of-bounds access instead.
+
 | line | verdict |
 |---|---|
 | `bat_court_clamp_2`: `bat_x >= 0x80` | equivalent — both branches return `0x80` |
