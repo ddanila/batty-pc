@@ -1,70 +1,58 @@
 # Modularising main.cpp
 
-Turning one 7,700-line file into modules that each have a fast,
-exhaustive test. Started 2026-08-07; the stage table below is complete.
+One 7,700-line file turned into modules that each have a fast, exhaustive
+test. The stage table below is complete.
 
 ## Where this stands
 
-**The code.** `main.cpp`: 7,747 → 7,754 lines (`wc -l`) across 15
-modules — net flat. Extraction added headers and comments and took it up
-to 8,420; the 2026-08-10 comment sweep gave that back by dropping prose
-that only restated the code. The longest function is `run_level` at 113
-lines and it is an orchestrator of named phases.
+**The code.** `main.cpp`: 7,747 → 7,756 lines (`wc -l`) across 15 modules —
+net flat. Extraction added headers and comments and took it up to 8,420; the
+comment sweep gave that back by dropping prose that only restated the code.
+The longest function is `run_level` at 113 lines, an orchestrator of named
+phases.
 
-**The tests.** 109 gates, indexed in `notes/testing.md` and kept
-complete by `test-gate-index`:
+**The tests.** 109 gates, indexed in `notes/testing.md` and kept complete by
+`test-gate-index`:
 
   - 79 sweep gates (78 QEMU + `test-asan`) —
     `python3 scripts/run_gates_parallel.py --full`, ~7 min.
     `make parity-check-parallel` runs only the 8-gate subset in ~100 s.
-  - 30 emulator-free source gates plus 14 host suites —
-    `make test-fast`, seconds. CI runs exactly this.
+  - 30 emulator-free source gates plus 14 host suites — `make test-fast`,
+    seconds. CI runs exactly this.
   - 3 ZEsarUX-oracle gates — `make parity-check-full`.
 
-**The defects.** Eight surfaced by this refactor (#8–#15) and three more
-by playing the game (#20–#22). `notes/known-bugs.md` holds the table;
-this file keeps no second copy.
+**The defects.** Eight surfaced by this refactor (#8-#15) and three more by
+playing the game (#20-#22). `notes/known-bugs.md` holds the table; this file
+keeps no second copy.
 
 `scripts/check_notes_numbers.py` pins the figures above on every
 `make test-fast`.
 
-## What is left
-
-1. **Stage 1 is done as far as it should go.** Six replay seeders are
-   out; three are blocked by design, not placement.
-   `BATTY_FORCE_SPAWN_BONUS` reaches `pick_bonus_type`, which reads
-   seven pieces of live game state; the two brick seeders need
-   `live_level`. Moving either drags game state into a compositor
-   module. The reasoning sits at `pick_bonus_type` too.
-2. **known-bugs #14 and #16** are questions about the ORIGINAL, not
-   port defects; both need a Spectrum.
-3. **`notes/parity-gaps.md`** — fidelity work, not refactor work.
-
 ## The method
 
-Extract a module → give it a host test → *then* refactor it → gates
-green → commit. In that order, so the cleanup has something to fail
-against. Order by (test speedup × clarity payoff) ÷ risk.
+Extract a module → give it a host test → *then* refactor it → gates green →
+commit. In that order, so the cleanup has something to fail against. Order by
+(test speedup x clarity payoff) ÷ risk.
 
 ## Conventions
 
 Modules are **separately compiled** `.cpp` + `.h`. The flat 32-bit model
-removed the single-code-segment reason for one translation unit, so the
-linker enforces boundaries that used to be convention. A header is a
-deliberate list; everything else stays private.
+removed the single-code-segment reason for one translation unit, so the linker
+enforces boundaries that used to be convention. A header is a deliberate list;
+everything else stays private.
 
 **Comments** sort three ways:
 
 - *Delete* — restatement of the code, and historical narrative.
-- *Promote to code* — anything assertable becomes `ZX_STATIC_ASSERT` or
-  a named constant.
-- *Keep, one line* — provenance, as `// orig: $B684 ix_buf_addr_calc`.
-  This is the only link to the reverse-engineered Z80 and cannot be
-  recovered from the code.
+- *Promote to code* — anything assertable becomes `ZX_STATIC_ASSERT` or a
+  named constant.
+- *Keep, one line* — provenance, as `// orig: $B684 ix_buf_addr_calc`. This is
+  the only link to the reverse-engineered Z80 and cannot be recovered from the
+  code.
 
-**Types**: `u8`/`u16`/`u32` from `types.h` in anything the host build
-also compiles. Watcom's 32-bit `long` is 4 bytes and a 64-bit host's is
-8; a cast through the wrong one silently doubles a store's width.
+**Types**: `u8`/`u16`/`u32` from `types.h` in anything the host build also
+compiles. Watcom's 32-bit `long` is 4 bytes and a 64-bit host's is 8; a cast
+through the wrong one silently doubles a store's width.
 
 ## Modules
 
@@ -89,38 +77,48 @@ also compiles. Watcom's 32-bit `long` is 4 bytes and a 64-bit host's is
 | 1a | `replay_parse` — `BATTY_REPLAY_*` value formats | 75 | 7 |
 | 1 | replay / probe scaffolding | ~430 | 6 |
 
+## What is left
+
+1. **Stage 1 is done as far as it should go.** Six replay seeders are out;
+   three are blocked by design, not placement. `BATTY_FORCE_SPAWN_BONUS`
+   reaches `pick_bonus_type`, which reads seven pieces of live game state, and
+   the two brick seeders need `live_level`. Moving either drags game state into
+   a compositor module. The reasoning sits at `pick_bonus_type` too.
+2. **known-bugs #14** is a question about the ORIGINAL, not a port defect, and
+   needs a Spectrum.
+3. **`notes/parity-gaps.md`** — fidelity work, not refactor work.
+
 ## Decisions that still bind
 
 **The bullet's brick damage duplicates `brick_hit_resolve` on purpose.**
-Bullets skip the click, because the original tests `sprite_set == $05`
-and lets the impact blast be the feedback. Unifying the two would
-quietly delete that difference; do it only with the divergence written
-into whatever replaces both.
+Bullets skip the click, because the original tests `sprite_set == $05` and
+lets the impact blast be the feedback. Unifying the two would quietly delete
+that difference; do it only with the divergence written into whatever replaces
+both.
 
-**`auto_advance` is never assigned**, so all three `TIMED_OUT` branches
-are permanently false — the attract auto-cycle is intentionally absent.
-Marking it `const` makes Watcom emit `W368 always false` and refuse to
-build under `-we`, so it stays a plain `static int` with the reason
-attached.
+**`auto_advance` is never assigned**, so all three `TIMED_OUT` branches are
+permanently false — the attract auto-cycle is intentionally absent. Marking it
+`const` makes Watcom emit `W368 always false` and refuse to build under `-we`,
+so it stays a plain `static int` with the reason attached.
 
-**The ROCKET catch increments the bonus byte on both bats by hand**
-rather than through `set_bat_bonus`, because routing it through the
-setter would assume the two are always equal — the assumption
-`enemy_prepare`'s separate reads decline to make.
+**The ROCKET catch increments the bonus byte on both bats by hand** rather
+than through `set_bat_bonus`, because routing it through the setter would
+assume the two are always equal — the assumption `enemy_prepare`'s separate
+reads decline to make.
 
 ## Known coverage holes
 
-- **No gate sets `BATTY_LEGACY_COLLISION`**, so the pre-LAFFC fallback
-  path is unexercised. It boots, but with a stuck ball no collision
-  occurs. Know that before trusting it as an A/B baseline.
-- **No gate exercises the delta between two visual checkpoints** — every
-  gate passes a single one. `test-visual-checkpoints` says so itself.
-- **No screendump in the suite has a score on it** — the visual build is
+- **No gate sets `BATTY_LEGACY_COLLISION`**, so the pre-LAFFC fallback path is
+  unexercised. It boots, but with a stuck ball no collision occurs. Know that
+  before trusting it as an A/B baseline.
+- **No gate exercises the delta between two visual checkpoints** — every gate
+  passes a single one. `test-visual-checkpoints` says so itself.
+- **No screendump in the suite has a score on it**; the visual build is
   `-dBATTY_SCORELESS_HUD`. See known-bugs #22.
 
 ## Why this was worth doing
 
-known-bugs #8 sat in `main.cpp` for the whole project and surfaced
-within minutes of those functions becoming pure and testable. The gates
-prove the port still matches the original; they do not make the code
-answerable to questions. Pure functions with fast tests do.
+known-bugs #8 sat in `main.cpp` for the whole project and surfaced within
+minutes of those functions becoming pure and testable. The gates prove the
+port still matches the original; they do not make the code answerable to
+questions. Pure functions with fast tests do.

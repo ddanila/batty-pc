@@ -1,307 +1,162 @@
 # Gameplay parity status
 
 Core gameplay is byte-exact against the Spectrum and regression-locked:
-ball, bat, LAFFC collision, LAB1F deflection, launch, catch, multi-ball,
-falling objects, sparks, laser and blasts, bombs, the bonus economy and
-all effects, scoring, ball speed-up and SLOW, the per-frame RNG model,
-the enemy (motion / steering / bombs / every sprite animation), and the
-rocket-clear.
+ball motion, `LAFFC` brick collision, `LAB1F` bat deflection, launch,
+catch, multi-ball, falling objects, sparks, laser and blasts, bombs, the
+bonus economy and every effect, scoring, ball speed-up and SLOW, the
+per-frame RNG model, the enemy (motion, steering, bombs, every sprite
+animation) and the rocket-clear.
+
+*Read "byte-exact" as scoped to what the oracles cover.* This was once
+written as unqualified "PARITY COMPLETE", and manual play then found two
+real bugs the suite had missed — the oracle was L3-only, so non-L3
+dynamics and sustained play were blind spots.
 
 The byte-exact frame-step oracle covers **L3 and L5**; the
 poke-`$B7EA`+`$BA24` recipe generalises it to any level. Beyond it,
-oracle-free invariants cover every level: ball-never-tunnels-a-brick
-(all approaches and speeds, including the extra-ball and magnet paths),
+oracle-free invariants cover every level: ball-never-tunnels-a-brick (all
+approaches and speeds, including the extra-ball and magnet paths),
 ball-never-escapes-the-field, moving-sprite attr non-corruption, and a
 multi-level soak.
 
-Two residuals are not byte-exactly achievable and are accepted: a 4 px
-brick-edge ink nuance in the L3 frame-step diff, and cycle-exact sound.
-Open items live in `notes/parity-gaps.md`.
+Two residuals are accepted as not byte-exactly achievable: the 4 px
+brick-edge nuance in the L3 frame-step diff (a capture-phase offset — see
+`notes/metal-shimmer.md`) and cycle-exact sound. Open items are in
+`notes/parity-gaps.md`.
 
-*Read "byte-exact" as scoped to what the oracles cover. It was once
-written as unqualified "PARITY COMPLETE", and manual play then found two
-real bugs the suite had missed — the oracle was L3-only, so non-L3
-dynamics and sustained play were blind spots.*
+## The measurement everything rests on
 
-## Done and verified (byte-exact vs the Spectrum)
+`make capture-timeline-both` frame-steps the DOS port and ZEsarUX from a
+byte-identical L3 `$BA83` start and diffs each frame in the brick-play ROI
+in RGB palette space. **Frame 0 is 0 px** — that aligned start is what
+makes everything below checkable. `make test-frame-step` gates the floor.
 
-- **Frame-step parity gate** — `make capture-timeline-both` frame-steps
-  the DOS port and ZEsarUX from a byte-identical L3 `$BA83` start and
-  diffs each frame in the brick-play ROI (RGB palette space). `frame 0 =
-  0 px` aligned start. This is the measurement that makes everything
-  below checkable.
-- **Ball motion** — exact `handling_ball` 64-direction q8.8 motion:
-  `dir_to_dxdy` with the `LAD69` X/Y cross and fraction-preserving
-  cell-edge snap. Ball x / y / fraction / direction match the Spectrum
-  exactly (probe-confirmed).
-- **Brick collision** — `LAFFC` port (cell-find incl. the LAFFC_5-6
-  down/down-right straddle, open-face neighbour mask, direction gate,
-  `change_direction` reflect, penetration corner case). **Now the DEFAULT
-  for the primary ball.** Byte-exact vs the Spectrum over L3's full
-  150-frame trajectory — hit cell, axis, snapped position, direction, and
-  q8.8 fraction all match at frames 1/5/10/20/40/60/80/100/150
-  (`make test-laffc-ball-frame1`). `BATTY_LEGACY_COLLISION=1` reverts to
-  the old `brick_collision` (revert **verified**: it diverges from the
-  byte-exact path, as expected). Multi-ball secondaries are now **unified**
-  onto the same exact path (`dir_to_dxdy` + q8.8 + `LAFFC` +
-  `bat_deflect_dir`) — the original runs one `handling_ball` for every
-  ball, so this is correct-by-construction (primary ball gate byte-exact +
-  liveness LIVE); no multi-ball snapshot needed.
-- **Falling-object motion** (bonus drop, enemy bomb, +400 score popup) —
-  byte-exact. The original's accelerating fall `LA55A_0` (`LD DE,$0008; LD
-  B,$02`: acc += $0008/frame, capped at velocity $0200, position += acc)
-  is ported verbatim as `motion_accel_step(&m, 0x0008, 0x02)`; the bonus
-  and the bomb share it (the original shares `object_bonus`), and the +400
-  popup uses `handling_400pts`'s `LD DE,$0028; LD B,$80` =
-  `motion_accel_step(…, 0x0028, 0x80)`. Verified by code-comparison
-  against the disasm (`handling_bonus` / `handling_400pts`).
-- **Laser fire cadence** (LASER bonus bullets) — byte-exact rate. The
-  original (`handling_bullet` $A12C) gates firing on `SUB $02; JR C`
-  (underflow `<2`) and resets the `bullet` counter to a parity-adjusted
-  `0x16`/`0x17` (`LD A,(bullet); CPL; AND $01; ADD A,$16` at $A150); both
-  reset values underflow exactly **12 frames** after each shot (the parity
-  bit keeps the period constant). The port gates on `cooldown == 0`
-  checked *before* its end-of-frame `-= 2`, so the equivalent reset is
-  `0x18` (24 → reaches 0 at frame 12 → fires frame 13 = 12-frame cadence).
-  Was previously a fixed `0x16` = 11 frames (~8% too fast); fixed to
-  `0x18`. Bullet *speed* was already exact: `handling_bullet`'s `SUB $06`
-  (up 6 px/frame) = the port's `BULLET_SPEED = 6`.
-- **Laser bullet → brick collision** — reviewed against `handling_bullet`
-  ($A5A3_2) + `LAFFC`. The original calls the SAME `LAFFC` the ball uses,
-  but at `LAFFC_13` a bullet (`sprite_set & $3F == $05`) jumps to
-  `LAFFC_29`→`LAFFC_31`, which **converts the bullet object into the
-  impact blast** (sprite_num=2, height=6, x snapped `AND $F8`, blast
-  timers) and falls into the `LAFFC_33`/`_34` destruction path — so the
-  bullet **stops at the first brick** (does not pass through). The port's
-  `step_bullet_one` mirrors this: stop on hit + spawn the 4-frame blast,
-  multi-hit bricks set bit 4 (half-damage) then destroy on the next hit
-  (= `LAFFC_33`'s `SET 4 / BIT 4`), undestructible (bit 5) stops without
-  destroying (= `LAFFC_34` register-only), scoring + bonus-spawn match.
-  **Fixed this iteration:** the brick-hit blast x is now snapped to the
-  8px byte grid (`& ~7`) like `LAFFC_31` (and like the port's own
-  alien-hit blast) — was using the raw bullet x (≤7px position error).
-  Residual: the cell-find uses a point lookup rather than LAFFC's full
-  straddle logic, but for a narrow bullet moving straight up this only
-  differs at sub-cell boundaries (would need a bullet-specific snapshot
-  to gate; negligible).
-- **Death sparks** (bat explosion on ball loss) — byte-exact vs
-  `handling_spark` ($A8D2) + the `LBC10_3` spawn loop. Spawn: 10 sparks
-  (`B=$0A`), x = `bat_1.x + width/2 - $0C` then `+3` per spark, y=`$AE`,
-  dir = `$1B` then `+5 & $3F` per spark, speed `$02`, body width `$08`,
-  `(IX+$14)`/`(IX+$15)` (duration_base / frame_ticks) = `$18`,
-  sprite_num 0 — all matched in `play_bat_explosion`. Per-frame
-  (`handling_spark`): motion via `LAD69` (= `dir_to_dxdy`), deactivate at
-  `y >= $C0` (=`PLAYFIELD_H` 192), `bounce_wall` (top/left clamp `<$08`,
-  right clamp to `$F8 - width` when `x+width >= $F9`), reflect via
-  `change_direction` = `(dir ^ B) + 1 & $3F` with `B=$3F` for top and
-  `B=$1F` for left/right, and the decay timer `DEC (IX+$15); on 0 ->
-  advance frame, $14 >>= 1, $15 = $14 + 1; die at frame 4` — all matched
-  in the port's death-spark loop (verified by code-comparison; the recent
-  "Fix death spark direction math" commit's `change_direction` B-mask
-  reflect is correct). The `LBC10_4` Double Play branch — translate the ODD-indexed
-  half of the ten sparks by `bat_2.x - bat_1.x`, so each bat explodes
-  with five — is ported as of 2026-08-09 and gated inside
-  `test-death-sparks`. It had been parked here as "out of scope (port is
-  1P)"; the port has `game_mode` now. See notes/double-play.md.
-- **Enemy bomb drop** (`bomb_appear` $A989, shared by `handling_bird` and
-  `handling_ufo`) — byte-exact gate. Mirrors the original: (1) returns if a
-  bonus/bomb is already falling — the original shares the single
-  `object_bonus` slot for both, the port checks both `bomb.active` and
-  `bonus.active`; (2) the **1/64 drop gate** `(random_number_lo +
-  random_number_hi) & $3F == 0` (ADD, not XOR — the port matches the ADD)
-  read via `rng_sample` (no RNG advance, matching the per-frame-tick RNG
-  model); (3) the `enemy_y + 8 >= $C0` cutoff; (4) spawn at (enemy_x + 8,
-  enemy_y + 8) as `spr_bomb`, fall accumulator reset. The bomb's fall
-  motion is the already-confirmed `motion_accel_step(&m, 0x0008, 0x02)`.
-- **Player bat movement** (`handling_bat` $A6xx) — ±4 px/frame on
-  left/right input (`SUB $04` / `ADD $04`), both pressed cancels (net 0).
-  The port matches the rate, and **this iteration fixed the margin
-  semantics**: the original moves UNCONDITIONALLY then clamps every frame
-  via `check_left_margin` ($08) + `check_right_margin` ($F8 - body_w) in
-  `handling_bat_no_transform`; the port previously *guarded before moving*
-  (`BAT_X > min_now`), which let the bat rest up to 3 px past the margin
-  (from `x = min+2`, a guarded `-4` lands on `min-2` and sticks). Now it
-  moves ±4 then clamps to `[8+extra, 248-body_w-extra]` (computed in int so
-  the `unsigned char` BAT_X can't wrap), so the bat rests exactly at the
-  margin like the original. Clamp targets verified equal: left `$08`,
-  right `248 - body_w` (= 220 for the 28-px body).
-- **Bonus economy** (drop rate + type distribution) — byte-exact vs
-  `generate_new_bonus` ($9D5A) + the LAFFC brick-destroy drop gate.
-  (1) **Drop gate**: a brick drops a bonus iff `(random_number+$01 & $0F)
-  < 5` (= 5/16 ≈ 31%; original `AND $0F; CP $05; CALL C,set_bonus`),
-  read-current — the port matches via `rng_sample` (no RNG advance).
-  (2) **Table selection**: `round_number_1up < 6 → bonus_table_first`,
-  else `bonus_table_second` (original `CP $06; JR C`), matched by the
-  port's `round_number >= 6 ? second : first`. (3) **Tables**: both
-  32-byte tables match the original byte-for-byte (the original `LDIR`s
-  only the first 16 into `bonus_table_current` and indexes with `& $0F`,
-  so the upper 16 are vestigial in both; the port keeps them for
-  fidelity). (4) **Type pick**: re-rolls via `random_generate` each retry,
-  `idx = (rng_hi & $0F)`; rejects a pick equal to `current_bonus` — and
-  `current_bonus` is set from `object_bat_1+$14` (= `bat.bonus_applied`)
-  at $9D5A, so the port's `code == bat.bonus_applied` reject is
-  byte-faithful, NOT an approximation. Per-type rejects (TRIPLE if >1
-  ball, SLOW if a ball is already slowest, LIFE if dropped this round,
-  ROCKET if active + the round-6 `& $C0` rarity gate) all mirror the
-  original. Minor: the port caps the retry loop at 16 (the original loops
-  until a valid pick); with the populated tables this effectively always
-  succeeds.
-- **Bonus catch mechanics** — verified vs `get_bonus` ($A67B). Catching
-  any non-bomb bonus awards **+400** (`LD BC,$0400; add_points_to_score`)
-  — port `score += 400`. Catching a **bomb** (sprite `$0A`) kills you
-  (original zeros `balls_quantity` → death branch; the port handles this
-  in `step_bomb` → `play_bat_explosion`). The catch sound is
-  `sound_live_add` for LIFE else the resize beep (`CP $05; CALL NZ,
-  push_resize_sound`) — port matches. `bat.bonus_applied` is set to the
-  caught code for every type except ROCKET (which jumps to `get_rocket`),
-  so a new catch REPLACES the prior bat effect — port matches. The +400
-  marker drift (`LA67B_3`: `counter_misc & 1` / `random_number & 1` → ±1
-  px) is mirrored. The SCORE/$08 bonus adds +5000 and KILL_ALIENS blasts
-  the on-screen alien — both present in the port.
-- **Scoring economy** — byte-exact. (1) **Brick points** `points_table`
-  ($AF45): the 12 per-row BCD values `120,110,100,90,80,70,60,50,40,30,
-  20,10` (top row worth most) match the port's `points_table[12]`
-  exactly; a brick whose colour nibble `& $0F >= 6` scores **double**
-  (original `ADD A,C; DAA`, port `pts *= 2`), and the row→value index
-  matches (`idx = min(row, 11)`). (2) **Extra-life milestones**
-  `live_add_steps` ($0395): the BCD high-byte thresholds `$03,$06,$10,
-  $15,$20,$25,$50,$75` (= 30000/60000/100000/150000/200000/250000/
-  500000/750000 as 6-digit BCD scores) match the port's
-  `live_add_thresholds[]` exactly. Catch bonuses add +400, the score
-  bonus +5000 (see "Bonus catch mechanics" above).
-- **Ball speed-up + SLOW** (gameplay difficulty curve) — IMPLEMENTED
-  this pass to match `handling_ball` `LA27E_22` + `get_bonus` `LA67B_7`.
-  The ball now ACCELERATES over a level: a shared `ball_speed_ramp`
-  counter (= the original's per-ball `object+$13`) increments once per
-  frame when `(pit_frame_counter & 7) == 0` (the original's
-  `counter_misc & 7` 8-frame cadence), and at `$94` (148) it resets and
-  every active ball's `speed` byte increments, capped at `$06` — so speed
-  climbs `$02 → $06`, one step per ~1184 frames (~24 s). `speed` already
-  drives `dir_to_dxdy`'s q8.8 magnitude, so this directly changes motion.
-  **SLOW** ($04) now resets all ball speeds to `$02` (the original
-  `LD (object_ball_N+$07),$02`) WITHOUT touching the ramp counter, so it
-  naturally wears off as the speed climbs back — replacing the old
-  permanent `slow_ticks` half-frame skip. The SLOW re-roll reject now
-  checks `primary ball speed <= base` (= the original's "a ball is already
-  at $02"). `ball_speed_ramp` resets to 0 on every life/level/game init,
-  and launch/respawn set `speed = BALL_SPEED ($02)`, so each life starts
-  slow with no carry-over. Byte-safe for the gates (first `speed++` is at
-  frame ~1184, far past the 150-frame ball gate); verified green:
-  `test-laffc-ball-frame1` (5 checkpoints), `make test` (5 states + 2
-  lints), `test-bat-deflection` (14/14).
-- **Alien explosion** (`handling_blast` $AA30, sprite_set $0A) —
-  implemented (not stubbed). Both the original and the port have exactly
-  **5** blast sprites (`spr_alien_blast_1..5` / `SPR_BLAST_1..5`). The
-  port's `handling_blast_obj` animates the 5 frames and then frees the
-  slot (`sprite_set = 0`) so `enemy_prepare` can respawn — the original
-  does `SET 7` (→ `$8A`), but the port's slot-clear reaches the same
-  result under its `sprite_set != 0` respawn check. The gameplay-relevant
-  behaviour (alien dies → blast plays → slot frees) matches. Cosmetic
-  caveat: the exact cadence (port 5 frames × 3 ticks vs the original's
-  `LAAD2` `$12=$50` frame timer + `CP $09` deactivation, which may cycle
-  the 5 sprites ~twice) isn't pinned down — needs a blast-animation
-  ground-truth capture. With this, ALL 11 object handlers
-  ($01–$0B: bat, ball, screen-elements, bonus, bullet, rocket, spark,
-  ufo, bird, blast, 400pts) have been surveyed against the disasm.
-- **SMASH bonus** ($07, `spr_bonus_smash` → the port's BIG_BALL) — the
-  last un-verified bonus effect, confirmed faithful. (1) **Bigger ball**:
-  renders `SPR_BIG_BALL` with the enlarged collision body. (2)
-  **Plough-through**: `laffc_collision`/`brick_hit_resolve` sets `axis = 0`
-  when `big_ball_active()` (= bat `bonus_applied == $07`), so the ball
-  destroys the brick and does NOT bounce — the destroyed cell (`|= $80`)
-  also makes the `brick_collision` fallback return 0, so no stray bounce.
-  Matches the original `LAFFC_32 → LAFFC_38/_39` (destroy without reflect,
-  keep trajectory). (3) **Duration**: original `smash_counter` increments
-  only on EVEN `counter_misc` (`RRA; JR C`) and expires at `$F8` (248) ≈
-  496 frames; the port's `ball.big_ticks` decrements every other tick from
-  `BIG_BALL_DURATION = 0xF8`, clearing `bonus_applied → $FF` on expiry —
-  matching. With this, ALL bonus effects are verified ($00 BIG bat
-  [resize approx], $01 LASER, $02 TRIPLE, $03 MAGNET, $04 SLOW, $05 LIFE,
-  $06 ROCKET, $07 SMASH, $08 +5000, $09 KILL_ALIENS).
-- **Enemy descend** — GROUND-TRUTH-GATED (`make test-enemy-descend`). The
-  RNG-independent descend phase (`handling_bird`: `if (y<8) y++`) is
-  byte-exact vs the original: x=168, y +1/frame, dir=$10, spd=1,
-  target=$10 held (port frames 3/6 match the GT). Locked by the new gate.
-- **RNG per-frame tick** — now the DEFAULT (`rng_perframe=1`, flipped
-  2026-06-05; `BATTY_RNG_PERFRAME=0` reverts). The shipped game advances
-  its RNG once per frame like the original (`random_generate` at the
-  main-loop top), so enemy targets + bonus drops use the correct random
-  sequence model. Flip verified safe: the full gate suite stays green
-  (`test-laffc-ball-frame1`, `make test` 5 states + 2 lints,
-  `test-bat-deflection` 14/14, `test-enemy-descend`, `test-rng-walk`).
-- **L3 replay seed corrected** (side effect of the RNG flip, fixed). With
-  the per-frame tick now default, the L3 replay's brick destruction runs
-  `try_spawn_bonus` (5/16 gate) on the per-frame RNG. The stale `8E49`
-  seed (which wrote the wrong address $8E17, leaving the RNG un-seeded)
-  made the port drop a **spurious SLOW bonus** the original lacks
-  (verified via the new `bonus_state` PROBE field: stale → `active01_type04`,
-  original → no drop). Wiring the byte-correct seed
-  (`BATTY_REPLAY_RANDOM=3793 BATTY_REPLAY_RANDOM_SEED=962A`) into
-  `L3_SEED_ENV` + `replay-l3-brick-flash`/`-both` reproduces the original's
-  RNG walk, so the port drops no bonus there — confirmed by
-  `make test-midgame-brick-replay` (`bonus_state=00000000000000`). This is
-  why the seed-wiring is NOT cosmetic post-flip.
-- **RNG per-frame walk** — BYTE-EXACT, gate-locked (`make test-rng-walk`).
-  With the byte-correct L3 f0 seed (`BATTY_REPLAY_RANDOM=3793` +
-  `BATTY_REPLAY_RANDOM_SEED=962A`) and the per-frame tick
-  (`BATTY_RNG_PERFRAME=1`), the port's `random_number` walk is identical to
-  the original's at f0..f4 (3793/BB53/460D/0990/6A76). Proves `next_random`
-  + `random_seed.bin` ($8000-$9FFF source) + the tick all byte-exact. The
-  earlier "diverges" scare was a seed BYTE-ORDER mistake in the test (see
-  `notes/rng-model.md`), not a port bug.
-- **Enemy steering (y >= 8)** — now MATCHES with the correct RNG (dir
-  0x11→0x12→0x13 at f16/f20/f24 = the GT), confirming the steering model +
-  the RNG repick are right; only a ~1px x residual remains (sub-pixel).
-  This supersedes the "NOT matching" note below, which held only under the
-  stale/byte-swapped RNG seed. (Below kept for the decode trail.)
-- **Enemy steering (y >= 8) — earlier (stale-RNG) analysis** — An earlier
-  entry here said the steering was
-  "ground-truth-confirmed"; that was wrong — it was inferred from the GT's
-  *shape*, not gate-compared. A frame-by-frame port-vs-GT capture shows the
-  port steers the alien the WRONG WAY in the y>=8 leg: the original turns
-  `dir` 0x10→0x11→0x12→0x13 (x drifts left) toward its target, while the
-  port turns `dir` 0x10→0x0E→0x0C (x drifts right). Root cause: the
-  steering MODEL is faithful (the port's `enemy_turn_towards_target`
-  matches `LAA7D` exactly — target is a 6-bit *direction* at +$14,
-  `delta=dir-target`, bit5→+1 else −1, `delta==0`→repick `random_number &
-  $3F` from the +$00 low byte = the port's `random_e`, which is the
-  correct byte). The divergence is the repicked TARGET VALUE: at spawn
-  `dir==target==0x10`, so both sides repick immediately, but the port reads
-  a DIFFERENT `random_number` than the original (target 0x03 flag-off /
-  0x34 flag-on vs the original's ~0x13). So enemy steering parity is gated
-  on the full RNG-walk alignment (seed = the snapshot's, the per-frame
-  tick, and the boot-cadence phase — see `notes/rng-model.md`); the
-  per-frame tick alone (`BATTY_RNG_PERFRAME=1`) does NOT fix it. Decode +
-  capture evidence in `notes/enemy-movement.md`.
-- **+400 popup motion** — faithful (`handling_400pts` + `LA67B_2`/`LA590`).
-  Vertical: init velocity `-((counter_misc&1)+1)` (= -1/-2 px/frame up) then
-  the `motion_accel_step(0x0028, 0x80)` arc (`DE=$0028, B=$80`). Horizontal
-  drift: `pts_400_dx = ±((random&1)+1)` (magnitude 1/2 from bit 0, sign from
-  bit 7 = the original's `AND $01; INC A; RL B; JR C; NEG`), read-current
-  via `rng_sample`, clamped to the playfield. Both axes match.
-- **Running dot** — faithful (`running_dot` $B8E6): the bat-edge dot with
-  its frame counter, direction bit, and bat-shrink recovery branch are
-  ported (`render_running_dot`, GT-pinned in test mode).
-- **Regression guards** — `make test-laffc-ball-frame1` (ZEsarUX-free)
-  locks the L3 frame-1 ball to the Spectrum probe; the 5-checkpoint +
-  per-level static suite (`make test`) stays green.
-- **Safety** — the `BATTY_LAFFC` path falls back to `brick_collision`
-  when LAFFC reports no hit, so it can never pass a brick through.
+## Verified byte-exact
+
+**Ball motion.** `handling_ball`'s 64-direction q8.8 motion:
+`dir_to_dxdy` with the `LAD69` X/Y cross, and a fraction-preserving
+cell-edge snap. `LAD69` `PUSH HL`, runs the multiply-by-speed on **BC** and
+adds that to **X**, then `POP HL` and adds `HL * speed` to **Y** — so
+assigning the components straight through gives X the wrong magnitude.
+
+**Brick collision.** The `LAFFC` port, default for every ball, byte-exact
+over L3's 150-frame trajectory at frames 1/5/10/20/40/60/80/100/150 — hit
+cell, axis, snapped position, direction and q8.8 fraction.
+`test-laffc-ball-frame1`, and `test-laffc-ball-l5-metal` for the L5
+edge-metal case. `BATTY_LEGACY_COLLISION=1` reverts to `brick_collision`,
+which also remains a fallback when LAFFC reports no hit, so nothing can
+pass a brick through. `notes/laffc-decode.md`.
+
+**Falling objects** (bonus drop, enemy bomb, +400 popup). `LA55A_0`'s
+accelerating fall (`LD DE,$0008 / LD B,$02`: acc += 8/frame, velocity
+capped at $0200, position += acc) is `motion_accel_step(&m, 0x0008, 0x02)`;
+the bonus and bomb share it as the original shares `object_bonus`. The
++400 uses `handling_400pts`'s `$0028`/`$80`. Its vertical init is
+`-((counter_misc & 1) + 1)`, and its horizontal drift is
+`±((random & 1) + 1)` — magnitude from bit 0, sign from bit 7, read-current.
+
+**Laser.** Bullet speed 6 px/frame (`SUB $06`). Fire cadence: the original
+gates on `SUB $02 / JR C` and resets the counter to a parity-adjusted
+`$16`/`$17`, both of which underflow exactly 12 frames after a shot. The
+port checks `cooldown == 0` BEFORE its end-of-frame `-= 2`, so the
+equivalent reset is `$18`. A countdown gating on the CARRY of a `SUB`
+trips one tick later than a `== 0` gate in C — match the PERIOD, not the
+literal.
+
+**Bullet vs brick.** The original calls the same `LAFFC`, but at
+`LAFFC_13` a bullet (`sprite_set & $3F == $05`) jumps to
+`LAFFC_29`/`LAFFC_31`, which CONVERTS the bullet object into the impact
+blast (sprite 2, height 6, x snapped `AND $F8`) and falls into the
+destruction path — so a bullet stops at the first brick. The port mirrors
+that, including the 8 px x snap. Residual: the cell find is a point lookup
+rather than LAFFC's full straddle, which for a narrow bullet moving
+straight up differs only at sub-cell boundaries.
+
+**Death sparks.** Spawn (`LBC10_3`): 10 sparks, `x = bat.x + width/2 - $0C`
+then +3 each, `y = $AE`, `dir = $1B` then `+5 & $3F` each, speed $02, body
+width $08, duration_base and frame_ticks `$18`. Per frame
+(`handling_spark`): `LAD69` motion, deactivate at `y >= $C0`,
+`bounce_wall`, and the decay timer `DEC (IX+$15)`; on zero advance the
+frame, `$14 >>= 1`, `$15 = $14 + 1`, die at frame 4. The Double Play split
+is in `notes/double-play.md`.
+
+**Enemy bomb drop** (`bomb_appear` $A989, shared by bird and UFO): returns
+if a bonus or bomb is already falling (the original shares one
+`object_bonus` slot); the 1/64 gate is `(random_lo + random_hi) & $3F == 0`
+— an ADD, not an XOR — read via `rng_sample`; cutoff at `enemy_y + 8 >=
+$C0`; spawns at (enemy_x + 8, enemy_y + 8).
+
+**Bat movement.** ±4 px/frame, both directions pressed cancels. The
+original moves UNCONDITIONALLY then clamps every frame; the port used to
+guard BEFORE moving, which let the bat rest up to 3 px past the margin
+(from `x = min + 2` a guarded -4 lands on `min - 2` and sticks). It now
+moves then clamps to `[8 + extra, 248 - body_w - extra]`, computed in `int`
+so the `unsigned char` cannot wrap.
+
+**Bonus economy.** Drop gate `(random_number + $01 & $0F) < 5` (5/16),
+read-current. Table selection `round_number < 6 ? first : second`. Both
+32-byte tables match byte-for-byte (the original `LDIR`s only the first 16
+and indexes `& $0F`, so the upper 16 are vestigial in both). Type pick
+re-rolls via `random_generate` each retry, `idx = rng_hi & $0F`, rejecting
+a pick equal to `current_bonus` — which the original sets from
+`object_bat_1+$14`, so the port's `code == bat.bonus_applied` reject is
+faithful rather than approximate. Per-type rejects (TRIPLE if >1 ball, SLOW
+if a ball is already slowest, LIFE if dropped this round, ROCKET if active
+plus the round-6 `& $C0` rarity gate) all mirror it. The port caps the
+retry loop at 16 where the original loops until valid; with populated
+tables that always succeeds.
+
+**Bonus catch.** Any non-bomb bonus awards +400; a bomb kills you; the
+sound is `sound_live_add` for LIFE else the resize beep; `bonus_applied`
+takes the caught code for every type except ROCKET, which jumps to
+`get_rocket` — so a new catch REPLACES the prior effect. SCORE adds +5000
+and KILL_ALIENS blasts the on-screen alien.
+
+**Scoring.** `points_table` ($AF45), 12 per-row BCD values
+`120,110,100,90,80,70,60,50,40,30,20,10` (top row worth most), doubled when
+the colour nibble `>= 6`, indexed `min(row, 11)`. Extra-life milestones
+`live_add_steps` ($0395): BCD high bytes `$03,$06,$10,$15,$20,$25,$50,$75`
+= 30k/60k/100k/150k/200k/250k/500k/750k.
+
+**Ball speed-up and SLOW.** A shared ramp counter (the original's per-ball
+`+$13`) increments when `(pit_frame_counter & 7) == 0`, and at `$94` resets
+and increments every active ball's speed byte, capped at `$06` — so speed
+climbs `$02 -> $06`, one step per ~1184 frames. `speed` drives
+`dir_to_dxdy`'s q8.8 magnitude directly. SLOW resets all ball speeds to
+`$02` WITHOUT touching the ramp, so it wears off as the speed climbs back.
+Resets to 0 on every life / level / game init.
+
+**Alien explosion.** `anim_alien_blast` is a 10-entry PING-PONG
+`{1,2,3,4,5,4,3,2,1,1}` over the five blast sprites, advancing +1 every 2
+frames (`misc_12` toggles `$50`<->`$10`), with `handling_blast`
+deactivating at frame 9. GT-captured by poking the enemy to the blast state
+(`set=$0A, misc_12=$50, misc_13=$90`) and stepping. The port's
+`spr_blast_frames` is that table, `BLAST_FRAMES=10`,
+`BLAST_TICKS_PER_FRAME=2`, matching the GT's sprite walk. (An earlier
+"only 5 sprites would overflow" worry came from misreading `anim_bird`'s
+tail.)
+
+**SMASH** ($07, the port's BIG_BALL). Renders `SPR_BIG_BALL` with the
+enlarged body; sets `axis = 0` so the ball destroys without bouncing
+(`LAFFC_32 -> LAFFC_38/39`), and the destroyed cell makes the
+`brick_collision` fallback return 0 so there is no stray bounce. Duration:
+the original's `smash_counter` increments only on EVEN `counter_misc` and
+expires at `$F8` (~496 frames); the port decrements `big_ticks` every other
+tick from `BIG_BALL_DURATION = 0xF8`.
+
+All 11 object handlers ($01-$0B: bat, ball, screen elements, bonus,
+bullet, rocket, spark, UFO, bird, blast, 400pts) and all 10 bonus effects
+have been surveyed against the disassembly.
+
+**Running dot** (`running_dot` $B8E6) — the bat-edge dot with its frame
+counter, direction bit and bat-shrink recovery branch, GT-pinned in test
+mode.
 
 ## Remaining
 
-1. **Cosmetic: brick-hit render.** The only frame-by-frame residual on
-   the L3 gate is the just-hit brick's render, and it is a MIX rather
-   than one bug: a 1-frame metal-shimmer phase offset on undestructible
-   cells, plus damaged-brick render detail on destructible ones (the
-   port lacks ~14 black "crack" px per cell). Decomposed in
-   `notes/metal-shimmer.md`. Several per-cell cosmetic details with no
-   gameplay effect — diminishing returns.
-
-2. **More original snapshots.** LAFFC is the default and is
-   oracle-verified on L3 and L5 (`test-laffc-ball-frame1`,
-   `test-laffc-ball-l5-metal`). Extending that to further levels, or to
-   multi-ball and SMASH scenarios, needs an original-side snapshot plus
-   a port-side aligned-seed recipe per scenario, the way
-   `replay-l3-brick-flash` does for L3. That is the substantive next
-   investment, and it is a data problem, not an analysis one.
+**More original snapshots.** LAFFC is oracle-verified on L3 and L5.
+Extending that to further levels, or to multi-ball and SMASH scenarios,
+needs an original-side snapshot plus a port-side aligned-seed recipe per
+scenario, the way `replay-l3-brick-flash` does for L3. That is the
+substantive next investment, and it is a data problem rather than an
+analysis one.

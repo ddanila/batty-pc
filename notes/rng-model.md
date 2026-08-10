@@ -1,34 +1,13 @@
-# RNG model — per-frame tick vs advance-on-read
+# RNG model — the per-frame tick
 
-> **CORRECTION 2026-06-11 (magnet coin-flip class):** the consumer
-> classification below lists the print_magnets ON/OFF coin as
-> read-current of `random_number+$01`. The disasm
-> (`routines/magnets.asm` L8D4C_0) actually does
-> `CALL random_generate / LD A,(random_number) / RRA` per magnet — an
-> ADVANCE-then-read of the LOW byte, once per magnet, keeping the magnet
-> ON when bit0==1. The port's old render-time coin was additionally
-> inverted (drew OFF on bit0==1) and sampled once for all magnets.
-> Fixed with the magnet runtime system (see notes/magnets.md): the coin
-> now rolls `next_random() & 1` per magnet in `magnet_level_init`.
-> Net RNG-walk effect: +count advances at level paint on magnet levels
-> only; L1/L3 (all existing gates) have no magnets — gates unaffected,
-> verified (`test-rng-walk`, LAFFC ball gate green). Two more magnet
-> consumers landed with the same change, both matching the original:
-> the LB9E8_2 toggle gate (read-current `random_d == $99`, sampled
-> before the per-frame tick) and the print_one_magnet slot pick
-> (advance per rejection retry; returns before any RNG use when
-> count==0).
+The port reproduces the original's random sequence byte-exactly.
+`BATTY_RNG_PERFRAME` defaults ON; `=0` reverts to the old advance-on-read
+model. `make test-rng-walk` pins the walk.
 
-This is the blocker for byte-exact parity of every RNG-dependent
-behaviour: enemy target headings (see `notes/enemy-movement.md`), bonus
-drop type/chance, enemy/bomb spawn timing, the magnet coin-flip, death
-sparks. The RNG *function* is already an exact port; only the *calling
-model* differs.
+## The function
 
-## The function (matches exactly)
-
-`random_generate` ($8E…, disasm line 114) and the port's `next_random()`
-compute the same step from a ROM-walk seed:
+`random_generate` and the port's `next_random()` compute the same step
+from a ROM-walk seed:
 
 ```
 E += (seed) + $05 + ctrl_btns_pressed
@@ -37,318 +16,79 @@ random_number = DE
 seed = (seed + 1) & $9FFF      ; wraps into [$8000,$9FFF]
 ```
 
-`random_number` low byte = `random_e`, high byte = `random_d`. Confirmed
-identical; the byte-exact L3 ball gate relies on it via the seed override.
+`random_number` low byte = `random_e`, high = `random_d`. The `$8000-$9FFF`
+source ships as `assets/random_seed.bin` (8 KB, indexed `& $1FFF`).
 
-## The model (differs — this is the gap)
+## The model
 
-**Original.** `random_generate` ADVANCES `random_number`. It is called:
+The original ticks the RNG ONCE PER FRAME at the main-loop top
+(`LB9E8_2`), independent of any consumer; consumers then mostly READ
+`random_number` without advancing. A few advance first.
 
-- **once per frame** at the main-loop top `LB9E8_2` (disasm line 6173) —
-  the per-frame tick, independent of any consumer;
-- plus on specific events: `generate_new_bonus` (line 1699), and two more
-  sites (6293, 6461).
+So the port ticks once per frame at the play-loop top, and `rng_sample()`
+reads without advancing where the original reads. Getting this wrong in
+either direction desyncs everything downstream — a per-frame tick without
+the consumer conversion just consumes the sequence faster.
 
-Consumers then READ the current value without advancing, e.g.
-`LD A,(random_number)` / `LD A,(random_number+$01)` (lines 1700, 1766,
-1878, 2785, 3031, 3397, 3557, 4844, 6163, …). So most consumers sample
-the once-per-frame-ticked value; a few (bonus gen) advance first.
+### Which consumers read, and which advance
 
-**Port.** `next_random()` ADVANCES and RETURNS in one call; every consumer
-(8 sites) advances on read; there is NO per-frame tick. So the RNG
-sequence the consumers see is desynced from the original's frame-by-frame.
+Read-current (`rng_sample()` — the original has no preceding
+`CALL random_generate`):
 
-## RESOLVED (2026-06-04): random_number is at $8D48, and DOES tick/frame
+- enemy target: the arrival re-pick `LAA7D_1` and `enemy_pick_new_target`
+- enemy spawn X (`enemy_prepare` $9EAA: `LD A,(random_number) / AND $03`)
+- bonus DROP CHANCE (`brik_value`: `AND $0F / CP $05 / CALL C,set_bonus`)
+- `bomb_appear` ($A989) reads both bytes — it runs every alien frame, so
+  this was the main per-frame polluter of the enemy's sequence
+- the +400 marker's X drift (`LA67B`: `AND $01 / RL B`)
+- the magnet TOGGLE gate (`random_d == $99`, sampled before the tick)
 
-A wrong-address scare, now corrected. `random_number: DEFW $8E17` makes
-`random_number` a **variable** (in the data block at $8D46: `counter_misc`
-$8D46, `random_number` **$8D48**, `random_seed` $8D4A) whose *initial
-value* is $8E17 — it is NOT located at address $8E17. I had been
-probing/seeding $8E17 (the init value), which is why it looked constant.
+Advance-then-read (`next_random()` — the original `CALL`s first):
 
-Probing the REAL address `$8D48` shows `random_number` **changes every
-frame** (low bytes 0x53,0x13,0x90,0x76,0x8E,0x99,…). So:
+- bonus TYPE pick (`generate_new_bonus` re-calls per rejection retry)
+- the magnet ON/OFF coin in `print_magnets`: `CALL random_generate /
+  LD A,(random_number) / RRA` per magnet, ON when bit 0 == 1. Advances
+  once per magnet at level paint, so magnet levels walk further than
+  non-magnet ones. See `notes/magnets.md`.
+- `print_one_magnet`'s slot pick (advance per rejection retry; returns
+  before any RNG use when the count is 0, so non-magnet levels never
+  perturb the walk)
+- the alien-blast noise tone. The PC-speaker layer is an approximation
+  anyway and it only fires on a kill.
 
-- `random_generate` IS called once per frame (`LB9E8_2`), confirming the
-  **per-frame-tick model (`BATTY_RNG_PERFRAME`) is correct**. The earlier
-  "constant / do not flip" caveat was an artifact of the wrong address.
-- A memory-write trace (`scripts/trace_enemy_target.py`, breakpoint
-  `MWA=9BAAH`) confirms the enemy target is written by `LAA7D_1` at
-  `$AA9C` with values that vary frame-to-frame (0x2C,0x36,0x03,0x1E,…) —
-  i.e. `random_number($8D48) & $3F`, exactly the `LAA7D_1` decode. The
-  decode was right; the contradiction was the address.
-- **Seed bug:** the replay's `BATTY_REPLAY_RANDOM` writes `$8E17`, which is
-  NOT the RNG variable, so it does NOT seed the original's RNG (the
-  original runs from its snapshot `$8D48` value). Harmless for the
-  byte-exact ball gate (RNG-independent), but it means RNG-dependent
-  validation must seed/compare `$8D48`, not `$8E17`.
+## Two byte-order traps, both of which cost a false "diverges"
 
-Path to byte-exact enemy/bonus RNG (now clear): (1) keep the per-frame
-tick (flag ON is the right model); (2) seed the port's `random_d/e` to the
-original's `$8D48` value at frame 0 (and fix the replay to poke `$8D48`);
-(3) verify the port's `next_random` walk matches the original's frame by
-frame against `$8D48`. The consumer read-current/advance classification
-already done stands.
+`random_number` lives at **$8D48** — `random_number: DEFW $8E17` declares
+a VARIABLE whose INITIAL VALUE is $8E17, not a variable at $8E17. Probing
+$8E17 shows a constant and reads as "the original never ticks".
 
-## VALIDATED end-to-end (2026-06-04): port RNG reproduces the original
+And the seeds are little-endian 16-bit values:
 
-Two fixes made this testable:
-- The Makefile did NOT pass `BATTY_RNG_PERFRAME` / `BATTY_REPLAY_RANDOM_SEED`
-  into the DOS `AUTOEXEC`, so the flag NEVER reached the build — every
-  earlier "flag-on" test actually ran flag-OFF (no tick). Fixed the
-  passthrough. (This invalidates the earlier flag-on enemy "divergence".)
-- Added `BATTY_REPLAY_RANDOM_SEED` to seed the ROM-walk position
-  (`rng_seed_addr()`; the
-  original's `random_seed` at `$8D4A`).
+| value | at | frame 0 of the L3 state |
+|---|---|---|
+| `random_number` | $8D48 | `BATTY_REPLAY_RANDOM=3793` (D:E, **not** `9337`) |
+| `random_seed` | $8D4A | `BATTY_REPLAY_RANDOM_SEED=962A` (**not** `2A96`) |
 
-Offline, `next_random` against the shipped ROM window (`random_seed.bin`,
-8 KB, `& $1FFF`) reproduces the original's `$8D48` sequence EXACTLY from
-the f1 state (0x460D, seed 0x962C). In the BUILT port (flag ON, seeded
-`BATTY_REPLAY_RANDOM=460D BATTY_REPLAY_RANDOM_SEED=962C`):
+`random_seed` increments +1/frame. With both seeded correctly the walk is
+byte-identical: f0..f4 = 3793 / BB53 / 460D / 0990 / 6A76. A swapped
+`9337` looks like a real algorithmic divergence — both output bytes move.
 
-```
-        port              original
-  f1:   0990 / 962D       460D / 962C
-  f2:   6A76 / 962E       0990 / 962D
-  f3:   9A8E / 962F       6A76 / 962E
-  f4:   D899 / 9630       9A8E / 962F
-```
+Bare `BATTY_REPLAY_RANDOM=8E49` still appears in several port-only gates
+and is fine there: it seeds `random_number` deterministically and those
+gates never compare against the original's sequence. What it does NOT do
+is set the ROM-walk seed address, which is what
+`BATTY_REPLAY_RANDOM_SEED` is for.
 
-The port reproduces the original's exact RNG values, **offset by one
-frame**: the original has `f0 == f1` (no tick on its first frame boundary
-— a frame-step setup artifact), while the port ticks immediately. So the
-RNG model is byte-exact; the lone remaining alignment is that one-frame
-head start.
+## What the correct walk bought
 
-### Ready to flip — but gated on an RNG-behaviour test
+The enemy's arrival re-pick reads the right `random_number`, so the
+steering matches the ground truth (`dir` climbs 0x11/0x12/0x13 at
+f16/f20/f24 instead of falling the wrong way to 0x0E/0x0C). See
+`notes/enemy-movement.md`.
 
-The L3 ball gate stays **byte-exact with the flag ON** (f40/f100/f150 all
-match), so per-frame ticking + the descending (now correctly-moving)
-enemy don't perturb the ball. And the port's RNG init (`random_e=$17`,
-`random_d=$8E` → `$8E17`; `random_seed_addr=$8000`) MATCHES the original's
-`random_number`/`random_seed` init, so flag-on would track the original
-from a clean start too. So flag ON is the validated-correct model and
-flipping the default is the natural culmination (BATTY_LAFFC pattern).
-
-NOT flipped — but the "thrashing" scare was a MEASUREMENT ARTIFACT, now
-resolved (see notes/enemy-movement.md). Per-path repick counters show the
-enemy arrival-repick fires ONCE per run (`arrival=1`), so the target is
-stable WITHIN a run; the apparent frame-to-frame thrash was comparing
-separate-run builds whose WAIT_KEY release timing jitters (different RNG
-start). So flag-ON IS behaviour-correct for the enemy (stable target,
-repicks on arrival like `LAA7D_1`) — no thrashing bug.
-
-What actually blocks the default flip: there is still no byte-exact GATE
-for the RNG-dependent behaviour (the ball gate is RNG-independent, and the
-enemy target isn't reproducible across separate-run builds because of the
-release-timing jitter). A gate needs a single multi-frame-probing run or a
-fixed release frame. So flag-ON is validated-correct (walk byte-exact,
-init matches, enemy steering correct) but the flip stays deliberate
-pending a real behaviour gate. The shipped default (flag-OFF) is fine
-regardless. Resolving it (skip the port's first-frame tick, or seed to the
-original's f0 pre-tick value) would make RNG-dependent reads — enemy
-targets, bonus drops — frame-exact. Note the L3 seed value `0x460D` is the
-snapshot's, not the env `8E49` (which wrote the wrong address `$8E17`).
-
-## Status: FLIPPED — flag ON by default (2026-06-05)
-
-`rng_perframe` now defaults to **1** (per-frame tick = the original's
-model); `BATTY_RNG_PERFRAME=0` reverts to the old advance-on-read
-behaviour (BATTY_LAFFC fallback pattern). Flipped after `make test-rng-walk`
-proved the walk byte-exact and the full gate suite stayed green with the
-flag on: `test-laffc-ball-frame1` (5 checkpoints), `make test` (5 visual
-states + 2 lints), `test-bat-deflection` (14/14), `test-enemy-descend`,
-`test-rng-walk`. So the shipped game now advances its RNG once per frame
-like the original — enemy targets and bonus drops use the correct random
-sequence model. (Below: the original staging notes, kept for the trail.)
-
-## (historical) Status: staged foundation landed (flag OFF by default)
-
-`BATTY_RNG_PERFRAME` + `rng_sample()` are in (the `BATTY_LAFFC` staging
-pattern). Flag OFF: `rng_sample()` ≡ `next_random()` and no per-frame
-tick, so behaviour is byte-identical — verified, the L3 ball gate and all
-`make test` states stay green. Flag ON: a per-frame `next_random()` tick
-runs at the play-loop top, and read-current consumers sample without
-advancing. Done so far: the per-frame tick; the enemy consumers
-(`enemy_turn_towards_target` reads `random_e`, `enemy_pick_new_target`
-uses `rng_sample()`); the magnet on/off coin-flip (the original
-`print_magnets` reads `random_number+$01` without advancing). Flag-ON
-smoke: boots fine and the (RNG-independent) ball stays byte-exact.
-
-**Validation is gated on FINISHING the conversion.** Read-current
-consumers can't be validated piecemeal: any consumer still calling
-`next_random()` advances the shared `random_number` between frames, so a
-converted consumer's sampled value won't match the original until the
-others are converted too. (Concretely: the enemy repick can't match its
-`0x2C` ground truth while L3's bonus-drop consumers still advance — see
-notes/enemy-movement.md.) So the remaining read-current consumers must all
-be converted before the flag-on acceptance tests pass; each conversion is
-flag-OFF byte-identical, so they land safely meanwhile.
-
-### Consumer classification (against the original)
-
-Converted to `rng_sample()` (read-current — original reads `random_number`
-with no preceding `CALL random_generate`):
-- enemy target (`enemy_turn_towards_target`, `enemy_pick_new_target`)
-- magnet on/off coin-flip (`print_magnets`)
-- bonus DROP CHANCE (`brik_value`: `LD A,(random_number+$01)/CP $05/
-  CALL C,set_bonus`)
-- `bomb_appear` (`$A989`: reads both bytes, no advance) — runs every alien
-  frame, so this was the main per-frame polluter of the enemy sequence
-
-Kept on `next_random()` (advance — original `CALL random_generate` first):
-- bonus TYPE pick (`generate_new_bonus`: re-`CALL`s `random_generate` each
-  retry, so each iteration advances)
-
-- `enemy_prepare` spawn X (`$9EAA`: `LD A,(random_number)/AND $03`, no
-  advance) — read-current. (Same edit also fixed the spawn dir/target to
-  $10, see notes/enemy-movement.md.)
-
-- 400pts marker X-drift (`LA67B`: `LD A,(random_number)/AND $01/RL B`, no
-  advance) — read-current -> `rng_sample()`.
-
-Left on `next_random()` (advance): alien-blast sound noise tone (`$C1A8`
-region). The PC-speaker layer is an approximation, not a byte-exact beeper
-port (see parity-gaps.md), and it only fires on an alien kill — outside
-the enemy-flight window — so it neither needs nor can use a byte-exact RNG.
-
-**The enemy-relevant consumer set is now complete:** every consumer that
-fires during normal enemy flight (per-frame `bomb_appear`, per-brick bonus
-drop-chance, enemy target/spawn, magnet, 400pts) reads-current; the bonus
-TYPE pick correctly advances. So with `BATTY_RNG_PERFRAME=1` the enemy
-target sequence should track the original (the seed-walk is aligned by
-design: the port ships the $8000-$9FFF ROM window and starts the walk at
-$8000). Acceptance test (next): seed the enemy to the L3 state
-(`BATTY_REPLAY_ENEMY_OBJECT`, dir/target=$10, x=168, y=1, spd=1), run
-flag-on with RNG 8E49, and confirm the target repicks to 0x2C at frame
-~10 (notes/enemy-movement.md ground truth).
-
-## Alignment plan (deliberate; not a single safe edit)
-
-1. Add a per-frame tick: one `next_random()` at the main-loop top,
-   mirroring `LB9E8_2`.
-2. Convert the consumers that the original READS (no advance) to read
-   `random_e`/`random_d` directly instead of calling `next_random()`.
-   (`enemy_turn_towards_target` already reads `random_e & $3F`.)
-3. Leave consumers that the original ADVANCES-then-reads
-   (e.g. `generate_new_bonus`) calling `next_random()` first.
-4. Match the secondary call sites (6293, 6461) once identified.
-
-## Why it isn't a 5-minute change
-
-- It touches ~8 RNG consumers, each needing the original's advance-vs-read
-  semantics decided individually (no ground truth for most).
-- It risks the green `make test`: any RNG-dependent *rendering* at a
-  captured frame can flip. The magnet coin-flip is the obvious one —
-  though L1 (the level in `make test`) has no magnets, so the level/bat
-  states may be RNG-independent; this needs checking, not assuming.
-- A partial change is worse than none: the per-frame tick WITHOUT the
-  consumer conversion just adds an extra advance per frame, desyncing the
-  consumers further. Tick and conversion must land together.
-
-So this is a deliberate, separately-validated refactor (ideally staged
-behind a `BATTY_RNG_PERFRAME`-style flag like `BATTY_LAFFC` was), with
-`scripts/capture_enemy_flight.py` and a bonus-drop capture as the
-acceptance checks. The ball physics gates are unaffected (the ball is
-RNG-independent), so they stay green throughout.
-
-## LIVE capture (2026-06-05): the walk does NOT match yet — "byte-exact" was over-claimed
-
-Captured both sides frame-by-frame from the L3 `l3-brick-flash` state
-(original via ZEsarUX reading $8D48/$8D4A at each $BA83 boundary; port via
-PROBE.TXT `random_number`/`random_seed`, flag ON). Findings:
-
-**Seed format.** `random_seed` is a little-endian 16-bit at $8D4A. The
-snapshot value at the f0 $BA83 boundary is **$962A** (NOT `2A96` — that is
-the byte pair printed lo-then-hi). It increments **+1/frame**
-($962A→$962B→$962C ...), walking the $8000-$9FFF region. So seed the port
-with `BATTY_REPLAY_RANDOM_SEED=962A` and random_number with
-`BATTY_REPLAY_RANDOM=9337` (the f0 values). (`replay_apply_random`
-masks `& 0x9FFF | 0x8000`, which is a no-op for a valid $962A.)
-
-**Walk still diverges** (seed + random_number both seeded to f0):
-
-    frame   original          port (flag ON, seed 962A)
-    f0      9337 / 962A       9337 / 962A     (seeded — match)
-    f1      53BB / 962B       17F7 / 962B     (DIVERGE)
-    f2      0D46 / 962C       A2B1 / 962C
-    f3      9009 / 962D       6534 / 962D
-
-The seed walk matches (962A→962B...), but `random_number` diverges from f1.
-So the earlier "RNG walk byte-exact / validated offline" claim is WRONG for
-the live L3 setup.
-
-**Narrowed root cause.** The ALGORITHM matches `random_generate` ($0072):
-`E += src + $05 + ctrl_btns`; `D += ~src + $16 + L` (L = seed low byte);
-`seed = (seed+1) & $9FFF`. And the port's `random_seed.bin` (the $8000-
-$9FFF source for `src`) MATCHES the original at the seed region:
-
-    orig mem[962A..]: BB B5 7E E1 13 06 0B 77
-    asset[162A..]   : BB B5 7E E1 13 06 0B 77   (identical)
-
-(though asset != orig at $8000.. itself, which holds runtime-mutated state
-— irrelevant unless the seed walks there). Yet at the f0→f1 tick BOTH
-output bytes diverge by exactly 0x3C (port D=17 vs orig 53; port E=F7 vs
-orig BB). Since `ctrl_btns` feeds ONLY E, a D divergence means `src` (or
-its effective read offset) differs too — i.e. the port's per-frame tick is
-NOT reading the same `src` byte the original reads at $962A, even though
-the asset byte there matches. Likely a one-tick offset (the port's tick
-reads the seed at a different point than the $BA83 read sample) and/or a
-`ctrl_btns_pressed` value mismatch (ZEsarUX no-key idle vs the port's 0).
-
-**Next (instrumented):** at the single f0→f1 tick, dump on BOTH sides the
-exact `src` byte read and `ctrl_btns` used, and the seed value AT THE READ
-(not at the probe). Align those and the walk should close. Until then,
-RNG-dependent parity (enemy steering target, bonus drops) cannot be gated;
-the descend gate (RNG-independent) is the locked half.
-
-## RESOLVED (2026-06-05): the walk IS byte-exact — it was a SEED BYTE-ORDER error
-
-The "walk does NOT match" finding above was a test mistake, not a port bug.
-Two byte-order traps:
-
-1. `random_number` D:E. The original stores it LE at $8D48 (E=low=$8D48,
-   D=high=$8D49); the port's PROBE prints `(random_d, random_e)` = D:E.
-   The original f0 value is E=$93, D=$37 = the pair `9337` when read
-   $8D48-then-$8D49, but that is **D:E = 3793**. Seeding the port with
-   `BATTY_REPLAY_RANDOM=9337` set D=$93/E=$37 (byte-SWAPPED). The correct
-   seed is `BATTY_REPLAY_RANDOM=3793`.
-2. `random_seed` is the LE 16-bit `962A` (not `2A96`), per the prior note.
-
-With **RANDOM=3793 + RANDOM_SEED=962A + BATTY_RNG_PERFRAME=1**, the port's
-`random_number` walk is **byte-identical** to the original for every frame
-captured:
-
-    frame   port == original
-    f0      3793        (seeded)
-    f1      BB53
-    f2      460D
-    f3      0990
-    f4      6A76
-
-Locked by `make test-rng-walk` (`scripts/test_rng_walk.py`). So the RNG
-model, `next_random()` algorithm, AND `random_seed.bin` ($8000-$9FFF
-source) are all byte-exact — the earlier "byte-exact validated" claim was
-RIGHT after all; only the live re-test had used swapped seed bytes.
-
-### This fixes the enemy steering
-
-With the correct RNG seed + flag ON, the enemy's arrival-repick reads the
-correct `random_number`, so the steering now matches the GT: `dir` climbs
-0x11→0x12→0x13 over f16/f20/f24 (was the wrong-way 0x0E→0x0C with the
-stale/swapped RNG). See notes/enemy-movement.md. (A ~1px x residual at
-f20/f24 remains — sub-pixel, dir/y match.) So RNG-dependent parity is
-UNBLOCKED: the per-frame tick + correct seed reproduce the original's
-random sequence, hence the enemy target and (by the same mechanism) bonus
-drops.
-
-*(Both "remaining work" items named here are long done, and this
-paragraph outlived them by two months. `BATTY_RNG_PERFRAME` flipped to
-default-ON on 2026-06-05 — the next heading in this file says so — and
-the L3 replay env bakes `BATTY_REPLAY_RANDOM=3793
-BATTY_REPLAY_RANDOM_SEED=962A`, not the stale `8E49`. Bare `8E49` still
-appears in several port-only gates, where it is fine: it seeds
-`random_number` deterministically and those gates never compare against
-the original's sequence. The old complaint about `8E49` was that it left
-the ROM-walk SEED ADDRESS un-set, which is what
-`BATTY_REPLAY_RANDOM_SEED` exists to fix.)*
+One residual: `pit_frame_counter` counts from BOOT, and cadences gate on
+its low bits, so which play-frame a re-pick lands on varies with boot
+length. That is faithful — the original's `counter_misc` is global too —
+and deterministic per binary, so it is a test-comparison problem, not a
+play bug. `BATTY_REPLAY_COUNTER` pins the phase for gates
+(known-bugs #17).

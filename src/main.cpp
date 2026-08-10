@@ -1127,8 +1127,10 @@ static RenderProfile prof;
  * and the switch exists to get the old one back for an A/B. LAFFC
  * collision is byte-exact against the Spectrum over L3's 150-frame
  * trajectory (test-laffc-ball-frame1) and falls back to brick_collision
- * when it reports no hit, so it can never pass a brick through;
- * multi-ball secondaries use brick_collision throughout.
+ * when it reports no hit, so it can never pass a brick through. The
+ * multi-ball secondaries run the same path: step_extra_ball calls
+ * laffc_collision with the same brick_collision fallback, because the
+ * original runs one handling_ball per ball object.
  */
 
 /* RNG-model alignment (see notes/rng-model.md). ON is the original's

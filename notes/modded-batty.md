@@ -1,108 +1,103 @@
-# Modded Batty for GT level captures
+# Modded Batty, for the GT level captures
 
-We assemble a patched copy of the original Batty source to produce a custom
-`batty.sna` that boots straight into the level-init flow with all gameplay
-overlays removed. This replaces the prior tape-boot-per-level approach
-(~30 s/level) with a single-emulator capture loop (~10 s for all 15).
+`scripts/build_modded_batty.py` assembles a patched copy of the original
+source into a `batty.sna` that boots straight into the level-init flow with
+every gameplay overlay removed. `scripts/capture_levels_modded.py` then
+captures all 15 level GTs in under 10 seconds, against ~8 minutes for the old
+tape-boot-per-level pipeline.
 
-## Why
+## Why patch the source instead of working around it
 
-The earlier capture pipelines all suffered from one of:
+The earlier capture pipelines each suffered from one of:
 
-- **State pollution**: snap-load + hard_reset inside one emulator session
-  doesn't fully reset hardware state; per-iteration changes accumulate and
-  destroy sprite animation (magnets degraded into fuzzy sparkles by L4+).
-- **Settle-time fragility**: with the original game running, the gameplay
-  loop runs during the wall-clock settle, eventually causing the ball to
-  auto-launch / aliens to spawn / bat-handler to draw — every captured
-  frame is dependent on how many gameplay iterations sneaked in.
-- **HUD noise**: scores, "1UP HI 2UP" labels, lives indicator all end up
-  in the captures — irrelevant for visual parity testing.
+- **State pollution.** Snap-load plus `hard_reset` inside one emulator session
+  does not fully reset hardware state, so per-iteration changes accumulate and
+  destroy sprite animation — magnets degraded into fuzzy sparkles by L4.
+- **Settle-time fragility.** With the game running, the gameplay loop runs
+  during the wall-clock settle, eventually auto-launching the ball, spawning
+  aliens or redrawing the bat. Every captured frame depends on how many
+  gameplay iterations sneaked in.
+- **HUD noise.** Scores, the "1UP HI 2UP" labels and the lives indicator all
+  end up in the captures, and none of them is what a visual parity test is
+  measuring.
 
-Modifying the source removes the variables instead of working around them.
+Modifying the source removes the variables rather than tolerating them.
 
 ## Where the sources live
 
-The official disassembly from `github.com/CityAceE/Batty` is added as a
-git submodule at `original/disasm/`. **Never modify files inside the
-submodule.** All edits happen in a build-time copy.
+The disassembly from `github.com/CityAceE/Batty` is a submodule at
+`original/disasm/`. **Never modify files inside the submodule** — it must stay
+clean so upstream changes can be diffed and the patches re-applied. The build
+script copies it to `build/modded_batty/`, applies line-targeted patches to
+`batty.asm`, then invokes `sjasmplus`.
 
-`scripts/build_modded_batty.py` is the single source of truth for what we
-change. It copies `original/disasm/*` to `build/modded_batty/`, applies
-line-number-targeted patches to `batty.asm`, then invokes `sjasmplus`
-(built from source at `~/fun/sjasmplus/`).
+## The patches
 
-## Patches applied
+Keyed by 1-based line number in the upstream `batty.asm`. The script asserts a
+substring match before patching, so if upstream renumbers, the build fails
+loudly rather than patching the wrong line.
 
-Each entry below is keyed by 1-based line number in the upstream
-`batty.asm`. The build script asserts a substring match before patching,
-so if upstream renumbers, the build fails loudly.
+| line | change | why |
+|------|--------|-----|
+| 572 | `XOR A` (start of `scr_score_update`) → `RET` | the per-frame score redraw becomes a no-op, so digits never reach VRAM |
+| 5966 | `LD A,$83` (final `all_var_init` write to bat+$14) → `LD A,$09` | `$09` is the kill-aliens bonus flag, so `enemy_prepare` early-returns and no bird appears |
+| 6094 | `CALL disp_main_menu_and_wait_keys` → 3-byte NOP | skip the title screen; boot goes straight into `game_restart` |
+| 6145 | `CALL show_window_round_number` → NOP | no PLAYER/ROUND banner |
+| 6147 | `CALL pause_long` → NOP | no 1.2 s pause to read it |
+| 6148 | `CALL all_metal_briks_animation_snd` → NOP | skip the metal-brick fade-in |
+| 6261 | `CALL restore_objs_and_magnet` → `DEFB $18,$FE,$00` | `JR $` + NOP: spin AFTER the first gameplay iteration has painted and flushed |
+| `LBE8B_11` region | 3x `CALL print_obj_to_buff` (1up/2up/hi) + 3x `CALL print_score_in_game` → NOPs | no HUD labels, no score digits |
 
-| Line  | What                                                            | Why                                                                                  |
-| ----- | --------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| 572   | `XOR A` (start of `scr_score_update`)         → `RET`           | Per-frame score redraw is a no-op — score digits never reach VRAM                    |
-| 5966  | `LD A,$83` (all_var_init final write to bat+$14) → `LD A,$09`   | bat+$14 = `$09` = "kill-aliens" bonus flag; `enemy_prepare` early-returns → no bird  |
-| 6094  | `CALL disp_main_menu_and_wait_keys`           → 3-byte NOP      | Skip title screen entirely — boot goes straight into `game_restart` body             |
-| 6145  | `CALL show_window_round_number`               → 3-byte NOP      | No "PLAYER N / ROUND NN" banner                                                      |
-| 6147  | `CALL pause_long`                             → 3-byte NOP      | No 1.2s pause that originally let players read the banner                            |
-| 6148  | `CALL all_metal_briks_animation_snd`          → 3-byte NOP      | Metal-brick fade-in skipped (~40 ms/brick saved)                                     |
-| 6261  | `CALL restore_objs_and_magnet`                → `DEFB $18, $FE, $00` | `JR $` + NOP — spins AFTER the first gameplay-loop iter has painted bat/ball/lives into scr_buff and flushed to VRAM. The trap fires right before the restore step that would wipe them back. |
-| LBE8B_11 region | 3 × `CALL print_obj_to_buff` (spr_1up/2up/hi) + 3 × `CALL print_score_in_game` → 3-byte NOPs | No "1UP HI 2UP" labels, no score digits in HUD |
+Use `DEFB $hh, $hh, $hh` whenever byte-count alignment matters — every 3-byte
+`CALL` becomes three bytes, every 2-byte `JR cc,…` becomes a 2-byte `JR`.
 
-The L6853 lives-indicator skip is **not** applied — keeping it would
-silently exclude `render_lives` from the GT and mask any drift. To
-re-extract `frame_l1.bin` without lives baked in, temporarily re-add
-the L6853 patch, run `scripts/extract_frame.py`, then remove again
-before recapturing GTs (see comment in `build_modded_batty.py`).
+**The `JR $` spin at line 6261 (= `0xBB61`) is the load-bearing one.** It
+leaves the CPU in the "running" state, so `set_register PC=…` can break it out
+for the next level, and it runs **exactly one** gameplay-loop iteration before
+catching — long enough for `print_obj_from_buf_to_scr` to flush the bat, ball
+and lives indicator into VRAM, short enough that `restore_objs_and_magnet` has
+not wiped them again. So the GT captures the post-paint frame with every
+object drawn.
 
-The `JR $` spin at line 6261 (= **0xBB61**) is critical: it leaves the
-CPU in the "running" state (so `set_register PC=…` can break it out for
-the next level), and runs **exactly one** gameplay-loop iteration before
-catching — long enough for `print_obj_from_buf_to_scr` to flush the bat
-+ ball + lives indicator into VRAM, short enough that
-`restore_objs_and_magnet` hasn't wiped them again. The GT therefore
-captures the post-paint frame with all objects drawn.
+`JR $` rather than `DI; HALT`: once a Z80 halts with interrupts disabled, only
+an NMI or a reset resumes it, and setting PC over ZRCP does not.
 
-We picked `JR $` over `DI; HALT` because once a Z80 enters halt state
-with interrupts disabled, only an NMI or reset can resume it; setting PC
-via ZRCP does not. Spin-loop is functionally equivalent for our purposes.
+**The lives-indicator skip is deliberately NOT applied.** Keeping it would
+silently exclude `render_lives` from the GT and mask any drift there. To
+re-extract `frame_l1.bin` without lives baked in, temporarily re-add that
+patch, run `scripts/extract_frame.py`, then remove it again before
+recapturing GTs.
 
-## Driver flow (`scripts/capture_levels_modded.py`)
+## The capture loop
 
 ```
 boot ZEsarUX with build/modded_batty/batty.sna
-sleep 2s                                       # game_start -> game_restart -> L1 init -> first paint -> spin at BB61
+sleep 2s                              # to the first paint, spinning at BB61
 snap level_01.scr
 
 for n in 2..15:
-  poke $B7EA = n-1                             # current_level_number_1up
-  set PC = 0xBA24                              # = CALL briks_calc, restarts the level-init flow
+  poke $B7EA = n-1                    # current_level_number_1up
+  set PC = 0xBA24                     # = CALL briks_calc, restarts level init
   resume CPU
-  poll get_registers until PC == 0xBB61        # spin reached again
+  poll get_registers until PC == 0xBB61
   snap level_<n>.scr
 ```
 
-`briks_calc` re-reads the level table; `all_var_init` (run inside
-`LB9E8_1`) resets the 11-slot object table; `game_screen_draw_to_buffer`
-repaints the entire screen for the new level. So each iteration after the
-first gets a fully fresh paint — no state pollution.
+`briks_calc` re-reads the level table, `all_var_init` (inside `LB9E8_1`)
+resets the 11-slot object table, and `game_screen_draw_to_buffer` repaints the
+whole screen, so every iteration after the first gets a fully fresh paint with
+no state carried over. The same poke-`$B7EA`+`$BA24` recipe is what
+generalises the byte-exact oracle to any level (`notes/replay-harness.md`).
 
-End-to-end the script captures and renders all 15 levels in under 10
-seconds on this machine, vs ~8 min for the tape-boot-per-level pipeline.
+## Adding a modification
 
-## Adding new modifications
-
-If you need another behaviour change (e.g. force a specific level's
-magnet to be drawn at a particular frame, blank the frame ornament, etc):
-
-1. Find the address / source line in `original/disasm/batty.asm`.
+1. Find the address or source line in `original/disasm/batty.asm`.
 2. Add a `(line_no, needle, replacement)` entry to `PATCHES` in
-   `scripts/build_modded_batty.py`. Use `DEFB $hh, $hh, $hh` if you need
-   to keep byte-count alignment with the original instruction (every
-   3-byte `CALL` → `DEFB $00,$00,$00`; every 2-byte `JR cc,…` → `JR …`).
-3. `make` (or `python3 scripts/build_modded_batty.py`), then `python3
-   scripts/capture_levels_modded.py`.
+   `scripts/build_modded_batty.py`.
+3. Rebuild and re-run the capture.
 4. Verify the rendered GT looks correct.
 
-Do **not** edit `original/disasm/` directly. The submodule must remain
-clean so we can `git diff` upstream changes and re-apply our patches.
+**Audit post-processing when you change this pipeline.** A leftover
+`clean_gts.py` once wiped the y=120..160 band — including magnet pixels — from
+the GTs, and cost a session of "missing magnets" debugging on a capture that
+had got them right.
