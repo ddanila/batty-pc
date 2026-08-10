@@ -56,13 +56,53 @@ IDENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]{3,}")
 CITED = re.compile(r"`([a-z][a-z0-9]*(?:_[a-z0-9]+)+)`")
 
 
+TRIPLE_D = '"' * 3
+TRIPLE_S = "'" * 3
+
+
+def strip_prose(path, text: str) -> str:
+    """Drop comments and docstrings, so PROSE cannot define a symbol.
+
+    Added 2026-08-10, and it is the difference between this tool working
+    and not. The corpus used to be raw text, so a name DELETED from the
+    code but still present in a comment counted as defined — and the
+    name that survives in a stale comment is exactly the name a stale
+    note is about.
+
+    Measured that day: `bounce_enemy_off_margins`, the deletion that
+    prompted this tool to exist, was masked by the comments mentioning
+    it. So was `primary_ball_launch_from_bat`, renamed hours earlier.
+    Stripping takes the report from 36 names to 58, and the extra 24
+    include both.
+
+    Crude regexes on purpose. This is a report a human triages, so a
+    docstring that survives a bad match costs nothing, while a real
+    parser would cost a dependency and an afternoon.
+    """
+    if path.suffix in (".cpp", ".h"):
+        text = re.sub(r"/\*.*?\*/", " ", text, flags=re.S)
+        return re.sub(r"//[^\n]*", " ", text)
+    if path.suffix == ".py":
+        text = re.sub(TRIPLE_D + r".*?" + TRIPLE_D, " ", text, flags=re.S)
+        text = re.sub(TRIPLE_S + r".*?" + TRIPLE_S, " ", text, flags=re.S)
+        return re.sub(r"#[^\n]*", " ", text)
+    return text
+
+
 def known_identifiers() -> set:
     known = set()
     for pattern in SOURCES:
         for f in ROOT.glob(pattern):
-            known |= set(IDENT.findall(f.read_text(errors="ignore")))
+            known |= set(IDENT.findall(
+                strip_prose(f, f.read_text(errors="ignore"))))
+            # A script called notes_symbols.py DOES define the name
+            # `notes_symbols`, and notes cite scripts that way. Without
+            # this, stripping docstrings reports every tool in scripts/
+            # as missing.
+            known.add(f.stem)
     for f in ROOT.glob("original/disasm/**/*.asm"):
         known |= set(IDENT.findall(f.read_text(errors="ignore")))
+        known.add(f.stem)
     return known
 
 

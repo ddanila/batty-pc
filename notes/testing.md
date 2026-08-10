@@ -640,37 +640,40 @@ lists every backticked `snake_case` identifier in `notes/*.md` that
 nothing in `src/`, `tests/`, `scripts/`, the Makefile or the
 disassembly defines.
 
-### Its corpus is RAW TEXT, comments included — so it under-reports
+### The corpus skips comments and docstrings — fixed 2026-08-10
 
-Measured 2026-08-10, after four present-tense claims rotted in one day
-and this tool reported none of them.
+It did not, until four present-tense claims rotted in one day and this
+tool reported none of them.
 
-`known_identifiers()` scans `src/`, `tests/`, `scripts/`, the Makefile
-and the disassembly for anything matching an identifier, with no attempt
-to skip comments or docstrings. So a name counts as "defined" if it
-appears ANYWHERE in that text — including in a stale comment, and
-including in the docstring of the very gate whose claim has rotted.
+`known_identifiers()` scanned raw text, so a name counted as "defined"
+if it appeared ANYWHERE — including in a stale comment, and including in
+the docstring of the very gate whose claim had rotted. A name that
+survives only in the prose that is wrong about it looked exactly like a
+name in use.
 
-Worked example from that day: `bat` became `bats[2]` with a `bat1`
-macro, and the code was rewritten accordingly, but the COMMENTS in
-`src/main.cpp` still said `bat.extra_px`. Three occurrences, all in
-comments, and that is enough to make the name look defined.
+It was masking its own founding case. `bounce_enemy_off_margins` was
+deleted on 2026-08-09 and is the deletion this tool was written for;
+`src/` comments still mention it, so it had stopped being reported.
 
-Two consequences worth knowing before trusting a clean run:
+`strip_prose()` now removes C comments and Python docstrings before
+scanning. The report went from 36 names to 58, and the 24 extra include
+both `bounce_enemy_off_margins` and `primary_ball_launch_from_bat`
+(renamed the same day). Script FILENAMES are added back to the known
+set, because a tool called `notes_symbols.py` does define the name notes
+cite it by, and stripping docstrings would otherwise report every script
+in `scripts/` as missing.
 
-- it catches only names that vanished from every file, which is much
-  weaker than "no longer defined";
-- a stale name quoted in a gate's own docstring masks itself, and gate
-  docstrings are exactly where a false present-tense claim does the most
-  damage, because the next reader treats them as authority.
+More noise is the price, and for a report that a human triages it is the
+right trade: a missed rot is a wrong note, a spurious name is ten
+seconds.
 
-Extending it to member references (`bat.extra_px`) was tried the same
-day and reverted: `foo.bar` also matches filenames — four of six new
-hits were `zrcp.py`, `brick_bitmaps.bin` and friends — and the
-self-masking above defeats it anyway. Adding noise to a report that
-exists for human triage makes it worse. **The four rots that day were
-found by grepping for the renamed symbols by hand, which is what a
-rename should always be followed by.**
+**What it still cannot see: member references.** `bat.extra_px` is
+invisible, because only bare backticked snake_case is matched.
+Extending to `foo.bar` was tried the same day and reverted — it also
+matches filenames, and four of six new hits were `zrcp.py`,
+`brick_bitmaps.bin` and friends. So after a rename, grep the old name
+across `src/`, `notes/` and `scripts/` by hand; that is how the four
+rots were actually found.
 
 **It is a report, not a gate, on purpose.** It currently names ~35
 identifiers and most are legitimate: past-tense history this repo

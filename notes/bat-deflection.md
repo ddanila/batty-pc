@@ -267,7 +267,7 @@ primary whatever happens to the others:
 | `ride_stuck_ball_on_bat` | 3 | dwell counter and auto-launch |
 | `launch_or_fire` | 3 | FIRE releases the held ball |
 | `rest_ball_on_bat` | 1 | positions it from `stuck_offset_x` |
-| `primary_ball_launch_from_bat` | 1 | reads `stuck_offset_x` for the angle |
+| `primary_ball_launch_from_bat` (now `ball_launch_from_bat`) | 1 | reads `stuck_offset_x` for the angle |
 | `step_ball`, `step_primary_ball` | 2 | early-out while held |
 | `deflect_ball_off_bat` | 1 | decides catch vs deflect |
 | `steer_bat_from_keys`, `draw_bottom_sprites` | 2 | a held ball follows the bat |

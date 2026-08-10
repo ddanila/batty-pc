@@ -851,18 +851,23 @@ sides are all bat-1 state" — by then bat 2 had its own width, its own
 bonus byte and a shared renderer that draws it big or armed.
 
 `notes_symbols.py`, the tool that exists for exactly this, reported
-NONE of it. Two reasons, both worth knowing:
+NONE of it. Two reasons:
 
 - it only matches bare backticked identifiers, so `bat.extra_px` is
-  invisible to it;
-- its corpus is raw text INCLUDING comments, so a name still mentioned
-  in a stale comment counts as "defined". Three of the six occurrences
+  invisible to it — still true, and extending to `foo.bar` was tried and
+  reverted because it matches filenames too;
+- its corpus was raw text INCLUDING comments, so a name still mentioned
+  in a stale comment counted as "defined". Three of the six occurrences
   were in `src/` comments, and that was enough.
 
-Extending it to member references was tried and reverted: `foo.bar` also
-matches filenames (four of six new hits were `zrcp.py` and friends), and
-the self-masking defeats it anyway. Recorded in notes/testing.md so the
-next person does not re-derive it.
+**The second half is now fixed** (`strip_prose`, the same day). It had
+been masking the tool's own founding case: `bounce_enemy_off_margins`,
+deleted 2026-08-09, is still named in `src/` comments and had quietly
+stopped being reported. The report went 36 -> 58 names.
+
+That is the sharper lesson here. A tool built to catch stale prose was
+being defeated BY stale prose, and nobody noticed because its output
+looked reasonable — a shorter list reads like good news.
 
 **So: after a rename, grep for the OLD name across src, notes and
 scripts, and read each hit.** Past tense is fine and often required.
