@@ -1427,6 +1427,42 @@ NARROWED the refresh would fail it. All six pass it, which is what
 survivors triaged: 17 real and fixed, 1 knowingly untestable (the attr
 row clamp writes past a global), 17 equivalent with a derivation each.
 
+### The STRICT half, and why it yields much less
+
+The symmetric sweep — every `<` and `>` mutated to `<=` and `>=` — has
+93 candidates. 16 caught, 70 survived, 7 errors.
+
+**The 70 is mostly an artefact of the operator.** Classifying them:
+
+| class | count | why it cannot be caught |
+|---|---|---|
+| clamp idiom `if (x < N) x = N` | 19 | relaxing to `<=` re-assigns N when x is already N |
+| min/max ternary `(a < b) ? a : b` | 11 | same value either way at equality |
+| preprocessor / not host-built | 5 | never compiled by the host suite |
+| everything else | 35 | worth triaging |
+
+So 30 of 70 are equivalent BY CONSTRUCTION — the mutation is a no-op on
+the dominant idiom for `<` in this codebase. For a clamp, the meaningful
+mutation is the CONSTANT (`< N` -> `< N-1`), which is how
+`enemy_home_step`'s `t.x < 0x10` was found earlier; `<` -> `<=` on that
+same line is equivalent.
+
+**Choose the operator to suit the idiom.** The `>=` sweep had a real
+hit rate of 17/35 because inclusive comparisons are boundaries by
+nature. This one is padded with mutations that could never have failed.
+
+Real so far from the strict half: `laffc_sweep`'s up/down direction
+gate. `LAFFC_13` is `CP $20 / JR NC`, so dir $20 belongs to the UPWARD
+half, and `<=` moves it. It is the vertical twin of the left/right gate
+at dir $10 — both hinge on exactly one direction value, and both went
+untested for the same reason.
+
+The candidate filter also needs work: `#include <stdio.h>` matched, and
+`while (...)` conditions were not excluded the way `for (...)` was. The
+include lines became ERRORs rather than silent junk only because
+`mutate.py` now checks for build failure — the fix from earlier the same
+day, validated by accident.
+
 The `hud` attribute one needed two attempts and the reason generalises:
 "code $40 draws nothing" is satisfied by an UNRECOGNISED code too, since
 both fall through. What separates them is that an attribute does

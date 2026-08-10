@@ -497,6 +497,35 @@ static void test_brick_sweep_axis_tie_is_vertical() {
     report("brick_sweep_axis_tie", before, "equal overlap -> dy  ok");
 }
 
+/* The up/down direction gate is `<`, and dir $20 is the only value that
+ * can tell.
+ *
+ *     LAFFC_13: LD A,(IX+$06) / CP $20
+ *               JR NC,LAFFC_14 / RES 3,D / JR LAFFC_15
+ *     LAFFC_14: RES 2,D
+ *
+ * `JR NC` fires at dir >= $20, clearing bit 2 (the UP face); below that
+ * it clears bit 3 (DOWN). So $20 belongs to the UPWARD half, and the
+ * port's `if (dir < 0x20) mask &= ~8; else mask &= ~4;` matches.
+ *
+ * `<=` moves $20 to the other half. Found by the strict-comparison
+ * sweep, and it is the vertical twin of
+ * `laffc_dir_gate_ge_at_vertical`, which pins the left/right gate at
+ * dir $10. Both gates hinge on one direction value each. */
+static void test_laffc_updown_gate_at_dir_20() {
+    const int before = failures;
+    field_fill(false);
+    field_cells[0 * FIELD_COLS + 1] = 0x01;
+    const BrickField field(field_cells);
+    for (int ny = 26; ny <= 30; ny++) {
+        const LaffcHit h = laffc_sweep(field, 0x20, 8, 7, 16, ny);
+        check(h.hit && h.face_mask == 0x08,
+              "dir $20 at (16,%d): hit=%d mask=%02X, expected the DOWN "
+              "face (08) — `<=` gives 04\n", ny, (int)h.hit, h.face_mask);
+    }
+    report("laffc_updown_gate_dir20", before, "dir $20, 5 rows      ok");
+}
+
 /* A ball whose x sits exactly on a column edge is in the HIGHER column.
  *
  *     LAFFC_4: SUB B / JR C,LAFFC_5 / INC IY / C += B / ...
@@ -1265,6 +1294,7 @@ int main() {
     test_brick_sweep_band_edges();
     test_brick_sweep_came_from_is_inclusive();
     test_brick_sweep_axis_tie_is_vertical();
+    test_laffc_updown_gate_at_dir_20();
     test_laffc_column_edge_takes_higher();
     test_bat_zone_boundary_belongs_above();
     test_laffc_row_scan_edge_is_one_brick();

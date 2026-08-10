@@ -1138,3 +1138,27 @@ The general move: before triaging survivors individually, look for a
 STRUCTURAL property they share. Six one-off traces is not six times the
 value of one argument that covers them, and it is much easier to get one
 of the six subtly wrong.
+
+## Choose the mutation operator to suit the idiom (2026-08-10)
+
+Mutating every `>=`/`<=` to its strict form found 17 real gaps out of 35
+survivors. Doing the symmetric thing — every `<`/`>` to its inclusive
+form — found 70 survivors, and 30 of them CANNOT be caught by anything:
+
+- 19 are clamps, `if (x < N) x = N`. Relaxing to `<=` re-assigns N when
+  x is already N. No observable difference exists.
+- 11 are min/max ternaries, `(a < b) ? a : b`. Same value at equality.
+
+The operator is a no-op on the dominant idiom for `<` in this codebase,
+so a third of that run was mutations that could never have failed —
+and each one still cost a full build and test cycle.
+
+For a clamp the meaningful mutation is the CONSTANT: `< N` -> `< N-1`.
+That is how `enemy_home_step`'s `t.x < 0x10` was found; `<` -> `<=` on
+the very same line is equivalent.
+
+**Before running a sweep, ask what the operator does to the code's
+common shapes.** A high survivor count reads like a coverage problem and
+can just as easily be an operator that does not bite. Both sweeps here
+were 40+ minutes; one was worth it and one was half wasted, and the
+difference was foreseeable from the idiom alone.
