@@ -8,7 +8,7 @@ test. Started 2026-08-07.
 The stage table below is complete except stage 1, which is blocked for a
 reason rather than for want of effort — see the end of this section.
 
-**The code.** `main.cpp`: 7,747 → 8,161 lines (net -1) across 15
+**The code.** `main.cpp`: 7,747 → 8,220 lines (net -1) across 15
 modules. The longest function is `run_level` at 113 lines, and it is an
 orchestrator of named phases, which is what it should be.
 

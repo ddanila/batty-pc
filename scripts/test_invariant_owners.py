@@ -39,7 +39,7 @@ OWNED = [
      "draws a ball that is never stepped, or steps one never drawn"),
     ("objects[OBJ_BALL_3].sprite_set = 0x82;", 1, "hide_extra_balls",
      "as above, for the third ball"),
-    ("objects[bat].bonus_applied = code;", 1, "set_bat_bonus",
+    ("objects[bat_idx].bonus_applied = code;", 1, "set_bat_bonus",
      "the CATCHING bat's bonus byte. This entry used to read "
      "`objects[OBJ_BAT_1].bonus_applied = code;` and justify itself with "
      "'the bat's bonus lives in both bat objects and they must not "

@@ -781,3 +781,37 @@ Reseeding the second one took two goes: at y=158 the bonus is still
 falling when the ball arrives at frame 12, so the MAGNET was not up yet
 and the ball simply bounced. Seeded at 168 it overlaps the bat on frame
 1 and is caught immediately.
+
+
+## The bat's width state is per-bat now — shape only (2026-08-10)
+
+`BatState` was one struct, `bat`. It is `bats[2]` with `BAT_SLOT()`
+mapping an object index to a slot, and `bat1` naming bat 1's.
+
+**No behaviour change**, deliberately: every one of the 58 existing
+sites still reads bat 1's, and the four bat-2 geometry sites that used
+to open-code `x_coord + BAT_BODY_W` now call `bat_left_of` /
+`bat_right_of`, which return exactly the same numbers while
+`bats[1].extra_px` is 0. That switch is what makes slot 1 a live read
+rather than a field waiting for a later commit to notice it.
+
+Same staging as the stuck-ball fields: shape, then threading, then the
+feature. What follows is bat 2's width actually growing, which needs
+`render_bat_2` to draw the resize sides and the big body — bat 1's
+renderer already does both, and generalising it is the work.
+
+### The bug this introduced, and it was not the rename
+
+`OBJ_BAT_1` is 6 and `OBJ_BAT_2` is 5 — OBJECT-table positions, not 0
+and 1. Written as `bats[OBJ_BAT_1]` on a two-element array, every access
+ran four elements past the end. It compiled clean under `-w4 -we`; the
+symptom was the ball flying to the ceiling on launch and nineteen gates
+red, behind a diff that was otherwise a pure rename.
+
+Found by refusing the "a rename cannot break anything, so the sweep must
+be flaky" instinct: HEAD passed 2/2 and the change failed 4/4, and then
+`sed 's/bat1\./bat./' | diff` against HEAD reduced seventy diff lines to
+ONE — the declaration. Full write-up in notes/lessons.md.
+
+`BAT_SLOT()` is the fix and the guard: an out-of-range argument lands on
+a real element instead of off the end.

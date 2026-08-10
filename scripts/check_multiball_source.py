@@ -63,7 +63,7 @@ def main() -> int:
 
     try:
         body = strip_comments(
-            body_of(main_src, "static void apply_multi_ball_bonus(int bat) {"))
+            body_of(main_src, "static void apply_multi_ball_bonus(int bat_idx) {"))
     except ValueError:
         raise SystemExit("FAIL: apply_multi_ball_bonus is gone; if the "
                          "multiball spawn moved, point this gate at it")

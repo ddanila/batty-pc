@@ -930,7 +930,49 @@ struct BatState {
     unsigned char drawn_bonus, drawn_fire_ticks;
 };
 
-static BatState bat = { 0, 0, 0, 0, 0, BAT_Y_PX, 0xFF, 0 };
+/* One per bat, indexed by OBJ_BAT_1 / OBJ_BAT_2.
+ *
+ * The WIDTH is the last thing a bonus still shares between the two bats
+ * (WS3): `set_bat_bonus` splits the bonus BYTE, but a BIG_BAT caught by
+ * bat 2 has nowhere to record its width, so it is guarded to bat 1 and
+ * widens nobody.
+ *
+ * This is the state-shape half of the fix, and it is deliberately its
+ * own step with NO behaviour change — the `bat` macro below keeps all
+ * 51 existing sites on slot 0, so the whole sweep must stay green by
+ * construction. The same staging as the stuck-ball fields (`[3]` first,
+ * then the sites learned which ball, then the feature): the diff that
+ * follows is about bat 2's width and not about a rename.
+ *
+ * ### Indexed by BAT_SLOT(), never by the object index
+ *
+ * `OBJ_BAT_1` is 6 and `OBJ_BAT_2` is 5 — positions in the eleven-slot
+ * OBJECT table, not 0 and 1. The first version of this array was
+ * `bats[2]` written as `bats[OBJ_BAT_1]`, which indexes four elements
+ * PAST the end and silently corrupted whatever `.data` followed. It
+ * compiled clean, and the symptom was the ball flying to the ceiling on
+ * launch — nineteen gates red behind a diff that was otherwise a pure
+ * rename.
+ *
+ * So the conversion is explicit and total: every access goes through
+ * BAT_SLOT(), which maps an object index to 0 or 1 and cannot run off
+ * the end whatever it is handed. */
+static BatState bats[2] = {
+    { 0, 0, 0, 0, 0, BAT_Y_PX, 0xFF, 0 },
+    { 0, 0, 0, 0, 0, BAT_Y_PX, 0xFF, 0 },
+};
+
+/* Object index -> bats[] slot. Anything that is not bat 2 is bat 1's,
+ * so an out-of-range argument lands on a real element rather than off
+ * the end. */
+#define BAT_SLOT(o)  ((o) == OBJ_BAT_2 ? 1 : 0)
+
+/* Bat 1's slot. NOT named `bat`: several functions already take an
+ * `int bat` / `int bat_idx` parameter, and a macro or reference called
+ * `bat` would either collide with them (it did, loudly, on the first
+ * attempt) or silently shadow — which is worse. The extra character at
+ * 58 call sites buys back a name that stays free. */
+#define bat1 bats[BAT_SLOT(OBJ_BAT_1)]
 
 /* Mirror of flag_extra_life — set when the player catches a LIFE bonus
  * in the current round, prevents another LIFE drop until the round
@@ -2135,10 +2177,10 @@ static void call_for_all_obj(obj_handler_t fn) {
  * spr_bat_normal's 32 x 13 footprint. */
 static unsigned int bat_body_sprite(void) {
     if (objects[OBJ_BAT_1].bonus_applied != 0x01) return SPR_BAT_NORMAL;
-    if (bat.fire_anim_ticks >= 7) return SPR_BAT_GUN_1;
-    if (bat.fire_anim_ticks >= 5) return SPR_BAT_GUN_2;
-    if (bat.fire_anim_ticks >= 3) return SPR_BAT_GUN_3;
-    if (bat.fire_anim_ticks >= 1) return SPR_BAT_GUN_4;
+    if (bat1.fire_anim_ticks >= 7) return SPR_BAT_GUN_1;
+    if (bat1.fire_anim_ticks >= 5) return SPR_BAT_GUN_2;
+    if (bat1.fire_anim_ticks >= 3) return SPR_BAT_GUN_3;
+    if (bat1.fire_anim_ticks >= 1) return SPR_BAT_GUN_4;
     return SPR_BAT_GUN;
 }
 
@@ -2147,7 +2189,7 @@ static unsigned int bat_body_sprite(void) {
  * ink — there is no sprite for the in-between widths, only the normal
  * and big bodies. */
 static void fill_bat_resize_sides(void) {
-    const int side_w = bat.extra_px;
+    const int side_w = bat1.extra_px;
     int row;
     if (side_w <= 0) return;
     for (row = 0; row < 8; row++) {
@@ -2178,7 +2220,7 @@ static void render_bat(unsigned char cycle, unsigned char attr) {
     unsigned int spr;
     int x, y, sprite_w;
     (void)cycle;
-    if (bat.extra_px >= BAT_BIG_EXTRA_PX) {
+    if (bat1.extra_px >= BAT_BIG_EXTRA_PX) {
         spr = SPR_BAT_BIG;
         x   = BAT_X - BAT_BIG_EXTRA_PX;
         sprite_w = BAT_W_BYTES * 8 + 2 * BAT_BIG_EXTRA_PX;
@@ -2189,7 +2231,7 @@ static void render_bat(unsigned char cycle, unsigned char attr) {
          * countdown). Same 32 x 13 footprint as spr_bat_normal. */
         spr = bat_body_sprite();
         x   = BAT_X;
-        sprite_w = BAT_W_BYTES * 8 + 2 * bat.extra_px;
+        sprite_w = BAT_W_BYTES * 8 + 2 * bat1.extra_px;
         fill_bat_resize_sides();
     }
     y = BAT_Y;
@@ -2197,7 +2239,7 @@ static void render_bat(unsigned char cycle, unsigned char attr) {
      * leave the side-frame attr cells alone. The sprite pixels still
      * OR into the frame at the extremes; only the static tube colour
      * must stay owned by paint_frame_to_buff. */
-    blit_sprite_attrs_to_buff_clipped(x - bat.extra_px, y,
+    blit_sprite_attrs_to_buff_clipped(x - bat1.extra_px, y,
                                       sprite_w, 13, attr,
                                       8, PLAYFIELD_W - 8);
     blit_masked_to_scr_buff(spr, x, y);
@@ -2239,10 +2281,10 @@ static void bat_sprite_bounds(int x, int extra, int *x0, int *x1) {
 
 static void remember_bat_draw_state(void) {
     BAT_PREV_X = BAT_X;
-    bat.drawn_extra_px = bat.extra_px;
-    bat.drawn_y = BAT_Y;
-    bat.drawn_bonus = objects[OBJ_BAT_1].bonus_applied;
-    bat.drawn_fire_ticks = bat.fire_anim_ticks;
+    bat1.drawn_extra_px = bat1.extra_px;
+    bat1.drawn_y = BAT_Y;
+    bat1.drawn_bonus = objects[OBJ_BAT_1].bonus_applied;
+    bat1.drawn_fire_ticks = bat1.fire_anim_ticks;
 }
 
 /* Two pixels that walk back and forth along the bat — the original's
@@ -2312,12 +2354,12 @@ static void render_running_dot(void) {
      * rather than at the tapered sprite edges. Earlier port used the
      * sprite width (32), which placed the second dot 2 px too far
      * right against the GT. */
-    if (bat.extra_px >= BAT_BIG_EXTRA_PX) {
+    if (bat1.extra_px >= BAT_BIG_EXTRA_PX) {
         bat_w    = 28 + 2 * BAT_BIG_EXTRA_PX;   /* 44 px in big-bat mode */
         bat_left = BAT_X - BAT_BIG_EXTRA_PX;
     } else {
-        bat_w    = 28 + 2 * bat.extra_px;
-        bat_left = BAT_X - bat.extra_px;
+        bat_w    = 28 + 2 * bat1.extra_px;
+        bat_left = BAT_X - bat1.extra_px;
     }
     /* Original's recovery branch: if the bat shrank into the current
      * frame counter (bat_w - frame < 9), reset frame to bat_w - 11
@@ -3544,8 +3586,8 @@ static void hide_objects_for_rocket_clear(void) {
  *
  * and the expiry a few lines later clears each byte independently.
  * `big_ball_active` follows that shape. */
-static void set_bat_bonus(int bat, unsigned char code) {
-    objects[bat].bonus_applied = code;
+static void set_bat_bonus(int bat_idx, unsigned char code) {
+    objects[bat_idx].bonus_applied = code;
 }
 
 /* Sit the rocket on the bat, ready to fly: x = bat_x + 4, or + 12 when
@@ -3554,7 +3596,7 @@ static void set_bat_bonus(int bat, unsigned char code) {
  * orig: get_rocket $AA9D */
 static void place_rocket_on_bat(void) {
     rocket.x = BAT_X + 4;
-    if (bat.extra_px >= BAT_BIG_EXTRA_PX) rocket.x += 8;
+    if (bat1.extra_px >= BAT_BIG_EXTRA_PX) rocket.x += 8;
     rocket.y = BAT_Y + 6;
     rocket.acc = 0;
     rocket.frac = 0;
@@ -3621,8 +3663,8 @@ static void blast_active_alien(int side_x) {
  * NOT reset the speed-up ramp, so the ball starts climbing back toward
  * $06 from the next $94 tick — which is how SLOW wears off.
  * orig: LA67B_7, plus the `LD (IY+$14),$FF` on that path */
-static void apply_slow_bonus(int bat) {
-    set_bat_bonus(bat, 0xFF);
+static void apply_slow_bonus(int bat_idx) {
+    set_bat_bonus(bat_idx, 0xFF);
     objects[OBJ_BALL_1].speed = BALL_SPEED;
     objects[OBJ_BALL_2].speed = BALL_SPEED;
     objects[OBJ_BALL_3].speed = BALL_SPEED;
@@ -3633,8 +3675,8 @@ static void apply_slow_bonus(int bat) {
  * even when the extras are already out, matching the original, which
  * writes $FF before testing anything.
  * orig: LA67B_8 $A67B */
-static void apply_multi_ball_bonus(int bat) {
-    set_bat_bonus(bat, 0xFF);
+static void apply_multi_ball_bonus(int bat_idx) {
+    set_bat_bonus(bat_idx, 0xFF);
     if (ball.extra2_active || ball.extra3_active) return;
 
     /* The primary's DIR BYTE, not a direction reconstructed from the sign
@@ -3658,8 +3700,8 @@ static void apply_multi_ball_bonus(int bat) {
 
 /* Apply the effect that comes with `type`. Catching the same type
  * while already active extends the duration. */
-static void bonus_apply(unsigned char type, int bat) {
-    const int catcher_x = (int)objects[bat].x_coord;
+static void bonus_apply(unsigned char type, int bat_idx) {
+    const int catcher_x = (int)objects[bat_idx].x_coord;
     /* Original get_bonus at $A67B: every catch awards 400 points and
      * plays a sound — sound_live_add ($07) for the LIFE bonus, the
      * resize-2 beep ($0C) for everything else (push_resize_sound at
@@ -3673,11 +3715,11 @@ static void bonus_apply(unsigned char type, int bat) {
      * LASER clears the LASER state. */
     if (type != BONUS_TYPE_ROCKET) {
         unsigned char orig_code = bonus_to_original(type);
-        set_bat_bonus(bat, orig_code);
+        set_bat_bonus(bat_idx, orig_code);
     }
     switch (type) {
         case BONUS_TYPE_LIFE:     player.lives++; life_dropped_this_round = 1; break;
-        case BONUS_TYPE_SLOW:     apply_slow_bonus(bat);   break;
+        case BONUS_TYPE_SLOW:     apply_slow_bonus(bat_idx); break;
         case BONUS_TYPE_BIG_BAT:
             /* The WIDTH is bat-1 state: `bat.extra_px`, `extra_target`
              * and `big_ticks` are one bat's worth, so there is nowhere
@@ -3686,9 +3728,9 @@ static void bonus_apply(unsigned char type, int bat) {
              * widened BAT 1, which is a wrong bat rather than a missing
              * one. Now it widens nobody, and that is the visible face
              * of WS3's last open item. */
-            if (bat == OBJ_BAT_1) {
-                ::bat.big_ticks     = BIG_BAT_DURATION;
-                ::bat.extra_target  = BAT_BIG_EXTRA_PX;
+            if (bat_idx == OBJ_BAT_1) {
+                bat1.big_ticks     = BIG_BAT_DURATION;
+                bat1.extra_target  = BAT_BIG_EXTRA_PX;
                 sound_queue(SND_BAT_RESIZE_1);
             }
             break;
@@ -3719,7 +3761,7 @@ static void bonus_apply(unsigned char type, int bat) {
              * fires. Cleared automatically when another bonus is
              * caught (since bat.bonus_applied is rewritten). */
             break;
-        case BONUS_TYPE_MULTI_BALL: apply_multi_ball_bonus(bat); break;
+        case BONUS_TYPE_MULTI_BALL: apply_multi_ball_bonus(bat_idx); break;
         default: break;
     }
 }
@@ -3734,8 +3776,22 @@ static void bonus_apply(unsigned char type, int bat) {
  * transparent shadow, not visible bat surface — ball passing through
  * those pixels shouldn't register a hit. */
 /* BAT_BODY_W comes from physics.h. */
-static int eff_bat_left(void)  { return BAT_X - bat.extra_px; }
-static int eff_bat_right(void) { return BAT_X + BAT_BODY_W + bat.extra_px; }
+/* A bat's collision extents, widened by its own BIG_BAT growth.
+ *
+ * Per bat, so bat 2 stops being a hardcoded 28 px the moment it has a
+ * width of its own. Bat 2's `extra_px` is 0 today, so every
+ * bat-2 site that now calls these gets exactly what its open-coded
+ * `x_coord + BAT_BODY_W` gave it — the switch is behaviour-neutral by
+ * arithmetic, and it is what makes slot 1 a live read rather than a
+ * field waiting for a future commit to notice it. */
+static int bat_left_of(int b) {
+    return (int)objects[b].x_coord - bats[BAT_SLOT(b)].extra_px;
+}
+static int bat_right_of(int b) {
+    return (int)objects[b].x_coord + BAT_BODY_W + bats[BAT_SLOT(b)].extra_px;
+}
+static int eff_bat_left(void)  { return bat_left_of(OBJ_BAT_1); }
+static int eff_bat_right(void) { return bat_right_of(OBJ_BAT_1); }
 
 /* Current effective ball body size. spr_ball_normal body is 8x7;
  * spr_big_ball body fills the full 2-byte * 12 row sprite at its
@@ -3759,7 +3815,7 @@ static int big_ball_active(void) {
  * each frame. Catching another bonus immediately ends the wide-bat
  * state via the bat.extra_target = 0 target below in step_bonus. */
 static int big_bat_active(void) {
-    return bat.big_ticks > 0
+    return bat1.big_ticks > 0
         && objects[OBJ_BAT_1].bonus_applied == 0x00;
 }
 /* Collision body stays 8x7 even with BIG_BALL active — original at
@@ -3784,18 +3840,18 @@ static int eff_ball_size(void) { return BALL_W_PX; }
 static void tick_bat_resize(void) {
     static unsigned char resize_gate = 0;
 
-    if (bat.big_ticks > 0) {
-        bat.big_ticks--;
-        if (bat.big_ticks == 0 || !big_bat_active()) {
-            bat.extra_target = 0;
-            bat.big_ticks = 0;            /* keep the two in sync */
+    if (bat1.big_ticks > 0) {
+        bat1.big_ticks--;
+        if (bat1.big_ticks == 0 || !big_bat_active()) {
+            bat1.extra_target = 0;
+            bat1.big_ticks = 0;            /* keep the two in sync */
         }
     }
 
     resize_gate++;
     if ((resize_gate & 1) != 0) return;
-    if (bat.extra_px < bat.extra_target) bat.extra_px++;
-    else if (bat.extra_px > bat.extra_target) bat.extra_px--;
+    if (bat1.extra_px < bat1.extra_target) bat1.extra_px++;
+    else if (bat1.extra_px > bat1.extra_target) bat1.extra_px--;
 }
 
 /* BIG_BALL expiry, on every other PIT tick. orig: smash_counter $F8 at
@@ -3879,8 +3935,8 @@ static int bonus_catching_bat(int x, int y, int w, int h) {
         /* Bat 2 is always the plain 28-wide sprite — the width bonuses
          * are bat-1 globals — so no extra_px term, and its own y. */
         if (y + h >= (int)b2.y_coord && y < (int)b2.y_coord + 10
-            && x + w > (int)b2.x_coord
-            && x < (int)b2.x_coord + BAT_BODY_W)
+            && x + w > bat_left_of(OBJ_BAT_2)
+            && x < bat_right_of(OBJ_BAT_2))
             return OBJ_BAT_2;
     }
     return -1;
@@ -4467,7 +4523,7 @@ static void probe_write_entities(FILE *f) {
                        : 0xFF));
     fprintf(f, "\neffects_state=b2%02X_b3%02X_xtgt%02X_bball%02X_lives%02X",
             (unsigned)ball.extra2_active, (unsigned)ball.extra3_active,
-            (unsigned)(bat.extra_target & 0xFF),
+            (unsigned)(bat1.extra_target & 0xFF),
             (unsigned)(ball.big_ticks != 0),
             (unsigned)(player.lives & 0xFF));
 }
@@ -4699,7 +4755,9 @@ static void kill_enemy_by_bat(void) {
     if (game_mode == 2) {
         const Object &b2 = objects[OBJ_BAT_2];
         if (!(b2.sprite_set & 0x80))
-            kill_enemy_in_rect((int)b2.x_coord, BAT_Y, BAT_BODY_W, 10,
+            kill_enemy_in_rect(bat_left_of(OBJ_BAT_2), BAT_Y,
+                               bat_right_of(OBJ_BAT_2)
+                               - bat_left_of(OBJ_BAT_2), 10,
                                (int)b2.x_coord);
     }
 }
@@ -4827,7 +4885,7 @@ static void try_fire_laser(void) {
     bullet_frame[free_slot] = 0;
     bullet_x[free_slot] = BAT_X + 12;
     bullet_y[free_slot] = BAT_Y - 1;
-    bat.fire_anim_ticks = 8;
+    bat1.fire_anim_ticks = 8;
     bullet_cooldown = 0x18;          /* 12 frames @ -2 / frame */
     probe.shots_fired++;
     sound_queue(SND_SHOT);
@@ -5347,7 +5405,7 @@ static int deflect_ball_off_bat(int next_x, int *next_y) {
      * (= bat_x + offset) and the launch direction derived from it
      * match the Spectrum (probed: ball_x 133 -> offset 0x10 -> rest
      * x 132). The original then snaps the ball to y=$A7=167. */
-    if (objects[OBJ_BAT_1].bonus_applied == 0x03 && bat.extra_px == 0) {
+    if (objects[OBJ_BAT_1].bonus_applied == 0x03 && bat1.extra_px == 0) {
         catch_ball_on_bat(BALL_PRIMARY, OBJ_BAT_1, next_x);
         return 1;
     }
@@ -5373,7 +5431,7 @@ static int deflect_ball_off_bat(int next_x, int *next_y) {
     ball_owner_side[BALL_PRIMARY] = (unsigned char)((BAT_X & 0x80) ? 1 : 0);
     objects[OBJ_BALL_1].dir =
         bat_deflect_dir(objects[OBJ_BALL_1].dir,
-                        next_x + 3 - BAT_X, bat.extra_px != 0);
+                        next_x + 3 - BAT_X, bat1.extra_px != 0);
     dir_to_dxdy(objects[OBJ_BALL_1].dir, objects[OBJ_BALL_1].speed,
                       &dx_q8, &dy_q8);
     refresh_ball_motion_signs(&objects[OBJ_BALL_1], dx_q8, dy_q8);
@@ -5591,15 +5649,16 @@ static void step_extra_ball(unsigned char *in_active,
     {
         int met = extra_ball_meets_bat(o, OBJ_BAT_1, obj_idx,
                                        bat_left, bat_right, bat_top,
-                                       ball_sz, bat.extra_px != 0,
+                                       ball_sz, bat1.extra_px != 0,
                                        next_x, &next_y, dy_q8);
         if (met == 0 && game_mode == 2
             && !(objects[OBJ_BAT_2].sprite_set & 0x80)) {
             const Object &b2 = objects[OBJ_BAT_2];
             met = extra_ball_meets_bat(o, OBJ_BAT_2, obj_idx,
-                                       (int)b2.x_coord,
-                                       (int)b2.x_coord + BAT_BODY_W,
-                                       (int)b2.y_coord, ball_sz, false,
+                                       bat_left_of(OBJ_BAT_2),
+                                       bat_right_of(OBJ_BAT_2),
+                                       (int)b2.y_coord, ball_sz,
+                                       bats[BAT_SLOT(OBJ_BAT_2)].extra_px != 0,
                                        next_x, &next_y, dy_q8);
         }
         if (met == 2) return;       /* held: it does not move this frame */
@@ -5660,8 +5719,8 @@ static void redraw_bat(unsigned char cycle, unsigned char bg_attr) {
     int old_x0, old_x1, new_x0, new_x1;
     int byte_lo, byte_hi;
     int y;
-    bat_sprite_bounds(BAT_PREV_X, bat.drawn_extra_px, &old_x0, &old_x1);
-    bat_sprite_bounds(BAT_X, bat.extra_px, &new_x0, &new_x1);
+    bat_sprite_bounds(BAT_PREV_X, bat1.drawn_extra_px, &old_x0, &old_x1);
+    bat_sprite_bounds(BAT_X, bat1.extra_px, &new_x0, &new_x1);
     if (new_x0 < old_x0) old_x0 = new_x0;
     if (new_x1 > old_x1) old_x1 = new_x1;
     byte_lo = old_x0 >> 3;
@@ -5847,10 +5906,10 @@ static void render_brick_effects_and_mark(void) {
  * fire-animation frame all need the whole body redrawn. */
 static int bat_needs_full_redraw(void) {
     return (BAT_X != BAT_PREV_X)
-        || (BAT_Y != bat.drawn_y)
-        || (bat.extra_px != bat.drawn_extra_px)
-        || (objects[OBJ_BAT_1].bonus_applied != bat.drawn_bonus)
-        || (bat.fire_anim_ticks != bat.drawn_fire_ticks);
+        || (BAT_Y != bat1.drawn_y)
+        || (bat1.extra_px != bat1.drawn_extra_px)
+        || (objects[OBJ_BAT_1].bonus_applied != bat1.drawn_bonus)
+        || (bat1.fire_anim_ticks != bat1.drawn_fire_ticks);
 }
 
 /* Draw the bat on the full path and mark what it dirtied. When the body
@@ -5862,18 +5921,18 @@ static void compose_bat_full(unsigned char cycle, unsigned char bg_attr,
     int bat_x0, bat_x1, old_x0, old_x1;
 
     if (bat_full_dirty) {
-        bat_sprite_bounds(BAT_PREV_X, bat.drawn_extra_px, &old_x0, &old_x1);
-        restore_static_cache_rect_bytes(bat.drawn_y, 13,
+        bat_sprite_bounds(BAT_PREV_X, bat1.drawn_extra_px, &old_x0, &old_x1);
+        restore_static_cache_rect_bytes(bat1.drawn_y, 13,
                                         old_x0 >> 3, (old_x1 - 1) >> 3);
-        mark_dirty_rect_px(old_x0, bat.drawn_y, old_x1 - old_x0, 13);
+        mark_dirty_rect_px(old_x0, bat1.drawn_y, old_x1 - old_x0, 13);
     }
 
     render_bat(cycle, bg_attr);
     render_running_dot();
 
-    bat_sprite_bounds(BAT_X, bat.extra_px, &bat_x0, &bat_x1);
+    bat_sprite_bounds(BAT_X, bat1.extra_px, &bat_x0, &bat_x1);
     if (bat_full_dirty) {
-        bat_sprite_bounds(BAT_PREV_X, bat.drawn_extra_px, &old_x0, &old_x1);
+        bat_sprite_bounds(BAT_PREV_X, bat1.drawn_extra_px, &old_x0, &old_x1);
         if (old_x0 < bat_x0) bat_x0 = old_x0;
         if (old_x1 > bat_x1) bat_x1 = old_x1;
         mark_dirty_rect_px(bat_x0, BAT_Y, bat_x1 - bat_x0, 13);
@@ -6030,7 +6089,7 @@ static unsigned int ball_dirty_blockers(int bat_moved) {
     /* Resize transitions still force a full frame (the bat changes width,
      * needing the vacated-area restore); the laser fire-anim is now handled
      * on the dirty path by redraw_bat_dirty, so it is no longer a blocker. */
-    if (bat.extra_px != bat.extra_target) blockers |= BALL_DIRTY_BLOCK_BAT_FX;
+    if (bat1.extra_px != bat1.extra_target) blockers |= BALL_DIRTY_BLOCK_BAT_FX;
     return blockers;
 }
 
@@ -6156,8 +6215,8 @@ static void render_simple_objects_to_buff_and_mark(unsigned char bg_attr) {
  * via the BAT / BAT_FX blockers.) */
 static void redraw_bat_dirty(unsigned char cycle, unsigned char bg_attr) {
     int bat_x0, bat_x1;
-    bat_sprite_bounds(BAT_X, bat.extra_px, &bat_x0, &bat_x1);
-    if (bat.fire_anim_ticks) {
+    bat_sprite_bounds(BAT_X, bat1.extra_px, &bat_x0, &bat_x1);
+    if (bat1.fire_anim_ticks) {
         paint_bg_window_to_buff(bg_attr, cycle, BAT_Y, BAT_H_PX,
                                 bat_x0 >> 3, (bat_x1 - 1) >> 3);
         restore_inner_border_line(BAT_Y, BAT_H_PX,
@@ -6828,10 +6887,10 @@ static void respawn_primary_ball(void) {
     primary_ball_set_velocity(+1, -BALL_SPEED);
     set_bat_bonus(OBJ_BAT_1, 0xFF);
     set_bat_bonus(OBJ_BAT_2, 0xFF);
-    bat.big_ticks  = 0;
+    bat1.big_ticks  = 0;
     ball.big_ticks = 0;
     ball.speed_ramp = 0;     /* fresh life: ball restarts at base speed */
-    bat.extra_target  = 0;
+    bat1.extra_target  = 0;
     bullet_cooldown = 0;       /* fresh life — no stale fire cooldown */
     /* Original LBC10 clears flag_extra_life on every life-loss (line
      * \$6411), so another LIFE bonus can drop on the next life within
@@ -7058,7 +7117,7 @@ static void reset_level_state(unsigned char lvl_idx) {
     reset_brick_hit_anim();
 
     ball.speed_ramp = 0;
-    bat.big_ticks   = 0;
+    bat1.big_ticks   = 0;
     ball.big_ticks  = 0;
     /* flag_extra_life is NOT cleared at level entry in original —
      * only LBC10 (death path) clears it. So a LIFE bonus catch
@@ -7066,8 +7125,8 @@ static void reset_level_state(unsigned char lvl_idx) {
      * across levels. Earlier port reset on level entry too,
      * making LIFE bonuses re-available per round. */
     run_dot_frame = 0x0E;               /* matches running_dot_frame_1up reset */
-    bat.extra_px   = 0;
-    bat.extra_target  = 0;
+    bat1.extra_px   = 0;
+    bat1.extra_target  = 0;
     set_bat_bonus(OBJ_BAT_1, 0xFF);
     set_bat_bonus(OBJ_BAT_2, 0xFF);
     /* Mirror all_var_init's `clear_hl_buff` of sounds_queue at line
@@ -7383,7 +7442,7 @@ static void step_active_entities(void) {
     step_brick_flash();
     step_brick_hit_anim();
 
-    if (bat.fire_anim_ticks) bat.fire_anim_ticks--;
+    if (bat1.fire_anim_ticks) bat1.fire_anim_ticks--;
     if (bullet_cooldown >= 2) bullet_cooldown -= 2;     /* SUB \$02 / frame */
     else bullet_cooldown = 0;
 
@@ -7476,10 +7535,10 @@ static void new_game_reset(void) {
     active_player = 0;
     bonus.active = 0;
     ball.speed_ramp = 0;
-    bat.big_ticks = 0;
+    bat1.big_ticks = 0;
     ball.big_ticks = 0;
-    bat.extra_px = 0;
-    bat.extra_target = 0;
+    bat1.extra_px = 0;
+    bat1.extra_target = 0;
     paused = 0;
     high_score_beaten_this_game = 0;
 
@@ -7701,7 +7760,7 @@ static void steer_bat_from_keys(void) {
     }
 
     BAT_X = (unsigned char)bat_step_x(
-        BAT_X, bat.extra_px,
+        BAT_X, bat1.extra_px,
         !rocket.active && left, !rocket.active && right);
 
     if (game_mode != 2) return;
@@ -7730,9 +7789,9 @@ static void steer_bat_from_keys(void) {
     /* The clamps take the original's (left edge, body width). A grown
      * bat 1 straddles BAT_X by extra_px on each side, so it is
      * eff_bat_left() that goes in and the offset that comes back off. */
-    const int w1 = BAT_BODY_W + 2 * bat.extra_px;
+    const int w1 = BAT_BODY_W + 2 * bat1.extra_px;
     BAT_X = (unsigned char)(bat_court_clamp_1(eff_bat_left(), w1)
-                            + bat.extra_px);
+                            + bat1.extra_px);
 
     b2.x_coord = (unsigned char)bat_court_clamp_2((int)b2.x_coord);
 }
@@ -7936,7 +7995,7 @@ static state_t run_level(void) {
                 award_score_milestones();
                 roll_high_score();
                 if (entities_need_redraw()) ball_moved = 1;
-                if (bat.extra_px != bat.extra_target) bat_moved = 1;
+                if (bat1.extra_px != bat1.extra_target) bat_moved = 1;
             }
 
             if (BAT_X != BAT_PREV_X) {

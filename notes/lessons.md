@@ -713,3 +713,50 @@ the same data for the rows it does NOT repaint.
 
 **A change to shared base data needs a test per CONSUMER, not per
 output.** "All 15 levels identical" measured one consumer fifteen times.
+
+## Object-table indices are not array indices (2026-08-10)
+
+Making the bat's width state per-bat, I wrote:
+
+    static BatState bats[2];
+    #define bat1 bats[OBJ_BAT_1]
+
+`OBJ_BAT_1` is **6** and `OBJ_BAT_2` is **5** — positions in the
+eleven-slot OBJECT table, not 0 and 1. So every access ran four
+elements past the end of a two-element array and scribbled on whatever
+`.data` followed.
+
+It compiled clean under `-w4 -we`. The symptom was the ball flying to
+the ceiling on launch, and nineteen gates red, behind a diff that was
+otherwise a pure rename.
+
+### How it was found, and what nearly went wrong
+
+The instinct was "a rename cannot change behaviour, so the sweep must be
+flaky or the machine loaded". Two things stopped that:
+
+- **Reproducibility first.** HEAD passed 2/2, the change failed 4/4. A
+  single run of each would have proved nothing, and I have been burned
+  by exactly that this week (the ENTER race).
+- **Normalise, then diff.** `sed 's/bat1\./bat./g' | diff` against HEAD
+  reduced a 70-line diff to ONE semantic line: the declaration. At that
+  point "a struct became an array of the same struct and behaviour
+  changed" is obviously impossible unless the indexing is wrong, and
+  the enum values settle it in seconds.
+
+The false trail was a layout hypothesis — that adding 28 bytes of
+`.data` had shifted some pre-existing overrun onto live data. Testing it
+took one build (HEAD plus a same-sized dummy static: PASSED) and ruled
+out the entire theory. Cheap experiments that can only confirm or kill a
+hypothesis are worth more than more staring.
+
+### The fix, and the rule
+
+    #define BAT_SLOT(o)  ((o) == OBJ_BAT_2 ? 1 : 0)
+
+Every access converts explicitly, so an out-of-range argument lands on a
+real element instead of off the end.
+
+**When a new array is indexed by an existing enum, check the enum's
+VALUES, not its names.** `bats[OBJ_BAT_1]` reads perfectly and is
+nonsense. The names carry the domain; only the numbers carry the range.
