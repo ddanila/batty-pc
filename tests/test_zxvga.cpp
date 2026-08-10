@@ -229,6 +229,67 @@ static void test_blit_stays_in_playfield(void) {
     end("borders intact");
 }
 
+/* The attr blit's cell clamps keep it inside attr_buff.
+ *
+ *     if (col_hi >= ATTR_COLS) col_hi = ATTR_COLS - 1;
+ *     if (row_hi >= ATTR_ROWS) row_hi = ATTR_ROWS - 1;
+ *
+ * Both survived the 2026-08-10 sweep, and both are unreachable through
+ * today's callers — every one passes clip_right_px = PLAYFIELD_W - 8,
+ * which caps col_hi at 30, and no sprite sits low enough to push row_hi
+ * past 23.
+ *
+ * That is a fact about the CALLERS, not about the clamps, and the same
+ * reasoning that put `bullet_band_includes_top_row` in the weapons
+ * suite applies: change a clip argument or the playfield height and the
+ * branch goes live silently. So it is asserted directly.
+ *
+ * The column case is observable from inside attr_buff — an unclamped
+ * col_hi writes past the row's last cell, which IS the next row's
+ * first — so the assertion is that a rect ending in column 31 leaves
+ * row 1 alone. */
+static void test_attr_blit_clamps_to_the_grid(void) {
+    int i, spilled = 0;
+    begin("attr_blit_clamps");
+
+    memset(attr_buff, 0x77, sizeof(attr_buff));
+    /* col_hi must come out EXACTLY at ATTR_COLS, or `>=` and `>` agree.
+     * col_hi = (x1 - 1) / 8, so x1 = 260 gives 32. clip_right is
+     * deliberately out of range, as the existing rect-flush test does.
+     * A first attempt used x1 = 310 -> col_hi 38, where both forms
+     * clamp and the mutation is invisible. */
+    blit_sprite_attrs_to_buff_clipped(250, 0, 10, 8, 0x11, 0, 400);
+
+    for (i = 0; i < ATTR_COLS; i++)
+        if (attr_buff[1 * ATTR_COLS + i] != 0x77) spilled++;
+    CHECK(spilled == 0,
+          "an unclamped col_hi spilled %d cells into the next attr row\n",
+          spilled);
+
+    /* The ROW clamp cannot be caught from here, and pretending otherwise
+     * would be worse than saying so. `row_hi == ATTR_ROWS` makes the
+     * loop write `attr_buff[24 * ATTR_COLS + c]` — past the end of a
+     * 768-byte global, into whatever the linker put next. Nothing
+     * inside attr_buff changes, so no assertion on it can tell.
+     *
+     * The check below is still worth keeping as a plain regression
+     * guard — a rect below the grid must not write INSIDE attr_buff
+     * either — but it does not kill the `row_hi > ATTR_ROWS` mutant,
+     * and notes/testing.md records that rather than leaving a reader to
+     * assume this line covers it. */
+    memset(attr_buff, 0x77, sizeof(attr_buff));
+    blit_sprite_attrs_to_buff_clipped(16, ATTR_ROWS * CELL_PX + 8, 16, 16,
+                                      0x22, 0, PLAYFIELD_W);
+    spilled = 0;
+    for (i = 0; i < (int)sizeof(attr_buff); i++)
+        if (attr_buff[i] != 0x77) spilled++;
+    CHECK(spilled == 0,
+          "a rect below the grid wrote %d cells; row_lo alone should "
+          "have put it past row_hi\n", spilled);
+
+    end("cols and rows clamped");
+}
+
 /* blit_masked_sprite clips to the PLAYFIELD, both edges.
  *
  * It writes pixel-at-a-time through `vga_at(x, y)`, guarded by
@@ -672,6 +733,7 @@ int main(int argc, char **argv) {
     test_clash_expansion_vs_ula();
     test_flash_bit_ignored();
     test_blit_stays_in_playfield();
+    test_attr_blit_clamps_to_the_grid();
     test_sprite_blit_clips_to_playfield();
     test_rect_flush_equiv_full();
     test_dirty_flush_equiv_full();

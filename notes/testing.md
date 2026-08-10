@@ -1383,6 +1383,25 @@ survivors, 4 real, 1 equivalent.
   `01A2b3FF` — a lowercase `b`, but no `a` or `f`, so the range ENDS
   went untested while the range itself looked covered.
 
+**`zxvga.cpp` (13 survivors), partially resolved:** the attr blit's
+COLUMN clamp is real and now pinned (`attr_blit_clamps`). Getting there
+took two attempts for a reason worth repeating: `>=` and `>` differ at
+EXACTLY the bound, and a first rect that overshot to `col_hi = 38`
+clamped under both forms. The test now lands `col_hi` on `ATTR_COLS`
+precisely.
+
+Its sibling, the ROW clamp, is **knowingly untested**. `row_hi ==
+ATTR_ROWS` writes `attr_buff[24 * ATTR_COLS + c]` — past the end of a
+768-byte global — so nothing inside the buffer changes and no assertion
+on it can tell. Catching it needs a sanitiser build or a guard page,
+neither of which this suite has. Recorded here rather than left as an
+apparently-covered line.
+
+Both are unreachable through today's callers (every one passes
+`clip_right_px = PLAYFIELD_W - 8`, capping `col_hi` at 30), which is
+precisely why they are worth asserting: that is a fact about the
+callers, not the clamps.
+
 The `hud` attribute one needed two attempts and the reason generalises:
 "code $40 draws nothing" is satisfied by an UNRECOGNISED code too, since
 both fall through. What separates them is that an attribute does

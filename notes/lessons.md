@@ -1094,3 +1094,24 @@ quoted so the shell cannot reach them.** Same shape as
 `make | grep -i error` matching the word inside "no errors": a green
 signal is not evidence until you know the thing you meant to change
 actually changed.
+
+## `>=` vs `>` differ at exactly the bound — aim there (2026-08-10)
+
+Twice in one session I wrote a test for an inclusive comparison that
+overshot the boundary and therefore proved nothing:
+
+- `laffc_sweep`'s left clamp: I passed `x = $FF`, far outside, where the
+  8-bit sum wraps and both forms behave the same.
+- the attr blit's column clamp: I passed a rect giving `col_hi = 38`,
+  where `>= ATTR_COLS` and `> ATTR_COLS` both clamp.
+
+The obvious instinct for "test the clamp" is to go a long way out of
+range. That is the one place the two forms always agree. The value that
+distinguishes them is the bound ITSELF — `col_hi == ATTR_COLS`,
+`a == BRICK_W_PX`, `offset == zones[i]` — and it is usually the only
+one.
+
+So the arithmetic has to be run backwards from the comparison: what
+input makes this expression exactly equal to that constant? For the attr
+blit, `col_hi = (x1 - 1) / 8 == 32` means `x1` in 257..264, so the rect
+is `x = 250, w = 10` and not something comfortably enormous.
