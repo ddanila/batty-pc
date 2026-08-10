@@ -143,6 +143,34 @@ static void test_rng_sources_are_not_crossed() {
  * so the mode is unreachable in-game until the hit detection lands.
  * These drive it directly, over every offset that fits the playfield. */
 
+/* The home-walk's left clamp fires AT $0F, not below it.
+ *
+ *     LAA44: LD A,L / CP $10 / JR NC / LD L,$10 / LD (LAA7B),HL
+ *
+ * `JR NC` skips the clamp when A >= $10, so $0F is clamped and $10 is
+ * not — and the clamped value is written BACK, so every later call sees
+ * it. Mutating the port's `t.x < 0x10` to `< 0x0F` left $0F alone and
+ * passed the whole host suite. */
+static void test_home_target_left_clamp_edge() {
+    const int before = failures;
+    Object o = alien(0, 0);
+    o.x_coord = 0x40;
+
+    EnemyHomeTarget below = { 0x0F, 0x40 };
+    enemy_home_step(o, below);
+    check(below.x == 0x10,
+          "target x $0F must clamp to $10 and be written back; got %02X\n",
+          below.x);
+
+    EnemyHomeTarget at = { 0x10, 0x40 };
+    enemy_home_step(o, at);
+    check(at.x == 0x10,
+          "target x $10 is already legal and must be left alone; got "
+          "%02X\n", at.x);
+
+    report("home_target_left_clamp_edge", before, "$0F clamps, $10 kept ok");
+}
+
 static void test_home_walk_converges() {
     const int before = failures;
     int not_cleared = 0, overshot = 0, too_slow = 0;
@@ -219,6 +247,7 @@ int main() {
     test_steering_converges();
     test_targets_stay_six_bit();
     test_rng_sources_are_not_crossed();
+    test_home_target_left_clamp_edge();
     test_home_walk_converges();
     test_home_target_x_clamped_left();
     printf("\n%s\n", failures ? "FAILED" : "6 tests, 0 failed");

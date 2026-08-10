@@ -1251,3 +1251,23 @@ know they were load-bearing.
 
 The other four were caught: the enemy's turn half-plane, the extra-life
 score threshold, the RNG's wrap mask and the HUD's glyph bound.
+
+### Third and fourth passes: bricks, objects, enemies
+
+Four more real gaps, and a pattern in all of them — every one is an
+INCLUSIVE comparison whose boundary value the tests never produced, and
+in every case the port was already right:
+
+| line | boundary | why it is ordinary, not a corner |
+|---|---|---|
+| `reset_destroyed_cell_attrs`: `cr + 1 >= cr0` | destroyed cell one row above a PARTIAL window | the interlock behind known-bugs #18; every test used the full window |
+| `object_step_animation`: `a >= 0x40` | cadence counter at exactly $40 | reached by counting — $80 becomes $40 becomes 0 |
+| `enemy_home_step`: `t.x < 0x10` | target x at $0F | `CP $10 / JR NC` clamps it and writes it back |
+| `laffc_sweep`: three, see laffc-decode.md | | |
+
+The shape is worth naming: **`>=` and `>` differ at one value, and a
+test written from a scenario rarely lands on it.** Scenario tests pick
+positions that are interesting to a player; boundaries are interesting
+to a compiler. Mutation is what connects the two, and the disassembly
+is what says which side of the boundary is right — all four had a
+`JR NC` or a `JR C` settling it in one line.

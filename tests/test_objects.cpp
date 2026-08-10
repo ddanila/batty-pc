@@ -76,6 +76,44 @@ static void test_slot_order() {
     report("slot_order", before, "11 slots             ok");
 }
 
+/* LAAD2's cadence counter spends a whole call at exactly $40.
+ *
+ *     LAAD2: LD A,(IX+$12) / LD B,A / SUB $40 / JR NC,LAAD2_1
+ *
+ * `SUB $40` on $40 leaves 0 with no borrow, so `JR NC` takes the
+ * subtract-and-return path: a counter of $40 is consumed, and the
+ * sprite does NOT advance that call. Only $3F and below animate.
+ *
+ * That matters because misc_12 reaches $40 by ordinary counting — a
+ * seed of $80 becomes $40 and then 0 — so this is a frame of animation,
+ * not a corner. Mutating the port's `a >= 0x40` to `>` advances the
+ * sprite a call early and passed the whole host suite. */
+static void test_anim_cadence_consumes_exactly_40() {
+    const int before = failures;
+    Object o;
+    memset(&o, 0, sizeof(o));
+    o.sprite_num = 3;
+    o.misc_13    = 0x50;      /* some range; unused on the early-out */
+
+    o.misc_12 = 0x40;
+    object_step_animation(o);
+    check(o.misc_12 == 0x00,
+          "a $40 counter must be spent down to 0, got %02X\n", o.misc_12);
+    check(o.sprite_num == 3,
+          "the sprite must NOT advance on the call that spends $40; "
+          "it moved to %u\n", unsigned(o.sprite_num));
+
+    /* And one below it does animate, so the assertion above is about
+     * the boundary rather than about the function doing nothing. */
+    o.misc_12 = 0x3F;
+    object_step_animation(o);
+    check(o.sprite_num != 3,
+          "a $3F counter should have advanced the sprite; it stayed at "
+          "%u\n", unsigned(o.sprite_num));
+
+    report("anim_cadence_edge", before, "$40 spent, $3F steps ok");
+}
+
 /* Reflection must negate the intended axis, and only that axis. */
 static void test_reflection_axes() {
     const int before = failures;
@@ -199,6 +237,7 @@ int main() {
     printf("objects tests\n");
     test_descriptor_layout();
     test_slot_order();
+    test_anim_cadence_consumes_exactly_40();
     test_reflection_axes();
     test_reflection_matches_change_direction();
     test_buffer_offset();
