@@ -18,6 +18,15 @@ on:
 # QEMU CI gate needs a KVM-enabled / self-hosted runner. Until then the full
 # QEMU suite runs LOCALLY (`make parity-check-parallel`, fully green), and the
 # ZEsarUX-oracle gates via `make parity-check-full`.
+#
+# The last step below PROBES for KVM rather than assuming. That conclusion
+# was reached before GitHub enabled nested virtualization on Linux runners
+# (2024) and has never been re-measured; a step that prints the answer on
+# every run costs nothing and settles PLAN.md WS8.1 with evidence.
+
+# One job on purpose: every step is seconds, and splitting them would pay
+# a fresh checkout and toolchain setup per step for no parallelism worth
+# having.
 jobs:
   build-and-source-gates:
     runs-on: ubuntu-latest
@@ -39,3 +48,36 @@ jobs:
         # test_bricks skips its golden half when build/level_gt/*.scr is
         # absent (as it is here) rather than failing.
         run: make test-fast
+      - name: Host suites under ASan + UBSan (no emulator)
+        # Added 2026-08-10. Host-only and ~7s, so it belongs in CI even
+        # though the QEMU gates cannot be. It found a real out-of-bounds
+        # read in replay_parse_hex_bytes on its first local run, and it
+        # catches two mutants that no ordinary host build can observe
+        # (writes past a static array that nothing inside the program
+        # reads back).
+        #
+        # This is also the first time the suites are built by a compiler
+        # that is not Apple clang: `c++` here is g++, and the two
+        # sanitiser implementations do not flag identical sets. If this
+        # step ever fails alone, read it as a finding, not as flakiness.
+        run: make test-asan
+      - name: Does this runner have KVM? (diagnostic, never fails)
+        # PLAN.md WS8.1 asks exactly this and has never been measured.
+        # The QEMU job was dropped because hosted runners fall back to
+        # TCG, where a 2-gate smoke took ~9 min and still flaked; the
+        # note there says the conclusion predates GitHub enabling nested
+        # virtualization on Linux runners in 2024. So: look, record the
+        # answer in the log, and decide with evidence.
+        #
+        # `|| true` on every line — this step reports, it does not gate.
+        run: |
+          echo "== /dev/kvm =="
+          ls -l /dev/kvm 2>&1 || true
+          echo "== egrep vmx/svm in cpuinfo =="
+          grep -c -E '(vmx|svm)' /proc/cpuinfo 2>&1 || true
+          echo "== kvm-ok, if present =="
+          command -v kvm-ok >/dev/null && kvm-ok 2>&1 || echo "kvm-ok not installed"
+          echo "== qemu accelerators =="
+          command -v qemu-system-i386 >/dev/null \
+            && qemu-system-i386 -accel help 2>&1 \
+            || echo "qemu-system-i386 not installed on this image"

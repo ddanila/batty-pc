@@ -1023,6 +1023,18 @@ checking it.
    serial harness already removed the wall-clock flakiness). If not:
    self-hosted runner, or accept local-only (documented dead end for
    TCG stands — don't retry TCG).
+
+   *Probe added 2026-08-10.* The workflow's last step prints `/dev/kvm`,
+   the cpuinfo virtualization flags and `qemu-system-i386 -accel help`
+   on every run, and cannot fail the build. Asking cost one step; the
+   assumption had stood unmeasured since before the 2024 change. Read
+   the answer off any recent run before choosing between a QEMU smoke,
+   a self-hosted runner, and local-only.
+
+   *CI also gained `make test-asan` the same day* — host-only, ~7s, and
+   the first time the suites are compiled by something other than Apple
+   clang (`c++` on ubuntu-latest is g++). A failure there is a finding,
+   not flakiness.
 2. **Real hardware smoke.** `make floppy` produces a bootable 1.44 MB
    image; one verified boot on a real 386 or better would retire
    criterion 7.
