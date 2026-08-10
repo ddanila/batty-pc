@@ -100,6 +100,21 @@ toward** that are also solid.
   `H`) and bounces off the **shallower-penetrated axis**, clearing the
   other axis bits and re-deciding (`JP LAFFC_17/18`).
 
+  **On an exact TIE it bounces HORIZONTALLY** (decoded 2026-08-10, after
+  a mutation showed nothing tested it):
+
+        LAFFC_25:
+          LD E,D / CP C          ; A = y_pen, C = x_pen
+          RES 2,D / RES 3,D      ; clear the vertical bits
+          JP NC,LAFFC_17         ; y_pen >= x_pen: keep them cleared
+          LD A,E / AND $0C / JP LAFFC_18
+
+  `CP C` sets carry only when `y_pen < x_pen`, so `JP NC` takes the
+  verticals-cleared branch on equality. The port's `y_pen >= x_pen`
+  matches; `>` would flip every tie to a vertical bounce, and 236
+  positions in a single-brick neighbourhood do so. Pinned by
+  `laffc_corner_tie_goes_horizontal` in `tests/test_physics.cpp`.
+
 `change_direction` (`$ACEE`, decoded): `dir = ((dir XOR B) + 1) AND
 $3F`, B=$1F flips the HORIZONTAL component (side walls), B=$3F flips
 VERTICAL (top) — per `bounce_wall` ($AC75): `B=$3F` before

@@ -383,6 +383,58 @@ static void field_destroy(int row, int col) {
     field_cells[row * FIELD_COLS + col] = 0x80;
 }
 
+/* The corner tie-break: equal penetration bounces HORIZONTALLY.
+ *
+ * When both an x face and a y face survive the direction gate,
+ * LAFFC_21..25 compares the two penetration depths and bounces off the
+ * shallower axis. On an exact TIE the original is unambiguous:
+ *
+ *     LAFFC_25:
+ *       LD E,D / CP C          ; A = y_pen, C = x_pen
+ *       RES 2,D / RES 3,D      ; clear the vertical bits
+ *       JP NC,LAFFC_17         ; y_pen >= x_pen: keep them cleared
+ *       LD A,E / AND $0C / JP LAFFC_18
+ *
+ * `CP C` sets carry only when y_pen < x_pen, so `JP NC` takes the
+ * verticals-cleared path on equality. The port's `>=` matches; `>`
+ * would flip every tie to a vertical bounce.
+ *
+ * Nothing tested it. Mutating `>=` to `>` survived `make test-fast`,
+ * which is what put this here. The tie is easy to reach — a ball
+ * arriving diagonally at a brick's top-left corner ties whenever
+ * `nx - cell_x == ny - cell_y - 1`, and the positions below are a
+ * diagonal run of them. */
+static void test_laffc_corner_tie_goes_horizontal() {
+    const int before = failures;
+    field_fill(false);
+    field_cells[0 * FIELD_COLS + 1] = 0x01;     /* one standing brick */
+    const BrickField field(field_cells);
+
+    /* Six consecutive ties, dir $00, against the brick at col 1. Found
+     * by dumping every (dir, x, y) hit under BOTH rules and diffing:
+     * 236 positions change, and these are the first six.
+     *
+     * That is how they had to be found. An earlier attempt located
+     * "ties" by recomputing the penetrations from the RETURNED
+     * face_mask — but the returned mask is the tie-break's OUTPUT, so
+     * the formulas it selected were the wrong ones and the positions
+     * were not ties at all. The mutation survived that test too. */
+    int wrong = 0;
+    for (int i = 0; i < 6; i++) {
+        const LaffcHit h = laffc_sweep(field, 0x00, 8, 7, 17 + i, 26 + i);
+        if (!h.hit || h.face_mask != 0x01) {
+            wrong++;
+            check(false, "tie at (%d,%d): hit=%d mask=%02X, expected a "
+                         "LEFT-face bounce (mask 01); `>` gives 04\n",
+                  17 + i, 26 + i, (int)h.hit, h.face_mask);
+        }
+    }
+    if (wrong == 0)
+        report("laffc_corner_tie_horizontal", before, "6 exact ties         ok");
+    else
+        report("laffc_corner_tie_horizontal", before, "");
+}
+
 /* laffc_sweep's left clamp: `a = new_x - FIELD_X0; if (a < 0) a = 0;`.
  *
  * CHARACTERISATION of unreachable-but-deliberate code. Deleting the
@@ -955,6 +1007,7 @@ int main() {
     test_motion_accel_fraction_carries();
     test_motion_accel_fast_variant_caps();
     test_motion_accel_clamp_is_equality_not_ge();
+    test_laffc_corner_tie_goes_horizontal();
     test_laffc_left_clamp_is_flat();
     test_sweeps_miss_outside_the_band();
     test_sweeps_miss_empty_field();

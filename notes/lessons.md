@@ -950,3 +950,26 @@ difference between a test and a decoration.
 Related: `check_floppy_assets` and `check_known_bugs_table` were both
 found to have haystacks narrower than the text they read. Same family —
 the check ran, and ran past the thing it was for.
+
+## Finding a case by reading the OUTPUT of the thing you are testing
+(2026-08-10)
+
+Pinning `laffc_sweep`'s corner tie-break, I needed positions where the
+two penetration depths come out equal. I wrote a finder that recomputed
+them from the returned `face_mask`:
+
+    xp = (h.face_mask & 1) ? ... : ...
+    yp = (h.face_mask & 4) ? ... : ...
+
+`face_mask` is what the tie-break PRODUCES. Selecting the penetration
+formulas with it means selecting them by the answer, so the "ties" it
+reported were not ties. The test built on them passed, and the mutation
+survived it — a second decoration, written while fixing the first.
+
+What worked: dump every hit under BOTH rules and diff. 236 positions
+change; the test uses six. No derivation, no chance of picking the case
+by the property being tested.
+
+**When you need an input that triggers a branch, get it from a
+differential run, not from the function's own output.** The output has
+already had the branch applied to it.
