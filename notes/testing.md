@@ -1492,11 +1492,31 @@ That brings the memory guards found by mutation to SEVEN — four in
 Boundary mutation reads as a hunt for off-by-one pixels; in this
 codebase it has mostly been a hunt for reads and writes outside arrays.
 
-The candidate filter also needs work: `#include <stdio.h>` matched, and
-`while (...)` conditions were not excluded the way `for (...)` was. The
-include lines became ERRORs rather than silent junk only because
-`mutate.py` now checks for build failure — the fix from earlier the same
-day, validated by accident.
+**Two more real, from shapes the filter was not even aiming at:**
+
+- `object_step_animation`'s wrap, `((d >> 4) & 0x0F) < e`. `CP E / JR
+  NC` skips the wrap at high >= E, so the frame EQUAL to the range high
+  is shown and only the one past it wraps. `<=` wraps a frame early and
+  the top frame of every animation is never drawn. Equality happens once
+  per loop of every animation in the game.
+- `render_markup`'s `while (p < markup_len)`. `<=` reads the byte after
+  the stream and renders it — a `while` bound, which the filter should
+  have excluded alongside `for (...)` and did not. Excluding it would
+  have lost a real finding, which is an argument for a LOOSER filter and
+  more triage rather than the reverse.
+
+**The strict sweep, closed.** 93 candidates, 16 caught, 7 build errors
+(the `#include <...>` lines — flagged as ERROR rather than silent junk
+only because `mutate.py` now checks for build failure, the fix from
+earlier the same day validated by accident), 70 survivors:
+
+|  |  |
+|---:|---|
+| 6 | real, fixed — the up/down gate, three row guards, the animation wrap, the markup bound |
+| 3 | real, fixed — the under-draw clip guards |
+| 30 | equivalent BY CONSTRUCTION — clamps and min/max ternaries |
+| 5 | not host-built |
+| 26 | equivalent: dirty-rect bookkeeping that widens rather than narrows, settled by the same early-out argument as the first sweep and by `dirty_flush_equiv_full` |
 
 The `hud` attribute one needed two attempts and the reason generalises:
 "code $40 draws nothing" is satisfied by an UNRECOGNISED code too, since

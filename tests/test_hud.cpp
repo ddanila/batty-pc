@@ -86,6 +86,49 @@ static void test_row_marker_rule() {
 /* A record's glyphs must land one cell apart, and an inline colour change
  * must NOT advance the cursor. Getting that wrong shifts every glyph
  * after the first colour change. */
+/* render_markup stops AT markup_len, not one past it.
+ *
+ *     while (p < markup_len)
+ *
+ * `<=` reads `markup[markup_len]` — a byte the stream does not own. In
+ * the shipped build that is the rest of a fixed buffer, so it is stale
+ * data rather than an out-of-bounds access, but a row marker or glyph
+ * sitting there gets rendered.
+ *
+ * The existing tests all set `markup_len` to `sizeof(stream)` of a
+ * local array and never write past it, so the byte was always whatever
+ * the previous test left — usually harmless, never asserted. */
+static void test_markup_stops_at_its_length() {
+    const int before = failures;
+    memset(font, 0xFF, sizeof(font));
+
+    const u8 stream[] = { 0x10, 40, 0x07, 1, 0x01 };
+    memcpy(markup, stream, sizeof(stream));
+    /* A row marker just past the end. If the loop overruns it starts a
+     * whole extra record and draws from it. */
+    markup[sizeof(stream) + 0] = 0x10;
+    markup[sizeof(stream) + 1] = 80;
+    markup[sizeof(stream) + 2] = 0x07;
+    markup[sizeof(stream) + 3] = 1;
+    markup[sizeof(stream) + 4] = 0x01;
+    markup_len = sizeof(stream);
+
+    reset_screen();
+    render_markup();
+
+    /* The legitimate record draws around y = 40 - 5; the phantom one
+     * would draw around y = 80 - 5. Nothing may appear below y = 60. */
+    int below = 0;
+    for (int y = 60; y < SCREEN_H; y++)
+        for (int x = 0; x < SCREEN_W; x++)
+            if (screen[y * SCREEN_W + x]) below++;
+    check(below == 0,
+          "render_markup ran past markup_len and drew %d pixels from a "
+          "record it does not own\n", below);
+
+    report("markup_stops_at_length", before, "no overrun           ok");
+}
+
 /* The two markup ranges are inclusive at both ends.
  *
  *     if (c == 0x26)            explicit no-draw
@@ -262,6 +305,7 @@ int main() {
     printf("hud tests\n");
     test_score_digits();
     test_row_marker_rule();
+    test_markup_stops_at_its_length();
     test_markup_range_ends_are_inclusive();
     test_colour_change_does_not_advance();
     test_space_draws_nothing();

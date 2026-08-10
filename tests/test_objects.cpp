@@ -76,6 +76,44 @@ static void test_slot_order() {
     report("slot_order", before, "11 slots             ok");
 }
 
+/* The animation reaches its TOP frame before wrapping.
+ *
+ *     CP E / JR NC,LAAD2_0        ; A = range high nibble, E = num + 1
+ *     LD A,D / AND $0F / LD E,A   ; else wrap to the low nibble
+ *
+ * `JR NC` skips the wrap when high >= E, so the wrap happens only when
+ * high < E — the port's `if (((d >> 4) & 0x0F) < e)`. With `<=` the
+ * sprite wraps one frame early and the top frame is never shown.
+ *
+ * Equality is not a corner here: the counter walks up to the range high
+ * every cycle, so `high == e` happens once per loop of every animation
+ * in the game. It still survived the host suite. */
+static void test_anim_reaches_the_top_frame() {
+    const int before = failures;
+    Object o;
+    memset(&o, 0, sizeof(o));
+    o.misc_12 = 0;              /* cadence spent: this call animates */
+    o.misc_13 = 0x53;           /* range high 5, low 3 */
+    o.sprite_num = 4;           /* so e = 5, and high == e */
+
+    object_step_animation(o);
+    check(o.sprite_num == 5,
+          "the frame equal to the range high must be SHOWN, not wrapped: "
+          "got %u, expected 5 (a `<=` wrap gives 3)\n",
+          unsigned(o.sprite_num));
+
+    /* One past it does wrap, so the assertion above is about the
+     * boundary and not about wrapping being broken. */
+    o.misc_12 = 0;
+    o.sprite_num = 5;           /* e = 6, and high 5 < 6 */
+    object_step_animation(o);
+    check(o.sprite_num == 3,
+          "past the range high the frame must wrap to the low nibble: "
+          "got %u, expected 3\n", unsigned(o.sprite_num));
+
+    report("anim_reaches_top_frame", before, "high == e shows      ok");
+}
+
 /* LAAD2's cadence counter spends a whole call at exactly $40.
  *
  *     LAAD2: LD A,(IX+$12) / LD B,A / SUB $40 / JR NC,LAAD2_1
@@ -237,6 +275,7 @@ int main() {
     printf("objects tests\n");
     test_descriptor_layout();
     test_slot_order();
+    test_anim_reaches_the_top_frame();
     test_anim_cadence_consumes_exactly_40();
     test_reflection_axes();
     test_reflection_matches_change_direction();
