@@ -973,3 +973,27 @@ by the property being tested.
 **When you need an input that triggers a branch, get it from a
 differential run, not from the function's own output.** The output has
 already had the branch applied to it.
+
+## "Equivalent mutant" hides two different answers (2026-08-10)
+
+A mutation that survives and turns out to change nothing can mean either
+of these, and they call for different work:
+
+- **Equivalent by arithmetic.** `addr < 0x8000 ? (addr | 0x8000) : addr`
+  mutated to `<=` differs only at `addr == 0x8000`, where
+  `0x8000 | 0x8000 == 0x8000`. There is no input that distinguishes
+  them, ever. A sentence is the right response.
+
+- **Equivalent because two constants happen not to line up.**
+  `bullet_y >= FIELD_Y0` mutated to `>` differs only at
+  `bullet_y == 32`, and bullets launch at 172 stepping 6 — 4 (mod 6)
+  against 32's 2 (mod 6), so they never meet. Change the bat row or
+  BULLET_SPEED and the branch becomes live, silently.
+
+The second kind needs a TEST, not a note. The test is what tells the
+person who changes `BULLET_SPEED` that they have just made a dead branch
+live — and nothing else will, because the constants that made it dead
+are three files away from the boundary that depends on them.
+
+So when a survivor turns out to be equivalent, ask WHY. "No input can
+tell" and "no input currently does" look identical in a mutation report.

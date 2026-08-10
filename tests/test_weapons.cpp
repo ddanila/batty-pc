@@ -53,6 +53,37 @@ static void fire(int i, int x, int y) {
     bullet_y[i] = y;
 }
 
+/* The band test includes its TOP scanline: `bullet_y >= FIELD_Y0`.
+ *
+ * `>` survived mutation over the whole host suite, and it is equivalent
+ * in PRACTICE rather than by construction — bullets launch at
+ * `bat.y - 1` = 172 and step 6 px, and 172 = 4 (mod 6) while
+ * FIELD_Y0 = 32 = 2 (mod 6), so a bullet never lands exactly on the top
+ * scanline.
+ *
+ * That is a fact about two constants, not about the boundary being
+ * wrong, and either constant could change: a different bat row, a
+ * different BULLET_SPEED, or a bullet fired from somewhere else. So the
+ * boundary is asserted directly here rather than left to arithmetic
+ * nobody would re-check. */
+static void test_bullet_band_includes_top_row() {
+    const int before = failures;
+    fill_field(true);                        /* every brick standing */
+    const BrickField field(cells);
+    Object e = no_enemy();
+
+    /* bullet_advance decrements first, so seed one step below the top
+     * and the band test sees exactly FIELD_Y0. */
+    fire(0, FIELD_X0 + 4, FIELD_Y0 + BULLET_SPEED);
+    const BulletHit h = bullet_advance(0, e, field);
+    check(bullet_y[0] == FIELD_Y0,
+          "seeded wrong: y is %d, expected %d\n", bullet_y[0], FIELD_Y0);
+    check(h.what == BulletHit::BRICK && h.row == 0,
+          "a bullet on the band's top scanline missed row 0: what=%d "
+          "row=%d\n", (int)h.what, h.row);
+    report("bullet_band_includes_top_row", before, "y == FIELD_Y0        ok");
+}
+
 /* A bullet fired below a full brick band must always hit something. */
 static void test_bullet_cannot_tunnel() {
     const int before = failures;
@@ -338,6 +369,7 @@ static void test_inactive_bullet_does_not_animate() {
 
 int main() {
     printf("weapons tests\n");
+    test_bullet_band_includes_top_row();
     test_bullet_cannot_tunnel();
     test_bullet_moves_exactly_bullet_speed();
     test_hits_name_standing_cells();

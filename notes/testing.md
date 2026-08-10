@@ -1226,3 +1226,28 @@ finding weak spots everywhere.
    passed while the mutant still survived, and only this step said so.
 
 Step 3 and step 4 are the ones that were skipped and had to be redone.
+
+### Second pass: enemies, scoring, rng, hud, weapons
+
+Six more mutations, two survivors, and the two are worth telling apart.
+
+`rng.cpp`'s `addr < 0x8000 ? u16(addr | 0x8000) : addr` mutated to `<=`
+is **equivalent by arithmetic**: the only value it changes is
+`addr == 0x8000`, and `0x8000 | 0x8000` is `0x8000`. Nothing to gate,
+nothing to write down beyond this sentence.
+
+`weapons.cpp`'s `bullet_y >= FIELD_Y0` mutated to `>` is equivalent
+**in practice, by two constants**: bullets launch at `bat.y - 1` = 172
+and step 6, and 172 = 4 (mod 6) while FIELD_Y0 = 32 = 2 (mod 6), so a
+bullet never lands on the band's top scanline. That is a fact about the
+bat row and BULLET_SPEED, either of which could change, so the boundary
+is asserted directly in `bullet_band_includes_top_row` rather than left
+to arithmetic nobody would re-check.
+
+**"Equivalent" is not one category.** Equivalent by arithmetic needs a
+sentence; equivalent because two unrelated constants happen not to line
+up needs a test, because the next person to change one of them will not
+know they were load-bearing.
+
+The other four were caught: the enemy's turn half-plane, the extra-life
+score threshold, the RNG's wrap mask and the HUD's glyph bound.
