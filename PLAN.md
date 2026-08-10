@@ -1086,7 +1086,14 @@ A reasonable milestone cut:
 - **Rocket-tally pacing** — the original's `pause_short` busy-wait is
   Z80-clock-bound; 1 brick/PIT-tick is the port's documented answer.
 - **Big-bat resize as a literal bit-gated state machine** — visually
-  matched; revisit only if a defect surfaces.
+  matched; revisit only if a defect surfaces. **One has** (2026-08-10):
+  the machine's `bonus_flag` also gates `play_sound_bat_resize_1`, whose
+  `LD A,(bonus_flag) / AND A / RET NZ` pauses the shrink sweep during a
+  bonus transition. The port has no such flag, so that sound divergence
+  cannot be closed without this item. Still accepted — it is cosmetic on
+  both sides — but it is no longer free of consequences, and the cost of
+  the residual is a little higher than this line used to imply. See
+  notes/parity-gaps.md item 2.
 - **QEMU-under-TCG in CI** — calibrated dead end; KVM or nothing.
 
 ## Standing constraints (hard-won — see notes/lessons.md before touching)

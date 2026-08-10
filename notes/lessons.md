@@ -900,3 +900,28 @@ Same shape as `test-double-play-bat2-catch`'s docstring predicting its
 own failure when bonus ownership split. A note about a future condition
 is worth writing precisely because it turns a future search into a
 future edit.
+
+## An accepted residual can acquire consequences (2026-08-10)
+
+PLAN.md's non-goals list carried: *"Big-bat resize as a literal
+bit-gated state machine — visually matched; revisit only if a defect
+surfaces."* A reasonable call, and the list is explicitly headed **do
+not reopen**.
+
+Auditing the sound queue turned up `play_sound_bat_resize_1`'s
+`LD A,(bonus_flag) / AND A / RET NZ` guard, which the port does not
+have. Tracing `bonus_flag` led straight back to that same resize
+machine — it is written by `handling_bat`'s transform paths and read
+there for the gun sprite. So the residual is not free any more: it owns
+a sound divergence that cannot be closed without it.
+
+The decision has not changed — both halves are cosmetic — but its COST
+has, and the entry said nothing that would let a reader notice. Three
+places described the resize machine, all as an isolated cosmetic
+approximation, none of them mentioning each other.
+
+**When a new gap traces back to an accepted residual, update the
+residual, not just the new gap.** The whole point of a "do not reopen"
+list is that people stop re-deriving the trade-off — which means the
+trade-off recorded there has to stay current, and it is the one entry
+nobody re-reads precisely because it says the question is closed.

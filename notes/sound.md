@@ -251,9 +251,22 @@ original sets to $80 when a new bonus lands on a machine-gun bat and to
 $01 when the machine gun itself is caught (`LA67B_2`, `$A67B`), read
 by `handling_bat`'s resize path as well.
 
-Not ported, and not a one-liner — it needs the port to model
-`bonus_flag`, which is a bat-state question rather than a sound one.
-Recorded here as the last known divergence in the queue.
+Not ported, and traced further the same day: `bonus_flag` is written by
+`handling_bat`'s TRANSFORM paths as well — $C0 at `$AA0E`, $41 at
+`$AA19`, and A on the `check_bat_increase_size` / `normal_bat` exits —
+and read there for bit 7 to pick the gun sprite. It is part of the
+`(IX+$15)` bit-gated resize state machine, which
+`notes/parity-gaps.md` item 2 records as matched visually rather than
+ported literally.
+
+So this is not a sound item that happens to touch bat state; it is the
+resize machine, seen from the sound side. The guard cannot be ported
+without the flag, and the flag cannot be ported without the machine.
+parity-gaps item 2 now says so, since sizing that item was the place the
+cost would otherwise be underestimated — it used to end "Out of scope:
+sound."
+
+The last known divergence in the queue, and its owner is elsewhere.
 
 ### A length test does not cover a sweep
 

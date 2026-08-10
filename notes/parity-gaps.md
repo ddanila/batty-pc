@@ -28,9 +28,29 @@ they are good next targets when tightening original fidelity.
 >     2026-08-10 (`test-extra-ball-owner`). `ball_owner_side` is `[3]`,
 >     `brick_hit_resolve` takes the slot, and a bat deflection re-owns
 >     the ball it hit and no other.
->  2. **Cosmetic / timing**: big-bat resize timing is matched visually
->     rather than being a literal port of the original's bit-gated state
->     machine. Out of scope: sound.
+>  2. **The bit-gated resize state machine.** Big-bat resize timing is
+>     matched visually rather than being a literal port of the
+>     original's `(IX+$15)` machine.
+>
+>     "Out of scope: sound" was true when written and is not any more.
+>     Sizing this item now also sizes a SOUND divergence, because the
+>     two share `bonus_flag`:
+>
+>     - `handling_bat`'s transform paths write it ($C0 at `$AA0E`, $41
+>       at `$AA19`, and A on the two `check_bat_increase_size` /
+>       `normal_bat` exits);
+>     - `get_bonus` writes it too ($80 when a bonus lands on a
+>       machine-gun bat, $01 when the machine gun is caught, `LA67B_2`);
+>     - `handling_bat` reads bit 7 of it to decide the gun sprite;
+>     - **and `play_sound_bat_resize_1` ($C200) opens
+>       `LD A,(bonus_flag) / AND A / RET NZ`** — with the flag set it
+>       skips the beep AND leaves its counter alone, so the shrink sweep
+>       PAUSES while a bonus transition is in flight.
+>
+>     The port has no `bonus_flag` at all, so the sound guard cannot be
+>     ported alone. Whoever takes this item closes both; see
+>     notes/sound.md's queue audit (2026-08-10), which is where the
+>     connection turned up.
 >  3. **Infra**: QEMU-on-CI needs a KVM/self-hosted runner (hosted TCG is
 >     too slow even with the deterministic serial harness — calibrated dead
 >     end). The full QEMU suite runs locally (`make parity-check-parallel`).
@@ -154,7 +174,8 @@ wrong here for weeks after the code was right.
   months after #3 was resolved (2026-06-11); the resolution is recorded
   in known-bugs.md and the code has been right since.
 - big-bat resize timing is matched visually but not a literal port of
-  the original bit-gated state machine.
+  the original bit-gated state machine (item 2 above — and it now also
+  owns a sound divergence, via `bonus_flag`).
 - **alien-explosion cadence** — FIXED (2026-06-05). GT capture (poke the
   enemy to the blast state `set=$0A, misc_12=$50, misc_13=$90` and step)
   showed `anim_alien_blast` is a 10-entry PING-PONG `{1,2,3,4,5,4,3,2,1,1}`
