@@ -99,7 +99,7 @@ on sprite_num (+$01) — original f24 sprite_num = 4, same as the port.
 0. [DONE 2026-06-12] Finding 1's actual fix: slot-paint order in both
    compose paths; gate `test-enemy-flyover-redraw` wired in.
 
-1. [DONE 2026-06-12] LAAD2 ported literally as `step_obj_anim` (+$12
+1. [DONE 2026-06-12] LAAD2 ported literally as `handling_blast_obj` (+$12
    cadence, +$13 nibble wrap) and wired into bird/ufo (replacing the
    `misc_12++ / &3` approximation) and blast (handler forces +$13=$90,
    frees the slot at sprite_num==9; the four kill sites now seed
@@ -115,7 +115,7 @@ on sprite_num (+$01) — original f24 sprite_num = 4, same as the port.
    ball-object/brick-residue A/B, make test 7/7, frame-step floor,
    laffc-ball byte-exact.
 
-   Original item text (kept for context): Port LAAD2 literally (`step_obj_anim`: +$12 cadence, +$13 nibble
+   Original item text (kept for context): Port LAAD2 literally (`step_obj_anim`, the name it was planned under; it shipped as `handling_blast_obj`: +$12 cadence, +$13 nibble
    wrap) for bird/ufo (+blast: seeds $50/$90, free at frame 9); replace
    the port's `misc_12++ / &3` approximation (right 4-frame period for
    the bird, but LAAD2's reload `((res<<2)&$C0)|res` gives the UFO a

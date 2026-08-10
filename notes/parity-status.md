@@ -241,7 +241,7 @@ and `laffc-decode.md` for the detailed trail.
   Matches the original `LAFFC_32 → LAFFC_38/_39` (destroy without reflect,
   keep trajectory). (3) **Duration**: original `smash_counter` increments
   only on EVEN `counter_misc` (`RRA; JR C`) and expires at `$F8` (248) ≈
-  496 frames; the port's `big_ball_ticks` decrements every other tick from
+  496 frames; the port's `ball.big_ticks` decrements every other tick from
   `BIG_BALL_DURATION = 0xF8`, clearing `bonus_applied → $FF` on expiry —
   matching. With this, ALL bonus effects are verified ($00 BIG bat
   [resize approx], $01 LASER, $02 TRIPLE, $03 MAGNET, $04 SLOW, $05 LIFE,
@@ -511,7 +511,7 @@ force-spawn hook.
 (reusing the `BATTY_REPLAY_BONUS` hook), lets it be caught on f1, and
 asserts `object_bat_1.bonus_applied` equals the DOCUMENTED original code
 (0x00 BIG_BAT, 0x01 LASER, 0x03 MAGNET, 0x09 KILL_ALIENS — hardcoded, not
-read from the C `our_to_orig_bonus`, so a wrong mapping is caught). Only
+read from the C `bonus_to_original`, so a wrong mapping is caught). Only
 codes differing from the 0xFF entry value are used, so the catch is
 unambiguous. Composes with `test-laser-cadence` (which bakes
 bonus_applied=0x01 directly): catch LASER -> 0x01 -> fires.

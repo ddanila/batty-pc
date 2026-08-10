@@ -1216,7 +1216,7 @@ static const unsigned int spr_spark_frames[5] = {
     SPR_SPARK_1, SPR_SPARK_2, SPR_SPARK_3, SPR_SPARK_4, SPR_SPARK_5
 };
 #define BLAST_FRAMES 10
-/* (blast cadence now comes from LAAD2 / step_obj_anim: the kill sites
+/* (blast cadence now comes from LAAD2 / handling_blast_obj: the kill sites
  * seed +$12=$50 -> one anim_alien_blast step every 2 frames) */
 /* Spark: each frame decays in duration (rough port of the original's
  * "halve the timer each frame" mechanic). 8/4/2/1/1 ticks total. */

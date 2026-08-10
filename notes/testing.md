@@ -687,6 +687,28 @@ build would mean either an allowlist that goes stale exactly the way the
 notes do, or pressure to delete history to get green — so the judgement
 stays with whoever runs it, during a hygiene pass.
 
+**Triage of the 24 names the corpus fix revealed, 2026-08-10.** Four
+were real, and all four were the same shape — a name that a reader would
+grep for and not find:
+
+- `parity-status.md` called the SMASH timer `big_ball_ticks`; the field
+  is `ball.big_ticks`.
+- the same file said a gate does not read "the C `our_to_orig_bonus`";
+  that function is `bonus_to_original`.
+- `bird-render-parity.md` recorded LAAD2 as "[DONE] ported literally as
+  `step_obj_anim`". It shipped as `handling_blast_obj` — the planned
+  name was never the shipped one, and the DONE marker made it look
+  authoritative. A `src/` comment repeated it.
+- `enemy-movement.md`'s open-items list still said the port's
+  `enemy_target_away_from_margins` "is still an approximation". That
+  function was DELETED on 2026-08-09 and `check_margins` ported
+  literally; the bullet outlived its subject by a day, in the present
+  tense, in a list headed by what remains to do.
+
+The rest are legitimate history, probe-field values that look like
+identifiers (`active01_type04`), or disassembly label spellings
+(`sub_9231h`). That ratio — 4 real in 24 — is why this stays a report.
+
 **First full triage, 2026-08-09.** 41 candidates, 6 of them real rot,
 and one of those was not a naming problem at all: `rocket-flight.md`'s
 parity table still listed BOTH rocket divergences as `DIVERGENT ✗` —

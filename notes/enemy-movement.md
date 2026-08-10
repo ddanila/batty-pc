@@ -272,8 +272,10 @@ effort, deferred). The shipped default (flag-OFF) is unaffected.
 - **Clobber ruled out:** `bonus_applied` is only written by the bat-bonus
   code (OBJ_BAT_1/2 specific) and the three enemy-steering paths
   (`enemy_turn_towards_target` arrival-repick, `enemy_pick_new_target` /
-  `enemy_target_away_from_margins` margin). No loop writes the enemy's
-  field, so the bonus system isn't clobbering it.
+  `enemy_target_away_from_margins` margin — that last one was DELETED on
+  2026-08-09, so do not go looking for it; the margin path is
+  `enemy_check_margins` now). No loop writes the enemy's field, so the
+  bonus system isn't clobbering it.
 - **Contradiction by static analysis:** the enemy is mid-field (x=168, no
   margin) so the margin paths shouldn't fire, and dir (~0x10) is far from
   the target (0x2B–0x36) so delta!=0, so the arrival-repick shouldn't fire
@@ -306,9 +308,13 @@ flying the wrong axis in normal play.
 - **Brick collision for the enemy.** The original calls `LAFFC` for the
   bird (it bounces off bricks); the port's bird steering doesn't yet run
   the brick collision. Next step once the RNG tick is aligned.
-- **Margins.** The original's `check_margins` vs the port's
-  `enemy_target_away_from_margins` is still an approximation — and
-  measured against the original it is more than that. See
+- **Margins.** ~~The original's `check_margins` vs the port's
+  `enemy_target_away_from_margins` is still an approximation~~ —
+  **CLOSED 2026-08-09**, and this bullet outlived it by a day.
+  `enemy_target_away_from_margins` was DELETED; `check_margins` is
+  ported literally as three clamps and gated by
+  `test-enemy-margin-clamp`. The rest of the bullet was right about why:
+  See
   `known-bugs.md` #16: `check_margins` is three CLAMPS and nothing else,
   while `bounce_wall` (the one that also calls `change_direction`)
   belongs to the ball and the sparks. The port gives the enemy a
