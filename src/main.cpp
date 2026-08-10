@@ -1378,8 +1378,9 @@ struct DebugSwitches {
     unsigned long profile_auto_frames;    /* BATTY_PROFILE_AUTO_FRAMES, default=0 */
     unsigned char kinnock;                /* BATTY_KINNOCK, default=0 */
     unsigned char fast_holds;             /* BATTY_FAST_HOLDS, default=0 */
+    unsigned char infinite_lives;         /* BATTY_INFINITE_LIVES, default=0 */
 };
-static DebugSwitches dbg = { 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0 };
+static DebugSwitches dbg = { 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0 };
 
 /* While set the frame body does no physics; only P (toggle), ESC
  * (quit) and ENTER (advance) are acted on. */
@@ -4849,6 +4850,20 @@ static void bomb_appear(Object *o) {
     bomb_launch((int)o->x_coord + 8, (int)o->y_coord + 8);
 }
 
+/* The one place a life is taken, so BATTY_INFINITE_LIVES has one place
+ * to not take it. Two paths decrement — lose_a_life for the ball, and
+ * step_bomb for a bomb on the bat — and a switch that guarded only the
+ * first would work everywhere except the one death a bomb causes, which
+ * is the death you are least likely to be looking for when you set it.
+ *
+ * It suppresses the DECREMENT only. The bat still explodes and the ball
+ * still respawns, because a manual-testing build that skipped the death
+ * animation would be testing a game the port does not ship. */
+static void take_a_life(void) {
+    if (dbg.infinite_lives) return;
+    if (player.lives > 0) player.lives--;
+}
+
 /* Step the bomb each frame: fall, check bat collision, deactivate
  * past the bottom. Bat hit costs a life and respawns the ball. */
 static void step_bomb(void) {
@@ -4870,7 +4885,7 @@ static void step_bomb(void) {
         bomb.active = 0;
         hide_extra_balls();
         play_bat_explosion(current_level_idx_var);
-        if (player.lives > 0) player.lives--;
+        take_a_life();
         if (player.lives > 0) respawn_primary_ball();    /* else game-over fires next frame */
     }
 }
@@ -5292,7 +5307,7 @@ static int two_player_turn_change(int after_game_over) {
  * puts a fresh ball on the bat anyway. */
 static void lose_a_life(void) {
     play_bat_explosion(current_level_idx_var);
-    if (player.lives > 0) player.lives--;
+    take_a_life();
     if (player.lives > 0) {
         /* In 2-player mode the turn may end here — but whether it
          * actually does is two_player_turn_change's decision, and
@@ -8231,6 +8246,7 @@ static state_t apply_env_switches(void) {
     if (getenv("BATTY_LAFFC") != NULL)                      dbg.use_laffc = 1;
     if (getenv("BATTY_KINNOCK") != NULL)                    dbg.kinnock = 1;
     if (getenv("BATTY_FAST_HOLDS") != NULL)                 dbg.fast_holds = 1;
+    if (getenv("BATTY_INFINITE_LIVES") != NULL)             dbg.infinite_lives = 1;
     {
         /* BATTY_HOLD_KEYS=1E,24 seeds key_state[] with scancodes that
          * are then never released. The capture harness runs headless

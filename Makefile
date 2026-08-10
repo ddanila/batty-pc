@@ -418,6 +418,17 @@ $(FLOPPY_OUT): $(FLOPPY_EXE) $(ASSETS) $(FLOPPY_SRC)
 	@if [ -n "$$BATTY_REPLAY_MULTIBALL" ]; then \
 	    printf 'SET BATTY_REPLAY_MULTIBALL=%s\r\n' "$$BATTY_REPLAY_MULTIBALL" >> build/AUTOEXEC.BAT ; \
 	fi
+	@# The two knobs a PERSON sets, as opposed to the ones gates set. Both
+	@# were readable by the EXE and unreachable from `make run`, which is
+	@# the same shape as the bug check_env_passthrough exists to catch —
+	@# except that gate scopes itself to the test floppy, so it was silent
+	@# here. Nothing gates this list; it is short because it is curated.
+	@if [ -n "$$BATTY_INFINITE_LIVES" ]; then \
+	    printf 'SET BATTY_INFINITE_LIVES=%s\r\n' "$$BATTY_INFINITE_LIVES" >> build/AUTOEXEC.BAT ; \
+	fi
+	@if [ -n "$$BATTY_KINNOCK" ]; then \
+	    printf 'SET BATTY_KINNOCK=%s\r\n' "$$BATTY_KINNOCK" >> build/AUTOEXEC.BAT ; \
+	fi
 	@printf 'BATTY\r\n' >> build/AUTOEXEC.BAT
 	mcopy -i $@ -o build/AUTOEXEC.BAT ::AUTOEXEC.BAT
 	@echo "Floppy ready: $@  (menu-only cycle)"
@@ -573,6 +584,9 @@ $(TEST_FLOPPY_OUT): $(FLOPPY_TEST_EXE) $(ASSETS) $(FLOPPY_SRC)
 	fi; \
 	if [ -n "$$BATTY_FAST_HOLDS" ]; then \
 	    printf 'SET BATTY_FAST_HOLDS=%s\r\n' "$$BATTY_FAST_HOLDS" >> $(AUTOEXEC_T) ; \
+	fi; \
+	if [ -n "$$BATTY_INFINITE_LIVES" ]; then \
+	    printf 'SET BATTY_INFINITE_LIVES=%s\r\n' "$$BATTY_INFINITE_LIVES" >> $(AUTOEXEC_T) ; \
 	fi; \
 	if [ -n "$$BATTY_HOLD_KEYS" ]; then \
 	    printf 'SET BATTY_HOLD_KEYS=%s\r\n' "$$BATTY_HOLD_KEYS" >> $(AUTOEXEC_T) ; \

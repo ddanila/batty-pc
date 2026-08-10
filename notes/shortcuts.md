@@ -108,3 +108,44 @@ give one knob two contradictory meanings.
 The 178 literal stays in the source either way — `test-game-over` pins
 it, and the knob picks between `2UL` and `178UL` rather than replacing
 the constant.
+
+
+## `BATTY_INFINITE_LIVES=1` — play without dying out
+
+For playing the port by hand. Every other knob here serves a gate; this
+one serves a person who wants to reach level 12 without three deaths
+sending them back to the title.
+
+It suppresses the DECREMENT and nothing else. The bat still explodes,
+the ball still respawns, the death sound still plays, and the lives
+indicators still show the same two bats they show at level entry —
+because a build that skipped the death sequence would be a different
+game from the one the port ships, and the point of a manual-testing
+build is to meet the shipped one.
+
+Both life-taking paths route through `take_a_life` for this: the ball
+loss at `lose_a_life`, and a bomb landing on the bat in `step_bomb`,
+which decrements on its own rather than calling `lose_a_life` (it
+mirrors the original's $A69D, which zeroes `balls_quantity` and lets
+LBC10 do the rest on the next frame). A switch guarding only the first
+would have worked everywhere except deaths by bomb — the least likely
+death to be watching for when you have just set a switch that says
+lives are infinite.
+
+Two things it does NOT do:
+
+- **It does not make the game unloseable in 2 players.** The turn still
+  changes hands on each life loss (`pending_turn_change`), because that
+  is the life-LOSS path, not the counter. With both players immortal
+  the turn simply alternates for ever.
+- **It does not reach the game-over screen**, which is the whole idea,
+  so it is useless for exercising anything downstream of it. Use
+  `BATTY_REPLAY_LIVES=1` for that — it seeds a LOWER count and is the
+  opposite tool.
+
+Unlike the other knobs here it is passed through by the RELEASE floppy's
+`AUTOEXEC.BAT` as well as the test floppy's, since a knob for manual
+play that only reaches gates would be exactly backwards.
+`BATTY_KINNOCK` joined it there for the same reason: it had been
+readable by the EXE and unreachable from `make run` since the day it
+landed.
