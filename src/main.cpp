@@ -3248,6 +3248,25 @@ static volatile unsigned char key_state[128];
 #define SC_K        0x25
 #define SC_L        0x26
 
+/* Player 2's FIRE cluster. The original reads it as one half-row pair,
+ * $5FFE = $7FFE | $DFFE, which is Y U I O P together with B N M, SYMBOL
+ * SHIFT and SPACE — `AND $1F` over the combined read, so any of them
+ * fires.
+ *
+ * SPACE is the one key not carried over: this port committed it to
+ * player 1's fire long before Double Play existed, and `test-visual`
+ * and `test-normal-ball-launch` both press it. Same call as dropping
+ * ENTER from bat 2's RIGHT — transcribe the cluster, minus the key the
+ * port has already spent. */
+#define SC_Y        0x15
+#define SC_U        0x16
+#define SC_I        0x17
+#define SC_O        0x18
+#define SC_P        0x19
+#define SC_B        0x30
+#define SC_N        0x31
+#define SC_M        0x32
+
 static void __interrupt new_int9(void) {
     unsigned char sc = (unsigned char)inp(0x60);
     if (sc != 0xE0) {                       /* skip the extended-key prefix */
@@ -4914,11 +4933,11 @@ static void step_bullet(void) {
  * $18 = 24, decrement 2 per frame, and the == 0 test running BEFORE the
  * decrement means a shot is allowed on the 12th frame, not the 13th.
  * test-laser-cadence pins it. */
-static void try_fire_laser(void) {
+static void try_fire_laser_from(int b) {
     int free_slot = -1;
     int j;
     if (rocket.active
-        || objects[OBJ_BAT_1].bonus_applied != 0x01
+        || objects[b].bonus_applied != 0x01
         || bullet_cooldown != 0) return;
     for (j = 0; j < N_BULLETS; j++) {
         if (!bullet_active[j]) { free_slot = j; break; }
@@ -4926,13 +4945,15 @@ static void try_fire_laser(void) {
     if (free_slot < 0) return;
     bullet_active[free_slot] = 1;
     bullet_frame[free_slot] = 0;
-    bullet_x[free_slot] = BAT_X + 12;
-    bullet_y[free_slot] = BAT_Y - 1;
-    bat1.fire_anim_ticks = 8;
+    bullet_x[free_slot] = (int)objects[b].x_coord + 12;
+    bullet_y[free_slot] = (int)objects[b].y_coord - 1;
+    bats[BAT_SLOT(b)].fire_anim_ticks = 8;
     bullet_cooldown = 0x18;          /* 12 frames @ -2 / frame */
     probe.shots_fired++;
     sound_queue(SND_SHOT);
 }
+
+static void try_fire_laser(void) { try_fire_laser_from(OBJ_BAT_1); }
 
 /* Step the bullet-impact blasts one tick each. Per-slot countdown
  * matches the per-slot bullet that spawned each blast. */
@@ -7523,6 +7544,12 @@ static void step_active_entities(void) {
     step_brick_hit_anim();
 
     if (bat1.fire_anim_ticks) bat1.fire_anim_ticks--;
+    {   /* Bat 2's flash counts down too, or its gun frames stick on the
+         * frame it fired. Outside mode $02 the slot is never set, so the
+         * decrement is unconditional rather than mode-gated. */
+        BatState &st2 = bats[BAT_SLOT(OBJ_BAT_2)];
+        if (st2.fire_anim_ticks) st2.fire_anim_ticks--;
+    }
     if (bullet_cooldown >= 2) bullet_cooldown -= 2;     /* SUB \$02 / frame */
     else bullet_cooldown = 0;
 
@@ -7865,6 +7892,21 @@ static void steer_bat_from_keys(void) {
     const int b2_right = key_state[SC_K];
     b2.x_coord = (unsigned char)bat_step_x((int)b2.x_coord, 0,
                                            b2_left != 0, b2_right != 0);
+
+    /* Player 2's FIRE, polled from key_state rather than read out of the
+     * BIOS buffer the way bat 1's SPACE is. That is closer to the
+     * original, which polls the row every frame — and it is the only
+     * option here, since one BIOS key queue cannot serve two players.
+     *
+     * `try_fire_laser_from` gates on bat 2's OWN bonus byte, so this
+     * does nothing until player 2 catches a LASER. The bullet pool and
+     * the cooldown are shared, which is faithful: the original's
+     * `bullet` counter is one global and `free_bullet_2` takes whichever
+     * bat is in IX. */
+    if (key_state[SC_Y] || key_state[SC_U] || key_state[SC_I]
+        || key_state[SC_O] || key_state[SC_P]
+        || key_state[SC_B] || key_state[SC_N] || key_state[SC_M])
+        try_fire_laser_from(OBJ_BAT_2);
 
     /* The clamps take the original's (left edge, body width). A grown
      * bat 1 straddles BAT_X by extra_px on each side, so it is

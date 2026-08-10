@@ -818,6 +818,7 @@ parity-check-full:
 	$(MAKE) test-double-play-bonus-catch
 	$(MAKE) test-double-play-bat2-redraw
 	$(MAKE) test-double-play-bat2-width
+	$(MAKE) test-double-play-bat2-laser
 	$(MAKE) test-stuck-auto-launch
 	$(MAKE) test-bat-redraw-window
 	$(MAKE) test-ball-left-wall-escape
@@ -1428,6 +1429,11 @@ test-double-play-bat2-redraw:
 # bat 2's growth is drawn, and bat 1's half of the court does not move.
 test-double-play-bat2-width:
 	python3 scripts/test_double_play_bat2_width.py
+
+# WS3: free_bullet_2 takes the firing bat in IX, so player 2's laser
+# leaves BAT 2. Fire keys are the $5FFE cluster minus SPACE.
+test-double-play-bat2-laser:
+	python3 scripts/test_double_play_bat2_laser.py
 
 # A ball left on the bat launches itself after STUCK_TIMEOUT (192)
 # ticks. Nothing gated this: mutating the counter so it never fires

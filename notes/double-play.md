@@ -965,3 +965,56 @@ screen because I was looking at the one edit that DID apply.
 Same shape as the `bats[OBJ_BAT_1]` bug an hour earlier: verify what is
 in the file, not what the script was supposed to put there. `grep -c`
 for the new symbol costs nothing.
+
+
+## Ported: player 2 fires the laser from bat 2 (2026-08-10)
+
+`free_bullet_2` ($A14C) reads the firing bat out of IX —
+
+    LD A,(IX+$02) / ADD A,$0C / LD (IY+$02),A
+
+— so the bullet leaves whichever bat fired, 12 px in from its left edge.
+Nothing about it is bat 1's. The port's `try_fire_laser` had bat 1
+hardcoded in all three places: the bonus byte it gates on, the x it
+fires from, and the muzzle-flash counter it sets.
+`try_fire_laser_from(b)` is the same routine with the bat named, and the
+old name survives as a one-line wrapper for bat 1's SPACE handler.
+
+Bat 2's flash counter now counts down too, or its gun frames would stick
+on the one it fired.
+
+### The fire cluster, minus SPACE
+
+The original reads it as one combined half-row, `$5FFE` = `$7FFE |
+$DFFE` — Y U I O P together with B N M, SYMBOL SHIFT and SPACE, `AND
+$1F`, so any of them fires.
+
+SPACE is the one key not carried over: this port committed it to player
+1's fire long before Double Play existed, and both `test-visual` and
+`test-normal-ball-launch` press it. That is the second key dropped from
+a transcribed cluster for the same reason — ENTER went from bat 2's
+RIGHT for exactly this — and the pattern is worth naming: **transcribe
+the cluster, minus whatever the port has already spent elsewhere.**
+
+Polled from `key_state` rather than the BIOS buffer, which is closer to
+the original (it polls the row every frame) and is the only option
+anyway: one BIOS key queue cannot serve two players.
+
+### Shared on purpose
+
+The bullet pool and the cooldown stay global. The original's `bullet`
+counter is a single byte and `free_bullet_2` is handed a bat, so two
+armed bats compete for the same two slots and the same cadence. Not a
+simplification — checked before assuming.
+
+### The gate checks WHERE the bullet came from
+
+`test-double-play-bat2-laser` asserts the bullet's x is bat 2's + 12,
+not merely that a shot happened. A bat-1-sourced bullet would still
+count as a shot, and the first draft checked only the count — the same
+mistake as reading bat 2's object position and calling the sprite
+verified. Mutation confirms it: sourcing the bullet from bat 1 is
+caught.
+
+With this the LASER is the last bonus to become per-bat, and the only
+remaining WS1 dependency is which key player 2 would rather use.
