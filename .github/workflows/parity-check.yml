@@ -124,7 +124,7 @@ jobs:
         # Not on the runner image; the probe step in the other job says so.
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq qemu-system-x86 mtools
+          sudo apt-get install -y -qq qemu-system-x86 mtools python3-pil
       - name: Confirm KVM is actually usable, not just present
         # `ls /dev/kvm` says the node exists. This says QEMU can open it.
         # Without the group membership the accelerator silently is not
@@ -134,19 +134,24 @@ jobs:
           qemu-system-i386 -accel help
           ls -l /dev/kvm
           id
-          # No bootable media and -nodefaults, so a QEMU that STARTED just
-          # sits there and timeout kills it: exit 124 means KVM was
-          # accepted. A QEMU that could not open /dev/kvm exits at once
-          # with "Could not access KVM kernel module", giving some other
-          # code — so the two outcomes are distinguishable, and neither
-          # hangs the job.
+          # Read QEMU's own words, not its exit code. The first version of
+          # this check timed QEMU out and treated exit 124 as "KVM was
+          # accepted" — it came back 1, which proves nothing either way,
+          # because a QEMU with no bootable device has its own reasons to
+          # exit. Grepping the error text is unambiguous: QEMU says
+          # "Could not access KVM kernel module" or "KVM is not supported"
+          # when the accelerator is refused, and says neither when it is
+          # not.
           set +e
-          timeout 5 qemu-system-i386 -accel kvm -display none -m 4 \
-            -monitor none -nodefaults
-          rc=$?
+          out=$(timeout 5 qemu-system-i386 -accel kvm -display none -m 4 \
+                  -monitor none -nodefaults 2>&1)
           set -e
-          echo "qemu -accel kvm exit code: $rc (124 = ran until timeout = KVM ok)"
-          test "$rc" = "124" || echo "WARNING: KVM was not usable; the timing below is a TCG timing"
+          echo "--- qemu output ---"; echo "$out"; echo "-------------------"
+          if echo "$out" | grep -qiE "could not access kvm|kvm is not supported|failed to initialize kvm"; then
+            echo "WARNING: KVM was REFUSED — any timing below is a TCG timing"
+          else
+            echo "KVM was not refused; the timing below is a KVM timing"
+          fi
       - name: Two-gate smoke under KVM, timed
         env:
           BATTY_QEMU_ACCEL: kvm
