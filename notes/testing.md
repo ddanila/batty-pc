@@ -1492,6 +1492,32 @@ That brings the memory guards found by mutation to SEVEN — four in
 Boundary mutation reads as a hunt for off-by-one pixels; in this
 codebase it has mostly been a hunt for reads and writes outside arrays.
 
+### Third sweep: the CLAMP-BOUND operator
+
+The second sweep's lesson was that `<` -> `<=` is a no-op on a clamp.
+The operator that does bite is moving the BOUND: `if (x < N) x = N`
+becomes `if (x < N-1) x = N`, leaving the boundary value unclamped.
+
+21 clamp idioms, **6 caught, 15 survived** — against 0 caught by the
+relational operator on the same lines. The lesson paid for itself in one
+run.
+
+And the first real finding is about a test, not the code.
+`test_blit_stays_in_playfield` already called
+`buff_to_vga_rect_bytes(-20, 400, -5, 99)` with a comment about
+"deliberately out of range" arguments. Every one of those overshoots its
+clamp by enough that a one-off bound still clamps it, so the call proves
+the clamps EXIST and nothing about where they sit — all four survived.
+
+Replaced by `(-1, PLAYFIELD_H + 2, -1, BYTES_PER_ROW)`: y0 and byte_lo
+one BELOW their clamps, byte_hi and y_end one ABOVE theirs. One call,
+four boundaries, all four mutants dead.
+
+**Out-of-range test data has the same failure mode as an out-of-range
+mutation: go far enough out and both sides of the boundary agree.** The
+useful value is always the boundary itself, and "deliberately out of
+range" is not a substitute for it.
+
 **Two more real, from shapes the filter was not even aiming at:**
 
 - `object_step_animation`'s wrap, `((d >> 4) & 0x0F) < e`. `CP E / JR

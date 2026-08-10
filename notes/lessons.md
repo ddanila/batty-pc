@@ -1184,3 +1184,26 @@ exactly what the other catches, and the two mutation sweeps found them
 from opposite sides. The `>=` sweep found the guards that let a blit
 write too far; the `<` sweep found the guards that stop it writing far
 enough.
+
+## "Deliberately out of range" is not a boundary test (2026-08-10)
+
+`test_blit_stays_in_playfield` called
+`buff_to_vga_rect_bytes(-20, 400, -5, 99)` with a comment saying the
+arguments were deliberately out of range. It was a reasonable-looking
+test and it proved less than it appeared to.
+
+Every one of those values overshoots its clamp by a wide margin, so a
+clamp whose bound is off by one still catches them. All four clamps in
+that function survived a mutation sweep that moved each bound by one,
+with this test passing.
+
+The fix is `(-1, PLAYFIELD_H + 2, -1, BYTES_PER_ROW)` — each argument
+exactly one step outside its clamp. One call, four boundaries, all four
+mutants dead.
+
+**Out-of-range test data fails the same way an out-of-range mutation
+does: go far enough out and both sides of the boundary agree.** This is
+the third time this session the same shape has bitten — passing `$FF` to
+a clamp that wraps at 8 bits, and a rect giving `col_hi = 38` where the
+bound is 32. The instinct to "make it clearly invalid" picks values that
+cannot distinguish anything.

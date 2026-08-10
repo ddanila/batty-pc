@@ -226,6 +226,28 @@ static void test_blit_stays_in_playfield(void) {
             if (!inside && vga[y * SCREEN_W + x] != 0xAA) escaped++;
         }
     CHECK(escaped == 0, "clamped rect flush wrote %d bytes outside the playfield\n", escaped);
+
+    /* The same call with BOUNDARY-EXACT arguments. The values above
+     * (-20, 400, -5, 99) overshoot every clamp by enough that a
+     * one-off bound still clamps them, so they prove the clamps exist
+     * and nothing about where they sit. A 2026-08-10 sweep that moved
+     * each bound by one survived this test for exactly that reason.
+     *
+     * y0 = -1 and byte_lo = -1 are one below their clamps; byte_hi =
+     * BYTES_PER_ROW and y_end = PLAYFIELD_H + 1 are one above theirs.
+     * One call exercises all four. */
+    memset(vga, 0xAA, SCREEN_W * SCREEN_H);
+    buff_to_vga_rect_bytes(-1, PLAYFIELD_H + 2, -1, BYTES_PER_ROW);
+    escaped = 0;
+    for (y = 0; y < SCREEN_H; y++)
+        for (x = 0; x < SCREEN_W; x++) {
+            int inside = (x >= BORDER_X && x < BORDER_X + PLAYFIELD_W &&
+                          y >= BORDER_Y && y < BORDER_Y + PLAYFIELD_H);
+            if (!inside && vga[y * SCREEN_W + x] != 0xAA) escaped++;
+        }
+    CHECK(escaped == 0,
+          "a rect flush with boundary-exact out-of-range args wrote %d "
+          "bytes outside the playfield\n", escaped);
     end("borders intact");
 }
 
