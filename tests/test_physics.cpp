@@ -383,6 +383,49 @@ static void field_destroy(int row, int col) {
     field_cells[row * FIELD_COLS + col] = 0x80;
 }
 
+/* A bat offset exactly ON a zone boundary belongs to the zone ABOVE it.
+ *
+ *     LAB1F_6: CP (HL) / JR C,LAB1F_7 / INC HL / INC HL / JR LAB1F_6
+ *
+ * `JR C` leaves the walk only when `offset < boundary`, so the loop
+ * keeps advancing while `offset >= boundary` — the port's `>=`. With
+ * `>`, an offset equal to a boundary stops one zone early and deflects
+ * as though it were a pixel to the left.
+ *
+ * The captured hardware cases in notes/bat-deflection.md sit at offsets
+ * -3, 5, 13, 21 and 29 — none of them on a boundary — which is why
+ * mutating this passed the whole host suite.
+ *
+ * The property asserted is the one the code shape guarantees: offset b
+ * lands in the same zone as b+1, not as b-1. */
+static void test_bat_zone_boundary_belongs_above() {
+    const int before = failures;
+    const int bounds[6] = { 0x04, 0x08, 0x0C, 0x10, 0x14, 0x18 };
+    const u8 incoming[6] = { 0x04, 0x08, 0x0C, 0x14, 0x18, 0x1C };
+    int same_as_above = 0, same_as_below = 0, checked = 0;
+
+    for (int b = 0; b < 6; b++) {
+        for (int i = 0; i < 6; i++) {
+            const u8 at    = bat_deflect_dir(incoming[i], bounds[b], false);
+            const u8 above = bat_deflect_dir(incoming[i], bounds[b] + 1, false);
+            const u8 below = bat_deflect_dir(incoming[i], bounds[b] - 1, false);
+            checked++;
+            if (at == above) same_as_above++;
+            if (at != below) same_as_below++;
+        }
+    }
+    check(same_as_above == checked,
+          "%d of %d boundary offsets deflected differently from the "
+          "offset one px to their RIGHT; they share a zone\n",
+          checked - same_as_above, checked);
+    /* And the two zones must actually differ somewhere, or the check
+     * above would hold under either rule. */
+    check(same_as_below > 0,
+          "no boundary offset differed from the offset one px to its "
+          "LEFT, so this test cannot tell the two rules apart\n");
+    report("bat_zone_boundary_above", before, "6 bounds x 6 dirs    ok");
+}
+
 /* The row scan's 8-bit wrap test is `> $FF`, and one pixel decides it.
  *
  * The original walks the bands with an 8-bit subtract and uses the
@@ -1070,6 +1113,7 @@ int main() {
     test_motion_accel_fraction_carries();
     test_motion_accel_fast_variant_caps();
     test_motion_accel_clamp_is_equality_not_ge();
+    test_bat_zone_boundary_belongs_above();
     test_laffc_row_scan_edge_is_one_brick();
     test_laffc_dir_gate_is_ge_at_vertical();
     test_laffc_corner_tie_goes_horizontal();

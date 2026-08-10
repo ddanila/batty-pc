@@ -1290,7 +1290,24 @@ By module: `zxvga.cpp` 15, `physics.cpp` 12, `bricks.cpp` 4,
 that layer is mostly gated by QEMU screendumps rather than host tests —
 and it is precisely why the sprite-blit guards had no host cover.
 
-**The remaining survivors are a triage backlog, not a defect list.**
+**Triaged so far (2026-08-10):** 6 of the 35.
+
+| line | verdict |
+|---|---|
+| `bat_court_clamp_2`: `bat_x >= 0x80` | equivalent — both branches return `0x80` |
+| `delta_to_dir`: two quadrant tests | unreachable — no production consumer |
+| `blit_masked_sprite`: `x >=`, `y >=` | REAL, fixed (`sprite_blit_clips`) |
+| `bat_deflect_dir`: `offset >= zones[i]` | REAL, fixed (`bat_zone_boundary_above`) |
+
+The zone walk is the one worth reading twice. `LAB1F_6` is
+`CP (HL) / JR C`, so the walk continues while `offset >= boundary` and
+an offset landing exactly ON a boundary belongs to the zone ABOVE it.
+With `>` it deflects as though it were one pixel to the left. The
+captured hardware cases sit at offsets -3, 5, 13, 21 and 29 — not one of
+them on a boundary — so the table this port was built from could not
+have caught it.
+
+**The rest are a triage backlog, not a defect list.**
 Working through them means, per line: decide equivalent-or-real from the
 disassembly, and for real ones build the input from a differential dump.
 That is minutes each, which is why this note records the list's shape

@@ -418,3 +418,32 @@ never consults bat 2, so in Double Play a secondary cannot be caught OR
 deflected by bat 2. That is a different gap — extras vs bat 2 — and it
 is named in the gate's docstring so the gate is not mistaken for
 covering it.
+
+
+## An offset ON a zone boundary belongs to the zone ABOVE (2026-08-10)
+
+    LAB1F_6: CP (HL) / JR C,LAB1F_7 / INC HL / INC HL / JR LAB1F_6
+
+`JR C` leaves the walk only when `offset < boundary`, so it keeps
+advancing while `offset >= boundary`. An offset equal to a boundary
+therefore lands in the HIGHER zone. The port's
+`while (i < 12 && u8(offset) >= zones[i]) i += 2;` matches.
+
+Normal-bat boundaries are $04, $08, $0C, $10, $14, $18; big-bat $06,
+$0C, $12, $1A, $20, $26.
+
+**Nothing tested it.** Mutating `>=` to `>` — which makes a boundary
+offset deflect as though it were one pixel to the LEFT — passed the
+whole host suite. The reason is in this file: the captured hardware
+cases are offsets **-3, 5, 13, 21 and 29**, and not one of them sits on
+a boundary.
+
+That is not an accident of sampling so much as a consequence of how the
+table was built — offsets were chosen to span the zones, which means
+choosing points comfortably inside them. A table built to demonstrate
+that zones differ will not test where one ends.
+
+`bat_zone_boundary_above` asserts the property directly: for each
+boundary b and each of the six incoming directions, the deflection at b
+equals the deflection at b+1, and differs from b-1 somewhere (or the
+first half would hold under either rule).
