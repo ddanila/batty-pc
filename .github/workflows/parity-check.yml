@@ -125,6 +125,20 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq qemu-system-x86 mtools python3-pil
+      - name: Grant access to /dev/kvm
+        # The node exists (crw-rw---- root:kvm) but the runner user is not
+        # in the kvm group, so the first run got:
+        #   Could not access KVM kernel module: Permission denied
+        # `usermod -aG kvm` would not help — group membership does not
+        # apply to the already-running shell. The udev rule is the recipe
+        # GitHub's own Android-emulator docs use: widen the node's mode
+        # and re-trigger, which takes effect immediately.
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          ls -l /dev/kvm
       - name: Confirm KVM is actually usable, not just present
         # `ls /dev/kvm` says the node exists. This says QEMU can open it.
         # Without the group membership the accelerator silently is not
@@ -148,11 +162,21 @@ jobs:
           set -e
           echo "--- qemu output ---"; echo "$out"; echo "-------------------"
           if echo "$out" | grep -qiE "could not access kvm|kvm is not supported|failed to initialize kvm"; then
-            echo "WARNING: KVM was REFUSED — any timing below is a TCG timing"
+            echo "KVM_OK=0" >> "$GITHUB_ENV"
+            echo "KVM was REFUSED. Not running the smoke: a TCG timing here"
+            echo "would answer a question nobody asked, and the ~9 min TCG"
+            echo "figure is already on record."
           else
-            echo "KVM was not refused; the timing below is a KVM timing"
+            echo "KVM_OK=1" >> "$GITHUB_ENV"
+            echo "KVM accepted; the timing below is a KVM timing"
           fi
       - name: Two-gate smoke under KVM, timed
+        # SKIPPED rather than failed when KVM is refused. A job that is
+        # permanently red is a job everyone learns to ignore — the exact
+        # habit that let main sit red for 165 runs. If the accelerator is
+        # not available the honest outcome is "not measurable here", and
+        # the step above says so in the log.
+        if: env.KVM_OK == '1'
         env:
           BATTY_QEMU_ACCEL: kvm
         run: |
