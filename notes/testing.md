@@ -1,13 +1,13 @@
 # Testing
 
 > **`make test-fast` needs no emulator and runs in seconds** — 14 host test
-> suites plus 30 source gates. Start there; it is exactly what CI runs.
+> suites plus 31 source gates. Start there; it is exactly what CI runs.
 >
 > The QEMU gates cost ~10 s per boot. `make parity-check-parallel --full`
 > runs all 79 gates of the full sweep in about seven minutes (78 QEMU plus
 > `test-asan`, which is host-only but belongs to the same sweep).
 > `make parity-check-full` adds the 3 ZEsarUX-oracle gates, serially.
-> 109 gates in all, indexed below.
+> 110 gates in all, indexed below.
 
 ## How `make test` works
 
@@ -196,6 +196,9 @@ of the oldest.
 - `test-level-attrs-derivable` — the live-brick fifth of `level_attrs.bin` is
   computed, not captured.
 - `test-asset-provenance` — every loaded asset is built from the tape.
+- `test-inline-tape-data` — every array transcribed into the source still
+  equals the tape bytes at the address documenting it, including the ones
+  that carry a stated transform.
 - `test-doc-links` — every file path cited in a comment or note exists.
 - `test-known-bugs-table` — the bug table agrees with the sections below it.
 - `test-plan-table-fresh` — PLAN.md's definition-of-done table is no older

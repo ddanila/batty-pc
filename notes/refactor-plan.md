@@ -18,13 +18,13 @@ code got better. The claims worth pinning are the ones above: every
 module testable on its own, nothing left in `main.cpp` that belongs
 elsewhere.
 
-**The tests.** 109 gates, indexed in `notes/testing.md` and kept complete by
+**The tests.** 110 gates, indexed in `notes/testing.md` and kept complete by
 `test-gate-index`:
 
   - 79 sweep gates (78 QEMU + `test-asan`) —
     `python3 scripts/run_gates_parallel.py --full`, ~7 min.
     `make parity-check-parallel` runs only the 8-gate subset in ~100 s.
-  - 30 emulator-free source gates plus 14 host suites — `make test-fast`,
+  - 31 emulator-free source gates plus 14 host suites — `make test-fast`,
     seconds. CI runs exactly this.
   - 3 ZEsarUX-oracle gates — `make parity-check-full`.
 

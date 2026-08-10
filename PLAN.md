@@ -17,7 +17,7 @@ Status detail lives in `notes/parity-status.md`, open fidelity gaps in
 |---|-----------|-------|
 | 1 | All three modes: 1 Player, 2 Players (alternating), Double Play | **Done** — including the court, both bats, split-keyboard input, catches, scoring and per-bat bonuses |
 | 2 | Menu semantics match the original | Key 0 starts the game (`test-menu-start`); the device byte is per-player state but selects nothing |
-| 3 | Core gameplay byte-exact where an oracle exists | **Done** — regression-locked by 109 gates |
+| 3 | Core gameplay byte-exact where an oracle exists | **Done** — regression-locked by 110 gates |
 | 4 | Full game FLOW gated end-to-end | **Done** — `test-level-advance`, `test-life-loss`, `test-life-respawn`, `test-game-over-visual`, `test-name-entry-visual` |
 | 5 | Sound faithful to the 5-slot beeper queue | ids, slot count, pitches and envelope arithmetic faithful; durations still round to 20 ms |
 | 6 | All assets derived from the tape at build time | **Done** — all 13 loaded assets build from `original/blocks/`, held by `test-asset-provenance` |

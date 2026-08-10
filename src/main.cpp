@@ -817,11 +817,16 @@ static unsigned char high_score_name[3] = { 0x0A, 0x0A, 0x0A };
  * authority — do not keep a second copy of the mapping here. */
 
 /* bonus_table_first / bonus_table_second - byte-exact copies of the
- * 32-byte tables at $9E4A / $9E6A. The lower 4 bits of random_number
+ * 32-byte tables at $9E4A / $9E8A. The lower 4 bits of random_number
  * index the active table; the original walks rows 0..15 and rows
  * 16..31 are an extension (the original code only ANDs $0F so it
  * picks from 0..15 - the duplicate 16..31 region appears to be
- * vestigial in the disasm but we keep it for byte-fidelity). */
+ * vestigial in the disasm but we keep it for byte-fidelity).
+ *
+ * The second table is NOT at $9E6A, which is the obvious guess and was
+ * wrong here for a long time: the tape stores `first` TWICE, at $9E4A
+ * and again at $9E6A, so a 32-byte read there returns a valid-looking
+ * copy of the wrong table. `second` starts after both, at $9E8A. */
 static const unsigned char bonus_table_first[32] = {
     0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
     0x08, 0x09, 0x00, 0x04, 0x00, 0x03, 0x01, 0x02,

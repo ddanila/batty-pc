@@ -1346,6 +1346,7 @@ test-source-gates:
 	$(MAKE) test-frame-derivable
 	$(MAKE) test-bg-tile-derivable
 	$(MAKE) test-asset-provenance
+	$(MAKE) test-inline-tape-data
 	$(MAKE) test-sound-ids
 	$(MAKE) test-known-bugs-table
 	$(MAKE) test-no-dead-constants
@@ -1577,6 +1578,12 @@ test-bg-tile-derivable:
 # tape's own blocks, not from a snapshot or a screen capture.
 test-asset-provenance:
 	python3 scripts/check_asset_provenance.py
+
+# The other half of provenance: data transcribed straight INTO the source,
+# which no rule rebuilds and nothing compared to anything. Found four wrong
+# addresses on its first run.
+test-inline-tape-data:
+	python3 scripts/check_inline_tape_data.py
 
 # A sound id IS a position in play_sounds_list — play_selected_sound
 # indexes the table with it. SND_MAGNET is deliberately past the end.
