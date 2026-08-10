@@ -149,3 +149,62 @@ change rather than a table of constants. The constants are already
 there, and so is the arithmetic — what is left is `sound_set_clock_hz`
 being given something finer than the frame counter, and a speaker
 driver that can stop a note between frames.
+
+
+## The lc122 effects were one beep of nine (2026-08-10)
+
+`play_sound_LC122` ($C122) is a LOOP, and the port was firing one turn
+of it:
+
+    play_sound_LC122:
+      LD A,C / XOR E / ADD A,A / LD B,A
+      AND $0F / LD D,A / LD A,B / AND $0C / ADD A,$08 / LD B,A
+      CALL sound_beep2
+      DEC C / JR NZ,play_sound_LC122
+      RET
+
+`C` counts DOWN and `B`/`D` are recomputed from `C XOR E` every turn, so
+it is a descending sweep of C beeps — **nine** for `play_sound_ball_start`
+(C=$09, E=$14) and **four** for `play_sound_shot` (C=$04, E=$0F).
+
+`sound_play_lc122` computed B and D once, played a single beep and
+cleared the slot. So the ball-launch blip was 1/9 of itself and the
+laser shot 1/4.
+
+Ported as a per-frame sweep with `state` holding C, which is how every
+other multi-frame effect in this queue already works — `SND_LIVE_ADD`,
+`SND_BAT_RESIZE_1`, `SND_TRIPLE_BALL`, `SND_ALIEN_BLAST`,
+`SND_SPARK_FANOUT` and `SND_MAGNET` are all shaped that way. One beep
+per frame rather than the original's back-to-back run is the same
+approximation the rest of the queue makes, and it is exactly what WS5's
+open decision is about.
+
+### And the primitive had no duration at all
+
+`sound_beep2` ($C136) is speaker ON for B DJNZ turns then OFF for D —
+one cycle, so `(B + D) * 13` T-states. The port's `sound_beep2_bd`
+passed a literal `1` tick.
+
+`sound_beep_cont_d` was given real duration arithmetic on 2026-08-09 and
+this primitive was missed, so two effects kept the one-tick model while
+the other eleven got honest lengths. `beep_ticks(1, period)` is exactly
+`(B + D) * 13` T-states, since `period` is already `(B + D) / 2` in the
+units `beep_period` takes.
+
+### The host test had them filed as "clicks"
+
+`sweeps_last_multiple_frames` keeps two lists: effects that must outlive
+their frame, and effects that must not. `SND_BALL_START` and `SND_SHOT`
+were in the second, so a one-beep-of-nine effect passed as correct — the
+test was describing the PORT's structure rather than the original's.
+
+Both moved, with a note on the clicks list to check the disassembly for
+a loop before adding to it. The remaining three genuinely have no loop
+in their `play_sound_` routine.
+
+### What this does NOT change
+
+The 20 ms floor. Each beep still rounds up to one 50 Hz tick, so a
+nine-beep sweep now takes nine frames where the original takes about
+9 * 0.5 ms inside one. The sweep is right; the timebase is still the
+open question.

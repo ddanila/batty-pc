@@ -65,10 +65,21 @@ void sound_start_period(unsigned int period, unsigned int ticks) {
     last_tick = clock_now();
 }
 
+static unsigned int beep_ticks(unsigned char d, unsigned char e);
+
+/* orig: sound_beep2 ($C136) — speaker ON for B DJNZ turns, OFF for D.
+ * ONE cycle, so the duration is (B + D) * 13 T-states, and the half
+ * period is (B + D) / 2 in the same units `beep_period` takes.
+ *
+ * The duration used to be the literal 1 tick below. `sound_beep_cont_d`
+ * was given real arithmetic on 2026-08-09 and this primitive was
+ * missed, so the two effects that reach it — BALL_START and SHOT — kept
+ * the old one-tick model while every other effect got honest lengths.
+ * beep_ticks(1, period) is exactly (B + D) * 13 T-states. */
 void sound_beep2_bd(unsigned char b, unsigned char d) {
     unsigned char period = (unsigned char)(((unsigned int)b + (unsigned int)d) / 2u);
     if (period == 0) period = 1;
-    sound_start_period((unsigned int)period * 9u, 1);
+    sound_start_period((unsigned int)period * 9u, beep_ticks(1, period));
 }
 
 /* orig: sound_beep_cont_d ($C25C) — D square-wave cycles of half-period
@@ -139,16 +150,37 @@ int tick_one(Slot *s) {
             return 0;
         }
 
+        /* play_sound_LC122 ($C122) is a LOOP, and the port used to play
+         * one beep of it:
+         *
+         *     play_sound_LC122:
+         *       ... derive B,D from (C XOR E) ... CALL sound_beep2
+         *       DEC C / JR NZ,play_sound_LC122
+         *
+         * C counts DOWN, and B and D are recomputed from `C XOR E` each
+         * turn, so it is a descending sweep of C beeps — nine for
+         * BALL_START, four for SHOT. The port fired the first one and
+         * cleared the slot, dropping 8/9 and 3/4 of each effect.
+         *
+         * Ported as a per-frame sweep with `state` holding C, which is
+         * how every other multi-frame effect here already works. It is
+         * one beep per frame instead of the original's back-to-back
+         * run — the same approximation the rest of the queue makes, and
+         * the one WS5's open decision is about. */
         case SND_BALL_START: {
-            /* $C116: C=$09,E=$14, then clear the slot. */
-            sound_play_lc122(0x09, 0x14);
-            return 1;
+            /* $C116: C=$09, E=$14. */
+            sound_play_lc122(s->state, 0x14);
+            if (s->state <= 1) return 1;
+            s->state--;
+            return 0;
         }
 
         case SND_SHOT: {
-            /* $C235: C=$04,E=$0F, then clear the slot. */
-            sound_play_lc122(0x04, 0x0F);
-            return 1;
+            /* $C235: C=$04, E=$0F. */
+            sound_play_lc122(s->state, 0x0F);
+            if (s->state <= 1) return 1;
+            s->state--;
+            return 0;
         }
 
         case SND_BAT_RESIZE_1: {
@@ -250,8 +282,8 @@ void sound_queue(u8 id) {
             queue[i].id = id;
             switch (id) {
                 case SND_LIVE_ADD:    queue[i].state = 0x20; break;
-                case SND_BALL_START:  queue[i].state = 0x00; break;
-                case SND_SHOT:        queue[i].state = 0x00; break;
+                case SND_BALL_START:  queue[i].state = 0x09; break;  /* C at $C116 */
+                case SND_SHOT:        queue[i].state = 0x04; break;  /* C at $C235 */
                 case SND_SPARK_FANOUT:queue[i].state = 0x3D; break;  /* LBC10 push */
                 case SND_BAT_RESIZE_1:queue[i].state = 0xC0; break;  /* matches \$3212 push */
                 case SND_TRIPLE_BALL: queue[i].state = 0x10; break;  /* matches \$3072 push */

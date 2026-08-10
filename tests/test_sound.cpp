@@ -119,8 +119,14 @@ static void test_every_event_terminates() {
  * fails loudly instead of quietly changing how the game sounds. */
 static void test_sweeps_last_multiple_frames() {
     const int before = failures;
+    /* BALL_START and SHOT joined this list on 2026-08-10. They are
+     * play_sound_LC122 ($C122), which LOOPS `DEC C / JR NZ` — nine
+     * beeps and four — and the port had been firing the first one and
+     * clearing the slot. They were in the `clicks` list below, which is
+     * how a one-beep-of-nine effect passed for correct. */
     const u8 sweeps[] = { SND_ALIEN_BLAST, SND_LIVE_ADD, SND_SPARK_FANOUT,
-                          SND_BAT_RESIZE_1, SND_TRIPLE_BALL, SND_MAGNET };
+                          SND_BAT_RESIZE_1, SND_TRIPLE_BALL, SND_MAGNET,
+                          SND_BALL_START, SND_SHOT };
     for (unsigned i = 0; i < sizeof(sweeps) / sizeof(sweeps[0]); i++) {
         reset();
         sound_queue(sweeps[i]);
@@ -135,8 +141,12 @@ static void test_sweeps_last_multiple_frames() {
               sweeps[i], frames_alive);
     }
     /* The clicks must stay clicks. */
-    const u8 clicks[] = { SND_NORMAL_BRIK, SND_BAT_BEAT, SND_BALL_START,
-                          SND_SHOT, SND_BAT_RESIZE_2 };
+    /* Genuine one-call effects: their play_sound_ routine has no loop.
+     * Check that against the disassembly before adding to this list —
+     * BALL_START and SHOT sat here for months on the strength of the
+     * PORT's structure rather than the original's. */
+    const u8 clicks[] = { SND_NORMAL_BRIK, SND_BAT_BEAT,
+                          SND_BAT_RESIZE_2 };
     for (unsigned i = 0; i < sizeof(clicks) / sizeof(clicks[0]); i++) {
         reset();
         sound_queue(clicks[i]);

@@ -539,6 +539,19 @@ frame — so every effect lasts **20 ms** against the original's 3-9 ms
 (`normall_brik` 4.04, `bat_beat` 3.03, `metal_brik` 8.56). The pitches
 are right; the durations are all ~5x too long, from one cause.
 
+**A second gap, found 2026-08-10 while sizing the decision.**
+`play_sound_LC122` ($C122) is a LOOP — `DEC C / JR NZ` — so ball-launch
+is NINE beeps and the laser shot FOUR, with B and D recomputed from
+`C XOR E` each turn. The port played one beep and cleared the slot. And
+`sound_beep2`, the primitive those two reach, still passed a literal
+1-tick duration: `sound_beep_cont_d` got real arithmetic in August and
+this one was missed.
+
+Both fixed; the two effects are per-frame sweeps like the other six, and
+the host test that had them filed as one-frame "clicks" is corrected.
+This does NOT touch the decision below — it makes the thing being
+decided about complete. See notes/sound.md.
+
 **Half of that is now fixed.** `sound_beep_cont_d` computes the real
 duration — `D * 2 * E * 13` T-states through `sound_set_clock_hz` — and
 a host test drives the module at a microsecond clock to pin the three
