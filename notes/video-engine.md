@@ -100,19 +100,12 @@ It needs no emulator, so unlike the QEMU gates it is viable on hosted CI.
 
 ## Verifying that a code-motion refactor changed nothing
 
-Worth reusing for any future extraction of this kind:
-
-1. **Preprocessed token multiset.** Preprocess both revisions, strip blank
-   lines, normalise whitespace, `sort`, `diff`. For pure code motion this is
-   **empty** — it was, for every build variant — which proves no statement
-   was added, dropped or altered; only order changed, semantically neutral
-   for file-scope definitions with constant initialisers. Exact commands in
-   `notes/toolchain.md`.
-2. **EXE size**, as a cross-check.
-3. **The gates**: `make test` plus `make parity-check-parallel`.
+Worth reusing for any future extraction of this kind: the preprocessed token
+multiset (commands in `notes/toolchain.md`) is **empty** for pure code motion,
+which proves no statement was added, dropped or altered; EXE size is a
+cross-check; `make test` plus `make parity-check-parallel` is the third leg.
 
 The EXEs are **not** byte-identical and cannot be — moving a function shifts
-every address after it. Size plus token multiset plus gates is the achievable
-proof. (A clean rebuild at a fixed revision *is* byte-identical, since only
-`build/main.obj` carries two timestamp bytes, so EXE comparison is a valid
-tool whenever the source order is untouched.)
+every address after it. A clean rebuild at a fixed revision *is*
+byte-identical, since only `build/main.obj` carries two timestamp bytes, so EXE
+comparison is a valid tool whenever the source order is untouched.

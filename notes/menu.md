@@ -32,11 +32,9 @@ resets its own `last_input` on A/B/1-3.
 **What the port does.** `run_menu` returns `ST_LEVEL` on '0', which runs
 `new_game_reset` and enters the round-1 banner. ENTER is kept, deliberately,
 as the port's own attract-chain step: `test-visual` walks title -> menu ->
-hi-score -> level by sending ENTER at each state, so making ENTER start a
-game would have made `state3_hiscore` capture a level — and because each
-checkpoint diffs against its OWN reference, the failure would have read as a
-rendering regression on the wrong screen rather than as a navigation change.
-`test-menu-start` pins both halves.
+hi-score -> level by sending ENTER at each state, so making ENTER start a game
+would have made `state3_hiscore` capture a level and read as a rendering
+regression on the wrong screen. `test-menu-start` pins both halves.
 
 ## Menu structure
 
@@ -111,14 +109,12 @@ Net: text vertically centred, 5 px margin top, 6 px bottom.
 
 The port passed the raw 143 / 158 as the TOP y of `draw_text`, which is
 top-anchored, so both lines sat 5 px low, jammed against the box bottom. It
-passes `BORDER_Y+138` / `BORDER_Y+153` now.
-`scripts/test_round_banner_border.py` had ENCODED the bug — its
-`TOP_BAND_H` assumed an 8 px black top margin where the original has 5.
+passes `BORDER_Y+138` / `BORDER_Y+153` now, and `test-round-banner-border`
+expects the original's 5 px top margin rather than the 8 px it once assumed.
 
-**Sprites are drawn bottom-up throughout.** `print_sprite_pix` moves to the
-PREVIOUS buffer line each row, so the first data row lands at y and the rest
-stack above. The round banner, the Kinnock egg and the frame's top strip all
-anchor at the bottom.
+Bottom-anchoring is the general rule here: the round banner, the Kinnock egg
+and the frame's top strip all anchor at their bottom row
+(`notes/sprites.md`).
 
 Capturing the original's banner needs
 `scripts/capture_round_banner_original.py`, which reads ULA `$4000` while PC

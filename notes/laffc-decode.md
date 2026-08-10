@@ -140,8 +140,9 @@ could tell.
 | `(dir+$10)&$3F >= $20` -> `> $20` | `dir == $10` | swaps LEFT/RIGHT face at pure vertical |
 | `y_pen >= x_pen` -> `>` | an exact corner tie | flips ties to a vertical bounce |
 
-Pinned by `laffc_row_scan_edge`, `laffc_dir_gate_ge_at_vertical` and
-`laffc_corner_tie_goes_horizontal` in `tests/test_physics.cpp`. All three
+Pinned by `test_laffc_row_scan_edge_is_one_brick`,
+`test_laffc_dir_gate_is_ge_at_vertical` and
+`test_laffc_corner_tie_goes_horizontal` in `tests/test_physics.cpp`. All three
 came from differential dumps — run both variants over a neighbourhood and
 diff — rather than from derivation.
 

@@ -163,7 +163,6 @@ current-bonus letter overlay would be port-only.
   cc 2..30. The port's `print_border_shadow_c`.
 - `table_shifts` $F200 — the pre-shifted sprite-byte lookup table.
 
-**A watchpoint gives you a PC, not a purpose.** `0xAD8F` was named "the
-brick-field blitter" and cost days of theorising; it is
-`all_metal_briks_frame`, an animation that happens to share an inner blit
-with the level paint. Trace where a routine is CALLED FROM before naming it.
+Note `0xAD8F` is `all_metal_briks_frame`, an animation that happens to share an
+inner blit with the level paint — not the brick-field blitter it was once named
+from a watchpoint (`notes/lessons.md`).

@@ -24,8 +24,7 @@ of the original's `(IX+$15)` machine.
   bonus transition is in flight.
 
 The port has no `bonus_flag` at all, so the sound guard cannot be ported
-alone. Whoever takes this closes both. It used to read "out of scope:
-sound", which understated the item — see `notes/sound.md`.
+alone. Whoever takes this closes both — see `notes/sound.md`.
 
 ## 2. Sound durations quantise to 20 ms
 

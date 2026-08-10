@@ -1,7 +1,7 @@
-# Modularising main.cpp
+# Module layout
 
-One oversized file turned into modules that each have a fast, exhaustive
-test. The stage table below is complete.
+One oversized `main.cpp` turned into modules that each have a fast,
+exhaustive host test. Complete.
 
 ## Where this stands
 
@@ -11,26 +11,22 @@ left in `main.cpp` is the game itself: screen states, level flow, and the
 frame loop. Its longest function is `run_level`, an orchestrator of named
 phases rather than a god-function.
 
-Line counts are deliberately not tracked here. The file got shorter, then
-longer as extraction added headers, then shorter again as the comment
-sweeps ran — and none of that movement said anything about whether the
-code got better. The claims worth pinning are the ones above: every
-module testable on its own, nothing left in `main.cpp` that belongs
-elsewhere.
+Line counts are deliberately not tracked. The claims worth pinning are the
+ones above: every module testable on its own, nothing left in `main.cpp`
+that belongs elsewhere.
 
 **The tests.** 110 gates, indexed in `notes/testing.md` and kept complete by
 `test-gate-index`:
 
   - 79 sweep gates (78 QEMU + `test-asan`) —
-    `python3 scripts/run_gates_parallel.py --full`, ~7 min.
-    `make parity-check-parallel` runs only the 8-gate subset in ~100 s.
+    `make parity-check-parallel FULL=1`, ~7 min. Without `FULL=1` it runs
+    only the fast core, ~100 s.
   - 31 emulator-free source gates plus 14 host suites — `make test-fast`,
     seconds. CI runs exactly this.
   - 3 ZEsarUX-oracle gates — `make parity-check-full`.
 
 **The defects.** Eight surfaced by this refactor (#8-#15) and three more by
-playing the game (#20-#22). `notes/known-bugs.md` holds the table; this file
-keeps no second copy.
+playing the game (#20-#22). `notes/known-bugs.md` holds the table.
 
 `scripts/check_notes_numbers.py` pins the figures above on every
 `make test-fast`.
@@ -61,36 +57,31 @@ everything else stays private.
 compiles. Watcom's 32-bit `long` is 4 bytes and a 64-bit host's is 8; a cast
 through the wrong one silently doubles a store's width.
 
-## Modules
+## The modules
 
-| # | Module | Lines | Host tests |
-|---|--------|------:|-------|
-| — | `zxvga` — video engine | 593 | 11 |
-| 2 | `rng` | 68 | 4, byte-exact vs the original's walk |
-| 3a | `physics` — direction + bat deflection | 231 | 12, vs captured hardware tables |
-| 3b | collision geometry / effects split | 166 | 7 |
-| 4 | `assets` | 167 | 6 |
-| 5 | `bricks` — the compositor | 278 | 7, byte-exact vs 15 captured screens |
-| 5b | level paint / band orchestration | ~125 | 3 |
-| 6a | `objects` — the 22-byte descriptor + slots | 60 | 5 |
-| 6b-i | `weapons` — bullets + blasts | 95 | 6 |
-| 6b-ii | `enemies` — steering | 145 | 5 |
-| 6b-iii | `bonus_codes` — original ↔ port numbering | 40 | 4 |
-| 6b-iv | bonus effects, rocket, sparks | ~180 | — |
-| 7 | `hud` — glyphs, markup, score | 175 | 6 |
-| 8 | `sound` — queue + envelopes | 366 | 7 |
-| 9 | `run_level` decomposition | 684 → 115 | — |
-| 10 | state owners — structs at file scope | 113 vars → 11 clusters | — |
-| 1a | `replay_parse` — `BATTY_REPLAY_*` value formats | 75 | 7 |
-| 1 | replay / probe scaffolding | ~430 | 6 |
+| module | owns |
+|---|---|
+| `zxvga` | the video engine — `notes/video-engine.md` |
+| `rng` | the per-frame RNG walk |
+| `physics` | directions, bat deflection, collision geometry |
+| `assets` | tape-derived asset loading |
+| `bricks` | the brick compositor and band orchestration |
+| `objects` | the 22-byte descriptor and the object slots |
+| `weapons` | bullets and blasts |
+| `enemies` | enemy steering and the brick-hit walk |
+| `bonus_codes` | original ↔ port bonus numbering |
+| `hud` | glyphs, markup, score |
+| `sound` | the queue and the envelopes |
+| `scoring` | points, milestones, side attribution |
+| `replay_parse` | `BATTY_REPLAY_*` value formats |
+| `replay` | replay / probe scaffolding |
 
 ## What is left
 
-1. **Stage 1 is done as far as it should go.** Six replay seeders are out;
-   three are blocked by design, not placement. `BATTY_FORCE_SPAWN_BONUS`
-   reaches `pick_bonus_type`, which reads seven pieces of live game state, and
-   the two brick seeders need `live_level`. Moving either drags game state into
-   a compositor module. The reasoning sits at `pick_bonus_type` too.
+1. **Three replay seeders stay in `main.cpp`** — blocked by design, not
+   placement. `BATTY_FORCE_SPAWN_BONUS` reaches `pick_bonus_type`, which reads
+   seven pieces of live game state, and the two brick seeders need
+   `live_level`. Moving either drags game state into a compositor module.
 2. **known-bugs #14** is a question about the ORIGINAL, not a port defect, and
    needs a Spectrum.
 3. **`notes/parity-gaps.md`** — fidelity work, not refactor work.

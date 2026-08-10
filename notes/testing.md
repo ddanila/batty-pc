@@ -3,7 +3,7 @@
 > **`make test-fast` needs no emulator and runs in seconds** — 14 host test
 > suites plus 31 source gates. Start there; it is exactly what CI runs.
 >
-> The QEMU gates cost ~10 s per boot. `make parity-check-parallel --full`
+> The QEMU gates cost ~10 s per boot. `make parity-check-parallel FULL=1`
 > runs all 79 gates of the full sweep in about seven minutes (78 QEMU plus
 > `test-asan`, which is host-only but belongs to the same sweep).
 > `make parity-check-full` adds the 3 ZEsarUX-oracle gates, serially.
@@ -25,9 +25,8 @@
    `(0,0,0)` — bright and non-bright black — but `extract_scr` emits each per
    the attr's bright bit. Comparing `PALETTE_RGB[a] == PALETTE_RGB[e]` makes
    them equivalent, and every comparison tool in the repo must do this.
-6. **Diff PNG on failure**, to
-   `build/test_visual/<checkpoint>_diff.png` — red where pixels disagree,
-   grey for context.
+6. **Diff PNG on failure**, to `build/test_visual/<checkpoint>_diff.png` — red
+   where pixels disagree, grey for context.
 
 ### The five checkpoints
 
@@ -64,17 +63,14 @@ passes — because the row itself will never tell you it has gone stale.
 If a residual is explained by "the GT can't show this region", that is a
 blind spot, not a floor: recapture the GT, or split the region into its own
 ROI with its own number. A diagnostic row's answer can also change without
-anyone noticing — that is the point of a row that never fails — so re-run it
-before doing the work a plan says it implies.
+anyone noticing, so re-run it before doing the work a plan says it implies.
 
 ## Every gate, and what it is for
 
 Kept complete by `scripts/check_gate_index.py`, which fails if any of the
 THREE places gates are defined — `run_gates_parallel.py`, the
 `test-source-gates` recipe, and `parity-check-full` — names one this section
-does not. A gate nobody can find is a gate nobody reasons about: before this
-list existed, 30 of 59 were mentioned nowhere in this file, including several
-of the oldest.
+does not. A gate nobody can find is a gate nobody reasons about.
 
 **The four-state cycle and the levels**
 - `test` — the MENU/TITLE/HISCORE/LEVEL screens against captured originals.
@@ -212,17 +208,16 @@ of the oldest.
 
 ### Notes on a few of the harder ones
 
-`test-ball-no-tunnel` is the collision-invariant sweep. For each level it
-boots once to read the initial grid, picks solid target bricks, then for each
-(target x approach x speed) seeds the ball one step away aimed into the brick
-and asserts the INVARIANT: a ball aimed into a still-solid brick must change
-that brick's state or reverse direction; if it crosses the brick's far edge
-while still overlapping its column and nothing changed, it tunnelled.
-ZEsarUX-free. The default subset covers L1/L5/L7 — L5 and L7 have row-0 metal
-bricks against the top boundary, the exact known-bugs #6 repro. `FULL=1` runs
-all 15 levels x speeds 2/4/6 x straight and diagonal approaches. It also
-carries a field-bounds invariant: the ball must never escape (x in [8,244],
-y >= 8).
+`test-ball-no-tunnel` is the collision-invariant sweep, ZEsarUX-free. For each
+level it boots once to read the initial grid, picks solid target bricks, then
+for each (target x approach x speed) seeds the ball one step away aimed into
+the brick and asserts the INVARIANT: a ball aimed into a still-solid brick
+must change that brick's state or reverse direction; if it crosses the brick's
+far edge while still overlapping its column and nothing changed, it tunnelled.
+The default subset covers L1/L5/L7 — L5 and L7 have row-0 metal bricks against
+the top boundary, the exact known-bugs #6 repro. `FULL=1` runs all 15 levels x
+speeds 2/4/6 x straight and diagonal approaches. It also carries a
+field-bounds invariant: the ball must never escape (x in [8,244], y >= 8).
 
 `test-ball-paths-no-tunnel` extends that to the NON-primary paths —
 `step_extra_ball` and a ball captured inside an ON magnet — asserting that no
@@ -236,8 +231,7 @@ only falls and score only rises. Those hold whether the ball is bouncing or
 has dropped and respawned, so it needs no ball pinning. It uses the
 `BATTY_SERIAL_PROBE` deterministic frame wait — required, because its 20
 concurrent per-case boots oversubscribe cores and wall-clock waits read the
-pre-gameplay seed state and produced false "bricks rose / score fell"
-violations.
+pre-gameplay seed state.
 
 `test-brick-flash` drives a dynamic L3 path and fails if the bright-white
 destruction flash remains after it should clear, or if no brick-sized cell
@@ -250,63 +244,53 @@ background failures without hard-coding that every white pixel is wrong.
 
 `.github/workflows/parity-check.yml` runs `make test-fast` and
 `make test-asan` on `ubuntu-latest`, where `c++` is g++. Nothing local stands
-in for it: Apple clang and g++ disagree about uninitialised analysis, and
-that gap kept `main` red for **163 runs** (~24 hours) while every local sweep
-was green. **Read the run after you push** — `gh run list --limit 3` is
-enough. A green local sweep is not the same claim as a green CI.
+in for it: Apple clang and g++ disagree about uninitialised analysis, and that
+gap kept `main` red for **163 runs** (~24 hours) while every local sweep was
+green. **Read the run after you push** — `gh run list --limit 3` is enough. A
+green local sweep is not the same claim as a green CI.
 
-It delegates to `test-fast` rather than naming targets. It used to name
-`test-video` and three gates by hand, so CI ran 1 of 14 suites and 3 of 10
-gates while showing a green tick — and naming targets there made it a THIRD
-copy of a list that had already drifted twice. `check_host_tests_wired.py`
-guards the one list that is left.
+It delegates to `test-fast` rather than naming targets, because naming them
+there made it a THIRD copy of a list that had already drifted twice.
+`check_host_tests_wired.py` guards the one list that is left.
 
 CI fetches only the `original/disasm` submodule (`--depth 1`), which
 `make test-fast` needs: `test-kinnock` parses its expected text straight out
-of the disassembly, and three other checks read it too.
-`tools/zesarux` is not fetched, since CI runs no oracle gates.
+of the disassembly, and three other checks read it too. `tools/zesarux` is not
+fetched, since CI runs no oracle gates.
 
-**The QEMU gates are not in CI, and the reason on file is now out of date.**
-The original calibration concluded "hosted runners have no KVM, so QEMU runs
-under TCG slower than real time". A 2026-08-10 probe found `/dev/kvm`
-PRESENT on `ubuntu-latest`, so that premise is false and every timing in that
-calibration stands only for TCG. What is still true is that the measured
-attempts were slow and flaky under TCG — a 2-gate smoke took ~9 minutes — and
-that the wall-clock frame-wait problem which made every gate diverge is
-fixed independently (the `BATTY_SERIAL_PROBE` COM1 frame-completion signal is
+**The QEMU gates are not in CI.** A 2026-08-10 probe found `/dev/kvm` PRESENT
+on `ubuntu-latest`, so the old "hosted runners have no KVM" premise is false
+and every timing in that calibration stands only for TCG. What is still true
+is that the measured attempts were slow and flaky under TCG — a 2-gate smoke
+took ~9 minutes — and that the wall-clock frame-wait problem is fixed
+independently (the `BATTY_SERIAL_PROBE` COM1 frame-completion signal is
 frame-exact at any speed). `qemu-smoke-kvm` is a `continue-on-error` job that
-measures the KVM path; nothing depends on it yet. Re-measure with
-`-accel kvm` before treating any of this as settled. PLAN.md WS8.1.
-
-**Re-test conclusions that were true when measured.** "Hosted runners have no
-KVM" was written into the workflow header and PLAN.md and left to age for two
-years; `ls -l /dev/kvm` overturned it in seconds — and that correction was
-itself still half wrong, because a device node present is not the same as
-usable by the container user. Three answers, each cheaper than the last.
+measures the KVM path; nothing depends on it yet. Re-measure with `-accel kvm`
+before treating any of this as settled. PLAN.md WS8.1.
 
 ## Running the suite in parallel
 
-`make parity-check-parallel J=8`. The gates are boot-dominated and were
-historically serial because every script hardcoded the one floppy. The path
-now comes from **`BATTY_TEST_FLOPPY`**: the Makefile's `TEST_FLOPPY_OUT`
-honours it and derives a per-floppy AUTOEXEC scratch, and the gate scripts
-read it through `test_visual.test_floppy()`. `run_gates_parallel.py`
-pre-builds the shared `TEST_EXE` once so workers do not race on the object
-file, then runs each gate on its own image.
+`make parity-check-parallel J=8`, and `FULL=1` for the whole sweep. The gates
+are boot-dominated and were historically serial because every script hardcoded
+the one floppy. The path now comes from **`BATTY_TEST_FLOPPY`**: the Makefile's
+`TEST_FLOPPY_OUT` honours it and derives a per-floppy AUTOEXEC scratch, and the
+gate scripts read it through `test_visual.test_floppy()`.
+`run_gates_parallel.py` pre-builds the shared `TEST_EXE` once so workers do not
+race on the object file, then runs each gate on its own image.
 
 **If you add a gate, take the floppy from `test_floppy()` — never a
-literal.** Thirty gates once hardcoded `build/batty-test.img` while a comment
-claimed they all read the variable; under the parallel runner they either
-died in 0.1 s or built one image and read `PROBE.TXT` from another. It took
-three passes to find them all, because the same bug was spelled three ways:
-`Path("…")`, `FLOPPY = "…"` and `FLOPPY = '…'`.
+literal.** Thirty gates once hardcoded `build/batty-test.img`; under the
+parallel runner they either died in 0.1 s or built one image and read
+`PROBE.TXT` from another. It took three passes to find them all, because the
+same bug was spelled three ways: `Path("…")`, `FLOPPY = "…"` and
+`FLOPPY = '…'`.
 
 **A gate is not one boot.** `test-ball-no-tunnel` boots dozens of times,
-`test-levels-sweep` fifteen. `--full` at J=8 starved QEMU below real time and
-produced pure-contention failures, so `--full` defaults to a quarter of the
-core count and **any failure is retried once alone** — only a gate that fails
-twice is reported, and the ones that needed the retry are named, so a growing
-list means J is too high for that machine.
+`test-levels-sweep` fifteen. `FULL=1` at J=8 starved QEMU below real time and
+produced pure-contention failures, so it defaults to a quarter of the core
+count and **any failure is retried once alone** — only a gate that fails twice
+is reported, and the ones that needed the retry are named, so a growing list
+means J is too high for that machine.
 
 The ZEsarUX gates are EXCLUDED from the parallel runner: they drive a single
 ZRCP port (10000) and a shared snapshot, so they go through the serial
@@ -319,13 +303,11 @@ Centralised in `capture_frame_timeline.py`, the shared driver ~20 wait-key
 gates route through; gates that drive `run_qemu` directly use
 `test_visual.boot_until_gameplay()`.
 
-**`make test-gate-greps`** guards the other recurring failure: 20 gates
-assert on the SHAPE of the source — that a constant is still `$1B`, that a
-guard still excludes `rocket_active` — by searching for a literal, and those
-rot silently when code moves. Twice in one session that cost six commits of
-red CI and a gate that passed while testing nothing. The check resolves
-needles through variables and list comprehensions and only considers
-*required* ones.
+**`make test-gate-greps`** guards the other recurring failure: 20 gates assert
+on the SHAPE of the source — that a constant is still `$1B`, that a guard
+still excludes `rocket_active` — by searching for a literal, and those rot
+silently when code moves. The check resolves needles through variables and
+list comprehensions and only considers *required* ones.
 
 ## Mutation testing (`scripts/mutate.py`)
 
@@ -341,22 +323,18 @@ sprite lands.
     exit 1  SURVIVED   — a gap, or an equivalent mutant. Decide which.
     exit 2  ERROR      — the substitution matched nothing
 
-Doing this by hand went wrong four ways, twice producing a confident false
-result, so the script handles all four:
+Four ways a hand-run mutation lies, all handled by the script:
 
 - **Stale binary, same second.** Restoring a source within the same second as
-  the last build leaves the timestamp unchanged, `make` reruns the OLD
-  binary, and the mutation looks caught.
+  the last build leaves the timestamp unchanged, `make` reruns the OLD binary,
+  and the mutation looks caught.
 - **Stale DOS EXE.** The QEMU gates boot `build/batty-test.exe`. A module
   change rebuilds its own `.obj`, but if the link lands inside the same
-  filesystem second the EXE is untouched — mutating `src/physics.cpp` changed
-  `physics-test.obj` (md5-verified) and left `batty-test.exe` byte-identical,
-  so the gates ran the ORIGINAL code and every QEMU result was meaningless.
-- **Stale binary, wrong name.** `make test-video` builds
-  `build/test_zxvga`, so deleting `build/test_video` deletes nothing. Every
-  run then used a stale binary and a REAL gap was reported as caught; it
-  surfaced only because a restored source still failed, which cannot happen.
-  The script deletes every `build/test_*` file rather than guessing.
+  filesystem second the EXE is untouched — so the gates run the ORIGINAL code
+  and every QEMU result is meaningless.
+- **Stale binary, wrong name.** `make test-video` builds `build/test_zxvga`,
+  so deleting `build/test_video` deletes nothing. The script deletes every
+  `build/test_*` file rather than guessing.
 - **Silent no-op.** A substitution matching nothing leaves the source clean
   and the test passing, which reads as "not caught" — the worst outcome,
   because it looks like a finding.
@@ -379,56 +357,46 @@ something else changed.
 ### One class that is NOT gated, and why
 
 Comments that duplicate an explanation and then drift have caused four real
-problems: the bricks header copied into its `.cpp`, two blocks in front of
-the SPACE handler, the RNG default saying OFF after it flipped, and a
-bat-resize note claiming "roughly matches" long after the gate that made it
-exact. The last cost an afternoon chasing a bug that was not there.
-
-That looks gateable. It is not, and the reasons are worth recording so the
-next person does not build the gate and then trust it:
+problems, the worst of them an afternoon chasing a bug that was not there.
+That looks gateable. It is not:
 
 - **Exact-sentence matching finds nothing.** A scan for identical sentences
-  across and within `src/*.{cpp,h}` reports ZERO. All four real cases were
-  PARAPHRASES, so a sentence gate would have been green for every one of them
-  while feeling like coverage.
+  across and within `src/*.{cpp,h}` reports ZERO — all four real cases were
+  PARAPHRASES, so a sentence gate would have been green for every one while
+  feeling like coverage.
 - **Provenance-address co-citation is too noisy.** 47 original addresses are
-  cited from two or more comment blocks, and nearly all are legitimate —
-  `$A67B` alone appears in four places, all correct. A gate here would fire
-  constantly and be switched off inside a week.
+  cited from two or more comment blocks and nearly all are legitimate; a gate
+  here would fire constantly and be switched off inside a week.
 
 What catches these is reading the code near what you are changing, and
-noticing when two explanations of one thing disagree.
-`test-switch-defaults` gates the one sub-case that IS mechanical.
+noticing when two explanations of one thing disagree. `test-switch-defaults`
+gates the one sub-case that IS mechanical.
 
 ## Counter-phase sweeps (`scripts/phase_sweep.py`)
 
 `pit_frame_counter` free-runs from boot and cadences key off its low bits —
 the enemy steer (`& 3`), the ball speed ramp (`& 7`) — so how long boot took
 decides which phase a probe frame lands on, and a gate whose expectations
-depend on the phase passes or fails by luck. That is known-bugs #17.
-
-Running a gate repeatedly is how it was found, but repetition is a weak
-instrument: it samples whatever phases the machine happened to produce.
-`BATTY_REPLAY_COUNTER` pins the counter at the aligned start, so the phase
-can be varied on purpose:
+depend on the phase passes or fails by luck (known-bugs #17).
+`BATTY_REPLAY_COUNTER` pins the counter at the aligned start, so the phase can
+be varied on purpose:
 
     scripts/phase_sweep.py test-enemy-anim test-bat-deflection
 
 runs each gate at phases 0..3 — every case `& 3` can produce. Passing at all
-four means the gate does not depend on the phase; failing at some means it
-was passing by luck. **Run it on any new QEMU gate before trusting it.**
+four means the gate does not depend on the phase; failing at some means it was
+passing by luck. **Run it on any new QEMU gate before trusting it.**
 
 Gates that set `BATTY_REPLAY_COUNTER` in their own env are reported SKIPPED
 rather than swept: their inline value overrides the outer environment, so all
 four runs would use the same pin and report a confident, meaningless
-"phase-independent". (The first version detected that by searching the whole
-file, which skipped every gate whose DOCSTRING merely explains the variable —
-a false negative wearing the costume of a decision. It strips docstrings and
-comments now.)
+"phase-independent". Docstrings and comments are stripped before that
+detection, or a gate whose docstring merely explains the variable is skipped
+for nothing.
 
 Validated by removing the pin from `test-enemy-margin-clamp`, whose `dir`
-expectations are exact: the sweep reported PHASE-DEPENDENT at pins 1, 2 and
-3. A tool that can only ever say "fine" is not a tool.
+expectations are exact: the sweep reported PHASE-DEPENDENT at pins 1, 2 and 3.
+A tool that can only ever say "fine" is not a tool.
 
 Audited so far, all phase-independent: `test`, `test-laffc-ball-frame1`,
 `test-bat-deflection`, `test-ball-no-tunnel`, `test-rng-walk`,
@@ -446,36 +414,23 @@ of a timeline is valid for an A/B.
     scripts/disasm.py margin -l         # list labels containing a substring
 
 `original/disasm/batty.asm` answers questions that otherwise cost emulator
-runs, and it settled three in one week: whether the enemy is reflected at a
-wall (no — `check_margins` clamps, `bounce_wall` reflects, and the enemy gets
-the first), whether the multiball spawn reads a velocity (no — it reads the
-dir byte), and what the bat resize's gating is (every other frame, which the
-port already matched). Each started as a plausible guess that turned out
-wrong.
-
-A routine prints from its label to the next one, with the following
-routine's comment header trimmed. Mid-routine entry points (`LA67B_8` and
-the like) are labels too, so they print just their own stretch. It prints a
+runs. A routine prints from its label to the next one, with the following
+routine's comment header trimmed. Mid-routine entry points (`LA67B_8` and the
+like) are labels too, so they print just their own stretch. It prints a
 **FALLS THROUGH** warning when a routine's last instruction is not an
 unconditional `RET`/`JP`/`JR`, which is the single most expensive class of
 misreading here (`notes/lessons.md`).
 
 ## Stale symbol citations (`scripts/notes_symbols.py`)
 
-`check_doc_links` catches a note that points at a file which no longer
-exists. Nothing caught a note that names a ROUTINE which no longer exists,
-and that is how these notes actually rot: something is renamed or deleted,
-and prose that was true keeps naming it.
+`check_doc_links` catches a note that points at a file which no longer exists.
+Nothing caught a note that names a ROUTINE which no longer exists, and that is
+how these notes actually rot: something is renamed or deleted, and prose that
+was true keeps naming it.
 
     scripts/notes_symbols.py
 
-lists every backticked `snake_case` identifier in `notes/*.md` that nothing
-in `src/`, `tests/`, `scripts/`, the Makefile or the disassembly defines.
-
-The case that prompted it: `bounce_enemy_off_margins` was deleted and three
-notes still named it — one of them, known-bugs #16, in the PRESENT TENSE,
-asserting the exact opposite of the code. The reasoning around it was still
-correct; only its premise had rotted, which is the hard kind to notice. The
-tool was itself defeated by stale prose at first, because its corpus included
-comments, so a name surviving only in the comment that was wrong about it
-counted as defined.
+lists every backticked `snake_case` identifier in `notes/*.md` that nothing in
+`src/`, `tests/`, `scripts/`, the Makefile or the disassembly defines. It
+strips prose from its corpus, because a name surviving only in the comment
+that was wrong about it counted as defined and defeated the first version.

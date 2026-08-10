@@ -4,9 +4,8 @@ A **fully functional DOS port of Batty** (Elite/Hit-Pak, 1987, ZX Spectrum
 48K): everything the original does, verified against it wherever it can be
 measured.
 
-**The minimum target is a 386.** `c52f3a2` (2026-08-07) moved the build to 386
-32-bit protected mode under DOS32A to escape the 64 KB segment ceiling. There
-is no 8086 build.
+**The minimum target is a 386** — 32-bit protected mode under DOS32A, to
+escape the 64 KB segment ceiling. There is no 8086 build.
 
 Status detail lives in `notes/parity-status.md`, open fidelity gaps in
 `notes/parity-gaps.md`.
@@ -20,7 +19,7 @@ Status detail lives in `notes/parity-status.md`, open fidelity gaps in
 | 3 | Core gameplay byte-exact where an oracle exists | **Done** — regression-locked by 110 gates |
 | 4 | Full game FLOW gated end-to-end | **Done** — `test-level-advance`, `test-life-loss`, `test-life-respawn`, `test-game-over-visual`, `test-name-entry-visual` |
 | 5 | Sound faithful to the 5-slot beeper queue | ids, slot count, pitches and envelope arithmetic faithful; durations still round to 20 ms |
-| 6 | All assets derived from the tape at build time | **Done** — all 13 loaded assets build from `original/blocks/`, held by `test-asset-provenance` |
+| 6 | All assets derived from the tape at build time | **Done** — all 14 loaded assets build from `original/blocks/`, held by `test-asset-provenance` |
 | 7 | Runs on real-hardware-representative targets (386+) | QEMU and DOSBox-X verified; real iron untested |
 | 8 | Historical completeness | **Done** — pause, hi-score, and the Kinnock egg (`BATTY_KINNOCK=1`) |
 
@@ -28,9 +27,10 @@ Status detail lives in `notes/parity-status.md`, open fidelity gaps in
 records a date newer than this one, so the table has to be re-read on the day
 work lands.
 
-Byte-exactness of the achieved core is a floor, not a ceiling to
-re-litigate: every workstream keeps `make parity-check` green, and milestone
-work runs `parity-check-full` before merge.
+Every workstream keeps `make parity-check` green, and milestone work runs
+`parity-check-full` before merge. **WS2** (2 Players), **WS3** (Double Play —
+`notes/double-play.md`), **WS4** (game-flow transitions) and **WS7** (asset
+self-sufficiency) are complete; their scope is closed.
 
 ## Where we are
 
@@ -42,16 +42,9 @@ court with per-bat bonuses and side-attributed scoring.
 All 15 levels are pixel-perfect at entry. Ball motion, LAFFC brick collision,
 bat deflection, the RNG walk, enemy motion and animation, the bonus economy,
 scoring and every per-frame animation are byte-exact against the Spectrum and
-gate-locked. Rendering performance is at its floor. The hard RE is done:
-`original/disasm/` is a complete, named, build-verified disassembly, and the
-workflow is "read the disasm, port the routine, gate it."
-
-Four workstreams are complete and are recorded here only so their scope is not
-re-opened: **WS2** (2 Players — per-player counters, turn hand-over, one
-player carrying on when the other is out, the GAME OVER screen naming whose
-game ended), **WS3** (Double Play — see `notes/double-play.md`), **WS4** (all
-game-flow transitions gated, both halves of the life-loss/respawn pair) and
-**WS7** (asset self-sufficiency).
+gate-locked. Rendering performance is at its floor. `original/disasm/` is a
+complete, named, build-verified disassembly, so the workflow is "read the
+disasm, port the routine, gate it."
 
 ## WS1 — Menu start semantics
 
@@ -75,12 +68,11 @@ and player 2 has no say yet in which keys they would rather use
 
 ## WS5 — Sound
 
-**Done:** the 13 effect ids are table positions and byte-exact against
+**Done:** the 12 queued effect ids are table positions and byte-exact against
 `play_sounds_list`; slot count, pitches and envelope ARITHMETIC are faithful;
-`sound_beep_cont_d` and `sound_beep2_bd` compute real envelope lengths instead
-of discarding them; the `LC122` sweeps run their full length.
-`SND_MAGNET` sits deliberately outside the table — the original never queues
-it.
+`sound_beep_cont_d` and `sound_beep2_bd` compute real envelope lengths; the
+`LC122` sweeps run their full length. `SND_MAGNET` sits deliberately outside
+the table — the original never queues it.
 
 **Open — a design call.** Durations round to 20 ms because the sound clock is
 the 50 Hz frame counter. The original's beeper BLOCKS: `sound_beep` is DJNZ
@@ -95,26 +87,22 @@ options: `notes/sound.md`.
 ## WS6 — Gameplay-parity residuals
 
 1. **Enemy vs bricks — done.** `enemy_home_step` (LAA44) and
-   `enemy_brick_reaction` ported; `check_margins` is three clamps and the
-   port's reflect-and-re-aim was an invention, now deleted. Gated by
+   `enemy_brick_reaction` ported; `check_margins` is three clamps. Gated by
    `test-enemy-brick-walk` and `test-enemy-margin-clamp`.
 2. **MAGNET catch for secondary balls — done.** The stuck state is per-ball,
    which was the same refactor bat 2's catch needed.
-3. **Seeded destroyed-cell mismatch — closed.** The grids were already
-   byte-identical; the "gap" was an INFO row nobody re-ran.
-4. **Byte-exact enemy target gating — open.** Needs the port's counter pin
+3. **Byte-exact enemy target gating — open.** Needs the port's counter pin
    aligned with the original's `counter_misc` at the same moment.
    `BATTY_REPLAY_COUNTER` makes the port side deterministic; the comparison
    against the ORIGINAL is what is missing. See `notes/rng-model.md`.
 
 ## WS8 — Infrastructure
 
-1. **CI — done.** The "hosted runners have no KVM" conclusion was false:
-   `ubuntu-latest` exposes `/dev/kvm`, and with the udev rule from GitHub's
-   own docs the QEMU gates can run at local speed. `qemu-smoke-kvm` is a
-   `continue-on-error` job that measures it; nothing depends on it yet. CI
-   also runs `make test-asan`, which is the only place the suites are compiled
-   by g++ rather than Apple clang. `notes/testing.md`.
+1. **CI — done.** `ubuntu-latest` exposes `/dev/kvm`, and with the udev rule
+   from GitHub's own docs the QEMU gates can run at local speed.
+   `qemu-smoke-kvm` is a `continue-on-error` job that measures it; nothing
+   depends on it yet. CI also runs `make test-asan`, the only place the suites
+   are compiled by g++ rather than Apple clang. `notes/testing.md`.
 2. **Real hardware — open.** `make floppy` produces a bootable 1.44 MB image;
    one verified boot on a real 386 or better retires criterion 7. The
    load-time lever that survives is batching the small asset `fread`s, which
@@ -123,7 +111,7 @@ options: `notes/sound.md`.
 ## WS9 — Polish, history, distribution
 
 1. **Kinnock easter egg — done** (`BATTY_KINNOCK=1`, `test-kinnock`).
-2. **Docs hygiene — done**, including the rot left by the 386 switch.
+2. **Docs hygiene — done.**
 3. **Distribution — a user call, before any publicity.** Elite Systems still
    monetizes Batty (official iOS/macOS app) and historically denied archive
    distribution; the CityAceE disasm repo has no licence. This repo vendors
@@ -143,9 +131,9 @@ options: `notes/sound.md`.
   Z80-clock busy-wait; the port paces one brick per PIT tick. Score total,
   render and order are faithful.
 - **Big-bat resize as a literal bit-gated state machine** — visually matched.
-  Note this residual is no longer free: it owns
-  `play_sound_bat_resize_1`'s `bonus_flag` guard, which the port lacks, so a
-  WS5 sound divergence cannot be closed without it.
+  This residual is not free: it owns `play_sound_bat_resize_1`'s `bonus_flag`
+  guard, which the port lacks, so a WS5 sound divergence cannot be closed
+  without it.
 
 **When a new gap traces back to an accepted residual, update the residual.**
 This list is the one entry nobody re-reads, so the trade-off recorded here has

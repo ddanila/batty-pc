@@ -94,11 +94,11 @@ sprite nets exactly one XOR despite the duped anim tables living AFTER the
 terminator.
 
 The port's blit `(~m & d) | (m & p)` on TAPE data is bit-identical to the
-original's `(m | s) ^ pix` on LIVE data for every mask=1 bit, and no
-shipped sprite has pix bits outside its mask bar one, so the mask=0
-preserve semantics agree too. There was never a data bug: the earlier
-"renders a different image" comparison used a fictional formula from a
-stale comment above the blit.
+original's `(m | s) ^ pix` on LIVE data for every mask=1 bit, and no shipped
+sprite has pix bits outside its mask bar one, so the mask=0 preserve semantics
+agree too. There is no data bug here — a "renders a different image"
+comparison that suggested otherwise was using a fictional formula from a stale
+comment above the blit.
 
 **Two real bytes.** `spr_bird_4`'s header claims 15 rows where the layout
 allots 14, so `gfx_inverse` overruns 3 pairs into `spr_bird_5` and
@@ -133,12 +133,10 @@ footprint), and `test-sprite-attr-parity` generalises it to every moving
 sprite. `notes/video-engine.md` gates it a third way, exhaustively, on the
 host.
 
-## The "rings" were the HUD
+## The "rings" flanking the bird are the HUD
 
-At f24 both sides showed 7 px ring outlines flanking the bird, differently
-placed, outside any bird frame's footprint. Clustering each side's capture
-against the static GT put them at rows 12..28 in three groups matching the
-1UP / HI / 2UP areas: the live original had accumulated score and blink
-state, against an alien-free, score-zero GT and the port's `BATTYALL`
-scoreless HUD. Not a render gap — inherent to comparing a scoreless test
-HUD against a live original.
+7 px ring outlines at f24, differently placed on each side and outside any bird
+frame's footprint, cluster at rows 12..28 in three groups matching the
+1UP / HI / 2UP areas. The live original has accumulated score and blink state;
+the port's `BATTYALL` HUD is scoreless. Not a render gap — inherent to
+comparing a scoreless test HUD against a live original.

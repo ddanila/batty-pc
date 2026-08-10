@@ -15,33 +15,32 @@ Playable end-to-end in all three modes — 1 Player, 2 Players and Double Play:
 title → menu → hi-score teaser → all 15 levels → game-over → 3-letter
 initials entry → back to title.
 
-**Static parity.** `make test` headlessly diffs five checkpoints against ZX
-ground-truth snapshots, all pixel-identical: title, menu, hi-score, level
-entry, and the bat band as its own ROI. `BATTY_LEVEL=N make test` re-runs the
-level checkpoint for N = 1..15, and **all 15 levels are pixel-perfect** —
-FAIL-gated for every level by `make test-levels-sweep`.
-
-**Gameplay frame parity.** The ball's motion and brick collision are
-*byte-exact with the Spectrum*: the ported `handling_ball` (exact 64-direction
-q8.8 motion) plus the `LAFFC` brick collision match the original's ball object
-— x, fraction, y, direction, hit cell, bounce axis — frame for frame over
-level 3's first 150 frames and dozens of bounces, verified against ZEsarUX
-through the frame-step harness. `BATTY_LEGACY_COLLISION=1` reverts to the
-older approximate collision. Bat deflection, the RNG walk, enemy motion and
-animation, the bonus economy, scoring and every per-frame animation are
-byte-exact and gate-locked too.
-
-109 gates hold all of it. Full detail:
-[`notes/parity-status.md`](notes/parity-status.md), open gaps in
-[`notes/parity-gaps.md`](notes/parity-gaps.md), the roadmap in
-[`PLAN.md`](PLAN.md).
-
 Everything the game does is implemented: bricks (1-hit, multi-hit and
 undestructible), the 50 Hz game loop, bat resize and side fillers, multi-ball,
 all 10 bonus types, the laser, the rocket clear, UFO and bird enemies with
 bombs, the L4 spark enemy, magnets, the HUD, pause, high-score persistence
 (`HISCORE.DAT`), and the Kinnock easter egg. Every loaded asset is generated
 from the tape at build time (`test-asset-provenance`).
+
+**Static parity.** `make test` headlessly diffs five checkpoints against ZX
+ground-truth snapshots, all pixel-identical: title, menu, hi-score, level
+entry, and the bat band as its own ROI. `BATTY_LEVEL=N make test` re-runs the
+level checkpoint for N = 1..15, and **all 15 levels are pixel-perfect** —
+FAIL-gated for every level by `make test-levels-sweep`.
+
+**Gameplay frame parity.** Ball motion and brick collision are *byte-exact
+with the Spectrum*: the ported `handling_ball` (exact 64-direction q8.8
+motion) plus the `LAFFC` brick collision match the original's ball object —
+x, fraction, y, direction, hit cell, bounce axis — frame for frame over level
+3's first 150 frames, verified against ZEsarUX through the frame-step harness.
+`BATTY_LEGACY_COLLISION=1` reverts to the older approximate collision. Bat
+deflection, the RNG walk, enemy motion and animation, the bonus economy,
+scoring and every per-frame animation are byte-exact and gate-locked too.
+
+110 gates hold all of it. Full detail:
+[`notes/parity-status.md`](notes/parity-status.md), open gaps in
+[`notes/parity-gaps.md`](notes/parity-gaps.md), the roadmap in
+[`PLAN.md`](PLAN.md).
 
 ## Quick build / run
 
@@ -59,22 +58,19 @@ make parity-check # test + the byte-exact collision gate
 `make run-dosbox` BOOTS the image rather than mounting it and running
 `BATTY.EXE`. That matters: the build-time `BATTY_*` switches live in the
 floppy's `AUTOEXEC.BAT`, and DOSBox-X's own shell never runs a mounted image's
-AUTOEXEC — so the shorter invocation is the one that silently drops every
-switch you set. It ignores your personal `dosbox-x.conf` by default
-(`DOSBOX_CONF` overrides) so a conf pinning a 286 or CGA cannot fail in a way
-that looks like the port's fault. Cycles default to `max`; the game paces
-itself off its own 50 Hz PIT programming, so cycles buy headroom inside a
-frame rather than speed. `DOSBOX_CYCLES=12000` is roughly a 386DX-40 if you
-want period-representative timing.
+AUTOEXEC — so the shorter invocation silently drops every switch you set. It
+ignores your personal `dosbox-x.conf` by default (`DOSBOX_CONF` overrides), so
+a conf pinning a 286 or CGA cannot fail in a way that looks like the port's
+fault. Cycles default to `max`; the game paces itself off its own 50 Hz PIT
+programming, so cycles buy headroom inside a frame rather than speed.
+`DOSBOX_CYCLES=12000` is roughly a 386DX-40.
 
-`make run-86box` writes its VM config under `build/86box/`, uses 86Box's `vga`
-card and mounts `build/batty.img` as drive A:. **`BOX86_MACHINE` defaults to
-`ibmxt`, which cannot run this build** — it has been 386-only protected mode
-since 2026-08-07. Pass a 386-class machine id from your own 86Box
-(`86Box --help` lists them); the default is left visibly wrong rather than
+`make run-86box` writes its VM config under `build/86box/` and mounts
+`build/batty.img` as drive A:. **`BOX86_MACHINE` defaults to `ibmxt`, which
+cannot run this build** — pass a 386-class machine id from your own 86Box
+(`86Box --help` lists them). The default is left visibly wrong rather than
 replaced with an id nobody here can verify. `BOX86_BIN`, `BOX86_ROMPATH`,
-`BOX86_MACHINE`, `BOX86_GFXCARD` and `BOX86_FDD_TYPE` all override, and the
-defaults point at a Linux workstation's local build and ROM checkout.
+`BOX86_MACHINE`, `BOX86_GFXCARD` and `BOX86_FDD_TYPE` all override.
 
 The remaining targets (`make regions`, `make candidates`,
 `make run-original`, `make snapshot`) drive RE tooling against the original
@@ -86,8 +82,8 @@ something not already captured in `original/disasm/` or `notes/` — see
 ## Repo layout
 
 ```
-src/                The DOS implementation — 15 separately compiled modules
-                    (Open Watcom v2, 386 32-bit protected mode)
+src/                The DOS implementation — main.cpp plus 14 separately
+                    compiled modules (Open Watcom v2, 386 protected mode)
 tests/              Host-native test suites (compile the real sources)
 notes/              Project knowledge — read these first
 original/
@@ -130,12 +126,10 @@ cd tools/zesarux/src && ./configure --enable-sdl2 && make
 ```
 
 The Makefile defaults to `tools/zesarux/src/zesarux`; override with
-`ZESARUX=/path/to/zesarux`.
-
-`make run-original` defaults to SDL video and audio at double the normal
-Spectrum window scale, equivalent to
+`ZESARUX=/path/to/zesarux`. `make run-original` defaults to SDL video and
+audio at double the normal window scale, equivalent to
 `ZESARUX_VO=sdl ZESARUX_AO=sdl ZESARUX_RUN_OPTS="--zoom 4"`. Check what your
-local build actually has before choosing other overrides:
+build actually has before choosing other overrides:
 
 ```sh
 tools/zesarux/src/zesarux --help | sed -n '/--vo driver/,/--version/p'
@@ -146,7 +140,7 @@ A minimal Linux build may list only `fbdev stdout simpletext null` video and
 permissions, so use `null` for smoke tests and RE automation
 (`ZESARUX_VO= ZESARUX_AO=null`). If `sdl` or `xwindows` is not listed, that
 binary cannot open a window with it — install the matching development
-headers, rebuild, and then name the enabled drivers explicitly.
+headers and rebuild.
 
 ## Approach
 
@@ -178,8 +172,7 @@ yourself. The RE-only tooling earns its keep only when chasing **dynamic or
 SMC behaviour** the static disassembly cannot resolve (computed jumps,
 self-modifying loops — use ZRCP single-stepping against ZEsarUX), or when
 **rediscovering a routine** not yet named in `original/disasm/`, which is rare
-enough to be worth flagging upstream. Otherwise: read the disassembly, port
-the routine, gate it.
+enough to be worth flagging upstream.
 
 ## Original assets
 

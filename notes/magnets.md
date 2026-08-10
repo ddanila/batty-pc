@@ -89,7 +89,7 @@ $30=down.
   rebuilds no longer re-roll the look. The old code called the RNG inside
   render, which would have re-randomised on every full rebuild.
 - `magnet_random_toggle()` is the `LB9E8_2` gate at the frame top
-  (`random_d == 0x99`, read-current, sampled BEFORE the per-frame tick),
+  (`rng_high() == 0x99`, read-current, sampled BEFORE the per-frame tick),
   pinned off under `BATTYALL`. It pushes `SND_MAGNET`, a queued
   approximation of the blocking sweep (`notes/sound.md`).
 - `apply_magnet_toggle_visual()` is the deferred redraw, run inside

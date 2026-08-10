@@ -153,17 +153,14 @@ flag is part of the `(IX+$15)` bit-gated resize state machine, written by
 is not a sound item that happens to touch bat state; it is the resize
 machine seen from the sound side. `notes/parity-gaps.md` item 1 owns both.
 
-## Two things a length test does not cover
+## What a length test does not cover
 
-Pinning the frame counts left a live mutant: passing a constant `C` to the
-beep keeps all nine frames and flattens the pitch to one note.
+"It runs for nine frames" and "it is a nine-step sweep" are different claims,
+and only the first is obvious to assert: passing a constant `C` keeps all nine
+frames and flattens the pitch to one note, which is why
 `sweeps_last_multiple_frames` also requires the PERIOD to change across the
-sweep. "It runs for nine frames" and "it is a nine-step sweep" are different
-claims, and only the first is obvious to assert.
-
-That same test kept two lists — effects that must outlive their frame, and
-effects that must not — and had `SND_BALL_START` and `SND_SHOT` in the
-second, so a one-beep-of-nine effect passed as correct. The test was
-describing the PORT's structure rather than the original's. Both moved, and
-the clicks list carries a note to check the disassembly for a loop before
-adding to it.
+sweep. Its two lists — effects that must outlive their frame, and effects that
+must not — had `SND_BALL_START` and `SND_SHOT` in the second, so a
+one-beep-of-nine effect passed as correct: the test was describing the PORT's
+structure rather than the original's. The clicks list carries a note to check
+the disassembly for a loop before adding to it.

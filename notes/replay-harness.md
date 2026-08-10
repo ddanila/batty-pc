@@ -30,11 +30,10 @@ of captured ROIs; original probes read named memory ranges over ZRCP after
 setup and before input.
 
 **Comparisons are in RGB palette space**, matching `test_visual.py`, so
-bright-black (index 8) and non-bright black (index 0) stay equivalent. This
-is not a detail: `compare_timelines.py` originally diffed raw palette
-indices and reported a phantom 1568 px "content difference at frame 0",
-which sent a whole bisection after the seed, the brick reveal and the
-magnet band. All of it was black-on-black.
+bright-black (index 8) and non-bright black (index 0) stay equivalent. This is
+not a detail: diffing raw palette indices reported a phantom 1568 px "content
+difference at frame 0" that was entirely black-on-black, and cost a whole
+bisection.
 
 ## Commands
 
@@ -67,15 +66,13 @@ leaves a different lower brick band even though every probed byte matches.
 
 `--fail-on-diff` reports `l3_entry: 0/23040 px differ`.
 
-**It fail-gates captures and REQUIRED probe rows only.** Volatile rows stay
-INFO, and that distinction was earned: four probe rows (`object_ball_1`,
-`bat_1`, `enemy`, `random_number`) can never match by construction, because
-the original is probed while paused at `$BA83` while the port's `PROBE.TXT`
-is REWRITTEN by its ESC handler at teardown — after the wake tap let the
-port play on. Those mismatches GREW as the port got more faithful (the
-per-frame RNG tick, the enemy spawn, the stuck-ball snap), so a
-faithfulness improvement read as a gate regression. `l3-entry.json` declares
-the stable rows required (`bricks_quantity`, `current_level`,
+**It fail-gates captures and REQUIRED probe rows only.** Four probe rows
+(`object_ball_1`, `bat_1`, `enemy`, `random_number`) can never match by
+construction, because the original is probed while paused at `$BA83` while the
+port's `PROBE.TXT` is REWRITTEN by its ESC handler at teardown — after the wake
+tap let the port play on. Those mismatches GREW as the port got more faithful,
+so a faithfulness improvement read as a gate regression. `l3-entry.json`
+declares the stable rows required (`bricks_quantity`, `current_level`,
 `round_number`, `current_level_copy`) and probes `random_number` at its REAL
 address `$8D48`.
 
@@ -121,15 +118,12 @@ run — two back-to-back original captures produce byte-identical
 ### Two confounders the gate had to have removed
 
 **Seeded objects the other side does not have.** Dropping
-`BATTY_REPLAY_ENEMY_OBJECT` from `L3_SEED_ENV` collapsed frame 1 from 363
-to 212 px and shrank the bounds to a compact box at the ball. The port was
-painting a mid-flight enemy the original's fresh alien was nowhere near.
-Note the reason, which is not the one first written down: the L3 original
-DOES have an active enemy (`sprite_set = $09`, probed) — it is just
-descending at y=1..28, ABOVE the ROI, through the compared frames. A
-seeded MID-flight enemy at y=27 drops into the ROI and mismatches. For an
-enemy-specific gate, seed the same FRESH y=1 descriptor instead
-(`notes/bird-render-parity.md`).
+`BATTY_REPLAY_ENEMY_OBJECT` from `L3_SEED_ENV` collapsed frame 1 from 363 to
+212 px. The L3 original DOES have an active enemy (`sprite_set = $09`, probed)
+— it is just descending at y=1..28, ABOVE the ROI, through the compared
+frames, while a seeded MID-flight enemy at y=27 drops into the ROI and
+mismatches. For an enemy-specific gate, seed the same FRESH y=1 descriptor
+instead (`notes/bird-render-parity.md`).
 
 **The RNG seed.** The stale seed made the port drop a spurious SLOW bonus
 whose falling letters polluted the brick ROI. `notes/rng-model.md`.
@@ -148,9 +142,8 @@ velocity override, which is what keeps the ball in play instead of dropping
 and respawning it on the bat.
 
 `-both` also drives ZEsarUX and is fail-gated on `bricks_quantity`,
-`current_level`, `round_number` and `current_level_copy` — the destroyed
-`$13` cells now match on both sides, which was the last thing this gate was
-waiting for. The original side starts from the tracked `20260513T202101Z`
+`current_level`, `round_number` and `current_level_copy`, destroyed cells
+included. The original side starts from the tracked `20260513T202101Z`
 snapshot converted to `.sna`, then uses ZRCP setup to poke the level and
 round counters, NOP the `$BA6C` shimmer call, jump to `$BA24`, and run to
 the `$BA83` breakpoint. The harness clears that temporary breakpoint and

@@ -105,11 +105,10 @@ The empty cells of the brick zone take exactly two values per colour cycle —
 | 2 | 3, 7, 11, 15 | `$45` | `$05` |
 | 3 | 4, 8, 12     | `$47` | `$07` |
 
-so the only question is WHICH are dimmed. A neighbour predicate gets close
-enough to mislead: "dimmed if char col 1" is 89.4%, "or the cell to the left
-is live" 91.8%, "or the cell above-left is live" 94.4%. **That is
-curve-fitting, not deriving**, and 94.4% is exactly the range where one more
-term looks tempting.
+so the only question is WHICH are dimmed. Neighbour predicates get close
+enough to mislead — "dimmed if char col 1" is 89.4%, adding "or the cell to
+the left is live" 91.8%, "or above-left is live" 94.4%. **That is
+curve-fitting, not deriving.**
 
 The real answer is the ORDER of the passes. `print_briks` walks the band row
 by row calling `brik_shadow`, which dims both chars of every LIVE brick's
@@ -122,17 +121,11 @@ whatever survives that sequence.
 arm, compare char rows 3..23, cols 1..30 against the blob. **All 5400 cells
 match, for all 15 levels.**
 
-The instrument had to be `paint_bricks`, NOT `paint_brick_band`. The latter
-opens with a `memcpy` from `level_attrs.bin` — it re-bases from the blob — so
-comparing its output against the blob would have compared the blob with
-itself. `paint_bricks` is the generator, walking the rows calling
-`paint_shadow_row` exactly where `print_briks` does.
-
-Row 16 is why the host test's range grew from rows 4..15: it is the shadow
-row for field row 11, written by `paint_shadow_row` like every other, and a
-bg-plus-border-shadow rule misses 152 of its cells across the 15 levels with
-nothing local explaining them. Rows 17..23 and row 3 are plain background and
-cost nothing to include.
+The instrument has to be `paint_bricks`, NOT `paint_brick_band`: the latter
+opens with a `memcpy` from `level_attrs.bin`, so comparing its output against
+the blob compares the blob with itself. Row 16 has to be in range too — it is
+the shadow row for field row 11, and a bg-plus-border-shadow rule misses 152
+of its cells across the 15 levels.
 
 ### Which passes are redundant, measured
 

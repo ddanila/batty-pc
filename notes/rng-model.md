@@ -16,7 +16,8 @@ random_number = DE
 seed = (seed + 1) & $9FFF      ; wraps into [$8000,$9FFF]
 ```
 
-`random_number` low byte = `random_e`, high = `random_d`. The `$8000-$9FFF`
+`random_number` is stored little-endian: low byte = E, high byte = D, read in
+the port through `rng_low` / `rng_high`. The `$8000-$9FFF`
 source ships as `assets/random_seed.bin` (8 KB, indexed `& $1FFF`).
 
 ## The model
@@ -41,7 +42,7 @@ Read-current (`rng_sample()` — the original has no preceding
 - `bomb_appear` ($A989) reads both bytes — it runs every alien frame, so
   this was the main per-frame polluter of the enemy's sequence
 - the +400 marker's X drift (`LA67B`: `AND $01 / RL B`)
-- the magnet TOGGLE gate (`random_d == $99`, sampled before the tick)
+- the magnet TOGGLE gate (high byte == $99, sampled before the tick)
 
 Advance-then-read (`next_random()` — the original `CALL`s first):
 

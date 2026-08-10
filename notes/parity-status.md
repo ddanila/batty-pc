@@ -7,10 +7,10 @@ bonus economy and every effect, scoring, ball speed-up and SLOW, the
 per-frame RNG model, the enemy (motion, steering, bombs, every sprite
 animation) and the rocket-clear.
 
-*Read "byte-exact" as scoped to what the oracles cover.* This was once
-written as unqualified "PARITY COMPLETE", and manual play then found two
-real bugs the suite had missed — the oracle was L3-only, so non-L3
-dynamics and sustained play were blind spots.
+*Read "byte-exact" as scoped to what the oracles cover.* Written once as
+unqualified "PARITY COMPLETE", it was followed by manual play finding two real
+bugs the suite had missed: the oracle was L3-only, so non-L3 dynamics and
+sustained play were blind spots.
 
 The byte-exact frame-step oracle covers **L3 and L5**; the
 poke-`$B7EA`+`$BA24` recipe generalises it to any level. Beyond it,
@@ -132,9 +132,7 @@ frames (`misc_12` toggles `$50`<->`$10`), with `handling_blast`
 deactivating at frame 9. GT-captured by poking the enemy to the blast state
 (`set=$0A, misc_12=$50, misc_13=$90`) and stepping. The port's
 `spr_blast_frames` is that table, `BLAST_FRAMES=10`,
-`BLAST_TICKS_PER_FRAME=2`, matching the GT's sprite walk. (An earlier
-"only 5 sprites would overflow" worry came from misreading `anim_bird`'s
-tail.)
+`BLAST_TICKS_PER_FRAME=2`, matching the GT's sprite walk.
 
 **SMASH** ($07, the port's BIG_BALL). Renders `SPR_BIG_BALL` with the
 enlarged body; sets `axis = 0` so the ball destroys without bouncing

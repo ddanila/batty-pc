@@ -10,19 +10,16 @@ reads no keys at all can still print a plausible number.
 This file covers the switches that need more than a line. The replay
 seeding knobs (`BATTY_REPLAY_*`) are in `notes/replay-harness.md`.
 
-## Captured assets: repaid (WS7)
+## No captured assets (WS7)
 
-This file used to open with two shortcuts — `assets/frame_l1.bin` and
-`assets/level_attrs.bin` shipping captured bytes. Both are closed. The port
-builds the frame ornament from the tape's `spr_bord_*` primitives and the
-attribute band from `assets/levels.bin` plus the tape's `briks_colors`, at
-runtime, and all 13 loaded assets derive from `original/blocks/`
+All 14 loaded assets derive from `original/blocks/` — the frame ornament from
+the tape's `spr_bord_*` primitives, the attribute band from
+`assets/levels.bin` plus the tape's `briks_colors`, both at runtime
 (`test-asset-provenance`, `test-frame-derivable`,
 `test-level-attrs-derivable`, `test-bg-tile-derivable`).
-
-The two `.bin` files still exist in `assets/`, but as REFERENCE blobs for
-those derivability gates rather than as anything the floppy carries. See
-`notes/levels.md`.
+`assets/frame_l1.bin` and `assets/level_attrs.bin` still exist, but as
+REFERENCE blobs for those derivability gates rather than as anything the floppy
+carries. See `notes/levels.md`.
 
 ## `BATTY_KINNOCK=1` — the easter egg
 
