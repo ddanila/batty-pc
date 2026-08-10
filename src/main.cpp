@@ -817,7 +817,7 @@ static unsigned char high_score_name[3] = { 0x0A, 0x0A, 0x0A };
  * authority — do not keep a second copy of the mapping here. */
 
 /* bonus_table_first / bonus_table_second - byte-exact copies of the
- * 32-byte tables at $9E5A / $9E6A. The lower 4 bits of random_number
+ * 32-byte tables at $9E4A / $9E6A. The lower 4 bits of random_number
  * index the active table; the original walks rows 0..15 and rows
  * 16..31 are an extension (the original code only ANDs $0F so it
  * picks from 0..15 - the duplicate 16..31 region appears to be
@@ -1049,7 +1049,7 @@ static const unsigned int border_top_seq[8] = {
     BSPR_H_RIGHT_THIN, BSPR_H_RIGHT_BOLD, BSPR_H_RIGHT_THIN, BSPR_H_RIGHT_EDGE
 };
 
-/* border_horizontal_addon ($BFFB): ANDed into scr_buff+$101, i.e. row 8
+/* border_horizontal_addon ($BFF7): ANDed into scr_buff+$101, i.e. row 8
  * bytes 1..30 — a one-pixel inner outline under the top border. */
 static const unsigned char border_addon[30] = {
     0x00, 0x00, 0x03, 0xFF, 0xFF, 0xFF, 0xC0, 0x00, 0x00, 0x00,
@@ -3914,7 +3914,12 @@ static void apply_replay_rocket_override(void) {
     ball.stuck[BALL_PRIMARY] = 0;
 }
 
-/* prop_uneven / prop_even / prop_x_coord from $9F27. Fields:
+/* One contiguous block at $9F27..$9F37:
+ *   $9F27  prop_x_coord  4 B
+ *   $9F2B  prop_uneven   6 B
+ *   $9F31  prop_even     6 B
+ *
+ * The 6-byte property rows are:
  *   +0 type ($09=bird, $08=UFO)
  *   +1 misc_12
  *   +2 misc_13
@@ -3922,8 +3927,7 @@ static void apply_replay_rocket_override(void) {
  *   +4 height body
  *   +5 speed */
 static const unsigned char prop_uneven[6] = { 0x09, 0xF0, 0x70, 0x18, 0x0C, 0x01 };
-/* prop_even, byte-exact per $9F2D: the UFO is 16 px tall and moves at
- * speed 1, the same as the bird. */
+/* The UFO is 16 px tall and moves at speed 1, the same as the bird. */
 static const unsigned char prop_even[6]   = { 0x08, 0x60, 0x90, 0x18, 0x10, 0x01 };
 static const unsigned char prop_x_coord[4]= { 0x40, 0xA8, 0x40, 0xA8 };
 
