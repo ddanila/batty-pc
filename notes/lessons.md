@@ -1162,3 +1162,25 @@ common shapes.** A high survivor count reads like a coverage problem and
 can just as easily be an operator that does not bite. Both sweeps here
 were 40+ minutes; one was worth it and one was half wasted, and the
 difference was foreseeable from the idiom alone.
+
+## Containment cannot catch under-draw (2026-08-10)
+
+`sprite_blit_clips` asserts that a sprite blitted across each playfield
+edge writes nothing OUTSIDE it. A good test, and it caught two real
+over-draw guards.
+
+It cannot catch the opposite failure. Mutating `if (x < 0 || ...)` to
+`x <= 0` makes every blit skip the playfield's leftmost column, and
+`y <= 0` the topmost row. Both write LESS, so a "nothing escaped" check
+passes with the whole first row and column missing. The same hole
+existed in the scr_buff blit, for the same reason.
+
+The fix is one line of the opposite kind: a sprite at the origin must
+paint the origin.
+
+**Every clipping routine needs BOTH an existence and a containment
+assertion.** They are not two views of one property — each is blind to
+exactly what the other catches, and the two mutation sweeps found them
+from opposite sides. The `>=` sweep found the guards that let a blit
+write too far; the `<` sweep found the guards that stop it writing far
+enough.

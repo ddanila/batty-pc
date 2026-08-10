@@ -229,6 +229,41 @@ static void test_blit_stays_in_playfield(void) {
     end("borders intact");
 }
 
+/* The playfield's first row and first column DO get drawn.
+ *
+ *     if (x < 0 || x >= PLAYFIELD_W)  continue;
+ *     if (y < 0 || y >= PLAYFIELD_H)  continue;
+ *
+ * `sprite_blit_clips` asserts the complement — that nothing outside the
+ * playfield is touched — and both of these survived it, because
+ * dropping x == 0 or y == 0 writes LESS, not more. A mutation to `<=`
+ * silently stops drawing the leftmost column and the topmost row of
+ * every sprite blit, and the whole host suite passed with it.
+ *
+ * The positive assertion is the missing half: a sprite at the origin
+ * must paint the origin. */
+static void test_sprite_blit_draws_the_first_row_and_column(void) {
+    begin("sprite_blit_origin");
+    init_pal_tables();
+
+    static u8 solid[2 + 2 * 2 * 4];
+    solid[0] = 2; solid[1] = 4;
+    for (unsigned i = 2; i < sizeof(solid); i++) solid[i] = 0xFF;
+    const Sprite spr(solid);
+
+    memset(vga, 0xAA, SCREEN_W * SCREEN_H);
+    blit_masked_sprite(spr, 0, 0, 1, 2);
+
+    CHECK(vga[(BORDER_Y + 0) * SCREEN_W + BORDER_X + 0] != 0xAA,
+          "playfield pixel (0,0) was not drawn — the `x < 0` / `y < 0` "
+          "guards must admit zero\n");
+    CHECK(vga[(BORDER_Y + 1) * SCREEN_W + BORDER_X + 0] != 0xAA,
+          "playfield column 0 was not drawn on row 1\n");
+    CHECK(vga[(BORDER_Y + 0) * SCREEN_W + BORDER_X + 1] != 0xAA,
+          "playfield row 0 was not drawn at column 1\n");
+    end("origin painted");
+}
+
 /* A sprite straddling the LEFT edge still writes byte 0.
  *
  * `blit_masked_to_scr_buff` splits each source byte across two
@@ -270,7 +305,17 @@ static void test_scr_blit_writes_byte_zero_from_the_left(void) {
           "a sprite straddling the left edge wrote byte 0 on %d of 4 "
           "rows; the `right >= 0` guard is what allows it\n",
           wrote_byte0);
-    end("byte 0 written");
+
+    /* And ROW 0. `if (y < 0 || y >= PLAYFIELD_H) continue;` mutated to
+     * `y <= 0` silently drops the top scanline of every scr_buff blit,
+     * and writing LESS is invisible to any "nothing escaped" check —
+     * the same blind spot the VGA blit had. */
+    memset(scr_buff, 0, SCR_BUFF_SIZE);
+    blit_masked_to_scr_buff(spr, 8, 0);
+    CHECK(scr_row(0)[1] != 0,
+          "row 0 of the playfield was not drawn; the `y < 0` guard must "
+          "admit zero\n");
+    end("byte 0 and row 0");
 }
 
 /* The attr blit's cell clamps keep it inside attr_buff.
@@ -777,6 +822,7 @@ int main(int argc, char **argv) {
     test_clash_expansion_vs_ula();
     test_flash_bit_ignored();
     test_blit_stays_in_playfield();
+    test_sprite_blit_draws_the_first_row_and_column();
     test_scr_blit_writes_byte_zero_from_the_left();
     test_attr_blit_clamps_to_the_grid();
     test_sprite_blit_clips_to_playfield();

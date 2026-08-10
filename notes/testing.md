@@ -1471,6 +1471,22 @@ with a known row on each side and calls the full window, so the mutants
 read something predictable and act on it while the correct code cannot
 look at either.
 
+**The three `x < 0` / `y < 0` clip guards** are the strict sweep's other
+real find, and they fail in the opposite direction to everything above.
+Relaxed to `<=`, a sprite blit silently stops drawing the playfield's
+leftmost column and topmost row — it writes LESS.
+
+That is why `sprite_blit_clips` missed them. It asserts the complement,
+that nothing OUTSIDE the playfield is touched, and a mutation that draws
+less can never violate that. The missing half is the positive claim: a
+sprite at the origin must paint the origin.
+
+Worth generalising: **a containment assertion cannot catch under-draw,
+and an existence assertion cannot catch over-draw.** Both blits needed
+one of each, and the two sweeps found them from opposite sides — the
+`>=` sweep caught the over-draw guards, the `<` sweep the under-draw
+ones.
+
 That brings the memory guards found by mutation to SEVEN — four in
 `bricks.cpp`, two in `zxvga.cpp`, one in `laffc_sweep`'s neighbourhood.
 Boundary mutation reads as a hunt for off-by-one pixels; in this
