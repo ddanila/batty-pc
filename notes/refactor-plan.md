@@ -1,15 +1,22 @@
 # Modularising main.cpp
 
-One 7,700-line file turned into modules that each have a fast, exhaustive
+One oversized file turned into modules that each have a fast, exhaustive
 test. The stage table below is complete.
 
 ## Where this stands
 
-**The code.** `main.cpp`: 7,747 → 7,593 lines (`wc -l`) across 15 modules —
-net flat. Extraction added headers and comments and took it up to 8,420; two
-comment sweeps gave that back by dropping prose that only restated the code.
-The longest function is `run_level` at 113 lines, an orchestrator of named
-phases.
+**The code.** Fourteen modules extracted, each with its own host suite in
+`tests/` — a 1:1 mapping, kept that way by `test-host-tests-wired`. What is
+left in `main.cpp` is the game itself: screen states, level flow, and the
+frame loop. Its longest function is `run_level`, an orchestrator of named
+phases rather than a god-function.
+
+Line counts are deliberately not tracked here. The file got shorter, then
+longer as extraction added headers, then shorter again as the comment
+sweeps ran — and none of that movement said anything about whether the
+code got better. The claims worth pinning are the ones above: every
+module testable on its own, nothing left in `main.cpp` that belongs
+elsewhere.
 
 **The tests.** 109 gates, indexed in `notes/testing.md` and kept complete by
 `test-gate-index`:

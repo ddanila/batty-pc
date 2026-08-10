@@ -1,22 +1,22 @@
 #!/usr/bin/env python3
-"""The plan's status block must state numbers that are still true.
+"""The plan's status block must state gate counts that are still true.
 
 `notes/refactor-plan.md` opens with "## Where this stands" — the section
 that exists to be CURRENT. Every other section is a narrative of what was
 done and when, so "51 gates" in a paragraph about an earlier session is
 correct and must stay. This gate therefore reads the status block ONLY.
 
-It exists because those numbers went stale three times, and the last time
-was worse than stale: the line count quoted Watcom's `N lines` report
-instead of `wc -l`. Those two agreed (within 1) when the baseline was
-recorded and have since diverged by a constant 96 for this file — adding
-10 lines moves both by 10, so it is an offset, not a scaling. The cause
-is not established. Comparing a Watcom count against a `wc` baseline
-mixed two measures and understated the reduction. `wc -l` is the measure
-now, and this gate pins it.
+Nobody notices a wrong number in a document; reviewers trust it. Every
+count checked here is DERIVED from the Makefile and the parallel runner,
+so the document is compared against the thing it describes rather than
+against a second hand-maintained copy.
 
-Nobody notices a wrong number in a document. Reviewers trust it, and a
-line count is the one claim a refactor's notes are actually judged on.
+This gate used to pin `main.cpp`'s line count too. That check is gone
+with the metric: a line count moved every time a comment was added or
+removed, said nothing about whether the code improved, and cost an edit
+to this repo's notes on sweeps that changed no behaviour at all. What
+replaced it in the plan is the module/suite mapping, which
+`test-host-tests-wired` already keeps honest.
 """
 
 from __future__ import annotations
@@ -28,7 +28,6 @@ ROOT = Path(__file__).resolve().parent.parent
 PLAN = ROOT / "notes" / "refactor-plan.md"
 TESTING = ROOT / "notes" / "testing.md"
 TESTS_DIR = ROOT / "tests"
-MAIN = ROOT / "src" / "main.cpp"
 RUNNER = ROOT / "scripts" / "run_gates_parallel.py"
 
 SECTION = "## Where this stands"
@@ -97,21 +96,18 @@ def gate_counts() -> dict:
 
 def main() -> int:
     block = status_block()
-    real_lines = len(MAIN.read_text().splitlines())
     counts = gate_counts()
     bad = []
 
-    # "`main.cpp`: 7,747 -> 6,762 lines"  — the arrow may be -> or an en/em dash
-    m = re.search(r"`main\.cpp`:\s*([\d,]+)\s*(?:->|→|—)\s*([\d,]+)\s*lines", block)
-    if not m:
-        bad.append("the status block no longer states a `main.cpp`: A -> B "
-                   "lines figure; this gate cannot check what is not claimed")
-    else:
-        claimed = int(m.group(2).replace(",", ""))
-        if claimed != real_lines:
-            bad.append(f"status block says main.cpp is {claimed:,} lines; "
-                       f"wc -l says {real_lines:,} "
-                       f"(NB: Watcom's 'N lines' is NOT this number)")
+    # A line count is not checked here, and must not come back: see the
+    # module docstring. If one reappears in the status block, say so —
+    # silently tolerating it is how the metric would creep back.
+    if re.search(r"`main\.cpp`:\s*[\d,]+\s*(?:->|→|—)\s*[\d,]+\s*lines",
+                 block):
+        bad.append("the status block states a main.cpp line count again; "
+                   "that metric was dropped deliberately (see this gate's "
+                   "docstring) — state what the structure is, not how many "
+                   "lines it takes")
 
     # Up to THREE words between the number and "gates". The block says
     # "71 gates", "59 QEMU gates" and "12 emulator-free source gates",
@@ -189,9 +185,8 @@ def main() -> int:
         return 1
 
     print(f"PASS notes_numbers: plan + testing.md intro agree with reality "
-          f"(main.cpp {real_lines:,} lines; {counts['qemu']} QEMU + "
-          f"{counts['source']} source + {counts['oracle']} oracle = "
-          f"{counts['total']} gates)")
+          f"({counts['qemu']} QEMU + {counts['source']} source + "
+          f"{counts['oracle']} oracle = {counts['total']} gates)")
     return 0
 
 
