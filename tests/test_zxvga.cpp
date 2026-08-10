@@ -377,6 +377,40 @@ static void test_attr_blit_clamps_to_the_grid(void) {
           "an unclamped col_hi spilled %d cells into the next attr row\n",
           spilled);
 
+    /* The CLIP clamps. These are what keep the blit off the side-frame's
+     * attribute cells — the whole reason this function takes a clip
+     * pair (see the lint note in test_visual.py). Real callers pass
+     * clip_left = 8 and clip_right = PLAYFIELD_W - 8, so column 0 and
+     * column 31 belong to the frame and must not be recoloured.
+     *
+     * Boundary-exact again: x_px = 7 is one pixel left of the clip, and
+     * a rect ending at clip_right + 1 one pixel right of it. */
+    memset(attr_buff, 0x77, sizeof(attr_buff));
+    blit_sprite_attrs_to_buff_clipped(7, 8, 16, 8, 0x44, 8, PLAYFIELD_W - 8);
+    CHECK(attr_buff[1 * ATTR_COLS + 0] == 0x77,
+          "an unclamped x0 recoloured the LEFT side-frame cell: %02X\n",
+          attr_buff[1 * ATTR_COLS + 0]);
+
+    memset(attr_buff, 0x77, sizeof(attr_buff));
+    blit_sprite_attrs_to_buff_clipped(PLAYFIELD_W - 16, 8, 9, 8, 0x55,
+                                      8, PLAYFIELD_W - 8);
+    CHECK(attr_buff[1 * ATTR_COLS + (ATTR_COLS - 1)] == 0x77,
+          "an unclamped x1 recoloured the RIGHT side-frame cell: %02X\n",
+          attr_buff[1 * ATTR_COLS + (ATTR_COLS - 1)]);
+
+    /* The LOW clamps, boundary-exact. col_lo = -1 is one step below its
+     * clamp, and an unclamped -1 writes `attr_buff[r * ATTR_COLS - 1]`
+     * — the PREVIOUS row's last cell, which is observable as long as r
+     * is not 0. So the rect starts on row 1.
+     *
+     * x0 = -8 gives col_lo = -1 exactly; going further left would give
+     * -2 or less, which both forms clamp. */
+    memset(attr_buff, 0x77, sizeof(attr_buff));
+    blit_sprite_attrs_to_buff_clipped(-8, 8, 8, 8, 0x33, -8, PLAYFIELD_W);
+    CHECK(attr_buff[0 * ATTR_COLS + (ATTR_COLS - 1)] == 0x77,
+          "an unclamped col_lo wrote into the previous attr row's last "
+          "cell: %02X\n", attr_buff[0 * ATTR_COLS + (ATTR_COLS - 1)]);
+
     /* The ROW clamp cannot be caught from here, and pretending otherwise
      * would be worse than saying so. `row_hi == ATTR_ROWS` makes the
      * loop write `attr_buff[24 * ATTR_COLS + c]` — past the end of a

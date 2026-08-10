@@ -1518,6 +1518,19 @@ mutation: go far enough out and both sides of the boundary agree.** The
 useful value is always the boundary itself, and "deliberately out of
 range" is not a substitute for it.
 
+Three more clamps in `blit_sprite_attrs_to_buff_clipped` fell to the
+same treatment, and the two CLIP ones matter most: they are what keeps
+the blit off the side-frame's attribute cells, which is the whole reason
+the function takes a clip pair. Real callers pass `clip_left = 8` and
+`clip_right = PLAYFIELD_W - 8`, so columns 0 and 31 belong to the frame.
+A rect starting at x = 7, one pixel left of the clip, recolours the left
+frame cell if the clamp is off by one — and nothing was checking.
+
+`col_lo`'s clamp is observable for a different reason: an unclamped -1
+writes `attr_buff[r * ATTR_COLS - 1]`, which is the PREVIOUS row's last
+cell. The rect has to start on row 1 for that to be inside the buffer at
+all.
+
 **Two more real, from shapes the filter was not even aiming at:**
 
 - `object_step_animation`'s wrap, `((d >> 4) & 0x0F) < e`. `CP E / JR
