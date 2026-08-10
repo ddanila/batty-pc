@@ -815,3 +815,49 @@ ONE — the declaration. Full write-up in notes/lessons.md.
 
 `BAT_SLOT()` is the fix and the guard: an out-of-range argument lands on
 a real element instead of off the end.
+
+
+## One bat renderer for both bats (2026-08-10)
+
+`render_bat_of(b, attr)` takes every input from the bat's object and its
+`BatState`, so the same code draws either. `render_bat` and
+`render_bat_2` are two-line wrappers.
+
+Bat 2 had its own three-line copy that could only ever draw the plain
+body at a fixed 32 px. That copy is why bat 2's width had nowhere to
+show even once the state existed — and, more to the point, why nobody
+had noticed: the renderer physically could not express the thing that
+was missing.
+
+Behaviour is unchanged for the sweep, which is the check: while bat 2's
+`extra_px` is 0 and its bonus byte is not LASER, `render_bat_of` emits
+the same x, y, 32x13 attr window and `SPR_BAT_NORMAL` the copy did.
+
+**One change is real and deliberate:** a bat 2 holding LASER now shows
+the gun-mounted sprite. It could not before, and it should — the
+original picks each bat's sprite from that bat's own state
+(`(IX+$01)`, set in `handling_bat`, which runs per bat). Reachable since
+the bonus byte stopped being mirrored. Not gated: no scenario yet drops
+a LASER on bat 2.
+
+### The lint caught it, correctly
+
+`test-visual`'s "no stray blit_sprite_attrs_to_buff in moving-object
+renderers" failed, because the blit moved into a function not on its
+approved list. That is the lint working, not the lint being in the way —
+the same note its docstring already made about `render_bat_2` in
+August.
+
+`render_bat_of` is on the list now. `render_bat` and `render_bat_2` stay
+on it even though they no longer blit: a future edit could give either
+its own blit back, and the lint should catch that rather than pass
+because the name is old.
+
+### Still to come
+
+Bat 2's width does not yet GROW — `bonus_apply` still guards BIG_BAT to
+bat 1 and `tick_bat_resize` still ticks one bat. The renderer and the
+collision extents are ready for it; what wants checking first is the
+dirty-redraw path, which knows bat 1's bounds
+(`redraw_bat`, `bat_sprite_bounds`) and draws bat 2 only on a full
+compose. A widening bat 2 could leave residue there.

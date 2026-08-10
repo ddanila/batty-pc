@@ -2175,12 +2175,13 @@ static void call_for_all_obj(obj_handler_t fn) {
  * when LASER is up, stepping through four fire frames at two ticks each
  * off the countdown, and the plain body otherwise. All share
  * spr_bat_normal's 32 x 13 footprint. */
-static unsigned int bat_body_sprite(void) {
-    if (objects[OBJ_BAT_1].bonus_applied != 0x01) return SPR_BAT_NORMAL;
-    if (bat1.fire_anim_ticks >= 7) return SPR_BAT_GUN_1;
-    if (bat1.fire_anim_ticks >= 5) return SPR_BAT_GUN_2;
-    if (bat1.fire_anim_ticks >= 3) return SPR_BAT_GUN_3;
-    if (bat1.fire_anim_ticks >= 1) return SPR_BAT_GUN_4;
+static unsigned int bat_body_sprite(int b) {
+    const BatState &st = bats[BAT_SLOT(b)];
+    if (objects[b].bonus_applied != 0x01) return SPR_BAT_NORMAL;
+    if (st.fire_anim_ticks >= 7) return SPR_BAT_GUN_1;
+    if (st.fire_anim_ticks >= 5) return SPR_BAT_GUN_2;
+    if (st.fire_anim_ticks >= 3) return SPR_BAT_GUN_3;
+    if (st.fire_anim_ticks >= 1) return SPR_BAT_GUN_4;
     return SPR_BAT_GUN;
 }
 
@@ -2188,20 +2189,22 @@ static unsigned int bat_body_sprite(void) {
  * the gap on each side so buff_to_vga lights them in the background's
  * ink — there is no sprite for the in-between widths, only the normal
  * and big bodies. */
-static void fill_bat_resize_sides(void) {
-    const int side_w = bat1.extra_px;
+static void fill_bat_resize_sides(int b) {
+    const int side_w = bats[BAT_SLOT(b)].extra_px;
+    const int bat_x  = (int)objects[b].x_coord;
+    const int bat_y  = (int)objects[b].y_coord;
     int row;
     if (side_w <= 0) return;
     for (row = 0; row < 8; row++) {
-        const int yy = BAT_Y + 1 + row;
+        const int yy = bat_y + 1 + row;
         int bx;
         if (yy < 0 || yy >= PLAYFIELD_H) continue;
-        for (bx = BAT_X - side_w; bx < BAT_X; bx++) {
+        for (bx = bat_x - side_w; bx < bat_x; bx++) {
             if (bx >= 0 && bx < PLAYFIELD_W)
                 scr_buff[yy * 32 + (bx >> 3)] |= (unsigned char)(0x80 >> (bx & 7));
         }
-        for (bx = BAT_X + BAT_W_BYTES * 8;
-             bx < BAT_X + BAT_W_BYTES * 8 + side_w; bx++) {
+        for (bx = bat_x + BAT_W_BYTES * 8;
+             bx < bat_x + BAT_W_BYTES * 8 + side_w; bx++) {
             if (bx >= 0 && bx < PLAYFIELD_W)
                 scr_buff[yy * 32 + (bx >> 3)] |= (unsigned char)(0x80 >> (bx & 7));
         }
@@ -2216,33 +2219,43 @@ static void fill_bat_resize_sides(void) {
  *                  bg bits at those positions, producing the
  *                  textured shadow band below the bat).
  * One blit into scr_buff covers the whole sprite. */
-static void render_bat(unsigned char cycle, unsigned char attr) {
+/* Draw one bat. Every input comes from its object and its BatState, so
+ * the same code serves both — bat 2 used to have its own three-line
+ * copy that could only ever draw the plain body, which is why its width
+ * had nowhere to show even once the state existed. */
+static void render_bat_of(int b, unsigned char attr) {
+    const int extra = bats[BAT_SLOT(b)].extra_px;
+    const int bat_x = (int)objects[b].x_coord;
     unsigned int spr;
     int x, y, sprite_w;
-    (void)cycle;
-    if (bat1.extra_px >= BAT_BIG_EXTRA_PX) {
+    if (extra >= BAT_BIG_EXTRA_PX) {
         spr = SPR_BAT_BIG;
-        x   = BAT_X - BAT_BIG_EXTRA_PX;
+        x   = bat_x - BAT_BIG_EXTRA_PX;
         sprite_w = BAT_W_BYTES * 8 + 2 * BAT_BIG_EXTRA_PX;
     } else {
         /* Laser-carrying bat shows the gun-mounted sprite. While the
          * fire-animation counter is non-zero, cycle through the four
          * spr_bat_gun_1..4 frames (2 ticks per frame, picked off the
          * countdown). Same 32 x 13 footprint as spr_bat_normal. */
-        spr = bat_body_sprite();
-        x   = BAT_X;
-        sprite_w = BAT_W_BYTES * 8 + 2 * bat1.extra_px;
-        fill_bat_resize_sides();
+        spr = bat_body_sprite(b);
+        x   = bat_x;
+        sprite_w = BAT_W_BYTES * 8 + 2 * extra;
+        fill_bat_resize_sides(b);
     }
-    y = BAT_Y;
+    y = (int)objects[b].y_coord;
     /* Force bg attr on the interior playfield cells the bat covers, but
      * leave the side-frame attr cells alone. The sprite pixels still
      * OR into the frame at the extremes; only the static tube colour
      * must stay owned by paint_frame_to_buff. */
-    blit_sprite_attrs_to_buff_clipped(x - bat1.extra_px, y,
+    blit_sprite_attrs_to_buff_clipped(x - extra, y,
                                       sprite_w, 13, attr,
                                       8, PLAYFIELD_W - 8);
     blit_masked_to_scr_buff(spr, x, y);
+}
+
+static void render_bat(unsigned char cycle, unsigned char attr) {
+    (void)cycle;
+    render_bat_of(OBJ_BAT_1, attr);
 }
 
 /* The second bat. `all_var_init` (LB7F8) activates it and moves BOTH
@@ -2261,12 +2274,12 @@ static void render_bat(unsigned char cycle, unsigned char attr) {
  * is a later WS3 item (`object_bat_2+$14`). Drawing it big or armed
  * before that state exists would be inventing behaviour. */
 static void render_bat_2(unsigned char attr) {
-    const Object &b2 = objects[OBJ_BAT_2];
-    if (game_mode != 2 || !object_active(b2)) return;
-    blit_sprite_attrs_to_buff_clipped(b2.x_coord, b2.y_coord,
-                                      BAT_W_BYTES * 8, 13, attr,
-                                      8, PLAYFIELD_W - 8);
-    blit_masked_to_scr_buff(SPR_BAT_NORMAL, b2.x_coord, b2.y_coord);
+    if (game_mode != 2 || !object_active(objects[OBJ_BAT_2])) return;
+    /* Identical output to the hand-rolled version while bat 2's
+     * extra_px is 0 and its bonus byte is not LASER: same x, same y,
+     * same 32x13 attr window, SPR_BAT_NORMAL. The whole sweep is the
+     * check on that. */
+    render_bat_of(OBJ_BAT_2, attr);
 }
 
 static int bat_draw_extra_for_bounds(int extra) {

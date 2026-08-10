@@ -258,18 +258,25 @@ def lint_moving_object_attrs(src_path: Path) -> int:
     state4_level1 can't catch — it's a level-entry checkpoint and
     none of those objects are active yet).
 
-    Approved callers: render_bat and render_bat_2 (the _clipped variant
-    forces bg_attr to keep a bat bg-coloured when it slides into a
-    side-strip cell). render_bat_2 was added 2026-08-09 for Double
-    Play's second bat and does the same thing to the same kind of
-    object; it is on the list deliberately, after this lint caught it,
-    not because the lint was in the way. The enemy used to be approved too, but known-bugs #7 removed
+    Approved callers: render_bat, render_bat_2 and render_bat_of (the
+    _clipped variant forces bg_attr to keep a bat bg-coloured when it
+    slides into a side-strip cell). render_bat_2 was added 2026-08-09
+    for Double Play's second bat and does the same thing to the same
+    kind of object; it is on the list deliberately, after this lint
+    caught it, not because the lint was in the way.
+
+    render_bat_of joined it on 2026-08-10 for the same reason and with
+    the same caveat. It is now the ONLY one that blits: render_bat and
+    render_bat_2 are two-line wrappers that pass a bat index to it. They
+    stay on the list because a future edit could give either its own
+    blit again, and the lint should catch that rather than pass because
+    the name happens to be old. The enemy used to be approved too, but known-bugs #7 removed
     its recolour — the original blits enemy PIXELS only, so the bird/UFO
     keeps each cell's underlying brick/bg attr (ZX colour-clash). The
     non-clipped blit_sprite_attrs_to_buff helper is gone entirely; any
     new call from a moving-object renderer is now a regression.
     """
-    APPROVED_CALLERS = {'render_bat', 'render_bat_2'}
+    APPROVED_CALLERS = {'render_bat', 'render_bat_2', 'render_bat_of'}
     text = src_path.read_text()
     lines = text.split('\n')
     fails = []
