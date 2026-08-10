@@ -240,6 +240,53 @@ static void test_colour_and_shadow() {
  * brick keeps its colour until this resets it. The empty-cell sentinel
  * $C0 must survive: it carries the per-side-strip colours, and treating
  * it as destroyed would repaint the frame's edge cells. */
+/* The PARTIAL window's upper edge: a destroyed cell one row ABOVE the
+ * window still owns the window's first char row, because that row is
+ * its SHADOW row.
+ *
+ * `reset_destroyed_cell_attrs` scans `r0 - 1 .. r1 + 1` and guards each
+ * write with `cr >= cr0` / `cr + 1 >= cr0`. For the row above the
+ * window `cr` is `cr0 - 1` — outside — while `cr + 1` is exactly `cr0`,
+ * so only the second write lands, and only because that test is `>=`.
+ *
+ * This is the interlock behind known-bugs #18: char row `cr0` is shared
+ * between the window and the row above it, and the base-band copy wipes
+ * it. Every existing test called this function with the FULL window
+ * (`0, FIELD_ROWS-1, 3, 16`), where `cr + 1 == cr0` never happens — so
+ * mutating `>=` to `>` passed the host suite AND
+ * `test-enemy-brick-residue`, the gate that found #18.
+ *
+ * orig: the shadow rows of print_briks; see notes/known-bugs.md #18. */
+static void test_reset_covers_the_window_top_from_above() {
+    const int before = failures;
+    const u8 BG = 0x45;
+    u8 field[FIELD_ROWS * FIELD_COLS];
+    for (int i = 0; i < FIELD_ROWS * FIELD_COLS; i++) field[i] = 0x05;
+
+    const int row_above = 1, col = 3;
+    field[row_above * FIELD_COLS + col] = 0x80;   /* destroyed */
+    /* Its left neighbour is LIVE, so the shadow attr is the dimmed one
+     * and the assertion distinguishes a write from a leftover. */
+
+    memset(attr_buff, 0x77, sizeof(attr_buff));
+    /* Window rows 2..3 -> char rows 6..9. The destroyed cell at row 1
+     * has cr = 5 (outside) and cr + 1 = 6 == cr0 (inside). */
+    reset_destroyed_cell_attrs(field, BG, 2, 3, 6, 9);
+
+    const int cc1 = 1 + 2 * col;
+    check(attr_buff[5 * ATTR_COLS + cc1] == 0x77,
+          "char row 5 is outside the window and must not be touched; "
+          "got %02X\n", attr_buff[5 * ATTR_COLS + cc1]);
+    check(attr_buff[6 * ATTR_COLS + cc1] == (u8)(BG & 0xBF),
+          "the window's first char row is the shadow of the destroyed "
+          "cell above it: got %02X, expected %02X\n",
+          attr_buff[6 * ATTR_COLS + cc1], (u8)(BG & 0xBF));
+    check(attr_buff[6 * ATTR_COLS + cc1 + 1] == BG,
+          "its right char should be plain background: got %02X\n",
+          attr_buff[6 * ATTR_COLS + cc1 + 1]);
+    report("reset_covers_window_top", before, "row above the window ok");
+}
+
 static void test_destroyed_cells_reset_but_sentinels_survive() {
     const int before = failures;
     const u8 BG = 0x45;
@@ -525,6 +572,7 @@ int main(int argc, char **argv) {
     test_destroyed_bricks_leave_nothing();
     test_painting_stays_in_the_band();
     test_colour_and_shadow();
+    test_reset_covers_the_window_top_from_above();
     test_destroyed_cells_reset_but_sentinels_survive();
     test_destroyed_cell_shadow_follows_left_neighbour();
     test_window_repaint_matches_full_at_its_edges();

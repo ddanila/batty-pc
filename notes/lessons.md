@@ -997,3 +997,25 @@ are three files away from the boundary that depends on them.
 
 So when a survivor turns out to be equivalent, ask WHY. "No input can
 tell" and "no input currently does" look identical in a mutation report.
+
+## The gate that found a bug need not cover the fix (2026-08-10)
+
+`test-enemy-brick-residue` found known-bugs #18: the partial brick
+rebuild lost both boundary char rows. It is a whole-screen diff of the
+dirty path against a full redraw, which is why it caught something no
+targeted test was looking for.
+
+It does not, however, cover the guards that implement the interlock.
+Mutating `reset_destroyed_cell_attrs`' `cr + 1 >= cr0` to `>` — the
+exact test that lets a destroyed cell above the window own the window's
+first row — passed that gate, and the whole host suite.
+
+Both facts are ordinary. A screen diff catches a class of failure at
+one seeded scenario; it says nothing about a boundary that scenario
+never reaches. And every host test called the function with the FULL
+window, where the boundary cannot arise at all.
+
+**After fixing a bug a broad gate caught, mutate the LINES of the fix.**
+The gate proved the symptom is gone on one path. It does not prove the
+condition you wrote is the condition you meant, and the two feel like
+the same evidence when the gate goes green.

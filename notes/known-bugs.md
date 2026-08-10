@@ -1118,6 +1118,23 @@ back. `reset_destroyed_cell_attrs` already extended one row each way and
 its comment described the interlock precisely; the painting simply did
 not follow.
 
+### The guard on the same interlock was untested too (2026-08-10)
+
+`reset_destroyed_cell_attrs` handles the DESTROYED half of this
+interlock, and its window test `cr + 1 >= cr0` is what lets a destroyed
+cell one row ABOVE the window write the window's first char row — its
+shadow row.
+
+Mutating that `>=` to `>` passed the whole host suite AND
+`test-enemy-brick-residue`, the gate that found this bug. Every existing
+caller in the tests used the FULL window (`0, FIELD_ROWS-1, 3, 16`),
+where `cr + 1 == cr0` cannot happen; only a PARTIAL window reaches it,
+and only the partial path is what #18 was about.
+
+`reset_covers_window_top` in `tests/test_bricks.cpp` calls it with rows
+2..3 and a destroyed cell at row 1, and both window guards are now
+mutation-checked.
+
 It never showed before because the base band was captured with every
 brick alive and therefore already carried both neighbours' attrs. The
 fix restores them explicitly, in the order the full ascending paint
