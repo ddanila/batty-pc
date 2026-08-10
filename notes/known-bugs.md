@@ -253,9 +253,11 @@ way when the rect is too large.
 
 ## 10. The bullet animation phase depended on which redraw path ran — fixed
 
-`render_bullet_to_buff` increments a function-static `bullet_anim_tick`
-on every call and picks `SPR_BULLET_1` / `SPR_BULLET_2` from its low
-bit. The full redraw path calls it unconditionally; the dirty path
+`render_bullet_to_buff` incremented a function-static `bullet_anim_tick`
+on every call and picked `SPR_BULLET_1` / `SPR_BULLET_2` from its low
+bit. (Past tense since 2026-08-10: the heading says "fixed" but the
+description read as current, and `bullet_anim_tick` no longer exists —
+the phase lives in the per-bullet `bullet_frame[]`, which is the fix.) The full redraw path calls it unconditionally; the dirty path
 calls it only inside `if (any_bullet_active())`.
 
 So on a frame with no bullets live, the full path advances the phase and

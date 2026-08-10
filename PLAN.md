@@ -1,9 +1,17 @@
 # PLAN — road to a 100% functional Batty port
 
-Goal of the repo: a **fully functional MS-DOS/8086 port of Batty**
+Goal of the repo: a **fully functional MS-DOS port of Batty**
 (Elite/Hit-Pak, 1987, ZX Spectrum 48K) — everything the original game
 does, the port does, verified against the original wherever it can be
-measured. This file is the roadmap to that goal; status lives in
+measured.
+
+It said "MS-DOS/8086" until 2026-08-10. That stopped being true on
+2026-08-07, when `c52f3a2` moved the build to 386 32-bit protected mode
+under DOS32A to escape the 64 KB segment ceiling (DGROUP was 95.6%
+full). **The minimum target is a 386 and there is no 8086 build.** The
+line survived three days because nothing reads a goal statement for
+facts; it turned up on a docs-hygiene pass that started from an
+unrelated symbol. This file is the roadmap to that goal; status lives in
 `notes/parity-status.md`, open fidelity gaps in `notes/parity-gaps.md`.
 
 Last updated: 2026-08-10. (This line was five weeks stale, which is
@@ -22,7 +30,7 @@ The port is "100%" when all of the following hold:
 | 4 | Full game FLOW gated end-to-end: level-clear → next, life-loss → respawn, game-over → initials, level wrap | **Done** — `test-level-advance`, `test-life-loss`, `test-game-over-visual`, `test-name-entry-visual` |
 | 5 | Sound faithful to the original's 5-slot beeper queue (envelope/timing, not just effect IDs) | ids, slot count, pitches and envelope ARITHMETIC faithful; durations still round to 20 ms because the sound clock is the 50 Hz frame counter |
 | 6 | All assets derived from the tape at build time; no captured emulator blobs | **Done** — all 13 loaded assets build from `original/blocks/`, held by `test-asset-provenance` |
-| 7 | Runs correctly on real-hardware-representative targets (XT-class + 386) | QEMU + 86Box `ibmxt` verified; real iron untested |
+| 7 | Runs correctly on real-hardware-representative targets (386+) | QEMU verified; real iron untested. **XT-class dropped 2026-08-07** — `c52f3a2` made the build 386-only protected mode, so the 86Box `ibmxt` verification this cell used to claim cannot apply to the current binary |
 | 8 | Historical completeness: Kinnock easter egg, pause semantics, hi-score behaviour | **Done** — pause, hi-score, and the easter egg (`BATTY_KINNOCK=1`) |
 
 *Table refreshed 2026-08-10. Criterion 1 still said "bonus ownership
@@ -1016,11 +1024,17 @@ checking it.
    self-hosted runner, or accept local-only (documented dead end for
    TCG stands — don't retry TCG).
 2. **Real hardware smoke.** `make floppy` produces a bootable 1.44 MB
-   image; one verified boot each on a real XT-class (8086 build) and a
-   386 (`batty386.exe`) would retire criterion 7. Follow-ups already
-   scoped in `performance.md`: batch the small asset `fread`s (floppy
-   load time — the one untouched perf lever) and optionally a single
-   auto-dispatching binary (runtime 386 detect) instead of two EXEs.
+   image; one verified boot on a real 386 or better would retire
+   criterion 7.
+
+   *Rewritten 2026-08-10.* It read "one verified boot each on a real
+   XT-class (8086 build) and a 386 (`batty386.exe`)". Neither artifact
+   exists: `c52f3a2` deleted the additive 386 build by making 386 the
+   only target, so there is one EXE and it needs a 386. The
+   auto-dispatching-binary follow-up it also named is moot for the same
+   reason — one target, nothing to dispatch between. What survives is
+   the load-time lever: batch the small asset `fread`s, which still
+   helps a real floppy even though QEMU's fast disk hides it.
 3. ~~**Boot-phase-normalized harness**~~ — for the PORT side this was
    already built and I had not noticed: `BATTY_REPLAY_COUNTER` pins
    `pit_frame_counter` at the aligned start (`pin_replay_frame_counter`,
@@ -1055,6 +1069,17 @@ checking it.
    New tool from it: `scripts/notes_symbols.py` lists identifiers the
    notes cite and the tree no longer defines. A report, not a gate —
    see notes/testing.md for why.
+   *Second pass 2026-08-10.* 59 candidates. One thread — `fast_memcpy`
+   — ran back to `c52f3a2`'s 386/flat-model switch of 2026-08-07 and
+   turned up five stale places: performance.md's whole "Optional 386
+   build" section, blitter-port.md's "stays 8086-compatible" paragraph
+   (the opposite of the code), this file's own goal line and criterion
+   7, WS8.2's request to boot a `batty386.exe` that no longer exists,
+   and `BOX86_MACHINE ?= ibmxt` — an 8086 profile that cannot run a
+   protected-mode image, so `make run-86box` is broken by default and
+   now says so. All re-tensed rather than deleted; the report still
+   lists 59, which is correct. See notes/lessons.md.
+
    *Fully triaged 2026-08-09.* 41 candidates, 6 real. The one that
    mattered was not a rename: `rocket-flight.md`'s parity table still
    listed BOTH rocket divergences as `DIVERGENT ✗` — the in-flight brick

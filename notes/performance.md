@@ -34,7 +34,27 @@ level `fread`s in src/main.cpp around the file-load helpers — batching small
 reads helps the real DOS/floppy target even though QEMU's fast disk hides
 it); that was identified but not pursued. The render-cost work is complete.
 
-## Optional 386 build (additive — 2026-06-18)
+## Optional 386 build (additive — 2026-06-18) — SUPERSEDED 2026-08-07
+
+**None of this section describes the tree any more, and it is kept only
+as the record of how the build got where it is.** `c52f3a2` ("build:
+target 386 in 32-bit protected mode") made 386 the ONLY target, in
+32-bit protected mode under DOS32A, and in doing so deleted every
+mechanism named below: `fast_memcpy` and its two asm bodies (now plain
+`memcpy` at 26 call sites), the four inline-asm blit bodies (now two
+aligned 32-bit stores in plain C), the `BATTY_CPU386` word/dword table
+split (now one table, no ifdef), and the additive build itself —
+`exe386`, `run386` and `test-cpu386` are not Makefile targets.
+
+Left in the present tense until 2026-08-10, three days after the
+switch, when `scripts/notes_symbols.py` reported `fast_memcpy` as an
+identifier nothing in the tree defines. That is the whole reason the
+tool exists: an entire subsystem's worth of prose, still reading as
+current, describing a build you can no longer run.
+
+Everything below is 2026-06-18's present tense. Read it as past.
+
+---
 
 The shipping `batty.exe` stays 8086 (`-0`), XT-compatible. Alongside it
 there's now an **optional 386 build** (`make exe386` → `batty386.exe`,
@@ -71,6 +91,12 @@ versions of the `_fmemset`/`_fmemcpy`-based full-screen clear and
 asset-load copies (library calls today, so they stay `rep stosw`/
 `movsw`); and a single auto-dispatching binary (runtime 386 detect)
 instead of two EXEs.
+
+(End of the superseded section. Both of those levers were settled by
+`c52f3a2` rather than done: the `_f*` calls are plain `memset`/`memcpy`
+under the flat model, and there is one binary because there is one
+target. PLAN.md WS8.2 still lists the auto-dispatch idea — it is moot,
+and the entry says so.)
 
 ## Current Profiling Workflow
 
@@ -193,7 +219,10 @@ Interpretation:
   background cache instead of rebuilding the whole static level image.
 - VGA byte expansion now uses an 8086-safe precomputed attribute/nibble
   table: each Spectrum byte is emitted as four `stosw` writes instead of
-  per-pixel shift/mask logic. The table covers all non-FLASH attributes
+  per-pixel shift/mask logic. (Superseded 2026-08-07 by `c52f3a2`: the
+  table is dword-wide and the emit is two aligned 32-bit stores. The
+  8086-safety this bullet was about stopped being a constraint when 386
+  became the only target.) The table covers all non-FLASH attributes
   in 8 KiB and intentionally avoids 386-only dword copies.
 - Moving-object redraws no longer flush the full bat footprint every
   frame when the bat is stationary. The bat is still composed into

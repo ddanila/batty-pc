@@ -98,6 +98,15 @@ ZRCP_PORT ?= 10000
 
 BOX86_BIN       ?= /home/ddanila/.local/86box/bin/86Box
 BOX86_VM_DIR    ?= build/86box
+# STALE DEFAULT, flagged 2026-08-10 and deliberately not guessed at.
+# `ibmxt` is an 8086 machine and the build has been 386-only 32-bit
+# protected mode (DOS32A) since c52f3a2 on 2026-08-07, so this profile
+# cannot run build/batty.exe at all. It needs a 386-class machine id
+# from the installed 86Box (`86Box --help` lists them). Left as-is
+# rather than substituted with an unverified id: 86Box is not
+# installed on this machine, the paths above are a Linux box's, and a
+# default that is wrong in a NEW way is worse than one whose
+# wrongness is written down. Override with BOX86_MACHINE=<id>.
 BOX86_MACHINE   ?= ibmxt
 BOX86_GFXCARD   ?= vga
 BOX86_FDD_TYPE  ?= 35_2hd
@@ -144,7 +153,7 @@ help:
 	@echo "  assets        decode original/*.scr into assets/"
 	@echo "  floppy        pack $(EXE) + assets onto $(FLOPPY_OUT)"
 	@echo "  run           build the floppy and boot it in QEMU (our recreation)"
-	@echo "  run-86box     build the floppy and boot it in 86Box (IBM XT + VGA)"
+	@echo "  run-86box     boot the floppy in 86Box (needs BOX86_MACHINE=<386-class>)"
 	@echo "  profile-auto  run deterministic headless QEMU render profile"
 	@echo "  profile-86box run 86Box with BATTY_RENDER_PROFILE=1 (sound off)"
 	@echo "  read-profile  extract and print PROFILE.TXT from $(FLOPPY_OUT)"

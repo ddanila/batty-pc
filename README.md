@@ -100,15 +100,22 @@ The resolved parity history is documented in
 brew install mtools qemu
 make floppy   # builds build/batty.exe + assets, packs build/batty.img
 make run      # boots in QEMU
-make run-86box # boots in 86Box as an IBM XT with an ISA VGA card
+make run-86box # boots in 86Box (set BOX86_MACHINE to a 386-class machine)
 make test     # headless visual-regression (boots, drives keys, pixel-diffs)
 make parity-check # test + byte-exact LAFFC collision gate (gameplay frame parity)
 ```
 
 `make run-86box` defaults to the locally built SDL frontend at
 `/home/ddanila/.local/86box/bin/86Box` and writes its VM config under
-`build/86box/`. It uses 86Box's `ibmxt` machine, `vga` video card, and
-mounts `build/batty.img` as drive A:. ROMs are expected at
+`build/86box/`. It uses 86Box's `vga` video card and mounts
+`build/batty.img` as drive A:.
+
+**`BOX86_MACHINE` still defaults to `ibmxt` and that default is wrong.**
+The build has been 386-only 32-bit protected mode (DOS32A) since
+2026-08-07, so an 8086 machine profile cannot run `batty.exe`. Pass a
+386-class machine id from your own 86Box (`86Box --help` lists them);
+the default was left visibly stale rather than replaced with an id
+nobody here can verify. ROMs are expected at
 `/home/ddanila/fun/86Box-roms` from the upstream 86Box ROM checkout.
 Override `BOX86_BIN`, `BOX86_ROMPATH`, `BOX86_MACHINE`,
 `BOX86_GFXCARD`, or `BOX86_FDD_TYPE` when testing another local

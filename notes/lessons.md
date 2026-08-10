@@ -1329,3 +1329,52 @@ frame, and `stuck_bat = OBJ_BAT_1` is equivalent in a mode-0 scenario
 because bat 2 is inactive there. **A PASS line that cannot fail is
 worse than no line at all** — it is counted as coverage by whoever
 reads the gate next, which is how this whole item started.
+
+
+## One commit can rot five files, and nothing sweeps for it (2026-08-10)
+
+`c52f3a2` (2026-08-07) moved the build to 386 32-bit protected mode
+under DOS32A, to escape a 64 KB segment ceiling. Its message is careful
+and complete — it lists everything it deleted: `fast_memcpy`, the four
+inline-asm blit bodies, the `BATTY_CPU386` table split, the additive
+`exe386`/`run386`/`test-cpu386` build. What it did not do, and what no
+gate asked for, was update the prose that described any of it.
+
+Three days later `scripts/notes_symbols.py` reported `fast_memcpy` as an
+identifier nothing defines. Pulling that thread found five places:
+
+  - `notes/performance.md`'s entire "Optional 386 build" section, ~35
+    lines in the present tense about a build you cannot run
+  - `notes/blitter-port.md` claiming the blit "stays 8086-compatible",
+    emits "four `stosw` writes" and "avoids 386-only dword copies" —
+    the opposite of the code in three clauses
+  - `PLAN.md`'s top line: "a fully functional MS-DOS/8086 port"
+  - `PLAN.md`'s criterion 7, claiming XT-class verification, and WS8.2,
+    asking for a boot of `batty386.exe` — an artifact that never
+    existed after the switch
+  - `Makefile`/`README.md`: `BOX86_MACHINE ?= ibmxt`, an 8086 profile
+    that cannot run a protected-mode image, so `make run-86box` is
+    broken by default
+
+The reach is the lesson. A build-target change invalidates prose in
+proportion to how much the old target was WORTH EXPLAINING, and the
+8086 constraint had been worth explaining a lot — every paragraph
+justifying a workaround for it became a paragraph arguing against
+something already done. **After a change to the build target, grep the
+notes for the old target's name.** It is one command, and none of this
+would have survived it.
+
+Two judgement calls worth keeping:
+
+**A wrong default is better flagged than guessed.** `BOX86_MACHINE`
+needs a 386-class 86Box machine id. 86Box is not installed here and the
+configured paths are another machine's, so substituting an id I could
+not verify would trade a documented breakage for an undocumented one.
+It stays `ibmxt` with nine lines saying why, in both the Makefile and
+the README.
+
+**The report's count does not go down, and should not.** All 59
+identifiers were still reported afterwards, because the fix was to keep
+the history and put it in the past tense — which is what this repo
+wants. `notes_symbols.py` measures citations, not rot. Judging it by
+whether the number falls would push toward deleting the record.

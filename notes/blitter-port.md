@@ -61,10 +61,19 @@ render_brick_flash    -> brick-destroyed flash (mid-game only)
 buff_to_vga           -> final scr/attr → VGA
 ```
 
-The VGA expansion path stays 8086-compatible. It precomputes
-`attr&$7F` + 4-bit pixel nibbles into 8 KiB of word pairs, then emits
-each Spectrum byte as four `stosw` writes in mode 13h. This keeps FLASH
-ignored as before and avoids 386-only dword copies.
+The VGA expansion path precomputes `attr&$7F` + 4-bit pixel nibbles
+into a table and emits each Spectrum byte as **two aligned 32-bit
+stores** in mode 13h (`vga_attr_nibble_dwords`, four pixels per entry).
+FLASH stays ignored, as before.
+
+Until 2026-08-10 this paragraph said the path "stays 8086-compatible",
+emitted "four `stosw` writes", and "avoids 386-only dword copies" — the
+exact opposite of the code, in three clauses. It was true until
+`c52f3a2` (2026-08-07) made 386 the only target and replaced the four
+inline-asm blit bodies with the two plain-C dword stores. A paragraph
+that carefully justifies a constraint the build has dropped is worse
+than one that says nothing: it reads as a reason not to do the thing
+already done.
 
 `paint_frame_to_buff` runs BEFORE sprites so they OR-blit cleanly over
 the frame. Bat + enemy cells force `bg_attr` via
