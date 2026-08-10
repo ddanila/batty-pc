@@ -1,55 +1,27 @@
 # Gameplay parity status
 
-> **UPDATE (2026-06-17) — "complete" was overconfident; coverage broadened.**
-> Manual play later surfaced two *real* parity bugs the gate suite missed
-> (known-bugs.md): #6 the ball tunnelling through bricks (an INVERTED LAFFC
-> boundary-face mask — the open-face test was negated vs the disasm, so a
-> ball into a field-edge metal brick did a no-op bounce and fell through),
-> and #7 the flying enemy recolouring its cells to bg_attr (the original
-> blits sprite pixels only, never `print_sprite_attrib`, so a sprite shows
-> ZX colour-clash in the underlying brick/bg attr). Both fixed. The lesson:
-> the deep frame-step oracle was **L3-only**, so non-L3 dynamics + sustained
-> play were blind spots. Coverage has since broadened well past the
-> 2026-06-05 state:
->  - byte-exact ball/collision now also gated on **L5** (an edge-metal
->    level), oracle-confirmed (`test-laffc-ball-l5-metal`); the poke-`$B7EA`
->    +`$BA24` recipe generalizes the oracle to any level;
->  - oracle-free invariant classes: ball-never-tunnels-a-brick (all levels x
->    approaches x speeds, incl. extra-ball + magnet paths), ball-never-
->    escapes-the-field, and all-moving-sprite attr non-corruption;
->  - a long-run multi-level gameplay **soak** (`test-gameplay-soak`);
->  - a deterministic frame-completion harness (COM1 `BATTY_SERIAL_PROBE`
->    marker + `WAITSERIAL`) replacing the wall-clock frame waits, making the
->    gates frame-exact at any emulation speed and unlocking a **parallel
->    suite** (`make parity-check-parallel`, ~5x) + a CI build/source gate.
-> So read the milestone below as "core mechanics byte-exact on L3" — strong
-> and true, but not the whole story; see known-bugs.md (resolved) and the
-> refreshed remaining list in parity-gaps.md.
+Core gameplay is byte-exact against the Spectrum and regression-locked:
+ball, bat, LAFFC collision, LAB1F deflection, launch, catch, multi-ball,
+falling objects, sparks, laser and blasts, bombs, the bonus economy and
+all effects, scoring, ball speed-up and SLOW, the per-frame RNG model,
+the enemy (motion / steering / bombs / every sprite animation), and the
+rocket-clear.
 
-> **MILESTONE — PARITY COMPLETE (2026-06-05).** Gameplay frame-parity with
-> the Spectrum original is achieved and regression-locked: ball, bat,
-> collision (LAFFC), deflection (LAB1F), launch, catch, multi-ball, falling
-> objects, sparks, laser (+ blasts), bombs, bonus economy + all effects +
-> scoring, ball speed-up + SLOW, the per-frame RNG model, the fully
-> byte-exact enemy (motion / steering / bomb / all sprite animations), and
-> the rocket-clear (fly-over-intact + sequential tally) — all byte-exact or
-> fixed, behind 8 regression gates. The L3 frame-step diff is down to 4 px
-> (~0.017% of the ROI, from 188 px). The only residuals are NOT byte-exactly
-> achievable: that 4 px brick-edge ink nuance (a captured-asset edge value)
-> and cycle-exact sound (PIT square waves vs the Spectrum beeper — out of
-> the visual scope). See the "Bottom line" at the end for the full record.
+The byte-exact frame-step oracle covers **L3 and L5**; the
+poke-`$B7EA`+`$BA24` recipe generalises it to any level. Beyond it,
+oracle-free invariants cover every level: ball-never-tunnels-a-brick
+(all approaches and speeds, including the extra-ball and magnet paths),
+ball-never-escapes-the-field, moving-sprite attr non-corruption, and a
+multi-level soak.
 
-Definitive snapshot of where "100% visual frame parity in gameplay with
-the original" stands, and exactly what's left. See `replay-harness.md`
-and `laffc-decode.md` for the detailed trail.
+Two residuals are not byte-exactly achievable and are accepted: a 4 px
+brick-edge ink nuance in the L3 frame-step diff, and cycle-exact sound.
+Open items live in `notes/parity-gaps.md`.
 
-> **NOTE (2026-06-04).** An earlier draft claimed byte-exact collision
-> while it was actually only correct at frame 1 (it diverged at frame 5
-> on a missed side bounce). That has since been **fixed** by porting the
-> `LAFFC_5-6` down/down-right straddle (see laffc-decode.md Updates 13-15).
-> The ball is now byte-exact vs the Spectrum at L3 frames 1/5/10/20/40 —
-> the full 40-frame trajectory, dozens of bounces — gated by
-> `make test-laffc-ball-frame1`. The "Done" section below is now accurate.
+*Read "byte-exact" as scoped to what the oracles cover. It was once
+written as unqualified "PARITY COMPLETE", and manual play then found two
+real bugs the suite had missed — the oracle was L3-only, so non-L3
+dynamics and sustained play were blind spots.*
 
 ## Done and verified (byte-exact vs the Spectrum)
 
@@ -316,315 +288,20 @@ and `laffc-decode.md` for the detailed trail.
 - **Safety** — the `BATTY_LAFFC` path falls back to `brick_collision`
   when LAFFC reports no hit, so it can never pass a brick through.
 
-## Remaining (each needs a decision or new data — not blocked on more analysis)
+## Remaining
 
 1. **Cosmetic: brick-hit render.** The only frame-by-frame residual on
-   the L3 gate is the just-hit brick's render. Now measured + decomposed
-   (see `notes/metal-shimmer.md`): `make capture-timeline-both` is **0 px
-   at frame 0** (aligned start, whole brick band exact) and ~188 px at
-   frames 1/3/5, confined to the freshly-hit cells. Pixel analysis shows
-   a MIX: metal-shimmer frame phase on undestructible cells (white<->cyan
-   swap; the frame->sprite mapping is verified correct, so it's a 1-frame
-   phase/order offset) PLUS damaged-brick/background render detail on
-   destructible cells (the port lacks ~14 black "crack" px per cell). The
-   metal shimmer was changed to loop permanently — WRONG, the original
-   plays ONE ~15-tick pass per hit and stops (`(c+1)&$0F` wrap to 0 =
-   slot free); see metal-shimmer.md CORRECTION 2026-06-11 and
-   known-bugs.md #3. Closing the rest is several per-cell cosmetic render
-   details, not one bug — deep work with diminishing returns; no gameplay
-   effect.
+   the L3 gate is the just-hit brick's render, and it is a MIX rather
+   than one bug: a 1-frame metal-shimmer phase offset on undestructible
+   cells, plus damaged-brick render detail on destructible ones (the
+   port lacks ~14 black "crack" px per cell). Decomposed in
+   `notes/metal-shimmer.md`. Several per-cell cosmetic details with no
+   gameplay effect — diminishing returns.
 
-2. **Flip the default to `BATTY_LAFFC`.** Highest gameplay value (the
-   shipping game's collision becomes byte-exact). The pass-through risk
-   is gone (fallback). The remaining risk is a *wrong* LAFFC bounce on a
-   layout whose edge case L3 never exercised. `brick_collision`
-   comparison can't prove this either way (it's an approximation), and a
-   static-bat brick-count sweep is only a liveness smoke test
-   (`make test-laffc-levels-sane`, which L1 passes — the earlier "L1
-   bug" was a false positive, see `laffc-decode.md` Update 12). **The
-   blocker is data:** validating LAFFC on a non-L3 level needs an
-   original-side snapshot + frame-step gate for that level, like the L3
-   `20260513T202101Z.sna`. Only L3 exists today.
-
-3. **Capture more original snapshots.** Unblocks (2) and any further
-   per-level / multi-ball / SMASH parity work. Needs the RE capture
-   tooling (`make snapshot` / `scripts/*` against ZEsarUX) plus a port-
-   side aligned-seed recipe per scenario (as `replay-l3-brick-flash`
-   does for L3). This is the substantive next investment.
-
-## UPDATE (2026-06-04): scenario construction IS viable by *repositioning*
-
-The "not viable" conclusion below was too strong. The key distinction:
-poking a **placeholder** ball (raw snapshot, x=2/y=2) hangs, but
-**repositioning an already-coherent ball** (the `l3-brick-flash`
-descriptor) stays coherent. Moving that ball just above the bat (y=0x96,
-downward dir) drops it onto the bat and the original computes the
-deflection — no hang, no new snapshot. This unblocked the **bat
-deflection** decode + ground-truth capture (see `notes/bat-deflection.md`
-and `scripts/capture_bat_deflection.py`). The same technique should
-extend to other descending-ball scenarios. The text below stands only for
-*placeholder* pokes.
-
-## "Construct scenarios from the existing snapshot" — investigated, not viable
-
-To validate the next items (bat deflection, etc.) I tried building new
-test states by re-poking the ball in the L3 snapshot. Findings (2026-06-04):
-
-- The **raw** L3 snapshot (`20260513T202101Z`) has no usable ball — all
-  three ball objects read placeholder `(x=2,y=2)`. The only coherent ball
-  state is the carefully-built 22-byte `l3-brick-flash` `$9AD0` poke.
-- Modifying that poke by even 3 bytes (x/y/dir, to drop the ball onto the
-  bat) makes the original **hang** in an interrupt-disabled loop — the
-  object state is no longer coherent.
-
-So validation scenarios **cannot** be synthesized cheaply from the
-existing snapshot. New scenarios (ball-onto-bat, multi-ball, other
-levels) require either a **real captured snapshot** at that moment or a
-fully coherent hand-built 22-byte descriptor — i.e. driving the original
-(ZRCP input) into the desired state and dumping RAM. That capture +
-port-seed-alignment pipeline is the substantive unblock for all remaining
-items, and is a deliberate project to greenlight, not an autonomous step.
-
-## Full regression suite — verified green
-
-`make parity-check` (re-run after all the RNG-model / enemy-steering /
-metal-shimmer-loop / bat-deflection / MAGNET-catch / resting-position
-work) is **all green**:
-
-- `make test` — 5/5 visual states pixel-identical + both lints.
-- `make test-laffc-ball-frame1` — byte-exact vs the Spectrum at frames
-  1/5/40/100/150.
-- `make test-bat-deflection` — 14/14 cases (13 dir/position + the MAGNET
-  catch rest position).
-- `make test-enemy-descend` — enemy y<8 slide (x/y/dir held), GT-validated.
-- `make test-rng-walk` — byte-exact `random_number` walk f1/f2/f4 from the
-  L3 f0 seed (per-frame tick).
-- `make test-enemy-steer` — RNG-dependent steering (dir 0x11→0x12→0x13,
-  y exact, x ±1 for the boot-phase jitter), GT-validated.
-
-`parity-check` runs those six — the **fast routine core** (byte-exact
-gameplay math), meant to run per-change.
-
-### Coverage tiers (2026-06-05): `parity-check` vs `parity-check-full`
-
-A test-coverage audit found ~15 feature/render gates that EXISTED but were
-not in any aggregate — so a `parity-check` run silently skipped them,
-including the **rocket-clear tally** (this session's Change B), death
-sparks, the brick-flash render, the midgame brick replay, ball launch, the
-multi-level LAFFC sweep, and the dirty-redraw correctness guards. They are
-now wired into a new **`parity-check-full`** aggregate (= the fast core +
-all of them). Use the fast core per-change; run `parity-check-full` before
-milestones / merges.
-
-`parity-check-full` adds: `test-normal-ball-launch`, `test-laffc-levels-
-sane`, `test-hud`, `test-round-banner-border`, `test-brick-flash`,
-`test-death-sparks`, `test-rocket-bonus`, `test-rocket-completion-no-ball`,
-`test-rocket-flight-redraw`, `test-midgame-brick-replay`, `test-ball-dirty-
-redraw`, `test-ball-object-dirty-redraw`, `test-bat-redraw-window`,
-`test-ball-left-wall-escape`, `test-l3-replay-seed`.
-
-The two gates the destroyed-cell shadow fix could plausibly touch were
-re-verified green this pass: `test-brick-flash` (brick band changed 234 px,
-no stale flash vs the L3 reference) and `test-midgame-brick-replay`
-(bricks=18, `bonus_state=00…` — the seed fix held, no spurious bonus). So
-the full achieved parity is intact and guarded; none of the recent work
-regressed the byte-exact ball, bat, visual, enemy, or RNG gates, and the
-previously-unguarded feature gates are now routinely runnable.
-
-**Newly gated (2026-06-05): falling-object motion.** `test-bonus-fall`
-(in `parity-check-full`) bakes a fresh falling bonus via a new
-`BATTY_REPLAY_BONUS=type,x,y` hook (ball hidden, no-ball-death suppressed,
-bonus clear of the bat) and asserts `bonus_y` follows the
-`motion_accel_step(&bonus_motion, 0x0008, 0x02)` accel progression —
-independently hand-computed checkpoints y=46/65/97 at f20/40/60 from y0=40.
-Port-only (no ZEsarUX), RNG-independent; guards the 0x08/0x02 fall
-constants + the 8.8 accumulator math. Matched the port exactly (no jitter
-slack needed in practice). This also unlocks future bonus-catch / effect
-gates (the bake hook is reusable).
-
-**Enemy bomb fall also gated (2026-06-05).** `test-bomb-fall` (in
-`parity-check-full`) mirrors the bonus-fall gate via a new
-`BATTY_REPLAY_BOMB=x,y` hook + a `bomb_state` probe line (bomb_y was not
-previously exposed). The bomb shares the bonus's accel call —
-`motion_accel_step(&bomb_motion, 0x0008, 0x02)` in step_bomb — so it
-guards the bomb's OWN 0x08/0x02 call site (bomb dodgeability) independently
-of the bonus gate. Same hand-computed checkpoints (y=46/65/97 at f20/40/60),
-matched exactly.
-
-**+400 popup motion also gated (2026-06-05).** `test-pts400-fall` (in
-`parity-check-full`) bakes the +400 catch popup via `BATTY_REPLAY_PTS400=x,y`
-(dx zeroed) + a `pts400_state` probe line, and asserts pts_400_y follows
-`motion_accel_step(&pts_400_motion, 0x0028, 0x80)` — a DIFFERENT accel
-constant pair (de=0x28 is 5× the bonus rate, cap 0x80), so it covers a
-faster-grow accumulator path the bonus/bomb gates don't reach. Checkpoints
-y=48/72/112 at f10/20/30, matched exactly. The three falling-object gates
-(`bonus-fall`, `bomb-fall`, `pts400-fall`) now cover both
-`motion_accel_step` constant pairs in use.
-
-**Laser bullet flight also gated (2026-06-05).** `test-bullet-fly` (in
-`parity-check-full`) bakes an in-flight bullet via `BATTY_REPLAY_BULLET=x,y`
-+ a `bullet_state` probe line and asserts it rises at the constant
-`BULLET_SPEED` (6 px/frame, `step_bullet_one`) — y=158/146/134 at f2/4/6
-from y0=170, in the window below the brick field so it travels without
-blasting. Matched exactly (the baked/hidden-ball scenario is frame-
-deterministic even for linear motion, despite the bullet moving 6 px from
-frame 1). Guards bullet travel speed; the laser FIRE CADENCE (cooldown)
-stays ungated because it needs held-fire input the capture harness can't
-drive.
-
-**Laser FIRE cadence also gated (2026-06-05).** `test-laser-cadence` (in
-`parity-check-full`) verifies the held-fire shot period. The fire path was
-extracted into `try_fire_laser()` and a `BATTY_AUTO_FIRE` test hook calls
-it every frame (simulating held SPACE — which the capture harness can't
-drive via keyboard), with a `probe.shots_fired` counter in a new
-`laser_fire_state` probe line. With the bat baked into LASER mode
-(bonus_applied=0x01) it asserts shots 1/1/2 at f1/12/13 — the 12-frame
-cadence from the 0x18 cooldown reset (a regression to 0x16 fires shot 2 at
-f12, which the gate catches). The 0x18 fix is now regression-locked.
-
-**Enemy wing-flap animation also gated (2026-06-05).** `test-enemy-anim`
-(in `parity-check-full`) closes what earlier notes called the
-sprite-animation "jitter wall" — that jitter came from the MOVING ball in
-the enemy steer/descend gates, not the enemy. With the ball HIDDEN the
-enemy is fully frame-deterministic (its x is exact, not ±1), so the
-`handling_bird_obj` ping-pong is gateable: `sprite_num` advances (+1)&7
-every 4 frames once the y<8 entry slide ends. Asserts sprite_num 0/1/2/3/4
-at f8/12/16/20/24 (mid-plateau probe points). No src change needed —
-sprite_num is already in the `object_enemy` probe.
-
-**Bonus-drop economy also gated (2026-06-05).** `test-bonus-drop` (in
-`parity-check-full`) gates the 5/16 drop rate: when a brick is destroyed
-the original drops a bonus iff `(random_number_hi & 0x0F) < 5`. A
-`BATTY_FORCE_SPAWN_BONUS` hook calls `try_spawn_bonus()` once at level entry
-with a freshly-baked RNG (no frames elapsed, so the per-frame tick is
-out of the picture); with rng_perframe ON, `random_d` (the hi byte of
-`BATTY_REPLAY_RANDOM`) directly decides the drop. Tests the threshold
-boundary exactly — d&0x0F = 0/4 → drop, 5/15 → no drop — with the expected
-computed FROM THE DOCUMENTED RULE in the test (not the C code), so it
-validates the port implements 5/16 rather than just pinning current
-behaviour. This was the "harder, needs an RNG-seeded scenario" item — done
-deterministically without ZEsarUX GT by isolating the decision via the
-force-spawn hook.
-
-**Bonus catch->effect also gated (2026-06-05).** `test-bonus-effects` (in
-`parity-check-full`) bakes a bonus of a given PORT type just above the bat
-(reusing the `BATTY_REPLAY_BONUS` hook), lets it be caught on f1, and
-asserts `object_bat_1.bonus_applied` equals the DOCUMENTED original code
-(0x00 BIG_BAT, 0x01 LASER, 0x03 MAGNET, 0x09 KILL_ALIENS — hardcoded, not
-read from the C `bonus_to_original`, so a wrong mapping is caught). Only
-codes differing from the 0xFF entry value are used, so the catch is
-unambiguous. Composes with `test-laser-cadence` (which bakes
-bonus_applied=0x01 directly): catch LASER -> 0x01 -> fires.
-
-**Bonus ACTUAL effects also gated (2026-06-05).** `test-bonus-effects2`
-(in `parity-check-full`) checks the visible gameplay effect each catch
-produces (beyond the bonus_applied flag), via a new `effects_state` probe
-line: MULTI_BALL spawns ball2+ball3, BIG_BAT sets the widen target to 8,
-BIG_BALL arms its timer, LIFE bumps lives 3->4. Bakes each bonus to be
-caught on f1; asserts against the documented effect constants. Deterministic
-+ non-circular.
-
-**Bonus TYPE-pick also gated (2026-06-05).** `test-bonus-typepick` (in
-`parity-check-full`) closes the last bonus-system piece — non-circularly,
-without ZEsarUX GT. Forcing a drop across 8 seeds (varying the seed to vary
-the pick), it validates the pick LOGIC via properties that must hold from
-the documented rules: every drop resolves to a VALID supported type, NEVER
-SLOW (port 1 — excluded at base ball speed; a regression removing that
-exclusion would surface SLOW), and the table is non-degenerate (4 distinct
-types {0,2,8,9} appear). Plus a golden per-seed pin catching any RNG/table
-regression (the RNG itself is independently gated by `test-rng-walk`, so a
-golden change isolates to the table/exclusions). The full
-reimplement-the-RNG-walk approach was avoided as circular; the
-property+pin approach gives the validation without it.
-
-**Now fully gated — the bonus system end-to-end:** drop DECISION (5/16) ->
-TYPE pick (logic + table + exclusions) -> catch->bonus_applied code ->
-catch->actual effect. Plus the whole laser path, all per-frame motion, and
-the enemy animation.
-
-**Bullet-blast animation also gated (2026-06-05).** `test-bullet-blast`
-(in `parity-check-full`) bakes a bullet-impact blast (`BATTY_REPLAY_BLAST`)
-+ a `blast_state` probe line and asserts the 8-tick countdown at 2
-ticks/frame (derived frame 3/2/1/0 at f1/3/5/7) — the last visible
-per-frame animation. With this every per-frame animation in the game is
-gated.
-
-**Per-row brick scoring also gated (2026-06-05).** `test-brick-scoring`
-(in `parity-check-full`) plants a known single-hit brick via a new
-`BATTY_FORCE_BRICK=col,row,value` hook and bakes a bullet just below it
-(BATTY_REPLAY_BULLET) so it rises into that exact cell on f1, destroying it.
-score starts at 0 on fresh L3 entry, so the probed score = the award.
-Asserts `points_table[row]` per row (120/70/10 at rows 0/5/11) and the x2
-metal-colour bonus (row 3 colour 6 -> 90*2 = 180), computed from the
-documented table — not the C scoring code.
-
-**Ball speed-up ramp also gated (2026-06-05).** `test-ball-speed-ramp`
-(in `parity-check-full`) — the earlier "too slow to frame-step" claim was
-wrong: a new `BATTY_REPLAY_BALL_RAMP` hook SEEDS the ramp counter near its
-0x94 threshold so the bump fires in a few frames instead of the ~1184-frame
-climb. With a moving ball it asserts the documented mechanic via a
-`speed_ramp_state` probe: seed 0x93 -> speed bumps 3->4, seed 0x00 -> no
-bump (control), seed 0x93 at speed 6 -> stays 6 (cap). The bump fires within
-8 frames so the probed speed is jitter-immune.
-
-**Coverage COMPLETE.** Every gameplay mechanic now has a standing gate: the
-full per-frame engine (ball/bat/collision/deflection/RNG/enemy motion+steer),
-all animations (enemy wing-flap, bullet-blast), the laser path end-to-end
-(catch->arm->flight->cadence), the bonus economy end-to-end (drop->type->
-flag->effect), per-row scoring + x2 colour, and the ball speed ramp. The
-only thing outside the visual-parity scope remains cycle-exact sound (needs
-a beeper backend). Nothing deterministic is left ungated.
-
-## Bottom line (updated 2026-06-05)
-
-The gameplay parity goal is **achieved and regression-locked**. Verified
-byte-exact or faithful + gated:
-- **Ball** motion / `LAFFC` brick collision / `LAB1F` bat deflection (incl.
-  contact timing, MAGNET catch, resting position) / launch / multi-ball.
-- **Falling objects** (bonus/bomb/+400), **death sparks**, **laser** (fire
-  cadence + bullet→brick + blast), **bonus economy + effects + scoring**.
-- **Ball speed-up + SLOW** (the `$02→$06` ramp), and the **per-frame RNG
-  tick** — now the DEFAULT, byte-exact vs the original walk
-  (`make test-rng-walk`).
-- **Enemy** fully byte-exact: motion (`dir_to_dxdy`), steering (`LAA7D` +
-  the correct RNG repick), descend, bomb drop (`bomb_appear`), and sprite
-  animation — the bird (5-sprite ping-pong, sprite_num byte-exact incl.
-  phase), the UFO (6-sprite ping-pong), and the alien blast (10-entry
-  ping-pong at 2 ticks/frame). The `LAA02` "facing mirror" was proven dead
-  code in the original (computed-then-discarded), so there's nothing to
-  port there.
-
-Eight regression gates lock this in (`parity-check` runs six; plus the
-brick/rocket/redraw suite). The major arc this run: byte-order-corrected
-the RNG seed → proved the walk byte-exact → flipped the per-frame tick to
-default → fixed the enemy steering (and caught a spurious bonus-drop the
-flip exposed, fixed by wiring the snapshot seed into the L3 replay).
-
-**Rocket brick-clear — DONE (2026-06-05):** the rocket now flies over
-INTACT bricks (Change A: removed the tunnel sweep, matching the
-destruction-free `LBB97`) and ticks the remaining bricks' points up
-SEQUENTIALLY at fly-off with the bricks on screen (Change B:
-`play_rocket_award_tally`, a port of `add_points_for_left_briks`), then
-clears them to advance — matching the original (was a tunnel-carve +
-instant clear). Verified by the rocket test suite. The per-brick pace is
-1/PIT-tick (the original's `pause_short` busy-wait is Z80-clock-bound and
-not byte-reproducible); everything else matches.
-
-**Frame-step residual — pixel-chased 188px → 4px (2026-06-05, ~98%).**
-The `capture-timeline-both` L3 residual is now `f0=0 f1=0 f3=4 f5=4 px`
-(ROI, max-diff 0). Two fixes: (a) the corrected L3 seed (3793/962A) killed
-a spurious SLOW-bonus drop → f1 188→0; (b) a conditional destroyed-cell
-left-char shadow (dim the left char iff the left neighbour is a live
-brick, reproducing the inter-brick gap shadow) → f5 85→4. The shimmer
-LOGIC is correct and isn't even exercised at L3 (`briks_data` $B6F4 EMPTY
-at start), and there's no crack-render gap (`print_line_briks` is bit-7-
-only). See `notes/metal-shimmer.md`.
-
-**Remaining — both negligible / out-of-scope (not analysis gaps):**
-1. **Last 4px (frame-step).** A brick-edge ink nuance at brick col 5
-   (palette 15 vs 10, x92–94/x101), 0.017% of the ROI, transient at the
-   destruction moment — almost certainly a captured `level_attrs` edge
-   value. Gameplay correct; extreme diminishing returns.
-2. **Cycle-exact sound.** PC-speaker PIT square waves vs the Spectrum
-   beeper port-`$FE` toggling — needs a sampled/low-level beeper backend
-   (out of the visual-parity scope).
+2. **More original snapshots.** LAFFC is the default and is
+   oracle-verified on L3 and L5 (`test-laffc-ball-frame1`,
+   `test-laffc-ball-l5-metal`). Extending that to further levels, or to
+   multi-ball and SMASH scenarios, needs an original-side snapshot plus
+   a port-side aligned-seed recipe per scenario, the way
+   `replay-l3-brick-flash` does for L3. That is the substantive next
+   investment, and it is a data problem, not an analysis one.

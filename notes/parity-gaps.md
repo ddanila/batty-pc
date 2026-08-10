@@ -299,29 +299,20 @@ divergence: a faithful pass would drop the two extra lines and use
 ($60,$4F) / ($60,$67). `test-game-over-visual` pins the current bands,
 so that pass will have to move them on purpose.
 
-### Sound envelopes are approximate
+### Sound durations quantise to 20 ms
 
-Most queued sound effects follow the original sound IDs and rough
-periods, but the PC speaker layer is not a cycle-exact Spectrum beeper
-port. The original toggles port `$FE` in tight loops; the DOS port uses
-PIT channel 2 square waves and frame-paced queue updates. Envelope
-shape can be matched, but exact timbre/duty/timing would need a
-sampled audio backend or a much lower-level beeper emulator.
+The effect ids, slot count, pitches and envelope ARITHMETIC are faithful
+(`test-sound-ids`); what remains is that the sound clock is the 50 Hz
+frame counter, so every duration rounds to a frame. Closing it is a
+design call between blocking like the original and keeping the PIT
+latch — PLAN.md WS5, decode in `notes/sound.md`. Cycle-exact timbre
+stays a non-goal.
 
-## Render implementation shortcuts
+### Render implementation shortcuts — CLOSED (2026-08-10)
 
-### Frame ornament is captured
-
-`assets/frame_l1.bin` is a captured 4-cycle frame blob. It currently
-matches the GT for the covered cycles, but the original builds the
-frame from border sprite primitives at runtime. See `notes/shortcuts.md`.
-
-### Level attribute bands are captured
-
-`assets/level_attrs.bin` ships captured per-level attr bands. Brick
-body attrs are now written dynamically by the port, but non-brick
-cells in the brick band, frame-strip attrs, and pre-dimmed shadow attrs
-still come from captured data.
+Both entries here (`assets/frame_l1.bin` and `assets/level_attrs.bin`
+shipping captured bytes) are gone: WS7 made every loaded asset derive
+from the tape at build time, held by `test-asset-provenance`.
 
 ## Test coverage gaps
 
@@ -349,18 +340,11 @@ on the death (`test-life-loss`) and the respawn that follows it
 `test-level-advance`, which uses `BATTY_REPLAY_CLEAR_BRICKS` to empty
 the grid at entry.
 
-`test-life-respawn` is new on 2026-08-10 and this paragraph overstated
-things until it existed. Life-loss was called covered on the strength of
-`test-life-loss`, which counts life INDICATORS — it proves a life was
-taken and says nothing about what the player gets back, so
-`respawn_primary_ball`'s eleven resets were unpinned the whole time. A
-transition has two halves and only one of them was being counted.
+A transition has two halves: `test-life-loss` counts life INDICATORS and
+proves one was taken; `test-life-respawn` pins the eleven resets the
+player gets back.
 
 The byte-exact frame-step oracle is built for L3 and L5; the
 poke-`$B7EA`+`$BA24` recipe generalizes it to any level when more are
 wanted.
 
-(This paragraph had been edited in place three times and by 2026-08-09
-read "...now have end-to-end coverage. and the byte-exact frame-step
-oracle is built..." — a sentence spliced onto the end of another one.
-Rewritten rather than patched again.)

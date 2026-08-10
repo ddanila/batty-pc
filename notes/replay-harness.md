@@ -298,7 +298,7 @@ required equality. Two plausible paths for the capture timing remain:
   gate "FAILs" at `--max-diff 0` by design — that number IS the parity
   signal to drive to zero by porting the exact ball motion. The
   milestone (a frame-exact port-vs-original gameplay gate with a 0 px
-  aligned start) is reached. See `notes/seeded-l3-entry-triage.md`.
+  aligned start) is reached.
 
   **Gate cleaned to isolate ball/brick collision (2026-06-04).** The
   residual had two x-clusters: the ball (x≈108, from the seed's

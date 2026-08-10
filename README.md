@@ -1,6 +1,6 @@
 # batty-pc
 
-MS-DOS re-creation of **Batty** (Elite Software / Hit-Pak, 1987,
+DOS re-creation of **Batty** (Elite Software / Hit-Pak, 1987,
 ZX Spectrum 48K). VGA mode 13h (320×200×256), 1:1 pixel-faithful inside
 the 256×192 playfield, border around it. Built with Open Watcom v2,
 boots in QEMU.
@@ -12,8 +12,9 @@ The flat memory model means no segmentation and no 64 KB limits — see
 
 ## Status
 
-The game is playable end-to-end: title → menu → hi-score teaser →
-all 15 levels → game-over → 3-letter initials entry → back to title.
+Playable end-to-end in all three modes — 1 Player, 2 Players and
+Double Play: title → menu → hi-score teaser → all 15 levels →
+game-over → 3-letter initials entry → back to title.
 `make test` headlessly diffs five checkpoints against ZX GT snapshots:
 
 ```
@@ -43,25 +44,7 @@ collision.
 `BATTY_LEVEL=N` (N = 1..15) re-runs `state4` against
 `build/level_gt/level_NN.scr`. **All 15 levels are pixel-perfect**.
 
-| Level | Diff | What's left                                         |
-|-------|------|-----------------------------------------------------|
-| L1    | **0**  | PASS                                              |
-| L2    | **0**  | PASS                                              |
-| L3    | **0**  | PASS                                              |
-| L4    | **0**  | PASS                                              |
-| L5    | **0**  | PASS                                              |
-| L6    | **0**  | PASS                                              |
-| L7    | **0**  | PASS                                              |
-| L8    | **0**  | PASS                                              |
-| L9    | **0**  | PASS                                              |
-| L10   | **0**  | PASS                                              |
-| L11   | **0**  | PASS                                              |
-| L12   | **0**  | PASS                                             |
-| L13   | **0**  | PASS                                              |
-| L14   | **0**  | PASS                                              |
-| L15   | **0**  | PASS                                              |
-
-The resolved parity history is documented in
+All fifteen diff to zero. The history of getting there is in
 [`notes/per-level-profile.md`](notes/per-level-profile.md).
 
 | Stage                                       | State |
@@ -91,8 +74,8 @@ The resolved parity history is documented in
 | Real `handling_ball` 64-direction q8.8 motion | ✓ exact `dir_to_dxdy` (LAD69 X/Y cross + fraction); byte-exact vs Spectrum (probed) |
 | `LAFFC` brick collision (cell / axis / position) | ✓ **default** (primary ball); byte-exact vs Spectrum over L3's 150-frame trajectory, `make test-laffc-ball-frame1`; `BATTY_LEGACY_COLLISION=1` reverts to `brick_collision` (`notes/laffc-decode.md`) |
 | Brick-hit shimmer frame-exactness            | open — collision is byte-exact; the cyan hit-shimmer pixel pattern still differs (cosmetic, shared by both collision paths) |
-| 2-player mode (`game_mode == 2`)             | open — selectable from menu, not wired into run loop |
-| Frame ornament from `spr_bord_*` primitives  | open — currently bundles a captured `frame_l1.bin` |
+| 2 Players (alternating) and Double Play      | ✓ both complete — turn hand-over, split court, per-bat bonuses, side-attributed scoring |
+| Frame ornament from `spr_bord_*` primitives  | ✓ generated from tape sprites; every loaded asset derives from the tape (`test-asset-provenance`) |
 
 ## Quick build / run
 
@@ -122,12 +105,11 @@ roughly a 386DX-40 if you want period-representative timing.
 `build/86box/`. It uses 86Box's `vga` video card and mounts
 `build/batty.img` as drive A:.
 
-**`BOX86_MACHINE` still defaults to `ibmxt` and that default is wrong.**
-The build has been 386-only 32-bit protected mode (DOS32A) since
-2026-08-07, so an 8086 machine profile cannot run `batty.exe`. Pass a
-386-class machine id from your own 86Box (`86Box --help` lists them);
-the default was left visibly stale rather than replaced with an id
-nobody here can verify. ROMs are expected at
+**`BOX86_MACHINE` defaults to `ibmxt`, which cannot run this build** —
+it has been 386-only protected mode since 2026-08-07. Pass a 386-class
+machine id from your own 86Box (`86Box --help` lists them); the default
+is left visibly wrong rather than replaced with an id nobody here can
+verify. ROMs are expected at
 `/home/ddanila/fun/86Box-roms` from the upstream 86Box ROM checkout.
 Override `BOX86_BIN`, `BOX86_ROMPATH`, `BOX86_MACHINE`,
 `BOX86_GFXCARD`, or `BOX86_FDD_TYPE` when testing another local

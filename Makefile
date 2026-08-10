@@ -278,12 +278,8 @@ assets/bg_tile.bin: original/blocks/03_DATA_headless.dat.bin scripts/extract_bg_
 # `python3 scripts/extract_frame.py assets/frame_l1.bin` reproduced the
 # committed file byte for byte on 2026-08-09.
 #
-# This note used to say regeneration was impossible — the frame needed a
-# GT captured with the L6853 lives-skip patch while the test GT needs
-# lives present, "two contradictory requirements". That stopped being
-# true when FRAME_SIDE_W narrowed to 1: the side strip is now the
-# ornament column alone, which the lives indicators never reach. See
-# notes/state4-bat-band-triage.md for the original problem.
+# Regeneration works because FRAME_SIDE_W is 1: the side strip is the
+# ornament column alone, which the lives indicators never reach.
 
 # Sprite block extracted verbatim from the original game's program at
 # $7A8C..$8D46 (offset $128c..$2546 within 03_DATA_headless.dat.bin,
