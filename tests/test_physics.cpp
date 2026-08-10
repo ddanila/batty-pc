@@ -383,6 +383,41 @@ static void field_destroy(int row, int col) {
     field_cells[row * FIELD_COLS + col] = 0x80;
 }
 
+/* A ball whose x sits exactly on a column edge is in the HIGHER column.
+ *
+ *     LAFFC_4: SUB B / JR C,LAFFC_5 / INC IY / C += B / ...
+ *
+ * `SUB $10` on exactly $10 leaves 0 with no borrow, so `JR C` does not
+ * fire and the walk advances — the port's
+ * `while (a >= BRICK_W_PX && ...)`. With `>` the ball stays in the
+ * lower column and reports a cell 16 px to its left.
+ *
+ * Very reachable: the columns start at FIELD_X0 = $08 and step 16, so
+ * every x of 24, 40, 56 ... is a boundary, and the ball moves in 2 px
+ * steps. It still survived the whole host suite. */
+static void test_laffc_column_edge_takes_higher() {
+    const int before = failures;
+    field_fill(true);
+    const BrickField field(field_cells);
+    const int y = FIELD_Y0 + 4;
+    int wrong = 0;
+
+    for (int col = 1; col < FIELD_COLS; col++) {
+        const int edge = FIELD_X0 + col * BRICK_W_PX;
+        const LaffcHit h = laffc_sweep(field, 0x08, 8, 7, edge, y);
+        if (!h.hit || h.cell_x != edge || h.col != col) {
+            wrong++;
+            check(false, "x=%d is column %d's left edge: got hit=%d col=%d "
+                         "cell_x=%d\n",
+                  edge, col, (int)h.hit, h.col, h.cell_x);
+        }
+    }
+    if (wrong == 0)
+        report("laffc_column_edge_higher", before, "14 column edges      ok");
+    else
+        report("laffc_column_edge_higher", before, "");
+}
+
 /* A bat offset exactly ON a zone boundary belongs to the zone ABOVE it.
  *
  *     LAB1F_6: CP (HL) / JR C,LAB1F_7 / INC HL / INC HL / JR LAB1F_6
@@ -1113,6 +1148,7 @@ int main() {
     test_motion_accel_fraction_carries();
     test_motion_accel_fast_variant_caps();
     test_motion_accel_clamp_is_equality_not_ge();
+    test_laffc_column_edge_takes_higher();
     test_bat_zone_boundary_belongs_above();
     test_laffc_row_scan_edge_is_one_brick();
     test_laffc_dir_gate_is_ge_at_vertical();

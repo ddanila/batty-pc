@@ -1290,7 +1290,26 @@ By module: `zxvga.cpp` 15, `physics.cpp` 12, `bricks.cpp` 4,
 that layer is mostly gated by QEMU screendumps rather than host tests —
 and it is precisely why the sprite-blit guards had no host cover.
 
-**Triaged so far (2026-08-10):** 6 of the 35.
+**Triaged so far (2026-08-10):** 10 of the 35, and `physics.cpp` is now
+measured rather than estimated.
+
+Four physics lines went from survivor to covered: the zone walk
+(`bat_zone_boundary_above`), the column walk, and both straddle tests —
+the last two by one test, because a ball on a column edge exercises all
+three.
+
+Re-running the twelve physics lines still standing:
+
+- **3 are dead code.** `delta_to_dir`'s two quadrant tests and its angle
+  test; the function has no production consumer (known-bugs #8).
+- **1 is equivalent by construction.** `bat_court_clamp_2`.
+- **7 are one cluster:** `brick_sweep`'s bounds, its came-from tests and
+  its axis tie (`overlap_y <= overlap_x`). That is the LEGACY
+  rectangle-overlap path, still reached when `laffc_collision` returns
+  0, and not one of its boundaries is covered. The next coherent chunk.
+- **1 is `laffc_sweep`'s bottom-edge face** (`cell_y >= FIELD_Y_LAST`).
+
+That leaves the honest count for physics: 8 open, not 12.
 
 | line | verdict |
 |---|---|
