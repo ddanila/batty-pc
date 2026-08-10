@@ -229,6 +229,50 @@ static void test_blit_stays_in_playfield(void) {
     end("borders intact");
 }
 
+/* blit_masked_sprite clips to the PLAYFIELD, both edges.
+ *
+ * It writes pixel-at-a-time through `vga_at(x, y)`, guarded by
+ * `x >= PLAYFIELD_W` / `y >= PLAYFIELD_H`. Those are exclusive bounds:
+ * `>` instead of `>=` lets a sprite straddling the right edge write one
+ * pixel past the row, which lands on the NEXT row's first pixel — or
+ * past the buffer entirely on the last row.
+ *
+ * The existing bounds test covers `buff_to_vga` and the rect flush, not
+ * this path. An exhaustive mutation sweep of every inclusive comparison
+ * in `src/` (2026-08-10) is what surfaced it: both guards survived the
+ * whole host suite. */
+static void test_sprite_blit_clips_to_playfield(void) {
+    int x, y, escaped = 0;
+    begin("sprite_blit_clips");
+    init_pal_tables();
+
+    /* 2 bytes wide, 4 rows, every mask bit set and every pixel set — so
+     * any unclipped write shows up as a changed byte. */
+    static u8 solid[2 + 2 * 4 * 2];
+    solid[0] = 2; solid[1] = 4;
+    for (unsigned i = 2; i < sizeof(solid); i++) solid[i] = 0xFF;
+    const Sprite spr(solid);
+
+    memset(vga, 0xAA, SCREEN_W * SCREEN_H);
+    /* Straddling each edge in turn, including exactly ON the far bound. */
+    blit_masked_sprite(spr, PLAYFIELD_W - 8, 10, 1, 2);   /* off the right */
+    blit_masked_sprite(spr, PLAYFIELD_W,     20, 1, 2);   /* wholly past   */
+    blit_masked_sprite(spr, -8,              30, 1, 2);   /* off the left  */
+    blit_masked_sprite(spr, 40, PLAYFIELD_H - 2, 1, 2);   /* off the bottom*/
+    blit_masked_sprite(spr, 40, PLAYFIELD_H,     1, 2);   /* wholly below  */
+
+    for (y = 0; y < SCREEN_H; y++)
+        for (x = 0; x < SCREEN_W; x++) {
+            int inside = (x >= BORDER_X && x < BORDER_X + PLAYFIELD_W &&
+                          y >= BORDER_Y && y < BORDER_Y + PLAYFIELD_H);
+            if (!inside && vga[y * SCREEN_W + x] != 0xAA) escaped++;
+        }
+    CHECK(escaped == 0,
+          "blit_masked_sprite wrote %d bytes outside the playfield\n",
+          escaped);
+    end("both edges clipped");
+}
+
 /* ===================================================================== */
 /* 5. Rect flush == full repaint, within the rect                        */
 /* ===================================================================== */
@@ -628,6 +672,7 @@ int main(int argc, char **argv) {
     test_clash_expansion_vs_ula();
     test_flash_bit_ignored();
     test_blit_stays_in_playfield();
+    test_sprite_blit_clips_to_playfield();
     test_rect_flush_equiv_full();
     test_dirty_flush_equiv_full();
     test_dirty_cell_rect_rounding();

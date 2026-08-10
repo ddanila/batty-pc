@@ -1265,8 +1265,41 @@ in every case the port was already right:
 | `enemy_home_step`: `t.x < 0x10` | target x at $0F | `CP $10 / JR NC` clamps it and writes it back |
 | `laffc_sweep`: three, see laffc-decode.md | | |
 
-The shape is worth naming: **`>=` and `>` differ at one value, and a
-test written from a scenario rarely lands on it.** Scenario tests pick
+### The exhaustive sweep, and what a survivor count is worth
+
+Sampling found six real gaps, so the class was worth attacking whole.
+Every unique non-loop `>=` / `<=` in `src/*.cpp` outside `main.cpp` —
+51 of them — mutated to its strict form against `make test-fast`.
+
+**16 caught, 35 survived.** That number is a coverage MEASUREMENT, not a
+bug count, and the difference matters: three triaged immediately were
+equivalent or unreachable —
+
+- `bat_court_clamp_2`'s `bat_x >= 0x80`: both branches return `0x80` at
+  the boundary. Equivalent by construction.
+- `delta_to_dir`'s two quadrant tests: the function has no production
+  consumer at all (known-bugs #8), so nothing it does is reachable.
+
+— while the two `blit_masked_sprite` clipping guards were real, and are
+now covered by `sprite_blit_clips`. `>` there lets a sprite straddling
+the right edge write one pixel past the row, onto the next row's first
+pixel, or past the buffer on the last row.
+
+By module: `zxvga.cpp` 15, `physics.cpp` 12, `bricks.cpp` 4,
+`sound.cpp` 2, `hud.cpp` 2. The `zxvga` concentration is expected —
+that layer is mostly gated by QEMU screendumps rather than host tests —
+and it is precisely why the sprite-blit guards had no host cover.
+
+**The remaining survivors are a triage backlog, not a defect list.**
+Working through them means, per line: decide equivalent-or-real from the
+disassembly, and for real ones build the input from a differential dump.
+That is minutes each, which is why this note records the list's shape
+rather than pretending the sweep finished the job.
+
+### Why boundaries in particular
+
+**`>=` and `>` differ at one value, and a test written from a scenario
+rarely lands on it.** Scenario tests pick
 positions that are interesting to a player; boundaries are interesting
 to a compiler. Mutation is what connects the two, and the disassembly
 is what says which side of the boundary is right — all four had a

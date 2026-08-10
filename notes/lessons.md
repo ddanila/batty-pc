@@ -1019,3 +1019,29 @@ window, where the boundary cannot arise at all.
 The gate proved the symptom is gone on one path. It does not prove the
 condition you wrote is the condition you meant, and the two feel like
 the same evidence when the gate goes green.
+
+## A survivor count is a coverage figure, not a bug count (2026-08-10)
+
+Mutating every unique inclusive comparison in `src/` — 51 of them — gave
+16 caught and 35 survived. "35 untested boundaries" would be a fair
+headline and a misleading one.
+
+The first three triaged were not defects at all:
+
+- `bat_court_clamp_2`'s `bat_x >= 0x80` — both branches return `0x80` at
+  the boundary, so no input can ever tell.
+- `delta_to_dir`'s quadrant tests, twice — the function has no
+  production consumer.
+
+The next two were real, and one of them mattered: `blit_masked_sprite`'s
+clipping guards, where `>` lets a sprite write one pixel past the row.
+
+**So the number tells you where to LOOK, and nothing else.** Reporting it
+as a defect count would have been wrong in three cases out of the first
+five, and reporting only the two real ones would have hidden how much of
+the sweep is still untriaged.
+
+The honest form is the one in notes/testing.md: the count, the method,
+the cases decided so far, and an explicit statement that the rest is a
+backlog. A measurement that gets summarised into a verdict stops being
+a measurement.
