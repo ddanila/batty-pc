@@ -2,15 +2,9 @@
 
 #include "objects.h"
 
-/* The object table's STORAGE lives here, not in main.cpp.
- *
- * objects.h has always declared it extern, but the definition stayed
- * behind when stage 6a extracted the object model — so the module
- * described an array it did not own, and nothing that linked
- * objects.cpp alone could touch it. Found when the replay module's host
- * test failed to link.
- */
-/* Initial values are byte-exact copies of the DEFB blocks at $9AD0+. */
+/* The object table's storage lives here, so a host test can link
+ * objects.cpp without main.cpp. Initial values are byte-exact copies of
+ * the DEFB blocks at $9AD0+. */
 Object objects[N_OBJECTS] = {
     /* OBJ_BALL_1   @ $9AD0 */
     { 0x02,0x00, 0x84,0x00, 0xA0,0x00, 0x38, 0x02,
@@ -79,11 +73,9 @@ void object_reflect(Object &o, bool flip_x, bool flip_y) {
      * mask=$3F for the TOP wall (vertical bounce, negate dy) — the SAME
      * change_direction LAFFC uses for brick faces (laffc_change_dir).
      *
-     * The previous formulas (flip_x: 0x3F-dir, flip_y: 0x1F-dir) had the
-     * axes SWAPPED and were off by one: a ball hitting a side wall kept its
-     * dx pointing into the wall (e.g. dir 0x20 = (-255,0) -> 0x3F-0x20 =
-     * 0x1F = (-253,+24), still moving left), so it pinned at x=8 / x=240 and
-     * juggled its dy forever. Now matched to change_direction. */
+     * Swapping the two masks leaves a ball hitting a side wall with its
+     * dx still pointing into it (dir 0x20 = (-255,0) would become 0x1F =
+     * (-253,+24), still moving left), pinned at x=8 juggling its dy. */
     if (flip_x) dir = u8(((dir ^ 0x1F) + 1) & 0x3F);
     if (flip_y) dir = u8(((dir ^ 0x3F) + 1) & 0x3F);
     o.dir = dir;

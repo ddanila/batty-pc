@@ -81,10 +81,9 @@ void print_one_brik(unsigned int hl, unsigned char iy_byte) {
     }
 
     /* Color attr: 1-indexed lookup, write to both char cells the brick
-     * spans. Mirror of LAE82_4 ($AE9C): straight briks_colors lookup
-     * by low nibble, no per-state dimming. Earlier port dimmed
-     * multi-hit bricks after their first hit as a UX cue but the
-     * original draws them with their fresh colour throughout. */
+     * spans. Mirror of LAE82_4 ($AE9C): a straight briks_colors lookup by
+     * low nibble with NO per-state dimming — the original draws a
+     * multi-hit brick in its fresh colour even after its first hit. */
     attr = briks_colors[iy_byte & 0x0F];
     attr_buff[attr_off]     = attr;
     attr_buff[attr_off + 1] = attr;
@@ -109,9 +108,6 @@ void paint_shadow_row(unsigned int hl_attr, const unsigned char *cell_row) {
 
 }  /* namespace */
 
-/* Port of print_briks ($ADE1). Walks the 12x15 level cell grid and
- * compositess each non-skip cell into scr_buff/attr_buff via
- * print_one_brik_buf_c + brik_shadow_c. */
 int bricks_live_count(const u8 *cells) {
     int i, n = 0;
     for (i = 0; i < FIELD_ROWS * FIELD_COLS; i++) {
@@ -120,6 +116,7 @@ int bricks_live_count(const u8 *cells) {
     return n;
 }
 
+/* Port of print_briks ($ADE1). */
 void paint_bricks(const u8 *cells) {
     int row, col;
     brik_addr_buf = 0x401;   /* scr_buff + $401 = pixel (8, 32). */
@@ -281,13 +278,11 @@ void repair_band_row_boundaries(const u8 *cells,
      * and re-painted above) is canonically overwritten by row r1+1's
      * TOP-edge zeros where that brick is live — re-apply them.
      *
-     * MEASURED REDUNDANT (2026-08-09): over 15 levels x 10 windows this
-     * changes 0 bytes, because fix-up 1 above already writes those rows.
-     * Kept as defence in depth — it is one pass over 15 columns, and the
-     * redundancy holds only while repaint_row_body_top keeps covering
-     * the same bytes. Removing it is safe today and silently unsafe if
-     * that changes, which is why the note is here rather than the
-     * deletion. */
+     * MEASURED REDUNDANT: over 15 levels x 10 windows this changes 0
+     * bytes, because fix-up 1 above already writes those rows. Kept as
+     * defence in depth — the redundancy holds only while
+     * repaint_row_body_top keeps covering the same bytes, so removing it
+     * is safe today and silently unsafe if that changes. */
     if (r1 + 1 < FIELD_ROWS) repaint_row_top_edge(cells, r1 + 1);
     /* Edge fix-up 3: print's brik_shadow_c(r1) dimmed char row 5+r1,
      * which is row r1+1's CELL row — in the full ascending paint, row
@@ -355,13 +350,10 @@ void paint_brick_band_rows(const u8 *cells, const u8 *lattr, u8 bg_attr,
      * below goes in AFTER it. Getting the order wrong is invisible
      * wherever only one of the two applies to a cell.
      *
-     * This was missing, and until 2026-08-09 it did not show: the base
-     * band was captured with every brick alive, so the copy already
-     * carried both neighbours' attrs. `ec8c03d` made the base band the
-     * EMPTY playfield — verified against level-ENTRY captures, which are
-     * static and never exercise a partial rebuild — and the gap became
-     * 92 px of stale bright in test-enemy-brick-residue. known-bugs #18.
-     */
+     * Omitting this entirely is invisible while the base band is a
+     * capture taken with every brick alive, because the copy then already
+     * carries both neighbours' attrs. Against the EMPTY-playfield band it
+     * is 92 px of stale bright. known-bugs #18. */
     if (r0 - 1 >= 0 && cr0 <= 5 + (r0 - 1) && 5 + (r0 - 1) <= cr1)
         paint_shadow_row(0xA2u + (unsigned int)(r0 - 1) * 0x20u,
                          &cells[(r0 - 1) * FIELD_COLS]);

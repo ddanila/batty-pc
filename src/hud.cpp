@@ -22,14 +22,11 @@ void draw_glyph(int x, int y, u8 colour, u8 code) {
     }
 }
 
-/* All row markers observed are multiples of 8 in [0x30, 0x70):
- *   0x30 0x38 0x40 0x50 0x58 0x60 0x68 …
- * And `marker / 8` is the X column in cells (0x30→6, 0x68→13).
- * One record-walker handles them all. */
+/* Any non-zero multiple of 8, where `marker / 8` is the X column in
+ * cells. Observed markers span col 2 (0x10, the "000000" P1 score)
+ * through col 25 (0xC8, the "2 UP" label), so one record-walker handles
+ * them all. Zero is filtered out so it is never a marker. */
 bool is_row_marker(u8 b) {
-    /* Any non-zero multiple of 8 — col = b / 8. Observed markers
-     * span col 2 (0x10, "000000" P1 score) through col 25 (0xC8,
-     * "2 UP" label). Zero is filtered out so it's never a marker. */
     return b != 0 && (b & 7) == 0;
 }
 

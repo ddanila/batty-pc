@@ -36,6 +36,8 @@ bool asset_load_chunked(const char *path, u8 *dest, unsigned size,
 /* Always succeeds: a missing or unreadable file leaves both outputs as the
  * caller set them, which is how the defaults survive a first run. */
 void high_score_load(unsigned long *score, u8 *name);
+/* The DOS floppy is read/write under QEMU's if=floppy, so a save survives
+ * a reboot — until `make floppy` rebuilds the image. */
 void high_score_save(unsigned long score, const u8 *name);
 
 #endif /* BATTY_ASSETS_H */

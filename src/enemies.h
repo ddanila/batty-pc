@@ -11,9 +11,8 @@
  * It does NOT do anything special near a wall. `check_margins` clamps
  * the position and leaves the direction alone, so an alien presses
  * against an edge until its dir reaches its target and the arrival
- * re-pick turns it away. This file claimed the opposite until
- * 2026-08-09, describing a margin-aware pick the port had invented.
- *
+ * re-pick turns it away. Nothing in the original steers an alien off a
+ * wall.
  *
  * THE RNG DISTINCTION MATTERS
  * ---------------------------

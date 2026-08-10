@@ -71,11 +71,9 @@ static unsigned int beep_ticks(unsigned char d, unsigned char e);
  * ONE cycle, so the duration is (B + D) * 13 T-states, and the half
  * period is (B + D) / 2 in the same units `beep_period` takes.
  *
- * The duration used to be the literal 1 tick below. `sound_beep_cont_d`
- * was given real arithmetic on 2026-08-09 and this primitive was
- * missed, so the two effects that reach it — BALL_START and SHOT — kept
- * the old one-tick model while every other effect got honest lengths.
- * beep_ticks(1, period) is exactly (B + D) * 13 T-states. */
+ * beep_ticks(1, period) is exactly (B + D) * 13 T-states — the same
+ * duration model sound_beep_cont_d uses, so BALL_START and SHOT (the two
+ * effects that reach here) are not left on a flat one-tick length. */
 void sound_beep2_bd(unsigned char b, unsigned char d) {
     unsigned char period = (unsigned char)(((unsigned int)b + (unsigned int)d) / 2u);
     if (period == 0) period = 1;
@@ -86,10 +84,9 @@ void sound_beep2_bd(unsigned char b, unsigned char d) {
  * E. One `sound_beep` is one cycle; a DJNZ that loops is 13 T-states,
  * so the whole thing is D * 2 * E * 13 T-states at 3.5 MHz.
  *
- * D used to be discarded here — `(void)d` — and every effect played for
- * one tick. At the game's 50 Hz that is 20 ms against the original's 3
- * to 9 ms. The arithmetic is honest now; what still rounds it to a
- * single tick is the clock rate, not this. */
+ * Discarding D gives every effect one tick, which at 50 Hz is 20 ms
+ * against the original's 3 to 9 ms. The arithmetic below is honest; what
+ * still rounds it to a single tick is the clock rate, not this. */
 /* The PIT divisor for half-period E. Original period is proportional to
  * E: 1193180 / (3500000 / (26*E)) = 8.86*E, and 9*E is the close
  * integer form. (26 = 2 * 13, a full cycle of DJNZ turns.) */
@@ -126,6 +123,7 @@ void sound_play_lc122(unsigned char c, unsigned char e) {
     sound_beep2_bd((unsigned char)(b + 0x08), d);
 }
 
+/* Returns 1 when the slot should be cleared (sound done). */
 int tick_one(Slot *s) {
     switch (s->id) {
         case SND_NORMAL_BRIK:
@@ -148,8 +146,8 @@ int tick_one(Slot *s) {
             /* DEC / DEC / RET NZ — the original decrements FIRST and
              * clears the slot only when the counter reaches zero, so
              * state $00 is never reached with a beep. Testing for zero
-             * before the decrement (as this did) added a ninth beep at
-             * the lowest pitch, E = $14. Eight is right. */
+             * BEFORE the decrement adds a ninth beep at the lowest
+             * pitch, E = $14. Eight is right. */
             s->state -= 2;
             return s->state == 0;
         }
@@ -300,7 +298,6 @@ void sound_queue(u8 id) {
     }
 }
 
-/* Returns 1 when the slot should be cleared (sound done). */
 void sound_frame() {
     int i;
     for (i = 0; i < SOUND_SLOTS; i++) {

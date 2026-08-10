@@ -5,9 +5,10 @@ exhaustive test. Started 2026-08-07; the stage table below is complete.
 
 ## Where this stands
 
-**The code.** `main.cpp`: 7,747 → 8,420 lines (`wc -l`) across 15
-modules. It grew because extraction added headers and comments, not
-because the file got worse: the longest function is `run_level` at 113
+**The code.** `main.cpp`: 7,747 → 7,754 lines (`wc -l`) across 15
+modules — net flat. Extraction added headers and comments and took it up
+to 8,420; the 2026-08-10 comment sweep gave that back by dropping prose
+that only restated the code. The longest function is `run_level` at 113
 lines and it is an orchestrator of named phases.
 
 **The tests.** 109 gates, indexed in `notes/testing.md` and kept

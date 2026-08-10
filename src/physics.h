@@ -190,7 +190,10 @@ int motion_accel_step(motion_acc_t *m, unsigned int de, unsigned char cap_hi);
 /* The two curves the game actually uses, named so the call sites stop
  * repeating the numbers. There are only two: bonuses and bombs share
  * one, which is easy to miss when both are written out as 0x0008,
- * 0x02 in different functions. */
+ * 0x02 in different functions.
+ *
+ * orig: handling_bonus drives Y through the shared LA55A_0 accelerator
+ * with these same (DE, B) pairs. */
 const unsigned int  FALL_DE_SLOW  = 0x0008;   /* bonuses AND enemy bombs */
 const unsigned char FALL_CAP_SLOW = 0x02;
 const unsigned int  FALL_DE_FAST  = 0x0028;   /* the +400 marker */

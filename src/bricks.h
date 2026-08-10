@@ -52,14 +52,12 @@ void paint_bricks(const u8 *cells);
 /* Reset destroyed cells to the band background across char rows
  * [cr0, cr1] — the rows the caller just re-based from level_attrs.
  *
- * The base band used to be a capture taken with every brick ALIVE, so
- * it carried brick colour in cells whose brick is now gone, and this
- * routine's job was to clear that. Since 2026-08-09 the band is
- * generated and carries no brick colour at all — the port repaints live
- * bricks every entry — so the reset half is a no-op. What still earns
- * its keep is the SHADOW half below: a destroyed cell's left char goes
- * non-bright when its left neighbour is still live, and nothing else
- * writes that.
+ * The RESET half is a no-op today: the band is generated and carries no
+ * brick colour, since the port repaints live bricks at every entry. (It
+ * mattered when the base band was a capture taken with every brick
+ * ALIVE.) What earns its keep is the SHADOW half: a destroyed cell's
+ * left char goes non-bright when its left neighbour is still live, and
+ * nothing else writes that.
  *
  * The row scan runs one brick row beyond [r0, r1] on each side, because
  * cr0 doubles as row r0-1's shadow row and cr1 as row r1+1's cell row.

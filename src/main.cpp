@@ -1,15 +1,5 @@
-/* batty — title -> static hi-score -> font-rendered hi-score.
- *
- * State machine: any non-ESC key advances; ESC at any point exits.
- *   1. LOADING.BIN    Original ZX loading screen (8bpp 256×192).
- *   2. HISCORE.BIN    Snap1 hi-score screen, byte-for-byte.
- *   3. (font render)  Same screen drawn programmatically through
- *                     FONT.BIN — proves we control the glyph path.
- *
- * Glyph format (extracted via scripts/extract_font.py):
- *   - 36 glyphs × 6 bytes (8 px wide × 6 px tall, top 2 rows of the
- *     8-row char cell are renderer-side blank padding).
- *   - Index = markup char-code: 0..9 = digits, 0x0A..0x23 = A..Z. */
+/* batty — the game: screen states, level flow, and everything that
+ * moves. The state machine is main() at the bottom of this file. */
 
 #include <bios.h>
 #include <conio.h>
@@ -20,9 +10,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* The video engine — ZX Spectrum attribute/colour-clash emulation on
- * VGA mode 13h. Everything below draws through its scr_buff / attr_buff
- * and the dirty marks declared there. */
 #include "assets.h"
 #include "bricks.h"
 #include "hud.h"
@@ -74,21 +61,6 @@ static void show(const char *path) {
     }
 }
 
-
-
-/* Draw glyph `code` (0..35) at VGA pixel (x, y) using palette index
- * `color`. Bits are OR'd onto whatever's there; pixels with bit 0
- * are left as-is. Glyph is 6 rows × 8 cols. */
-
-
-
-
-/* Record: marker | Y | attr | count | count payload bytes.
- * Payload bytes: 0x00-0x09 = digit, 0x0A-0x23 = letter, 0x24-0x2A =
- * specials (period/comma/space/dash/_/II/=), 0x40-0x4F = in-band
- * colour escape. */
-
-
 /* 2-pixel-thick frame around the 256×192 playfield — matches the
  * original's drawn-in-pixels frame (not just the attribute gutter).
  * Palette indices: 10 = bright red (hi-score), 11 = bright magenta (menu). */
@@ -103,19 +75,14 @@ static void draw_frame(unsigned char colour) {
 }
 
 #define LIVES_INIT          3
-/* Declared up here, ahead of the p1_dev/p2_dev aliases below: those are
- * members of this array, and the HUD's player indicators read them long
- * before the rest of the player state is needed. */
 /* Per-player state. The original keeps two of each — `score_1up_in_game`
  * / `score_2up_in_game`, `lives_1up` / `lives_2up` — and `game_restart`
  * zeroes both, so a 2-player game alternates between them while the HUD
  * shows both at once.
  *
- * The high score is deliberately NOT in here. It is one number for the
- * machine (`hi_score_in_game`), shown in the middle HUD slot; keeping it
- * per-player would have made the HI column change when the players
- * swapped. It lived in this struct until 2026-08-09 and the mistake was
- * invisible only because there was one player. */
+ * The high score is deliberately NOT in here: it is one number for the
+ * machine (`hi_score_in_game`), shown in the middle HUD slot, and keeping
+ * it per-player makes the HI column change when the players swap. */
 struct PlayerState {
     unsigned long score;
     int           lives;
@@ -146,15 +113,9 @@ static PlayerState players[2] = {{0, LIVES_INIT, 0, 0, 0, 0},
  * original's handlers at $94BD and $9502), range 0..3 =
  * KEYBOARD / KEMPSTON / CURSOR / INTERFACE II.
  *
- * It is NOT two standalone bytes: the original keeps it as `ctrl_type`,
- * byte +7 of the eight-byte per-player block at `lives_1up` that
- * `players_swap` exchanges wholesale — so a player's device travels
- * with their lives, level and score. Held in PlayerState for that
- * reason; see the block layout there.
- *
- * The menu still only CYCLES it. Nothing reads it to choose an input
- * source yet, and `get_right_player_ctrl_state` — the original's bat-2
- * reader — has no port equivalent. PLAN.md WS1. */
+ * The menu only CYCLES it: nothing reads it to choose an input source
+ * yet, and the original's bat-2 reader `get_right_player_ctrl_state` has
+ * no port equivalent. PLAN.md WS1. */
 #define p1_dev (players[0].ctrl_type)
 #define p2_dev (players[1].ctrl_type)
 
@@ -265,10 +226,7 @@ static void draw_bottom_sprites(void) {
  * (cell_value * 16). Each cache chunk is 16 bytes = 2 bytes wide x 8
  * rows, blitted at (col*16, row*8) inside a 240x96 brick region
  * starting at pixel (8, 16) of the playfield (= VRAM 0x4081 in the
- * original — see notes/sprites.md).
- *
- * For Phase B2 we blit everything in bright-white (palette 15). Per-
- * level / per-row colour comes later. */
+ * original — see notes/sprites.md). */
 #define N_LEVELS   15
 #define LVL_ROWS   12
 #define LVL_COLS   15
@@ -333,13 +291,6 @@ static unsigned long turn_changes_over = 0;
 static unsigned long game_overs_reached = 0;
 static unsigned char level_attrs[ATTR_TOTAL_SIZE];
 
-/* Ported brick compositor (was: shortcut #1 in notes/shortcuts.md).
- * Composites into the video engine's scr_buff / attr_buff (see zxvga.h).
- *
- * `spr_brik_1` and `briks_colors` are pulled verbatim from
- * original/disasm/gfx/briks.asm and original/disasm/batty.asm (label
- * `briks_colors`, 1-indexed by the brick code's low nibble). */
-
 /* spr_bomb at $786A. Lives outside our SPRITES.BIN range ($7A8C+), so
  * embed it directly. 2-byte-wide x 16-row sprite, 66 bytes total. */
 static const unsigned char spr_bomb_data[66] = {
@@ -367,11 +318,9 @@ static const unsigned char spr_bomb_data[66] = {
  * original's print_magnets paints `off` at (x,y), then on a 50%
  * coin-flip overlays `on` at (x, y+5). For the deterministic state4
  * test we paint both: the GT was captured at a moment when the coin
- * flipped to "on" (verified by the L2 magnet showing up in the
- * 271-px diff at y=44..70). a `magnets-missing` note used to hold that
- * measurement and was folded into notes/magnets.md by the a26e5d8 notes
- * audit (named without a path, because it no longer resolves); the number is kept here because it is the whole reason both
- * sprites are painted. */
+ * flipped to "on", verified by the L2 magnet showing up in the 271-px
+ * diff at y=44..70 — which is the whole reason both sprites are
+ * painted. See notes/magnets.md. */
 static const unsigned char spr_magnet_off[140] = {
     0x03, 0x17,
     0x00,0x00,0xFF,0x00,0x80,0x00,
@@ -479,19 +428,6 @@ static MagnetState magnets = {0, {0}, {0}, {0}, MAGNET_TOGGLE_NONE};
 #define MAGNET_BODY_W  15        /* slot +$0C */
 #define MAGNET_BODY_H  14        /* slot +$0D */
 
-/* Per-ball magnet capture blocks — port of the 4-byte LA270 (ball 1) /
- * LA274 (ball 2) / LA278 (other) state:
- *   cool:  +0  re-capture cooldown (2 frames after a release)
- *   delta: +1  per-frame dir rotation while captured (+1/-1, 0 = free)
- *   exit:  +2  quantized release direction, recomputed every frame
- *   idx:   +3  capturing magnet's slot index
- * Index by ball object (OBJ_BALL_1/2/3 -> 0/1/2). */
-
-/* PIT-tick duration of the last completed level-intro shimmer pass,
- * exported via PROBE.TXT (brik_anim_ticks=) so the regression test can
- * assert the original's pacing (8 frames x 2 interrupt edges = ~16). */
-
-
 /* Per-cycle bg attribute. The original game's game_screen_draw_to_buffer
  * ($BE6B) fills the playfield via spr_level_textures - 4 sprites whose
  * trailing color byte gives the cycle's attr. Values copied from
@@ -514,26 +450,17 @@ static const unsigned char bg_attr_per_cycle[4] = {
 #define BG_TILE_CYCLES 4
 static unsigned char bg_tile[BG_TILE_CYCLES * BG_TILE_SIZE];
 
-/* Bat + on-bat ball composite: 5 bytes wide x 19 rows = 95 B (40 x 19
- * px). Captures the bat, the ball resting on it, AND the bat's shadow
- * pixels just below. The bat is 32 px wide at the top, 40 at the
- * base; we include the wider edge col so the shadow's right-most
- * pixels are covered (the wider area painted with bg attr just
- * reproduces the hex tile underneath, no harm). */
-/* Bat geometry now matches the original spr_bat_normal ($7E38):
- * 4 bytes wide (32 px) * 13 rows. Top 8 rows are the body, last 3 are
- * the dithered shadow drop. */
+/* Bat geometry, from the original spr_bat_normal ($7E38): 4 bytes wide
+ * (32 px) * 13 rows. Top 8 rows are the body, last 3 are the dithered
+ * shadow drop. */
 #define BAT_W_BYTES 4
 #define BAT_H_PX    13
 #define BAT_Y_PX    0xAD            /* = 173, matches object_bat_1.y_coord */
-/* Match the original's clamps: $08..$F8-w_body. For our 32-px normal
- * bat that's 8..216; for the 48-px big bat 8..200. The wider shipped
- * frame strip can clip the bat at the edges, but the user prefers
- * full reach over partial-visibility cosmetics. Proper fix awaits
- * the frame ornament painter port. */
+/* The shipped frame strip is wider than the original's, so the clamps in
+ * physics.h let the bat clip the frame at the extremes. Deliberate: full
+ * reach beats partial-visibility cosmetics until the frame ornament
+ * painter is ported. */
 #define BAT_X_INIT  0x74             /* = 116, matches object_bat_1.x_coord */
-/* The bat's authoritative state lives in objects[OBJ_BAT_1] - macros
- * defined after the object table below. */
 
 /* Ball geometry from the original spr_ball_normal ($7B16): 2-byte-wide
  * sprite (16 px) with body in left byte (8 px) and shadow in right
@@ -546,17 +473,6 @@ static unsigned char bg_tile[BG_TILE_CYCLES * BG_TILE_SIZE];
                                   * object_ball_1.x_coord - object_bat_1.x_coord */
 #define BALL_Y_TOP     8
 #define BALL_X_MIN     8
-/* Ball state - x/y now live in objects[OBJ_BALL_1].x_coord/y_coord
- * (the descriptor is the source of truth, mirroring the original's
- * IX-relative access). The primary ball uses the descriptor's
- * direction/speed plus the +03/+05 fractional bytes for movement;
- * the legacy integer deltas remain for the two extra balls. */
-/* 0 while the level-init PROBE.TXT write (the seeded pre-gameplay state)
- * is emitted; set to 1 once the gameplay main loop is entered. The harness
- * reads `probe_phase` to tell a real checkpoint write apart from the init
- * write it would see if a BATTY_REPLAY_WAIT_KEY wake key was missed (a slow
- * boot host-timing race), so it can re-boot instead of trusting stale seed
- * state. See scripts/test_visual.py read_gameplay_probe(). */
 /* Deterministic mid-game capture checkpoints. BATTY_VISUAL_PROBE_FRAMES
  * is a comma-separated list of ascending absolute frame indices; the
  * port runs to each in turn, halts (so the harness can grab a drift-free
@@ -564,41 +480,14 @@ static unsigned char bg_tile[BG_TILE_CYCLES * BG_TILE_SIZE];
  * reproduces the original single-shot behaviour. This is the port side
  * of the frame-step parity sweep (see notes/replay-harness.md). */
 #define VISUAL_PROBE_MAX 16
-/* Offset from BAT_X where the ball sits while stuck. Defaults to
- * BALL_X_OFFSET_ON_BAT for the standard "ball respawns at bat
- * centre" cases (level entry, life lost). The CATCH bonus rewrites
- * this when the ball hits the bat so the ball sticks at the
- * actual catch position and rides the bat from there until SPACE. */
 
-/* Laser bullet state — single bullet at a time, fired from the bat
- * top centre while the LASER bonus is active (BAT+\$14 = \$01).
- * Moves up each frame, deactivates on first brick / alien hit or
- * after leaving the playfield top. */
 #define BULLET_W_PX     8    /* sprite width incl. transparent column */
 #define BULLET_H_PX     8
-/* Bat laser-fire animation: ticks down from 8 to 0; while non-zero
- * render_bat picks spr_bat_gun_1..4 based on the count so the bat's
- * cannon visibly flashes when SPACE fires a bullet. */
-/* Laser fire cooldown — port of the `bullet` counter at $A160. Original
- * sets it to ~\$16 (=22) on each fire, then `SUB \$02` per frame; SPACE
- * is ignored until the counter underflows. Net effect: ~11 frames
- * between shots regardless of how fast SPACE is mashed. */
+/* Port of the `bullet` counter at $A160. The original sets it to $16
+ * (=22) on each fire, then `SUB $02` per frame; SPACE is ignored until
+ * the counter underflows. Net effect: ~11 frames between shots however
+ * fast SPACE is mashed. */
 static unsigned char bullet_cooldown = 0;
-/* Total laser shots fired this level (diagnostic, exposed via the probe so
- * the fire-cadence gate can assert the 12-frame period). Reset at level
- * entry. */
-/* Test hook: when set (BATTY_AUTO_FIRE), the laser fires every frame the
- * cooldown permits, simulating held SPACE so the cadence is gate-checkable
- * without driving keyboard input through the capture harness. */
-
-/* Second ball for the MULTI_BALL ($02 = triple_ball) bonus. We only
- * spawn TWO extras for a total of three balls — port of the LA67B_8
- * triple-ball block at $A67B which spawns ball2 + ball3 with
- * directions derived from ball1's. Position for each lives in
- * objects[OBJ_BALL_2/3].x_coord/y_coord; velocity + active flag are
- * dedicated state. Falling past the bat just deactivates the extra
- * ball without decrementing lives (= the lives counter only tracks
- * the primary ball; multi-ball is a bonus pile of destruction). */
 
 /* Original random_generate walks $8000..$9FFF and folds those bytes
  * into the two random_number bytes. Ship that 8 KB source window from
@@ -665,24 +554,15 @@ static RocketState rocket = {0, 0, 0, 0, 0, 0, 0};
  * bat; SPACE detaches immediately; after STUCK_TIMEOUT ticks the ball
  * auto-launches. ~5 sec at 50 Hz. */
 /* Mirror of ball.bonus_applied = $C0 at all_var_init's level entry: the
- * original counts down from 192 ticks (= 3.84 s at 50 Hz) before auto-
- * releasing a stuck ball. We were waiting ~25 % longer at 5 s. */
+ * original counts down 192 ticks (= 3.84 s at 50 Hz) before auto-
+ * releasing a stuck ball. */
 #define STUCK_TIMEOUT 192
-
-/* Original handling_bonus drives Y through the shared LA55A_0
- * fixed-point accelerator. Falling bonuses and bombs use DE=$0008,
- * B=$02 (accelerate to 2 px/frame); the +400 marker uses DE=$0028,
- * B=$80 and dies when it reaches y=$C0. */
 
 /* The original shares object_bonus between the bomb and a regular
  * bonus, making them mutually exclusive; the port keeps them separate.
  * orig: $A977 bomb_appear */
 #define BOMB_W_PX       8
 #define BOMB_H_PX       12
-/* ball_visible is encoded in objects[OBJ_BALL_1].sprite_set bit 7:
- *   sprite_set == 0x02  -> active, drawn
- *   sprite_set == 0x82  -> inactive, not drawn (BIT 7 set per
- *                          original obj_processing convention) */
 
 /* Per-brick scoring table from points_table at $AFE4 (BCD source,
  * decimal here). Indexed by brik_value+$01 in the original - that
@@ -719,46 +599,17 @@ static unsigned char game_mode_from_selection(unsigned char selection) {
                            ? selection - 1 : 0);
 }
 
-/* Whose turn it is: 0 = 1UP, 1 = 2UP. Modes 2 and 3 are not wired yet
- * (PLAN.md WS2/WS3), so nothing moves this off 0 and every gate sees
- * exactly what it saw before. The HUD, though, now reads players[1]
- * rather than printing a literal zero into the 2UP slot. */
+/* Whose turn it is: 0 = 1UP, 1 = 2UP. */
 static unsigned char active_player = 0;
 
-/* Read as they always did. Token-based, so `player_codes` and
- * `players_swap` are untouched.
- *
- * round_number and the level index are the active player's because the
- * original keeps them in the per-player block players_swap exchanges —
- * each player resumes their own round and level, not a shared one.
- * Nothing swaps yet (WS2 stage 3), so active_player stays 0 and every
- * value is exactly what it was. */
+/* round_number and the level index are the ACTIVE player's, because the
+ * original keeps them in the per-player block `players_swap` exchanges —
+ * each player resumes their own round and level, not a shared one. */
 #define player                players[active_player]
 #define round_number          players[active_player].round_number
 #define current_level_idx_var players[active_player].level_number
 
 static unsigned long high_score = 0;
-
-/* orig: add_points_to_score ($018D). In Double Play the score goes to
- * the side the event happened on, not to whoever is "active":
- *
- *   LD A,(game_mode) / CP $02 / JR NZ,score_update
- *   LD A,(need_change_player) / AND A / JR Z,score_update
- *   ... swap score_1up/score_2up, score_update, swap back ...
- *
- * `need_change_player` is set from a top-bit test at five sites, and
- * WHICH object's bit differs by caller — traced in notes/double-play.md:
- *
- *   handling_bat      (IX+$02) & $80   the BAT's x    -> kill_enemy_by_bat
- *   LA67B_1           (IY+$02) & $80   the BAT's x    -> get_bonus
- *   handling_bullet   (IX+$02) & $80   the BULLET's x
- *   handling_ball     (IX+$12) & $80   the ball's OWNER flag, not its x
- *   add_points_for_left_briks          zero, then alternated to split
- *                                      the leftover bricks evenly
- *
- * Every site passes a real side now, so there is no "not attributed
- * yet" sentinel: SIDE_ACTIVE existed for the two that could not be
- * derived and went when they could. See notes/double-play.md. */
 
 /* The primary ball's OWNER side in Double Play — bit 7 of the original's
  * `object_ball_1+$12`. Not a coordinate and not derived from one: the
@@ -770,8 +621,8 @@ static unsigned long high_score = 0;
  *              LD A,(IX+$12) / AND $80 / LD (IX+$12),A
  *
  * so the COUNTER half never disturbs it. The bit itself is written in
- * two places, and the second one was missed at first because it uses
- * RES/SET rather than LD:
+ * two places, and the second uses RES/SET rather than LD, so it does not
+ * turn up in a grep for `LD (IX+$12)`:
  *
  *   LAB1F_0:  RES 7,(IX+$12) / BIT 7,(IY+$02) / JR Z / SET 7,(IX+$12)
  *
@@ -792,18 +643,27 @@ static unsigned long high_score = 0;
  * The consequence is worth stating because it is not what "score by
  * side" suggests: brick points go to whoever the BALL belongs to, for
  * that ball's whole life, wherever the brick is. Only the bat, bullet
- * and bonus sites are positional. */
-/* Per BALL, because the original is: `RES 7,(IX+$12)` / `SET 7,(IX+$12)`
- * in LAB1F_0 writes the bit on whichever ball is being handled, and
- * `handling_ball` runs once per ball object. The port kept ONE bit and
- * spent it on the primary, so brick points from a secondary were
- * credited to whoever last deflected the PRIMARY — a ball the player
- * may not have touched for seconds.
+ * and bonus sites are positional.
  *
- * Indexed like the stuck and mag_* arrays: slot 0..2 = OBJ_BALL_1..3. */
+ * One per ball, not one per game: LAB1F_0 writes the bit on whichever
+ * ball is being handled and `handling_ball` runs once per ball object.
+ * Slot 0..2 = OBJ_BALL_1..3, as for the stuck and mag_* arrays. */
 static unsigned char ball_owner_side[3] = {0, 0, 0};   /* 0 = 1UP, 1 = 2UP */
 static unsigned char ball_start_right = 0;     /* the alternating flag */
 
+/* orig: add_points_to_score ($018D). In Double Play the score goes to the
+ * side the event happened on, not to whoever is "active". The original
+ * reads `need_change_player`, which is set from a top-bit test at five
+ * sites — and WHICH object's bit differs by caller:
+ *
+ *   handling_bat      (IX+$02) & $80   the BAT's x    -> kill_enemy_by_bat
+ *   LA67B_1           (IY+$02) & $80   the BAT's x    -> get_bonus
+ *   handling_bullet   (IX+$02) & $80   the BULLET's x
+ *   handling_ball     (IX+$12) & $80   the ball's OWNER flag, not its x
+ *   add_points_for_left_briks          zero, then alternated to split
+ *                                      the leftover bricks evenly
+ *
+ * See notes/double-play.md. */
 static void add_points_to_score(unsigned long pts, int side_x) {
     if (game_mode == 2 && (side_x & 0x80))
         players[1].score += pts;
@@ -814,10 +674,7 @@ static void add_points_to_score(unsigned long pts, int side_x) {
 
 /* The replay harness's own state. None of this affects the game: every
  * field is driven by a BATTY_* environment variable and read back through
- * PROBE.TXT, so a gate can seed a scenario and check what happened.
- *
- * Grouped so the scaffolding is visibly separate from the game's state —
- * and so it can move out of main.cpp once it has somewhere to go. */
+ * PROBE.TXT, so a gate can seed a scenario and check what happened. */
 struct ProbeState {
     unsigned long brik_anim_ticks;    /* intro shimmer duration, in PIT edges */
 
@@ -871,19 +728,11 @@ static ProbeState probe;
  * 0..2, and are the one part here that does cover all three uniformly. */
 struct BallState {
     int          dx, dy;              /* primary ball, whole pixels */
-    /* Stuck-on-bat state, per ball 0..2 — the same indexing the mag_*
-     * arrays below already use.
-     *
-     * Only [0] is ever non-zero today: an extra ball is spawned in
-     * flight and nothing can catch it, because catch_ball_on_bat is
-     * only reachable from the primary's path. Widening the fields is
-     * the structural half of WS6 item 2 (MAGNET catch for secondaries)
-     * and of WS3's bat-2 catch, which need the same index — see
-     * notes/bat-deflection.md for the site-by-site breakdown.
-     *
-     * Ten of the 24 call sites are primary-BY-CONSTRUCTION — level
-     * entry, respawn, the replay overrides — and stay [0] forever.
-     * The other fourteen are the ones a catch feature has to thread. */
+    /* Only [0] is ever non-zero today: an extra ball is spawned in
+     * flight and nothing can catch it, because catch_ball_on_bat is only
+     * reachable from the primary's path. Widening it is the structural
+     * half of WS6 item 2 (MAGNET catch for secondaries) and of WS3's
+     * bat-2 catch — see notes/bat-deflection.md. */
     unsigned char stuck[3];           /* resting on the bat, awaiting launch */
     /* WHICH bat is holding it. In Double Play either can, and a held
      * ball rides the bat that caught it — so this has to be state, not
@@ -897,22 +746,17 @@ struct BallState {
 
     unsigned char extra2_active, extra3_active;
 
-    /* Magnet capture, per ball. */
+    /* Magnet capture, per ball — port of the 4-byte LA270 (ball 1) /
+     * LA274 (ball 2) / LA278 (other) state:
+     *   cool:  +0  re-capture cooldown (2 frames after a release)
+     *   delta: +1  per-frame dir rotation while captured (+1/-1, 0 = free)
+     *   exit:  +2  quantized release direction, recomputed every frame
+     *   idx:   +3  capturing magnet's slot index */
     unsigned char mag_cool[3], mag_delta[3], mag_exit[3], mag_idx[3];
 };
 
-/* Ball slot 0. The stuck fields are `[3]`, and the eight functions that
- * touch them now take the slot as a parameter — but every CALLER still
- * passes this one, because `catch_ball_on_bat` is still only reachable
- * from the primary's path. Spelling it out is the point: `[0]` read as
- * "the first ball" and as "the only ball that can be here" look
- * identical, and the ten sites that are primary BY CONSTRUCTION
- * (`respawn_primary_ball`, the replay overrides — an extra ball is
- * spawned in flight and is never stuck) must not be confused with the
- * call sites that are merely primary FOR NOW.
- *
- * The remaining feature work is those call sites passing something
- * else. See notes/bat-deflection.md. */
+/* Ball slot 0, named so that `[0]` meaning "the first ball" and `[0]`
+ * meaning "the only ball that can be here" do not read alike. */
 #define BALL_PRIMARY 0
 
 static BallState ball = {
@@ -944,33 +788,13 @@ struct BatState {
     unsigned char drawn_bonus, drawn_fire_ticks;
 };
 
-/* One per bat, indexed by OBJ_BAT_1 / OBJ_BAT_2.
+/* INDEX BY BAT_SLOT(), NEVER by the object index. `OBJ_BAT_1` is 6 and
+ * `OBJ_BAT_2` is 5 — positions in the eleven-slot OBJECT table, not 0
+ * and 1. Writing `bats[OBJ_BAT_1]` compiles clean, indexes four elements
+ * past the end and silently corrupts whatever `.data` follows.
  *
- * The WIDTH is the last thing a bonus still shares between the two bats
- * (WS3): `set_bat_bonus` splits the bonus BYTE, but a BIG_BAT caught by
- * bat 2 has nowhere to record its width, so it is guarded to bat 1 and
- * widens nobody.
- *
- * This is the state-shape half of the fix, and it is deliberately its
- * own step with NO behaviour change — the `bat` macro below keeps all
- * 51 existing sites on slot 0, so the whole sweep must stay green by
- * construction. The same staging as the stuck-ball fields (`[3]` first,
- * then the sites learned which ball, then the feature): the diff that
- * follows is about bat 2's width and not about a rename.
- *
- * ### Indexed by BAT_SLOT(), never by the object index
- *
- * `OBJ_BAT_1` is 6 and `OBJ_BAT_2` is 5 — positions in the eleven-slot
- * OBJECT table, not 0 and 1. The first version of this array was
- * `bats[2]` written as `bats[OBJ_BAT_1]`, which indexes four elements
- * PAST the end and silently corrupted whatever `.data` followed. It
- * compiled clean, and the symptom was the ball flying to the ceiling on
- * launch — nineteen gates red behind a diff that was otherwise a pure
- * rename.
- *
- * So the conversion is explicit and total: every access goes through
- * BAT_SLOT(), which maps an object index to 0 or 1 and cannot run off
- * the end whatever it is handed. */
+ * WS3: bat 2 has nowhere to record a width yet, so a BIG_BAT caught by
+ * it is guarded to bat 1 and widens nobody. */
 static BatState bats[2] = {
     { 0, 0, 0, 0, 0, BAT_Y_PX, 0xFF, 0 },
     { 0, 0, 0, 0, 0, BAT_Y_PX, 0xFF, 0 },
@@ -981,11 +805,8 @@ static BatState bats[2] = {
  * the end. */
 #define BAT_SLOT(o)  ((o) == OBJ_BAT_2 ? 1 : 0)
 
-/* Bat 1's slot. NOT named `bat`: several functions already take an
- * `int bat` / `int bat_idx` parameter, and a macro or reference called
- * `bat` would either collide with them (it did, loudly, on the first
- * attempt) or silently shadow — which is worse. The extra character at
- * 58 call sites buys back a name that stays free. */
+/* Bat 1's slot. NOT named `bat`: functions here take an `int bat` /
+ * `int bat_idx` parameter that such a macro would shadow. */
 #define bat1 bats[BAT_SLOT(OBJ_BAT_1)]
 
 /* Mirror of flag_extra_life — set when the player catches a LIFE bonus
@@ -997,16 +818,6 @@ static unsigned char high_score_beaten_this_game = 0;
  * codes (A = 0x0A .. Z = 0x23). Default "AAA" when no save exists. */
 static unsigned char high_score_name[3] = { 0x0A, 0x0A, 0x0A };
 
-/* Persist the best score across runs by reading / writing 4 little-
- * endian bytes to A:\HISCORE.DAT (the floppy image). DOS floppy is
- * read/write under QEMU's if=floppy mode, so writes survive a reboot
- * as long as the disk image isn't rebuilt by `make floppy`. */
-
-/* Power-up state: one falling bonus on screen at a time, which is what
- * the original does too — it shares object_bonus between the bonus and
- * the enemy's bomb. The drop itself comes from bonus_table_first/second
- * + generate_new_bonus + set_bonus at $9866. The slow-ball effect uses a
- * tick countdown at the PIT frame rate (50 Hz). */
 /* Catch hit-box. The visible bonus sprite is 24 px wide x 13 rows
  * tall (with a drop-shadow band), but we run the bat-collision
  * against the central body region only — 16 wide x 8 tall — so a
@@ -1015,15 +826,7 @@ static unsigned char high_score_name[3] = { 0x0A, 0x0A, 0x0A };
 #define BONUS_H_PX        8
 /* The original's bonus codes (set_bonus / bonus_table_* at $9E4A) are
  * translated by bonus_from_original in bonus_codes.{cpp,h}, which is the
- * authority — do not keep a second copy of the mapping here.
- *
- * All ten are implemented; every one has an arm in bonus_apply and gate
- * coverage (test-bonus-effects, -effects2, -typepick). An earlier
- * version of this comment listed gun, triple_ball, rocket and
- * kill_aliens as deferred and claimed four supported effects. That was
- * true once and had not been true for a long time, which is exactly the
- * failure mode notes/refactor-plan.md warns about: a comment nobody
- * re-reads becomes confidently wrong. */
+ * authority — do not keep a second copy of the mapping here. */
 
 /* bonus_table_first / bonus_table_second - byte-exact copies of the
  * 32-byte tables at $9E5A / $9E6A. The lower 4 bits of random_number
@@ -1063,9 +866,7 @@ static unsigned char random_lo(unsigned int r) { return (unsigned char)r; }
  * back to $02 (it does NOT touch the ramp counter), so it naturally
  * wears off as the speed ramps back up. We model this with the shared
  * ball.speed_ramp counter + the per-frame ball_speed_ramp_tick(), and
- * SLOW resets objects[].speed to BALL_SPEED. (Earlier port used a
- * fixed speed + a permanent slow_ticks frame-skip — the ball never
- * sped up and SLOW lasted the whole life.) */
+ * SLOW resets objects[].speed to BALL_SPEED. */
 /* BIG_BAT is permanent in the original — handling_bat_no_transform
  * keys off bat.bonus_applied == \$00, with no auto-expire. The bat
  * stays wide until another bonus is caught or the ball is lost.
@@ -1085,17 +886,8 @@ struct BonusState {
     motion_acc_t  motion;
 };
 static BonusState bonus = {0, 0, 0, 0, {0, 0}};
-/* Shared ball speed-up ramp counter (= the original's per-ball
- * object+$13). Bumps every active ball's speed at $94; see the model
- * comment above and ball_speed_ramp_tick(). */
 static int big_ball_active(void);    /* forward — defined below */
 static int big_bat_active_of(int b); /* forward — defined below */
-/* Bat resize animation — a bat's extra_px ramps 0..8 toward its
- * extra_target (both in bats[BAT_SLOT(b)])
- * (port of bat_resize at $9D2C). The rate and endpoints are documented
- * on tick_bat_resize, which is where the gating lives; this comment used
- * to carry a second copy saying the port only "roughly" matched, which
- * was written before the every-other-tick gate went in and stayed after. */
 
 /* "+400" floating-marker state spawned on bonus catch (port of
  * sprite_set $0B transition at $A6BA + handling_400pts at $A58D).
@@ -1182,9 +974,9 @@ static const unsigned int spr_bird_frames[8] = {
 };
 /* anim_ufo ($789E) — TEN entries, a full ping-pong over the 6 UFO
  * sprites: 1,2,3,4,5,6,5,4,3,2. The UFO's +$13 = $90 walks sprite_num
- * 0..9 through all ten (the table was previously truncated to 8 and
- * indexed `& 7`, skipping the 3,2 tail — notes/bird-render-parity.md).
- * Indexed by the LAAD2-stepped sprite_num. */
+ * 0..9 through all ten, so indexing this `& 7` silently drops the 3,2
+ * tail (notes/bird-render-parity.md). Indexed by the LAAD2-stepped
+ * sprite_num. */
 static const unsigned int spr_ufo_frames[10]  = {
     SPR_UFO_1, SPR_UFO_2, SPR_UFO_3, SPR_UFO_4, SPR_UFO_5,
     SPR_UFO_6, SPR_UFO_5, SPR_UFO_4, SPR_UFO_3, SPR_UFO_2
@@ -1221,7 +1013,7 @@ static const unsigned int spr_ufo_frames[10]  = {
  * sprites: 1,2,3,4,5,4,3,2,1,1 (GT-confirmed: poking the enemy to the
  * blast state and stepping shows sprite_num 0..9 advancing +1 every 2
  * frames — misc_12 toggles $50<->$10 — then handling_blast deactivates at
- * frame 9). The port had only the 5-frame expand (1..5) at 3 ticks/frame. */
+ * frame 9). */
 static const unsigned int spr_blast_frames[10] = {
     SPR_BLAST_1, SPR_BLAST_2, SPR_BLAST_3, SPR_BLAST_4, SPR_BLAST_5,
     SPR_BLAST_4, SPR_BLAST_3, SPR_BLAST_2, SPR_BLAST_1, SPR_BLAST_1
@@ -1255,11 +1047,8 @@ static const unsigned int spr_spark_frames[5] = {
 #define FRAME_SIDE_H_PX  168       /* y=24..191 below the HUD */
 #define FRAME_TOP_PX     (32 * FRAME_TOP_H_PX)
 #define FRAME_SIDE_PX    (FRAME_SIDE_W * FRAME_SIDE_H_PX)
-/* PIXELS ONLY. The blob used to carry attribute rows too — 138 bytes
- * per cycle — and paint_frame_to_buff never read one of them: all three
- * paint_strip_to_buff calls take their attrs from `lattr`, i.e.
- * level_attrs.bin. Dropped 2026-08-09; the arithmetic that skipped past
- * them was the only thing suggesting they mattered. */
+/* PIXELS ONLY — paint_frame_to_buff takes its attrs from `lattr`
+ * (level_attrs.bin), never from this blob. */
 #define FRAME_SIZE  (FRAME_TOP_PX + 2 * FRAME_SIDE_PX)
 #define FRAME_CYCLES 4
 static unsigned char frame_l1[FRAME_CYCLES * FRAME_SIZE];
@@ -1301,10 +1090,6 @@ static const unsigned char border_addon[30] = {
 
 
 
-/* prof_vga_rects / prof_vga_bytes are tallied by the video engine (zxvga.c). */
-/* Brick-band cache rebuilds (build_static_brick_band_cache): count, total
- * char-rows re-composited, and PIT ticks spent. rows/rebuilds shows the
- * incremental win directly (full = 14, scoped ~= 3). */
 /* Where the render profile accumulates. Written only when
  * BATTY_RENDER_PROFILE is set, and dumped to PROFILE.TXT at exit.
  *
@@ -1338,48 +1123,24 @@ static RenderProfile prof;
  * and for putting the game into a state a gate can reach. Unlike
  * ProbeState these DO affect play — that is what they are for.
  *
- * use_laffc and rng_perframe default ON: they select the accurate
- * model, and the switch exists to get the old one back for an A/B. */
+ * use_laffc and rng_perframe default ON: they select the accurate model,
+ * and the switch exists to get the old one back for an A/B. LAFFC
+ * collision is byte-exact against the Spectrum over L3's 150-frame
+ * trajectory (test-laffc-ball-frame1) and falls back to brick_collision
+ * when it reports no hit, so it can never pass a brick through;
+ * multi-ball secondaries use brick_collision throughout.
+ */
 
-/* Force the whole-band rebuild path (A/B baseline for the incremental
- * scoping). Set by BATTY_FULL_BAND_REBUILD. */
-
-/* LAFFC brick collision is now the DEFAULT for the primary ball: it is
- * byte-exact vs the Spectrum over L3's full 150-frame trajectory (dozens
- * of bounces / cell configs, gated by test-laffc-ball-frame1) and falls
- * back to brick_collision when it reports no hit, so it can never pass a
- * brick through. BATTY_LEGACY_COLLISION=1 reverts to the old
- * brick_collision path. (Multi-ball secondaries still use brick_collision.) */
-
-/* RNG-model alignment (see notes/rng-model.md). ON by default since
- * 2026-06-05 — this opening line said "OFF by default" for two months
- * while the paragraph below it, and the initialiser, said otherwise.
- * OFF (BATTY_RNG_PERFRAME=0): the port advances the RNG on demand at
- * each consumer. ON:
- * tick the RNG once per frame at the play-loop top (mirroring the
- * original's per-frame `CALL random_generate` at LB9E8_2) and let
- * read-current consumers sample without advancing — the original's model.
- *
- * Flag ON is now the VALIDATED-CORRECT model: random_number lives at the
- * original's $8D48 (init $8E17, = the port's init) and ticks per frame;
- * seeded to the original's frame-0 state, the port's next_random walk
- * reproduces the original's $8D48 sequence EXACTLY (offset by the one
- * frame the original doesn't tick at its snapshot start); the byte-exact
- * Now the DEFAULT (2026-06-05). The per-frame tick is the original's model
- * (random_generate once per frame at the main-loop top; consumers read
- * without advancing). It is byte-exact: `make test-rng-walk` proves the
- * port's random_number walk equals the original's f0..f4 from the L3 seed,
- * and that makes the enemy steering match the GT (dir 0x11->0x12->0x13).
- * The earlier flag-OFF (advance-on-read) consumed the RNG faster than the
- * original. `BATTY_RNG_PERFRAME=0` reverts to the old behaviour (the
- * BATTY_LAFFC fallback pattern); the RNG-independent gates (ball, bat,
- * enemy-descend, visual states) stay green either way. */
+/* RNG-model alignment (see notes/rng-model.md). ON is the original's
+ * model and byte-exact: random_number lives at $8D48 and the original
+ * ticks it once per frame at the main-loop top (`CALL random_generate`
+ * at LB9E8_2), with consumers reading without advancing. Seeded to the
+ * original's frame-0 state the port reproduces that sequence exactly,
+ * which is what makes the enemy steering match the GT — `make
+ * test-rng-walk` pins it. BATTY_RNG_PERFRAME=0 reverts to advance-on-
+ * read, which consumes the RNG faster than the original. */
 /* Each field states its default as `default=0` or `default=1`, and
- * test-switch-defaults checks that against the initialiser below. A
- * comment claiming the wrong default is not a typo: the RNG model's
- * long note opened with "OFF by default" for two months after the
- * default flipped to ON, and notes/parity-gaps.md then listed the
- * closed gap as its top priority. */
+ * test-switch-defaults checks that against the initialiser below. */
 struct DebugSwitches {
     unsigned char auto_fire;              /* BATTY_AUTO_FIRE: hold SPACE, default=0 */
     unsigned char full_band_rebuild;      /* BATTY_FULL_BAND_REBUILD, default=0 */
@@ -1513,11 +1274,6 @@ static void paint_strip_to_buff(const unsigned char *pixels,
     }
 }
 
-/* Paint the frame top + sides into scr_buff / attr_buff using the
- * per-level attrs from level_attrs. Called BEFORE bat / ball / etc
- * blits so the frame's pixels participate in the OR-blit — fixes
- * "bat invisible at extremes" where direct-VGA frame painting
- * overwrote the side-strip half of the bat sprite. */
 /* Build frame_l1[] from the tape's sprites instead of loading a capture.
  *
  * This is LBE8B's pixel work, in its order, and it reproduces the blob
@@ -1743,17 +1499,9 @@ static void mark_dirty_sprite_rect(unsigned int spr, int x, int y) {
     mark_dirty_rect_px(x, y, (int)sprites_blob[spr] * 8, sprites_blob[spr + 1]);
 }
 
-/* Bat ink + paper come from the BG attr at the bat's position - same
- * palette as the surrounding hex pattern, as in the original. The bat
- * texture-detail (mask=1, pixel=1 pixels) renders as paper colour;
- * body pixels (mask=1, pixel=0) render as ink. */
-
-
-
-/* The 3 special slots from the original (lives_indicator, score_
- * indicator, separator at $9BC2, $9BD4, $9BDC) are not part of the
- * 11-slot iteration. We'll add them when handling_object work makes
- * them load-bearing - for now they're rendered by the legacy paths. */
+/* The original's 3 special slots — lives_indicator, score_indicator and
+ * separator at $9BC2 / $9BD4 / $9BDC — are NOT part of the 11-slot
+ * iteration, and are rendered here by their own paths. */
 
 /* spr_separator ($7A2A), the Double Play court divider: 2 bytes wide,
  * $18 rows, loaded from its own asset because it sits just BELOW
@@ -1802,18 +1550,11 @@ static void render_separator(void) {
  * The deltas may be at ANY scale — q8.8 from dir_to_dxdy, or whole
  * pixels from primary_ball_set_velocity. Only their SIGN is taken.
  *
- * Hence the `from` parameter, which is the whole point of it: two
- * callers take an Object* that may be an EXTRA ball — laffc_collision
- * (reached from step_extra_ball) and magnet_ball_frame (slots 1 and 2) —
- * and used to refresh the PRIMARY's cache from the extra's direction
- * regardless of which ball they were handed (known-bugs.md #13). Passing
- * the object through and ignoring anything but the primary makes that
- * unexpressible at a call site rather than merely absent from today's.
- *
- * It was unobservable before only by ordering: step_ball recomputes from
- * the primary before ball_lands_on_bat reads ball.dy, and
- * apply_multi_ball_bonus early-returns while extras are active. Neither
- * was a property of this function. */
+ * Hence the `from` parameter: two callers take an Object* that may be an
+ * EXTRA ball — laffc_collision (reached from step_extra_ball) and
+ * magnet_ball_frame (slots 1 and 2) — and refreshing the PRIMARY's cache
+ * from an extra's direction is known-bugs.md #13. Passing the object
+ * through makes that unexpressible at a call site. */
 static void refresh_ball_motion_signs(const Object *from, int dx_q8, int dy_q8) {
     if (from != &objects[OBJ_BALL_1]) return;
     ball.dx = (dx_q8 < 0) ? -1 : (dx_q8 > 0 ? 1 : 0);
@@ -1931,20 +1672,6 @@ static void handling_spark_obj(Object *o) {
     o->x_coord = (unsigned char)nx;
     o->y_coord = (unsigned char)ny;
 }
-/* Literal port of LAAD2 ($AAD2) — the original's shared per-object
- * sprite-animation stepper (bird, ufo, blast; the bat/bullet use it
- * too but keep their own port approximations for now). +$12 (misc_12)
- * is a cadence counter: while >= $40 it just loses $40 per call; on
- * underflow the sprite frame +$01 advances LINEARLY and wraps via
- * +$13's (misc_13) nibbles — HIGH nibble = last frame, LOW = first —
- * and the counter reloads as ((res<<2)&$C0)|res. Seeds: bird
- * $F0/$70 -> frames 0..7 every 4 frames; UFO $60/$90 -> frames 0..9
- * every 3 frames (after one 2-call lead-in); blast $50/$90 -> frames
- * 0..9 every 2 frames. (The original also re-derives the sprite's
- * w/h via calc_write_spr_addr here; the port reads dims at render
- * time, so that part is unnecessary.) See notes/bird-render-parity.md
- * for the decode + the dead facing-mirror block this replaces. */
-
 /* Port of handling_blast at $AA30: force +$13=$90 (frames 0..9), step
  * LAAD2, free the slot the moment sprite_num reaches 9 (`CP $09 /
  * RET NZ / SET 7`). Kill sites seed +$12=$50 / sprite_num=0 like the
@@ -1976,32 +1703,16 @@ static void ball_reflect_descriptor(int flip_x, int flip_y) {
     refresh_ball_motion_signs(&objects[OBJ_BALL_1], dx_q8, dy_q8);
 }
 
-/* Port of LAA7D (called every 4 frames from handling_bird/ufo with the
- * turn step B=1): turn the current dir one 6-bit step toward the target
- * dir; the bit-5 test of (dir - target) picks the shorter way round. When
- * dir == target (LAA7D_1), pick a NEW random target = random_number & $3F.
- * The original refreshes the target ONLY on arrival like this, not on a
- * fixed timer, and reads the current random_number low byte WITHOUT
- * advancing the RNG. (A byte-exact target match additionally needs the
- * original's per-frame RNG tick, which the port advances on demand — see
- * notes/enemy-movement.md.) */
-
-
-
 /* orig: check_margins, which is three clamps and nothing else:
  *
  *   check_top_margin    y < $08              -> y = $08
  *   check_left_margin   x < $08              -> x = $08
  *   check_right_margin  (u8)(w + x) >= $F9   -> x = $F8 - w
  *
- * No direction change and no re-aim. Until 2026-08-09 the port
- * reflected the direction off each edge and called
- * enemy_target_away_from_margins, and BOTH were inventions: LAA7D turns
- * one step toward the held target and re-picks only on ARRIVAL, so
- * nothing in the original steers an alien off a wall. It presses against
- * the clamp, its dir eventually reaches its target, it re-picks at
- * random, and it leaves. The old comment in enemies.h describing a
- * margin-aware pick was describing the port, not the game.
+ * No direction change and no re-aim: LAA7D turns one step toward the
+ * held target and re-picks only on ARRIVAL, so nothing here steers an
+ * alien off a wall. It presses against the clamp, its dir eventually
+ * reaches its target, it re-picks at random, and it leaves.
  *
  * The right clamp's ADD is 8-BIT and unguarded, so for the bird's
  * w = $18 the sum wraps at x >= $E8 and the clamp does not fire at all —
@@ -2009,8 +1720,7 @@ static void ball_reflect_descriptor(int flip_x, int flip_y) {
  * rather than fixed. It needs a jump of more than 2px past $E7 to reach,
  * which ordinary flight cannot do; a LAFFC snap is the only way in.
  *
- * PLAYFIELD_W is 256, so PLAYFIELD_W - 8 - w is exactly $F8 - w and the
- * clamp value was already right; only the reflection was wrong.
+ * PLAYFIELD_W is 256, so PLAYFIELD_W - 8 - w is exactly $F8 - w.
  *
  * There is no floor in check_margins. The bottom exit below is the
  * port's own and is left alone: returning false deactivates the alien
@@ -2037,11 +1747,6 @@ static bool enemy_check_margins(Object *o, int *nx, int *ny,
     return true;
 }
 
-/* Birds/UFOs use a reduced port of the original 6-bit direction-table
- * movement. The original also uses LAA7B target steering and collision
- * reactions; here we keep the same q8.8 motion shape and periodically
- * steer to a new target so enemies roam through the playfield instead
- * of patrolling only along the top edge. */
 static void bomb_appear(Object *o);     /* forward decl */
 
 /* LAFFC as the ALIEN reaches it. `LAFFC_30` tests the object's
@@ -2079,35 +1784,25 @@ static void handling_bird_obj(Object *o) {
     int dx_q8, dy_q8;
     long nx_q8, ny_q8;
     int nx, ny;
-    /* Port of the entry slide at $A9BC line 3429-3433:
+    /* The entry slide at $A9BC:
      *   LD A,(IX+$04); CP $08; JR NC,LA9BC_0; INC (IX+$04); RET
-     * Alien spawns at Y=0 (= top of playfield) and slides down 8 px
-     * before starting its horizontal traverse. Earlier port skipped
-     * this — alien was visible at Y=0, one char-row above the band
-     * the original places it at. */
+     * The alien spawns at Y=0 and slides down 8 px before starting its
+     * horizontal traverse. */
     if (o->y_coord < 8) {
         o->y_coord++;
         return;
     }
-    /* Sprite animation: the literal LAAD2 stepper (per-object +$12
-     * cadence, +$13 nibble frame range). The bird's $F0/$70 seed gives
-     * the same 4-frame walk as the old `misc_12++ / &3` approximation
-     * (test-enemy-anim's pinned f8..f24 walk is unchanged), but the
-     * UFO's $60/$90 seed animates every 3 frames over TEN anim_ufo
-     * entries — the old code ran it at 4 frames over 8. The original
-     * calls LAAD2 at the handler tail (LA902_3/LA9BC_3); within-frame
-     * position doesn't matter since rendering happens after all
-     * handlers. */
+    /* The original calls LAAD2 at the handler tail (LA902_3/LA9BC_3);
+     * within-frame position doesn't matter, since rendering happens
+     * after every handler has run. */
     object_step_animation(*(o));
     bomb_appear(o);
     /* Steer every 4 frames. The original gates on the GLOBAL counter_misc
      * (`LD A,(counter_misc); AND $03; CALL Z,LAA7D`), not a per-object
-     * counter, so all enemies turn on the same global 4-frame phase. Use
-     * the port's per-frame counter (pit_frame_counter, = the original's
-     * counter_misc) instead of o->misc_12, whose phase was spawn-relative
-     * (and whose object byte +$12 is the sprite address in the original,
-     * not a turn counter). LAA7D also refreshes the target on arrival, so
-     * there is no separate timer-based random re-target. */
+     * counter, so all enemies turn on the same global phase — hence
+     * pit_frame_counter here rather than o->misc_12, whose phase would be
+     * spawn-relative. LAA7D refreshes the target on arrival, so there is
+     * no separate timer-based re-target. */
     /* The two-mode dispatch at LA9BC:
      *   LD HL,(LAA7B) / LD A,H / AND A / JR Z,LA9BC_1 / CALL LAA44
      * A latched brick-hit target REPLACES steering, movement and the
@@ -2126,11 +1821,8 @@ static void handling_bird_obj(Object *o) {
     }
     if (((unsigned long)pit_frame_counter & 0x03UL) == 0)
         enemy_turn_towards_target(*o);
-    /* Move with the EXACT hl_bc_calc_direction (dir_to_dxdy) — the
-     * original handling_bird calls LAD69, the same motion routine as the
-     * ball. The old enemy_dir_delta_q8 had the X/Y components swapped per
-     * quadrant (dir $10 came out moving RIGHT instead of straight DOWN),
-     * so the bird flew the wrong axis. */
+    /* The original handling_bird calls LAD69 — the same motion routine
+     * as the ball, so dir_to_dxdy is shared here too. */
     dir_to_dxdy(o->dir, o->speed, &dx_q8, &dy_q8);
     nx_q8 = ((long)o->x_coord << 8) + o->x_coord_hi + dx_q8;
     ny_q8 = ((long)o->y_coord << 8) + o->y_coord_hi + dy_q8;
@@ -2237,9 +1929,7 @@ static void fill_bat_resize_sides(int b) {
  *                  textured shadow band below the bat).
  * One blit into scr_buff covers the whole sprite. */
 /* Draw one bat. Every input comes from its object and its BatState, so
- * the same code serves both — bat 2 used to have its own three-line
- * copy that could only ever draw the plain body, which is why its width
- * had nowhere to show even once the state existed. */
+ * the same code serves both. */
 static void render_bat_of(int b, unsigned char attr) {
     const int extra = bats[BAT_SLOT(b)].extra_px;
     const int bat_x = (int)objects[b].x_coord;
@@ -2250,10 +1940,6 @@ static void render_bat_of(int b, unsigned char attr) {
         x   = bat_x - BAT_BIG_EXTRA_PX;
         sprite_w = BAT_W_BYTES * 8 + 2 * BAT_BIG_EXTRA_PX;
     } else {
-        /* Laser-carrying bat shows the gun-mounted sprite. While the
-         * fire-animation counter is non-zero, cycle through the four
-         * spr_bat_gun_1..4 frames (2 ticks per frame, picked off the
-         * countdown). Same 32 x 13 footprint as spr_bat_normal. */
         spr = bat_body_sprite(b);
         x   = bat_x;
         sprite_w = BAT_W_BYTES * 8 + 2 * extra;
@@ -2284,20 +1970,9 @@ static void render_bat(unsigned char cycle, unsigned char attr) {
  *   LD A,$B0 / LD (object_bat_2+$02),A      ; bat 2 x = 176
  *
  * so Double Play does not add a bat beside the existing one — it moves
- * bat 1 left and puts bat 2 on the right, one per half.
- *
- * This used to say bat 2 was "rendered with the PLAIN sprite" because
- * the width, the gun frames and the resize sides were all bat-1 state.
- * That was true when written and stopped being true on 2026-08-10:
- * `bats[2]` gives bat 2 its own width, `set_bat_bonus` gives it its own
- * bonus byte, and `render_bat_of` draws whichever bat it is handed —
- * big, armed or plain, off that bat's own state. */
+ * bat 1 left and puts bat 2 on the right, one per half. */
 static void render_bat_2(unsigned char attr) {
     if (game_mode != 2 || !object_active(objects[OBJ_BAT_2])) return;
-    /* Identical output to the hand-rolled version while bat 2's
-     * extra_px is 0 and its bonus byte is not LASER: same x, same y,
-     * same 32x13 attr window, SPR_BAT_NORMAL. The whole sweep is the
-     * check on that. */
     render_bat_of(OBJ_BAT_2, attr);
 }
 
@@ -2326,14 +2001,9 @@ static void remember_bat_draw_state(void) {
 }
 
 /* Both bats, wherever the bat band is drawn. `render_bat_2` early-outs
- * outside mode $02, so this is safe on every path.
- *
- * Before 2026-08-10 bat 2 was drawn ONLY by compose_level_scene, which
- * runs at level entry — so steering moved the object and left the
- * picture where it started. `test-double-play-input` did not see it: it
- * reads object_bat_2 out of the probe, which was moving correctly the
- * whole time. Measured with a screendump: object at $DC, sprite at
- * $B4. */
+ * outside mode $02, so this is safe on every path. Drawing bat 2 only
+ * from compose_level_scene (level entry) leaves its sprite behind while
+ * the object steers away, and the probe-reading gates cannot see that. */
 static void render_bats(unsigned char cycle, unsigned char attr) {
     render_bat(cycle, attr);
     render_bat_2(attr);
@@ -2360,9 +2030,11 @@ static void run_dot_punch(int abs_x) {
     scr_buff[off] &= run_dot_mask[abs_x & 7];
 }
 
-static int test_mode_pin_blink;   /* Walk the dot one step along the bat and turn it round at the ends.
- * Bit 7 of run_dot_frame is the direction: set = decreasing. The travel
- * runs between 9 and bat_w - 10, so the dots stay inside the body cap.
+static int test_mode_pin_blink;   /* set by BATTYALL env */
+
+/* Walk the dot one step along the bat and turn it round at the ends.
+ * The travel runs between 9 and bat_w - 10, so the dots stay inside the
+ * body cap.
  *
  * This MUTATES animation state from inside a render call, which is the
  * shape that made known-bugs #10 a bug for bullets. It is safe here only
@@ -2387,8 +2059,6 @@ static void advance_run_dot(int frame, int bat_w) {
     }
 }
 
-/* set by BATTYALL env */
-
 static void render_running_dot(void) {
     int bat_w, bat_left;
     int frame;
@@ -2399,13 +2069,10 @@ static void render_running_dot(void) {
      * would land elsewhere. Pin it so the dots stay where the GT has
      * them. Same trick as test_mode_pin_blink. */
     if (test_mode_pin_blink) run_dot_frame = 0x0E;
-    /* Bat "logical width" per object_bat_1+$0C = $1C = 28 px (and
-     * object_bat_temp+$0C = $1B = 27 px for big-bat). The bat sprite
-     * is 32 px wide but the running_dot uses this narrower W for the
-     * mirror-position calc, so the dots land inside the body cap
-     * rather than at the tapered sprite edges. Earlier port used the
-     * sprite width (32), which placed the second dot 2 px too far
-     * right against the GT. */
+    /* Bat "logical width" per object_bat_1+$0C = $1C = 28 px. The sprite
+     * is 32 px wide, but running_dot uses this narrower W for the
+     * mirror-position calc, so the dots land inside the body cap rather
+     * than at the tapered sprite edges. */
     if (bat1.extra_px >= BAT_BIG_EXTRA_PX) {
         bat_w    = 28 + 2 * BAT_BIG_EXTRA_PX;   /* 44 px in big-bat mode */
         bat_left = BAT_X - BAT_BIG_EXTRA_PX;
@@ -2428,19 +2095,14 @@ static void render_running_dot(void) {
     advance_run_dot(frame, bat_w);
 }
 
-/* Display (lives - 2) right-side indicators next to the left one
- * baked into the frame strip. Cap at 4 to fit. */
-/* Port of LBE8B_8's `ADD A,$10; CP $E9; JR NC` cap: the indicator
- * stops advancing X once it would land at $E9 (= 233), giving at
- * most 14 distinct sprite slots between $08 and $D8. Earlier port
- * capped at 4 — fine for normal play but truncated the meter
- * for high-life scores. */
+/* Port of LBE8B_8's `ADD A,$10; CP $E9; JR NC` cap: the indicator stops
+ * advancing X once it would land at $E9 (= 233), giving at most 14
+ * distinct sprite slots between $08 and $D8. */
 #define LIVES_DYNAMIC_MAX 14
 static void render_lives(unsigned char cycle, unsigned char attr) {
-    /* Port of LBE8B_7's `LD A,(lives_1up); DEC A; JR Z,skip`:
-     * draw (lives - 1) indicator bats. lives=3 → 2 sprites,
-     * lives=2 → 1, lives=1 → 0 (on the player's last life the
-     * meter is empty). Earlier port used (lives - 2) — off by one. */
+    /* Port of LBE8B_7's `LD A,(lives_1up); DEC A; JR Z,skip`: draw
+     * (lives - 1) indicator bats, so on the last life the meter is
+     * empty. */
     int show = player.lives - 1;
     int i;
     (void)cycle;
@@ -2462,10 +2124,8 @@ static void render_lives(unsigned char cycle, unsigned char attr) {
 
 
 
-/* Brick compositor stage. Writes brick bricks/edges into scr_buff and
- * per-cell attrs (brick + shadow) into attr_buff for char rows 3..16.
- * Does NOT touch VGA — buff_to_vga handles the final pass. Assumes
- * paint_bg_to_buff already pre-filled the rest of the buffers. */
+/* Assumes paint_bg_to_buff already pre-filled the buffers, and does NOT
+ * touch VGA — buff_to_vga handles the final pass. */
 static void print_border_shadow_c(void);
 static void dim_border_shadow_column(int cr0, int cr1);
 static void render_brick_band(unsigned char level_idx) {
@@ -2561,14 +2221,6 @@ static void restore_inner_border_line(int y0, int h, int byte_lo, int byte_hi) {
     }
 }
 
-/* Port of print_border_shadow ($BFCF) — finalization after print_briks.
- * Clears bit 6 (the bright attr bit) at:
- *   - cc 1 of cr 1..23 (left dim strip column, all playfield rows)
- *   - cr 1 cc 2..30 (HUD label-row dimming)
- * Without this, bricks at lvl_col=0 (col_byte=1) leak their bright
- * brick color into cc 1, painting the left dim strip with the brick
- * colour instead of the non-bright side-strip attr the level expects
- * (e.g. L1 cr 7 cc 1: should be $1F, our print_briks_c writes $5F). */
 /* Dim char column 1 over [cr0, cr1] — the left arm of the border
  * shadow. Split out because a scoped band rebuild has to re-apply it for
  * the rows it repainted, exactly as restore_inner_border_line does for
@@ -2581,6 +2233,10 @@ static void dim_border_shadow_column(int cr0, int cr1) {
 /* The frame's drop shadow: the whole left column and the top row. It
  * spans the playfield, not the brick band, which is why it stays here
  * rather than in the bricks module.
+ *
+ * Clears bit 6 (bright) at char col 1 of rows 1..23 and at row 1 cols
+ * 2..30. Without it, bricks at lvl_col=0 leak their bright colour into
+ * col 1 — L1 char row 7 col 1 should be $1F, and print_briks writes $5F.
  * orig: print_border_shadow $BFCF */
 static void print_border_shadow_c(void) {
     int cc;
@@ -2588,11 +2244,9 @@ static void print_border_shadow_c(void) {
     for (cc = 2; cc <= 30; cc++) attr_buff[1 * 32 + cc] &= 0xBF;
 }
 
-/* Pre-fill scr_buff with the hex tile and attr_buff uniformly with
- * the level's bg_attr, across the WHOLE 256x192 playfield. This
- * replaces the prior direct-to-VGA paint_hex_bg path. buff_to_vga
- * does the final pixel expansion using the (possibly overwritten)
- * attr_buff. */
+/* Pre-fill scr_buff with the hex tile and attr_buff uniformly with the
+ * level's bg_attr, across the WHOLE 256x192 playfield. buff_to_vga does
+ * the final pixel expansion using the (possibly overwritten) attrs. */
 static void paint_bg_to_buff(unsigned char attr, unsigned char cycle) {
     const unsigned char *tile = bg_tile + (int)cycle * BG_TILE_SIZE;
     int y;
@@ -2610,10 +2264,6 @@ static void paint_bg_to_buff(unsigned char attr, unsigned char cycle) {
     memset(attr_buff, attr, sizeof(attr_buff));
 }
 
-/* Single-pass buffer-to-VGA conversion: walk scr_buff bits and emit
- * each pixel via the surrounding char cell's attr_buff entry. Mirrors
- * the original game's final-frame paint (game_screen_draw_to_buffer
- * at $BE6B followed by buffer-to-screen copy). */
 static void paint_bg_window_to_buff(unsigned char attr, unsigned char cycle,
                                     int y0, int h, int byte_lo, int byte_hi);
 
@@ -2635,10 +2285,8 @@ struct StaticCache {
     /* One entry per HUD score slot, in the order render_hud_to_buff
      * draws them: 1UP, 2UP. The dirty test must cover what is DRAWN, not
      * what the active player happens to hold — with two players the 2UP
-     * slot changes while `player` does not, and the HUD would silently
-     * keep showing a stale number. Nothing exercises that yet (WS2), but
-     * a cache keyed on less than it paints is a bug waiting for a
-     * feature. */
+     * slot changes while `player` does not, and the HUD would keep
+     * showing a stale number. */
     unsigned long drawn_score[2];
     unsigned long drawn_high_score;
     int drawn_lives;
@@ -2652,10 +2300,8 @@ static StaticCache cache = {
  * initial ON/OFF coin is the original's per-magnet
  * `CALL random_generate / LD A,(random_number) / RRA / JR C,stay-ON`:
  * ADVANCES the RNG once per magnet, keeps the magnet ON when bit0==1.
- * (An earlier render-time coin sampled without advancing — so every
- * magnet on the level shared one coin — and drew OFF on bit0==1,
- * inverted. Now the coin is rolled once here, and render_magnets /
- * the toggle just read the state.)
+ * The coin is rolled once HERE; render_magnets and the toggle only read
+ * the state, so a per-magnet coin is not re-sampled at render time.
  *
  * Test-mode pin (BATTYALL): slots 0/1 ON, 2/3 OFF, no RNG consumed —
  * keeps the state4 level-entry captures deterministic. */
@@ -2710,9 +2356,9 @@ static void render_magnets(unsigned char level_idx) {
          *                    with SMC) — drawn UNCONDITIONALLY first.
          *   sprite_num $07 = spr_magnet_circle_OFF (bare outline, w=3,
          *                    h=23) — drawn CONDITIONALLY for an OFF slot.
-         * (Iter 21 had this backwards, treating $06 as the "off state"
-         * and $07 as the "on overlay"; gfx_screen_elements actually
-         * maps $06 → spr_magnet_circle_on and $07 → spr_magnet_circle_off.)
+         * gfx_screen_elements maps $06 -> spr_magnet_circle_ON and $07 ->
+         * spr_magnet_circle_OFF, which is the opposite of what the names'
+         * draw order suggests.
          *
          * Both blits use the SAME (x, y) — original's `ADD A,$05` to
          * (IX+$04) between calls is dead state since ix_buf_addr_calc
@@ -2808,11 +2454,9 @@ static void compose_level_scene(unsigned char level_idx, bool with_bat) {
     paint_bg_to_buff(bg_attr, cycle);
     paint_frame_to_buff(cycle, level_idx);
     if (with_bat) render_bat(cycle, bg_attr);
-    /* NOT gated on with_bat. Bat 1 is a moving object — the static
-     * background is built without it and the dirty path redraws it each
-     * frame — but bat 2 has no input yet, so for now it is scenery and
-     * belongs in the static cache. When WS3 gives it a device it moves
-     * to the per-frame path, and this call goes with it. */
+    /* NOT gated on with_bat: bat 2 has no input device yet (WS3), so it
+     * is scenery and belongs in the static cache. Bat 1 is a moving
+     * object and the dirty path redraws it each frame. */
     render_bat_2(bg_attr);
     render_lives(cycle, bg_attr);
     if (with_bat) remember_bat_draw_state();
@@ -2846,7 +2490,6 @@ static void build_static_background(unsigned char level_idx) {
 static void rebuild_band_cache_full(unsigned char level_idx,
                                     unsigned char bg_attr, unsigned char cycle) {
     int y, cr;
-    /* Whole band dirty: the proven full path. */
     paint_bg_window_to_buff(bg_attr, cycle,
                             BRICK_BAND_Y_TOP,
                             BRICK_BAND_Y_BOT - BRICK_BAND_Y_TOP + 1,
@@ -2858,11 +2501,6 @@ static void rebuild_band_cache_full(unsigned char level_idx,
     for (cr = 3; cr <= 16; cr++) {
         memcpy(&bg_attr_buff[cr << 5], &attr_buff[cr << 5], 32);
     }
-    /* The rebuild rewrote scr_buff/attr_buff well beyond the brick
-     * flash's small dirty rect (whole rows, shadow attrs on the row
-     * below, the 32-byte attr rows). Flush every pixel row of every
-     * touched attr cell, or the parts outside the flash rect go stale
-     * on VGA — the post-destroy leftovers of known-bugs.md #1. */
     mark_dirty_bytes(3 * 8, (16 - 3 + 1) * 8, 0, 31);
     prof.band_rows += 14;
 }
@@ -2880,15 +2518,9 @@ static void rebuild_band_cache_rows(unsigned char level_idx,
                                     unsigned char bg_attr, unsigned char cycle,
                                     int lo, int hi) {
     int y, cr;
-    /* Incremental: re-composite [R0, R1] = the dirty brick rows widened
-     * by one row each side, so every attr/pixel the window inherits from
-     * a neighbour row is re-derived rather than left stale (see
-     * render_brick_band_rows' boundary notes).
-     *
-     * The paint window and the capture window differ by one pixel row at
+    /* The paint window and the capture window differ by one pixel row at
      * the top, and which one it is depends on R0 — band_rebuild_window
-     * owns that rule and tests/test_bricks.cpp gates it. This used to be
-     * four expressions here, and the r0 == 0 case was missing. */
+     * owns that rule and tests/test_bricks.cpp gates it. */
     int R0, R1, py_cap0, py0, py1, cr0, cr1;
     band_rebuild_window(lo, hi, &R0, &R1, &py_cap0, &py0, &py1, &cr0, &cr1);
     paint_bg_window_to_buff(bg_attr, cycle, py0, py1 - py0 + 1, 1, 30);
@@ -3325,17 +2957,11 @@ typedef enum { ST_TITLE, ST_MENU, ST_HISCORE, ST_LEVEL, ST_QUIT } state_t;
 #define MENU_TIMEOUT_TICKS   200    /* ~11 s  */
 #define HISCORE_TIMEOUT_TICKS 120   /* ~6.6 s */
 
-/* Attract-mode auto-cycle through TITLE / MENU / HISCORE states for
- * the no-input demo loop. Defaults to OFF — matches the original
- * game, where the player drives transitions. The legacy BATTYALL=1
- * env-var still forces it OFF for the test floppy (no-op now, but
- * kept so the autoexec.bat doesn't need editing). */
 /* The original has no attract auto-cycle: the title, menu and hi-score
  * screens wait for a key rather than rotating on a timer. Nothing sets
  * this, so every TIMED_OUT below is permanently false — the timeouts are
- * kept because they are the cycle the original's screens WOULD use, and
- * removing them would lose that. Do not read a TIMED_OUT branch as
- * reachable. */
+ * kept because they are the cycle the original's screens WOULD use. Do
+ * not read a TIMED_OUT branch as reachable. */
 static int auto_advance = 0;   /* never assigned; see above */
 #define TIMED_OUT(start, ticks) (auto_advance && (bios_ticks() - (start) > (ticks)))
 
@@ -3410,18 +3036,11 @@ static state_t run_menu(void) {
              * and start the game". Key 0 is the ONLY way out; every
              * other key falls back into the poll loop.
              *
-             * ENTER is kept as the port's own attract-chain affordance —
-             * it is not in the original, which has no ENTER in this
-             * routine at all, and test-visual walks title -> menu ->
-             * hi-score -> level with it. Making ENTER start the game
-             * would have silently turned that gate's hi-score checkpoint
-             * into a level capture. PLAN.md's WS1 said "0/ENTER"; the
-             * disassembly says 0, and it wins.
-             *
-             * Modes 2 and 3 are still inert (WS2/WS3), so choosing one
-             * and pressing 0 starts a 1-player game. That is a gap, not
-             * a silent success: it is written down in PLAN.md rather
-             * than dressed up here. */
+             * ENTER is the port's own attract-chain affordance — not in
+             * the original at all — because test-visual walks title ->
+             * menu -> hi-score -> level with it. Making ENTER start the
+             * game turns that gate's hi-score checkpoint into a level
+             * capture. */
             if (k == '0') {
                 /* The original's game_mode is always one of the three;
                  * the port's 0 means "nothing picked yet". */
@@ -3501,13 +3120,10 @@ static void paint_bg_window_to_buff(unsigned char attr, unsigned char cycle,
 #define KEY_P_LOWER 'p'
 #define KEY_P_UPPER 'P'
 
-/* Paint the ball at (x, y) into scr_buff via the original masked
- * OR-blit. Cell attrs are left at bg_attr (we don't override), so the
- * surrounding bg pattern inside the ball's char cells stays identical
- * to neighbouring cells — no colour-clash halo around the ball. The
- * ball's solid body bits (mask=1, pix=0) render as bg ink (yellow on
- * L1) and the texture/shadow bits (mask=1, pix=1) render as bg paper
- * (black) — the same effect the original ZX game produces. */
+/* Paint the ball into scr_buff via the original masked OR-blit. Cell
+ * attrs are NOT overridden, so there is no colour-clash halo: the body
+ * bits (mask=1, pix=0) render as the cell's ink and the texture/shadow
+ * bits (mask=1, pix=1) as its paper, as on the Spectrum. */
 static void render_ball_to_buff(int x, int y, unsigned char bg) {
     unsigned int spr = big_ball_active() ? SPR_BIG_BALL : SPR_BALL_NORMAL;
     (void)bg;
@@ -3515,14 +3131,12 @@ static void render_ball_to_buff(int x, int y, unsigned char bg) {
 }
 
 /* Paint each active laser bullet via the original masked OR-blit, no
- * per-cell attr override. The original's print_obj_to_buff writes
- * pixels only — the bullet renders in whichever attr each cell
- * already has (= bg attr in the empty playfield). User's spec: the
- * game field is monochrome except blocks. Two slots = up to two
- * bullets in flight. */
-/* Each bullet draws its OWN animation frame. It used to share a static
- * counter bumped once per call, which made the phase depend on how many
- * frames had taken the full redraw path — see known-bugs.md #10. */
+ * per-cell attr override. The original's print_obj_to_buff writes pixels
+ * only — the bullet renders in whichever attr each cell already has.
+ *
+ * Each bullet draws its OWN animation frame. Sharing one static counter
+ * bumped per call makes the phase depend on how many frames took the
+ * full redraw path — known-bugs.md #10. */
 static void render_bullet_to_buff(void) {
     int i;
     for (i = 0; i < N_BULLETS; i++) {
@@ -3532,17 +3146,13 @@ static void render_bullet_to_buff(void) {
     }
 }
 
-/* Paint the rocket into scr_buff. Alternates between the two
- * spr_bonus_rocket_* frames based on a per-tick counter for a
- * crude flame-flicker effect. No per-cell attr override — same
- * "monochrome except blocks" rule as bullets / bonus. */
+/* Paint the rocket into scr_buff, alternating the two
+ * spr_bonus_rocket_* frames for the flame flicker. */
 static void render_rocket_to_buff(void) {
     unsigned int spr;
     if (!rocket.active) return;
-    /* Original handling_rocket at \$A89A toggles sprite each frame:
-     *   LD A,(counter_misc); AND \$01; LD (IX+\$01),A
-     * Was masking \& 2 which only flipped every 2 ticks — half the
-     * original's flame flicker rate. */
+    /* Original handling_rocket at $A89A toggles the sprite EVERY frame:
+     *   LD A,(counter_misc); AND $01; LD (IX+$01),A */
     spr = (rocket.counter & 1) ? SPR_BONUS_ROCKET_2 : SPR_BONUS_ROCKET_1;
     blit_masked_to_scr_buff(spr, rocket.x, rocket.y);
 }
@@ -3647,16 +3257,12 @@ static void hide_objects_for_rocket_clear(void) {
 
 /* The CATCHING bat's active bonus. $FF means "no bat-side effect".
  *
- * This used to write BOTH bats, justified by a comment claiming bat 2
- * was "the second bat the original keeps for the rocket flight" and
- * that the two "must not disagree". Both halves were wrong.
- * `object_bat_2` is player 2's bat, and the original keeps the two
- * bytes deliberately APART — `LA67B_0` runs inside `bonus_flag_swap`
- * for a bat-2 catch, so only the catching bat's byte moves.
+ * Writes ONE bat. The original keeps the two bytes deliberately APART —
+ * `LA67B_0` runs inside `bonus_flag_swap` for a bat-2 catch, so only the
+ * catching bat's byte moves.
  *
- * What the original does instead, where an effect belongs to the BALL
- * rather than to a bat, is check both. LA27E's big-ball test is the
- * model:
+ * Where an effect belongs to the BALL rather than to a bat, the original
+ * checks both instead. LA27E's big-ball test is the model:
  *
  *     LD A,(object_bat_1+$14) / CP $07 / JR Z,set_big_ball
  *     LD A,(object_bat_2+$14) / CP $07 / JR NZ,obj_processing
@@ -3693,14 +3299,14 @@ static void attach_rocket_to_bat(void) {
 
     place_rocket_on_bat();
 
-    /* INC (IY+$14) at $AA72: the ROCKET catch bumps bat.bonus_applied
-     * by one, which silently cancels whatever bat-side bonus was
-     * active (CATCH $03 -> $04, LASER $01 -> $02, both inert). This is
-     * why bonus_apply's universal assignment skips ROCKET. */
-    /* INC (IY+$14) with IY the CATCHING bat. Only bat 1 can catch a
-     * rocket in the port — the rocket flight is bat-1 state throughout
-     * (place_rocket_on_bat reads BAT_X) — so this stays explicit rather
-     * than parameterised, and says why. */
+    /* INC (IY+$14) at $AA72: the ROCKET catch bumps bonus_applied by one,
+     * silently cancelling whatever bat-side bonus was active (CATCH $03
+     * -> $04, LASER $01 -> $02, both inert). This is why bonus_apply's
+     * universal assignment skips ROCKET.
+     *
+     * IY is the CATCHING bat, but only bat 1 can catch a rocket here —
+     * the flight is bat-1 state throughout (place_rocket_on_bat reads
+     * BAT_X) — so this stays explicit rather than parameterised. */
     objects[OBJ_BAT_1].bonus_applied++;
 }
 
@@ -3761,12 +3367,11 @@ static void apply_multi_ball_bonus(int bat_idx) {
      * splits it: `AND $0F` picks the branch, `AND $30` carries the
      * quadrant.
      *
-     * The port used to pass `delta_to_dir(ball.dx, ball.dy)`, a round
-     * trip through {-1,0,+1} signs. delta_to_dir picks its angle with
-     * `abs(dx) >= BALL_SPEED`, and a sign is never >= 2, so the low
-     * nibble came out $04 EVERY time — the port always took the first
-     * branch of extra_ball_dirs where the original varies with the
-     * primary's actual angle. That was known-bugs #14's open half. */
+     * NOT `delta_to_dir(ball.dx, ball.dy)`: that round-trips through
+     * {-1,0,+1} signs, and delta_to_dir picks its angle with
+     * `abs(dx) >= BALL_SPEED`, which a sign never satisfies — the low
+     * nibble comes out $04 every time and the first branch of
+     * extra_ball_dirs is always taken (known-bugs #14). */
     const ExtraBallDirs dirs = extra_ball_dirs(objects[OBJ_BALL_1].dir);
     spawn_extra_ball(OBJ_BALL_2, BALL_X, BALL_Y, dirs.second);
     spawn_extra_ball(OBJ_BALL_3, BALL_X, BALL_Y, dirs.third);
@@ -3782,8 +3387,7 @@ static void bonus_apply(unsigned char type, int bat_idx) {
     /* Original get_bonus at $A67B: every catch awards 400 points and
      * plays a sound — sound_live_add ($07) for the LIFE bonus, the
      * resize-2 beep ($0C) for everything else (push_resize_sound at
-     * $A645, gated by `CP $05; CALL NZ,push_resize_sound`). Our port
-     * had been routing every catch through SND_LIVE_ADD. */
+     * $A645, gated by `CP $05; CALL NZ,push_resize_sound`). */
     sound_queue(type == BONUS_TYPE_LIFE ? SND_LIVE_ADD : SND_BAT_RESIZE_2);
     /* Original LA67B_3 at \$A6FC writes the bonus type code into
      * bat.bonus_applied for every catch except ROCKET (which jumps
@@ -3798,10 +3402,7 @@ static void bonus_apply(unsigned char type, int bat_idx) {
         case BONUS_TYPE_LIFE:     player.lives++; life_dropped_this_round = 1; break;
         case BONUS_TYPE_SLOW:     apply_slow_bonus(bat_idx); break;
         case BONUS_TYPE_BIG_BAT:
-            /* The CATCHING bat widens. This was guarded to bat 1 while
-             * the width was one bat's worth of state — first widening
-             * the wrong bat, then, after the bonus byte split, widening
-             * nobody at all. `bats[]` ended that. */
+            /* The CATCHING bat widens. */
             {
                 BatState &st = bats[BAT_SLOT(bat_idx)];
                 st.big_ticks    = BIG_BAT_DURATION;
@@ -3811,11 +3412,10 @@ static void bonus_apply(unsigned char type, int bat_idx) {
             break;
         case BONUS_TYPE_BIG_BALL: ball.big_ticks = BIG_BALL_DURATION; break;
         case BONUS_TYPE_KILL_ALIENS:
-            /* bat.bonus_applied = \$09 is already set above; enemy_prepare
+            /* bonus_applied = $09 is already set above; enemy_prepare
              * reads it to stop spawning. This only clears the alien
-             * already on screen, for immediate visible effect. */
-            /* LA67B_1 sets the side from the CATCHING bat's x, which
-             * bonus_apply now receives. */
+             * already on screen. LA67B_1 sets the side from the CATCHING
+             * bat's x. */
             blast_active_alien(catcher_x);
             break;
         case BONUS_TYPE_CATCH:
@@ -3841,24 +3441,13 @@ static void bonus_apply(unsigned char type, int bat_idx) {
     }
 }
 
-/* Current effective bat geometry (varies with that bat's big_ticks). */
-/* spr_bat_big is 48 px wide (6 bytes) vs spr_bat_normal's 32 px (4
- * bytes). Keep the bat visually centred on BAT_X by rendering big
- * bat 8 px further left; hitbox widens correspondingly. */
-/* Collision uses the bat BODY (28 px wide per object_bat_1's
- * w_body_px = \$1C), not the full sprite (32 px = body + shadow).
- * The sprite's last 4 px (rows 2+ have mask \$F0 in byte 3) are
- * transparent shadow, not visible bat surface — ball passing through
- * those pixels shouldn't register a hit. */
-/* BAT_BODY_W comes from physics.h. */
 /* A bat's collision extents, widened by its own BIG_BAT growth.
  *
- * Per bat, so bat 2 stops being a hardcoded 28 px the moment it has a
- * width of its own. Bat 2's `extra_px` is 0 today, so every
- * bat-2 site that now calls these gets exactly what its open-coded
- * `x_coord + BAT_BODY_W` gave it — the switch is behaviour-neutral by
- * arithmetic, and it is what makes slot 1 a live read rather than a
- * field waiting for a future commit to notice it. */
+ * Collision uses the bat BODY — 28 px, object_bat_1's w_body_px = $1C —
+ * not the full 32 px sprite. The sprite's last 4 px (rows 2+ carry mask
+ * $F0 in byte 3) are transparent shadow, not bat surface, so a ball
+ * passing through them must not register a hit. BAT_BODY_W is in
+ * physics.h. */
 static int bat_left_of(int b) {
     return (int)objects[b].x_coord - bats[BAT_SLOT(b)].extra_px;
 }
@@ -3868,14 +3457,11 @@ static int bat_right_of(int b) {
 static int eff_bat_left(void)  { return bat_left_of(OBJ_BAT_1); }
 static int eff_bat_right(void) { return bat_right_of(OBJ_BAT_1); }
 
-/* Current effective ball body size. spr_ball_normal body is 8x7;
- * spr_big_ball body fills the full 2-byte * 12 row sprite at its
- * widest = ~12 px in the middle rows. We approximate as 12. */
-/* SMASH (BIG_BALL) is active in the original iff bat.bonus_applied == \$07
- * (see line 919-920 at \$0397: `CP \$07; JR NZ,obj_processing`). Catching
- * another bonus rewrites bat.bonus_applied and the ball reverts on the
- * very next frame. We add a timer (~10 s, mirrors smash_counter wrap at
- * \$F8) as an OR with the bat state so the effect ends either way. */
+/* SMASH (BIG_BALL) is active in the original iff bonus_applied == $07
+ * (at $0397: `CP $07; JR NZ,obj_processing`). Catching another bonus
+ * rewrites the byte and the ball reverts on the very next frame. The
+ * timer (mirroring smash_counter's wrap at $F8) is OR'd with the bat
+ * state so the effect ends either way. */
 static int big_ball_active(void) {
     /* EITHER bat: SMASH is a property of the BALL, and the original
      * tests both bytes before deciding (LA27E, quoted on
@@ -3893,13 +3479,11 @@ static int big_bat_active_of(int b) {
     return bats[BAT_SLOT(b)].big_ticks > 0
         && objects[b].bonus_applied == 0x00;
 }
-/* Collision body stays 8x7 even with BIG_BALL active — original at
- * $9D5A_1 sets bat.bonus_applied=$07 and swaps the sprite to
- * spr_big_ball, but never touches the ball's (IX+$0C, IX+$0D) body
- * dimensions. The bigger sprite is purely cosmetic; the hitbox the
- * brick / bat / wall collision uses is the same as the normal ball.
- * Earlier port grew the collision to match the sprite (12 px),
- * making it artificially easier to catch / hit during SMASH. */
+/* Collision body stays 8x7 even with BIG_BALL active — $9D5A_1 sets
+ * bonus_applied=$07 and swaps the sprite to spr_big_ball, but never
+ * touches the ball's (IX+$0C, IX+$0D) body dimensions. The bigger sprite
+ * is purely cosmetic; growing the hitbox to match makes SMASH
+ * artificially easier to catch and to hit with. */
 static int eff_ball_size(void) { return BALL_W_PX; }
 
 /* BIG_BAT expiry and the width ramp toward it. The timer can also be
@@ -3979,8 +3563,6 @@ static void spawn_pts_marker(int x, int y) {
     pts_marker.dx = (r & 0x80) ? mag : -mag;
 }
 
-/* Advance the falling bonus, check for catch on the bat, and tick down
- * any active effect timers. */
 /* Does a falling object's BODY overlap the bat's BODY?
  *
  * Two body-vs-sprite distinctions meet here, and both are easy to get
@@ -4011,15 +3593,11 @@ static int overlaps_bat_body(int x, int y, int w, int h) {
  *     LD A,(game_mode) / CP $02 / RET NZ
  *     LD IY,object_bat_2 / CALL obj_compare / RET NC
  *
- * bat 1 first, and bat 2 only in mode $02 and only if bat 1 missed.
- * The port tested bat 1 alone, so a bonus falling on player 2's half of
- * the court was never caught by anyone. */
+ * bat 1 first, and bat 2 only in mode $02 and only if bat 1 missed. */
 static int bonus_catching_bat(int x, int y, int w, int h) {
     if (overlaps_bat_body(x, y, w, h)) return OBJ_BAT_1;
     if (game_mode == 2 && !(objects[OBJ_BAT_2].sprite_set & 0x80)) {
         const Object &b2 = objects[OBJ_BAT_2];
-        /* Bat 2 is always the plain 28-wide sprite — the width bonuses
-         * are bat-1 globals — so no extra_px term, and its own y. */
         if (y + h >= (int)b2.y_coord && y < (int)b2.y_coord + 10
             && x + w > bat_left_of(OBJ_BAT_2)
             && x < bat_right_of(OBJ_BAT_2))
@@ -4040,9 +3618,7 @@ static void step_bonus(void) {
         bonus_apply(bonus.type, caught_by);   /* effect + catch sound */
         bonus.active = 0;
         /* LA67B_1 sets need_change_player from the CATCHING bat's x, so
-         * the 400 follows the bat that got it. It used to be BAT_X
-         * unconditionally, which was right only because bat 2 could
-         * never catch anything. */
+         * the 400 follows the bat that got it. */
         add_points_to_score(400, (int)objects[caught_by].x_coord);
         spawn_pts_marker(bonus.x, bonus.y);
         return;
@@ -4050,13 +3626,12 @@ static void step_bonus(void) {
     if (bonus.y > PLAYFIELD_H) bonus.active = 0;
 }
 
-/* Advance the +400 floating marker each tick. Port of handling_400pts
- * at \$A58D + the shared LA55A_0 advance with DE=\$0028, B=\$80.
+/* Advance the +400 floating marker each tick. Port of handling_400pts at
+ * $A58D + the shared LA55A_0 advance with DE=$0028, B=$80.
  *
- * Original moves the marker DOWN (Y increases), accelerating as the
- * accumulator grows; dies when Y >= \$C0 (= 192 = bottom of playfield).
- * Earlier port had it floating UP — counterintuitive but seemed nicer.
- * Switched back to match the disasm: marker falls off the bottom. */
+ * The marker moves DOWN, accelerating as the accumulator grows, and dies
+ * at Y >= $C0 (= the bottom of the playfield) — it falls off, however
+ * much a floating-up marker would look nicer. */
 static void step_pts_400(void) {
     if (!pts_marker.active) return;
     pts_marker.y += motion_accel_step(&pts_marker.motion,
@@ -4069,14 +3644,6 @@ static void step_pts_400(void) {
     if (pts_marker.y >= PLAYFIELD_H) pts_marker.active = 0;
 }
 
-/* Try to drop a bonus at (col, row). Called from every brick-
- * destruction site (ball collision, laser bullet, rocket sweep)
- * so the cadence is the same regardless of who destroyed it.
- * Mirrors set_bonus's selection logic at $9D5A: random index into
- * bonus_table_current (_first for rounds 0..5, _second for 6+),
- * retry up to 16 times if the picked code maps to an unsupported
- * effect. No-op if a bonus is already in flight or the cadence
- * counter isn't at a spawn-multiple. */
 /* Roll a bonus type from `tbl`, honouring the original's re-roll rules.
  * Returns BONUS_TYPE_UNSUPPORTED if 16 tries all landed on something
  * excluded or unported.
@@ -4099,9 +3666,8 @@ static void step_pts_400(void) {
  * random_generate per retry. */
 /* Which bonus to drop, given everything currently going on.
  *
- * THIS STAYS IN main.cpp, and the reason is worth stating so nobody
- * spends an afternoon trying to move it (I nearly did). It reads SEVEN
- * pieces of live game state to reject inappropriate draws:
+ * THIS STAYS IN main.cpp. It reads seven pieces of live game state to
+ * reject inappropriate draws:
  *
  *   objects[OBJ_BAT_1].bonus_applied   do not re-drop what is active
  *   ball.extra2_active / extra3_active no multiball while extras fly
@@ -4112,11 +3678,9 @@ static void step_pts_400(void) {
  *
  * That is not a module's worth of geometry, it is the game deciding what
  * is appropriate. Moving it would drag most of the game's state into
- * whatever module received it, which is the opposite of the point.
- *
- * The consequence for stage 1: BATTY_FORCE_SPAWN_BONUS's seeder cannot
- * follow the bomb's into src/replay.cpp, because it calls this. That is
- * a real boundary, not an accident of placement. */
+ * whatever module received it. The consequence: BATTY_FORCE_SPAWN_BONUS's
+ * seeder cannot follow the bomb's into src/replay.cpp, because it calls
+ * this. */
 static unsigned char pick_bonus_type(const unsigned char *tbl) {
     int tries;
     for (tries = 0; tries < 16; tries++) {
@@ -4144,8 +3708,8 @@ static unsigned char pick_bonus_type(const unsigned char *tbl) {
  *
  * The chance is 5/16 (about 31%) per brick, from the test at $A2CC. It
  * reads random_number WITHOUT advancing it (rng_sample); only the type
- * pick advances the RNG. An earlier port used a deterministic every-Nth
- * counter — the same average rate, but visible as a pattern.
+ * pick advances the RNG. A deterministic every-Nth counter gives the
+ * same average rate but is visible as a pattern.
  *
  * A bomb in flight blocks the drop: the original shares object_bonus
  * between the two, and the port mirrors that exclusion despite keeping
@@ -4212,10 +3776,8 @@ static int brick_hit_resolve(int col, int row, int axis, int slot) {
         sound_queue(SND_NORMAL_BRIK);
         return axis;
     }
-    /* SMASH (BIG_BALL) bypasses the multi-hit half-state — port of
-     * LAFFC's `CP \$07; JR Z,LAFFC_38` test that jumps directly to
-     * the destroy path. Without this, multi-hit bricks still need
-     * two hits even with SMASH active. */
+    /* SMASH (BIG_BALL) bypasses the multi-hit half-state — LAFFC's
+     * `CP $07; JR Z,LAFFC_38` jumps straight to the destroy path. */
     if (!big_ball_active() && !(*cell & 0x10)) {
         *cell |= 0x10;
         brick_hit_anim_spawn(col, row);
@@ -4283,9 +3845,6 @@ static int laffc_collision(Object *o, int prev_x, int prev_y, int new_x,
     return 3;   /* reflected and snapped; step_ball must not re-reflect */
 }
 
-/* Count remaining destructible bricks: bit 7 clear (still present)
- * AND bit 5 clear (not undestructible). bit 4 is the multi-hit
- * "next hit destroys" marker — those still count as destructible. */
 /* The live-brick rule lives in bricks (with the contrast against
  * BrickField::solid spelled out there); this is just the binding to the
  * current level's grid. */
@@ -4293,17 +3852,6 @@ static int live_bricks_remaining(void) {
     return bricks_live_count(live_level);
 }
 
-/* --- Enemy preparation (port of enemy_prepare @ $9EAA) -----------------
- *
- * Activates object_enemy at the playfield edge under the original's
- * spawn conditions:
- *   - current_level_number_1up != 4 (= no aliens on L5 in original)
- *   - applied bonus on bat_1 / bat_2 != $09 (kill-aliens bonus)
- *   - briks_quantity_1up < 44 (=  enough bricks down for late-level alien)
- *   - object_enemy currently empty
- * Picks bird (sprite_set $09) on odd rounds, UFO ($08) on even. X
- * coord from prop_x_coord[random & 3] = {$40, $A8, $40, $A8}. Speed
- * from per-round prop table. */
 static unsigned char ctrl_btns_pressed_value(void) {
     unsigned char v = 0;
     if (key_state[SC_RIGHT]) v |= 0x01;
@@ -4314,14 +3862,6 @@ static unsigned char ctrl_btns_pressed_value(void) {
 
 static unsigned int next_random(void) { return rng_next(ctrl_btns_pressed_value()); }
 
-/* Sample the RNG for a "read-current" consumer (the original's
- * `LD A,(random_number)` without a preceding `CALL random_generate`).
- * With rng_perframe OFF this is identical to next_random() (advance on
- * read) so behaviour and all gates are byte-unchanged; with it ON it
- * returns the current random_number WITHOUT advancing, because the
- * per-frame tick (added in the play loop) is the only advance — matching
- * the original. Consumers the original advances-then-reads (bonus
- * generation) keep calling next_random() directly. */
 /* The noise envelope's random source. orig: the magnet zip reads
  * random_number like any other consumer. */
 static u8 sound_random_byte(void) { return rng_low(u16(next_random())); }
@@ -4332,15 +3872,18 @@ static u8 sound_random_byte(void) { return rng_low(u16(next_random())); }
 static u8 enemy_random_current(void) { return rng_low(rng_current()); }
 static u8 enemy_random_sample(void)  { return rng_low(u16(rng_sample())); }
 
+/* Sample for a "read-current" consumer — the original's
+ * `LD A,(random_number)` with no preceding `CALL random_generate`. With
+ * rng_perframe ON this returns the current number WITHOUT advancing,
+ * because the per-frame tick at the play-loop top is the only advance.
+ * Consumers the original advances-then-reads (bonus generation) call
+ * next_random() directly instead. */
 static unsigned int rng_sample(void) {
     return dbg.rng_perframe ? rng_current() : next_random();
 }
 
 
 
-
-/* Seed a whole object descriptor from a hex blob, so a gate can put the
- * bat, ball or alien anywhere without playing the game into that state. */
 
 static void apply_replay_ball_motion_override(void) {
     const char *stuck = getenv("BATTY_REPLAY_BALL_STUCK");
@@ -4366,17 +3909,10 @@ static void apply_replay_ball_motion_override(void) {
 }
 
 
-/* Read `count` comma-separated integers from a BATTY_REPLAY_* value.
- * All-or-nothing: a malformed override is ignored rather than applied
- * half-parsed, so a typo in a gate's env leaves the game untouched
- * instead of seeding a state nobody intended. */
-
 /* Bake a falling bonus for the falling-object regression gate.
- * BATTY_REPLAY_BONUS = "type,x,y" (decimal or 0x-hex per field). Starts a
- * fresh fall (bonus.motion zeroed) so the accel progression
- * motion_accel_step(&bonus.motion, FALL_DE_SLOW, FALL_CAP_SLOW) is
- * deterministic from y.
- * Put x clear of the bat to test pure fall (no catch). */
+ * BATTY_REPLAY_BONUS = "type,x,y". Starts a fresh fall (motion zeroed)
+ * so the accel progression is deterministic from y; put x clear of the
+ * bat to test a pure fall with no catch. */
 static void apply_replay_bonus_override(void) {
     long v[3];
     if (!replay_env_ints("BATTY_REPLAY_BONUS", v, 3)) return;
@@ -4388,16 +3924,10 @@ static void apply_replay_bonus_override(void) {
     bonus.motion.frac = 0;
 }
 
-/* Bake a falling enemy bomb for the bomb-fall regression gate.
- * BATTY_REPLAY_BOMB = "x,y". Same accel family as the bonus
- * (motion_accel_step(&bomb.motion, FALL_DE_SLOW, FALL_CAP_SLOW)); put x
- * clear of the bat
- * to test pure fall (no bat-kill). */
-
-/* Bake a rising/falling +400 score popup for the pts-400-fall gate.
- * BATTY_REPLAY_PTS400 = "x,y". Uses motion_accel_step(&pts_marker.motion,
- * 0x0028, 0x80) — a DIFFERENT accel constant pair than bonus/bomb, so this
- * exercises a faster-grow path. dx is zeroed so the y progression is pure. */
+/* Bake a +400 score popup for the pts-400-fall gate.
+ * BATTY_REPLAY_PTS400 = "x,y". Uses a DIFFERENT accel constant pair than
+ * bonus/bomb, so this exercises the faster-grow path. dx is zeroed so
+ * the y progression is pure. */
 static void apply_replay_pts400_override(void) {
     long v[2];
     if (!replay_env_ints("BATTY_REPLAY_PTS400", v, 2)) return;
@@ -4408,11 +3938,6 @@ static void apply_replay_pts400_override(void) {
     pts_marker.motion.acc = 0;
     pts_marker.motion.frac = 0;
 }
-
-/* Bake an in-flight laser bullet for the bullet-motion gate.
- * BATTY_REPLAY_BULLET = "x,y" into slot 0. The bullet rises at a constant
- * BULLET_SPEED (6 px/frame) in step_bullet_one; probe it in the window
- * below the brick field (y > 128) so it travels without blasting. */
 
 /* Activate big-ball (SMASH) for the deterministic big-ball dirty-tier gate.
  * big_ball_active() needs ball.big_ticks>0 AND bat.bonus_applied==0x07. */
@@ -4481,11 +4006,6 @@ static void apply_replay_force_brick(void) {
     live_level[v[1] * LVL_COLS + v[0]] = (unsigned char)v[2];
 }
 
-/* Bake a bullet-impact blast for the blast-animation gate.
- * BATTY_REPLAY_BLAST = "x,y" arms slot 0 at full duration; step_bullet_blast
- * decrements bullet_blast_ticks 1/frame (8 -> 0 over 8 frames = 4 frames x
- * BULLET_BLAST_TICKS_PER_FRAME), render frame = (ticks-1)/2. */
-
 static void apply_replay_rocket_override(void) {
     if (getenv("BATTY_REPLAY_ROCKET_ACTIVE") == NULL) return;
     rocket.active = 1;
@@ -4504,9 +4024,8 @@ static void apply_replay_rocket_override(void) {
  *   +4 height body
  *   +5 speed */
 static const unsigned char prop_uneven[6] = { 0x09, 0xF0, 0x70, 0x18, 0x0C, 0x01 };
-/* prop_even byte-exact per $9F2D — was hand-tuned earlier with extra
- * speed and a smaller height; the original UFO is 16 px tall and moves
- * at speed 1, same as the bird. */
+/* prop_even, byte-exact per $9F2D: the UFO is 16 px tall and moves at
+ * speed 1, the same as the bird. */
 static const unsigned char prop_even[6]   = { 0x08, 0x60, 0x90, 0x18, 0x10, 0x01 };
 static const unsigned char prop_x_coord[4]= { 0x40, 0xA8, 0x40, 0xA8 };
 
@@ -4631,18 +4150,13 @@ static void probe_write_harness_state(FILE *f) {
             (unsigned)probe.frame_frames,
             (unsigned)probe.frame_countdown,
             (unsigned)probe.frame_active);
-    /* Distinct from the `bonus_state=active..` line above: this is the
-     * raw bonus + marker bytes the replay harness diffs. Both were once
-     * called bonus_state, which "worked" only because the regex gates
-     * anchor on `=active` and the harness's dict kept the last. */
-    /* The alien's brick-hit walk target (orig LAA7B). Zero y means no
-     * target; anything else means a hit has latched and the alien is
-     * walking to the snapped position. Without this the whole reaction
-     * is invisible to every capture — the bricks are untouched by
-     * design, so there is nothing on screen that says it fired. */
     fprintf(f, "\ngame_mode=%02X_player%02X_life%lu_over%lu_go%lu",
             (unsigned)game_mode, (unsigned)active_player,
             turn_changes_life, turn_changes_over, game_overs_reached);
+    /* The alien's brick-hit walk target (orig LAA7B). Zero y means no
+     * target. Without this the whole reaction is invisible to every
+     * capture — the bricks are untouched by design, so nothing on screen
+     * says it fired. */
     fprintf(f, "\nenemy_home=%02X%02X",
             (unsigned)enemy_home_target.x, (unsigned)enemy_home_target.y);
     fprintf(f, "\nbonus_pts_raw=%02X%02X%02X%02X%02X%04X",
@@ -4740,9 +4254,7 @@ static bool enemy_spawn_allowed(void) {
      * this spawner entirely. */
     if (test_mode_pin_blink) return false;
 
-    /* L4 has no enemies at all — $9EAA returns immediately there. An
-     * earlier port added a bouncing spark as extra challenge; removed
-     * for byte-exact parity. */
+    /* L4 has no enemies at all — $9EAA returns immediately there. */
     if (current_level_idx_var == 4) return false;
 
     /* The KILL_ALIENS bonus stops further spawns while it is held. */
@@ -4779,10 +4291,9 @@ static void enemy_prepare(void) {
     e->y_coord = 0;
     /* Original enemy_prepare ($9EAA): x = prop_x_coord[random_number & 3]
      * (read-current, no advance -> rng_sample), then dir = $10 and
-     * target (+$14) = $10 UNCONDITIONALLY. The enemy spawns heading
-     * straight down and steers from there (ground truth: frame-0 dir =
-     * 0x10). The port had derived dir from `r` (0x38/0x08), which spawned
-     * it on a diagonal it never has on the Spectrum. */
+     * target (+$14) = $10 UNCONDITIONALLY — NOT derived from the same
+     * random byte. The enemy spawns heading straight down and steers
+     * from there (ground truth: frame-0 dir = 0x10). */
     r = (unsigned char)(random_lo(rng_sample()) & 3);
     e->x_coord = prop_x_coord[r];
     e->x_coord_hi = 0;
@@ -4817,11 +4328,9 @@ static void kill_enemy_in_rect(int bx_l, int by_t, int bw, int bh,
     blast_active_alien(side_x);
 }
 
-/* Port of kill_enemy_by_bat at $A4B8 / kill_enemy at $A4C4. AABB check
- * between the alien body rect and the bat; on overlap, deactivate the
- * alien, award 350 BCD points (LD BC, $0350 at $A4E0), and push the
- * alien-blast sound. Full blast animation via sprite_set = $0A and
- * handling_blast is deferred - we just mark inactive for now. */
+/* Port of kill_enemy_by_bat at $A4B8 / kill_enemy at $A4C4: AABB between
+ * the alien body rect and the bat; on overlap the alien becomes its
+ * blast, worth 350 BCD points (LD BC,$0350 at $A4E0). */
 static void kill_enemy_by_bat(void) {
     /* Effective extents, so BIG_BAT widens the kill zone: the original
      * uses obj_compare_2pix with (IY+$0C) = the current bat body width,
@@ -4833,11 +4342,7 @@ static void kill_enemy_by_bat(void) {
     /* `kill_enemy_by_bat` is called from `handling_bat`, which in mode
      * $02 runs for BOTH bats — so bat 2 kills the alien too, and scores
      * for its own side. There is no bonus condition on either: any bat
-     * touching the alien destroys it.
-     *
-     * Bat 2 is always the plain 28-wide sprite (the width bonuses are
-     * bat-1 globals, a WS3 residual), so its kill zone is the body with
-     * no extra_px term. */
+     * touching the alien destroys it. */
     if (game_mode == 2) {
         const Object &b2 = objects[OBJ_BAT_2];
         if (!(b2.sprite_set & 0x80))
@@ -4889,11 +4394,10 @@ static void take_a_life(void) {
 static void step_bomb(void) {
     if (!bomb.active) return;
     bomb_fall_step(PLAYFIELD_H);
-    /* The fall now owns the off-bottom deactivate, so that test moved
-     * ABOVE the bat check (it used to be below). Safe, and provably:
-     * off-bottom means bomb.y > 192, while overlaps_bat_body requires
-     * bomb.y < BAT_Y + 10 = 186. The two cannot both hold, so no frame
-     * changes behaviour. */
+    /* The fall owns the off-bottom deactivate, so this test sits ABOVE
+     * the bat check. The order cannot matter: off-bottom means
+     * bomb.y > 192, and overlaps_bat_body requires bomb.y < BAT_Y + 10 =
+     * 186, so the two can never both hold. */
     if (!bomb.active) return;
     /* 8 high, not BOMB_H_PX: the body is 8x8, the sprite 8x12. See
      * overlaps_bat_body. */
@@ -4962,15 +4466,11 @@ static void step_bullet(void) {
 /* Fire one laser bullet if the bat carries the LASER bonus, the cooldown
  * has expired, and a slot is free. Port of free_bullet_2 ($A14C) + the
  * $A12C cooldown gate. Called from the SPACE handler and (under
- * BATTY_AUTO_FIRE) once per frame. The cooldown == 0 check is BEFORE the
- * end-of-frame `-= 2`, so the 0x18 reset yields the original's 12-frame
- * cadence.
+ * BATTY_AUTO_FIRE) once per frame.
  *
- * That reasoning used to live at the old call site and in a
- * a `laser` note that was never written. Stated here instead: reset to
- * $18 = 24, decrement 2 per frame, and the == 0 test running BEFORE the
- * decrement means a shot is allowed on the 12th frame, not the 13th.
- * test-laser-cadence pins it. */
+ * Reset to $18 = 24, decrement 2 per frame, and the `== 0` test running
+ * BEFORE the decrement means a shot is allowed on the 12th frame, not
+ * the 13th. test-laser-cadence pins it. */
 static void try_fire_laser_from(int b) {
     int free_slot = -1;
     int j;
@@ -4993,9 +4493,6 @@ static void try_fire_laser_from(int b) {
 
 static void try_fire_laser(void) { try_fire_laser_from(OBJ_BAT_1); }
 
-/* Step the bullet-impact blasts one tick each. Per-slot countdown
- * matches the per-slot bullet that spawned each blast. */
-
 /* Paint each active bullet-blast frame at its recorded impact point.
  * Frame index = (BULLET_BLAST_FRAMES - 1) - (ticks / ticks_per_frame)
  * so the animation plays start -> end as the counter winds down. */
@@ -5017,24 +4514,16 @@ static void render_bullet_blast_to_buff(void) {
     }
 }
 
-/* True if any bullet-blast slot is still rendering an animation. */
-
-/* True if any bullet slot is in flight — used by the inner loop to
- * decide whether to redraw and to expose firing capacity to SPACE. */
-
-/* Step the rocket one frame: move up (the original handling_rocket accel),
- * lifting the bat. The original (LBB97 flight loop) does NO brick
- * destruction — the rocket flies over the INTACT brick field; the bricks
- * are awarded + cleared at fly-off by play_rocket_award_tally. The dirty
- * redraw restores the bricks behind the rocket from scr_buff each frame.
- * Deactivate when the rocket leaves the top of the playfield. */
 /* End-of-level brick-points tally (port of add_points_for_left_briks
  * $AF0D): tick the remaining bricks' points up one-by-one with the scene
  * + score on screen (bricks stay visible), then clear them so
- * live_bricks_remaining()==0 advances the level. Defined after the
- * scene-redraw helpers; forward-declared here for step_rocket. */
+ * live_bricks_remaining()==0 advances the level. */
 static void play_rocket_award_tally(unsigned char level_idx);
 
+/* Step the rocket one frame: move up on the handling_rocket accel,
+ * lifting the bat. The LBB97 flight loop does NO brick destruction — the
+ * rocket flies over the INTACT field and the dirty redraw restores the
+ * bricks behind it; they are awarded and cleared at fly-off. */
 static void step_rocket(void) {
     if (!rocket.active) return;
     /* Port of handling_rocket at $A89A:
@@ -5066,11 +4555,8 @@ static void step_rocket(void) {
         play_rocket_award_tally(current_level_idx_var);
         return;
     }
-    /* No brick destruction during flight (port of the destruction-free
-     * LBB97 loop): the rocket flies over the intact bricks, which the
-     * dirty redraw restores behind it. They are awarded + cleared at
-     * fly-off above. (Was a bbox sweep that carved a tunnel — a port-ism
-     * the original does not have; see notes/rocket-flight.md.) */
+    /* No brick destruction during flight. A bbox sweep here carves a
+     * tunnel the original does not have — see notes/rocket-flight.md. */
 }
 
 /* --- Exact bat deflection (port of LAB1F @ $AB1F) ---------------------
@@ -5084,19 +4570,6 @@ static void step_rocket(void) {
  * datapoint (incoming 0x0C: offset -3->0x28, 5->0x2C, 13->0x34,
  * 21->0x38, 29->0x38). */
 
-
-
-/* LAB1F_11: index of a downward dir within {04,08,0C,14,18,1C} (A starts
- * at 4, +4 each step, skipping 0x10). Returns 0..5, or -1 for a dir not
- * in the set — only pure-vertical 0x10 / non-multiple-of-4 dirs, which
- * the original assumes never reach the bat (it would loop forever). The
- * caller treats -1 as a plain vertical reflect so the port never hangs. */
-
-/* Port of LAB1F_4..LAB1F_12: outgoing dir for a normal (non-catch) bat
- * bounce. big_bat picks the LABFC threshold table. */
-
-/* Step the ball one frame: handle wall + bat collisions. If the ball
- * exits the bottom of the playfield it respawns stuck on the bat. */
 /* Port of handling_ball LA27E_22 ($A6F2): advance the ball speed-up
  * ramp once per frame. With C = counter_misc, object+$13 increments
  * when (counter_misc & 7) == 0 (the block is only reached when
@@ -5267,18 +4740,12 @@ static void catch_ball_on_bat(int b, int bat, int contact_x) {
     ball.stuck[b]          = 1;
     ball.stuck_ticks[b]    = 0;
     ball.stuck_bat[b]      = (unsigned char)bat;
-    /* A SIGN, not a speed. Every other writer of this cache stores
-     * {-1,0,+1}; this one stored -BALL_SPEED (= -2), and it is the copy
-     * that SURVIVES, because a caught ball is stuck and step_ball
-     * early-returns above the refresh. Behaviour is unchanged: both
-     * readers use the sign only — ball_lands_on_bat tests `ball.dy > 0`,
-     * and delta_to_dir picks its quadrant on `dy >= 0` and its angle on
-     * abs(dx). See known-bugs.md #14 for the part still open, which is
-     * whether the ORIGINAL wants a magnitude in dx at all. */
-    /* The sign cache is the PRIMARY's alone (known-bugs #13), so this
-     * write is guarded rather than indexed — the same rule
-     * refresh_ball_motion_signs enforces for its own callers. dx is
-     * deliberately left as it is; see the note above. */
+    /* A SIGN, not a speed: this cache holds {-1,0,+1}, and the value
+     * written here SURVIVES, because a caught ball is stuck and step_ball
+     * early-returns above the refresh. dx is deliberately left alone —
+     * known-bugs.md #14 is whether the original wants a magnitude there
+     * at all. Guarded rather than indexed because the cache is the
+     * PRIMARY's alone (known-bugs #13). */
     if (b == BALL_PRIMARY) ball.dy = -1;
     objects[b].dir = 0x20;
     objects[b].x_coord = (unsigned char)(bat_x + off);
@@ -5290,9 +4757,6 @@ static void catch_ball_on_bat(int b, int bat, int contact_x) {
     sound_queue(SND_BAT_BEAT);
 }
 
-/* Blow up the bat, take a life, and put a new ball on it. The two
- * checks are separate: with the last life gone there is nothing to
- * respawn onto, and game-over fires on the next frame. */
 /* Hand over to the other player. orig: current_level_2up_copier
  * ($BE0C), which exchanges the live grid with the arriving player's
  * level slot and then FALLS THROUGH into players_swap — one call does
@@ -5329,13 +4793,10 @@ static void lose_a_life(void) {
     play_bat_explosion(current_level_idx_var);
     take_a_life();
     if (player.lives > 0) {
-        /* In 2-player mode the turn may end here — but whether it
-         * actually does is two_player_turn_change's decision, and
-         * run_level respawns instead if it declines. An earlier version
-         * re-tested `players[other].lives > 0` here as well, and that
-         * duplicate made a mutation of the REAL guard survive: with two
-         * checks of one condition, one of them is untested by
-         * construction. */
+        /* Whether the turn actually ends is two_player_turn_change's
+         * decision alone, and run_level respawns if it declines. Do not
+         * re-test `players[other].lives > 0` here: with two checks of one
+         * condition, a mutation of the real guard survives untested. */
         if (game_mode == 1) {
             pending_turn_change = 1;
             return;
@@ -5391,9 +4852,7 @@ static void rest_ball_on_bat(int b, int bat) {
  *   LD A,(game_mode) / CP $02 / RET NZ
  *   LD IY,object_bat_2 / CALL obj_compare / RET NC
  *
- * Order matters: bat 1 wins an overlap. Bat 2 carries no bonus state in
- * the port yet — no MAGNET catch, no big-bat widening — so this is the
- * plain body rectangle. */
+ * Order matters: bat 1 wins an overlap. */
 static bool ball_lands_on_bat_2(int next_x, int next_y, int ball_sz) {
     const Object &b2 = objects[OBJ_BAT_2];
     if (game_mode != 2 || !object_active(b2)) return false;
@@ -5456,9 +4915,6 @@ static int sweep_bricks_for_primary(int next_x, int next_y) {
     return hit;
 }
 
-/* A stuck ball rides the bat at the catch offset (where it hit, when
- * the CATCH bonus stuck it; otherwise BALL_X_OFFSET_ON_BAT) until SPACE
- * or the timeout auto-launches it. */
 /* Sweep the bricks along the ball's path and, on a hit, reverse the
  * direction and unwind the axis the ball entered through — putting both
  * the pixel position and its q8.8 fraction back where the collision
@@ -5498,26 +4954,19 @@ static void resolve_primary_brick_hit(int *next_x, int *next_y,
 static int deflect_ball_off_bat(int next_x, int *next_y) {
     int dx_q8, dy_q8;
     *next_y = BAT_Y - BALL_H_PX;   /* rests at $A6 = 166 */
-    /* MAGNET/CATCH bonus (original BAT+$14 == $03, LAB1F_1..3): the
-     * ball sticks on contact and waits for FIRE to release. Only a
-     * NORMAL-width bat catches (the original gates on width $1C; a
-     * big bat falls through to the normal deflection). The caught
-     * offset is QUANTIZED: offset = ball_x - bat_x, clamped >=0, then
-     * `& 0xFC` (multiple of 4) and clamped to 0x18 - so the rest x
-     * (= bat_x + offset) and the launch direction derived from it
-     * match the Spectrum (probed: ball_x 133 -> offset 0x10 -> rest
-     * x 132). The original then snaps the ball to y=$A7=167. */
+    /* MAGNET/CATCH bonus (BAT+$14 == $03, LAB1F_1..3). Only a
+     * NORMAL-width bat catches — the original gates on width $1C, so a
+     * big bat falls through to the ordinary deflection. */
     if (objects[OBJ_BAT_1].bonus_applied == 0x03 && bat1.extra_px == 0) {
         catch_ball_on_bat(BALL_PRIMARY, OBJ_BAT_1, next_x);
         return 1;
     }
-    /* No `ball.dy = -BALL_SPEED` here: the deflection below rewrites the
+    /* No `ball.dy` store here: the deflection below rewrites the
      * direction and calls refresh_ball_motion_signs unconditionally, with
-     * no return in between, so that store was dead (known-bugs.md #14). */
-    /* Exact LAB1F deflection: offset = ball_x + 3 - bat_x (the bat
-     * object's left edge, the original's IY+$02); an enlarged bat
-     * selects the LABFC table. Validated against captured ground
-     * truth — see notes/bat-deflection.md. */
+     * no return in between, so such a store is dead (known-bugs.md #14).
+     *
+     * Offset is ball_x + 3 - bat_x, from the bat object's left edge (the
+     * original's IY+$02); an enlarged bat selects the LABFC table. */
     /* LAB1F_0 re-owns the ball to the side of the bat that hit it,
      * BEFORE the deflection:
      *
@@ -5541,34 +4990,16 @@ static int deflect_ball_off_bat(int next_x, int *next_y) {
     return 0;
 }
 
-/* Bat 2's half of LAB1F. No catch branch, and the reason is NOT that
- * bat 2's bonus byte goes unmaintained — an earlier version of this
- * comment said that and was wrong. `set_bat_bonus` writes BOTH bats,
- * so `objects[OBJ_BAT_2].bonus_applied` is always in step with bat 1's.
+/* Bat 2's half of LAB1F, the mirror of bat 1's above: it reads bat 2's
+ * own bonus byte and its own x.
  *
- * The real reason is the other end: catching needs the stuck-ball
- * system, which is written around the primary ball and bat 1
- * (`catch_ball_on_bat` reads BAT_X, `ball.stuck_offset_x[BALL_PRIMARY]` is one
- * value). PLAN.md WS6 item 2 has that scoped as ~32 sites.
- *
- * And writing both bats is itself the divergence: the original applies
- * a bonus to the CATCHING bat only — `get_bonus` does `DEC (IY+$14)`
- * with IY the bat that caught it, and wraps the bat-2 branch in
- * `bonus_flag_swap`. The port shares bonuses between the two. See
- * notes/double-play.md. */
+ * The catch it can reach is still limited by the other end — the
+ * stuck-ball system is written around the primary ball, so a catch here
+ * parks THAT ball. PLAN.md WS6 item 2 scopes the rest. */
 static int deflect_ball_off_bat_2(int next_x, int *next_y) {
     const Object &b2 = objects[OBJ_BAT_2];
     int dx_q8, dy_q8;
     *next_y = (int)b2.y_coord - BALL_H_PX;
-    /* Bat 2's catch, the mirror of bat 1's above. It reads bat 2's own
-     * bonus byte — which `set_bat_bonus` currently keeps in step with
-     * bat 1's, so in practice both bats hold the MAGNET at once. That
-     * sharing is the open divergence (the original applies a bonus to
-     * the CATCHING bat only); it is not this branch's doing, and this
-     * branch will be correct unchanged once ownership splits.
-     *
-     * No `extra_px` term: bat 2 is always the plain 28-wide sprite,
-     * because the width bonuses are bat-1 globals. */
     if (b2.bonus_applied == 0x03) {
         catch_ball_on_bat(BALL_PRIMARY, OBJ_BAT_2, next_x);
         return 1;
@@ -5640,19 +5071,12 @@ static void step_ball(void) {
     objects[OBJ_BALL_1].y_coord_hi = (unsigned char)(next_y_q8 & 0xFF);
 }
 
-/* Step the secondary (multi-ball) one frame. Simpler than step_ball:
- * no stuck phase, no life decrement on bottom-exit — the slot just
- * deactivates. Bat bounce reuses the same 5-zone deflection. Wall +
- * brick collision shared with step_ball semantics. */
 /* Step an extra (TRIPLE_BALL) ball. UNIFIED with the primary: the
- * original runs ONE handling_ball for every ball, so the extras now use
- * the exact same q8.8 + dir motion (dir_to_dxdy), wall reflect
- * (reflect_obj_dir), brick collision (LAFFC), and bat deflection (LAB1F /
- * bat_deflect_dir) as step_ball — reading dir/q8.8 from the object table.
- * Only the primary's stuck/catch and life-decrement paths are omitted (an
- * extra just deactivates off the bottom). Correct by construction (it
- * reuses the byte-exact primary path); validated by the liveness sweep
- * and the primary ball gate. */
+ * original runs ONE handling_ball for every ball, so the extras use the
+ * same q8.8 + dir motion (dir_to_dxdy), wall reflect, brick collision
+ * (LAFFC) and bat deflection (LAB1F) as step_ball, reading dir/q8.8 from
+ * the object table. Only the life-decrement path is omitted: an extra
+ * just deactivates off the bottom. */
 /* Defined with the other stuck-ball handling, further down. */
 static void ride_stuck_ball_on_bat(int b, int bat);
 
@@ -5671,18 +5095,7 @@ static void ride_stuck_ball_on_bat(int b, int bat);
  * bat 2 and could be handled twice in one frame.
  *
  * Factored out because bat 2 needs exactly the same thing with
- * different extents, and the previous inline version was the reason
- * extras were never tested against bat 2 at all: adding it meant
- * duplicating the block.
- *
- * `big` is bat 1's own affair — bat 2 is always the plain 28-wide
- * sprite, since the width bonuses are bat-1 globals (WS3 residual).
- *
- * It DOES write `ball_owner_side[slot]`, which it could not when this
- * function was written: the owner was a single byte spent on the
- * primary, so an extra's deflection had nowhere correct to record
- * itself and deliberately recorded nothing. The owner became per-ball
- * the next commit and this is LAB1F_0 on the right ball. */
+ * different extents. */
 static int extra_ball_meets_bat(Object *o, int bat_idx, int slot,
                                 int bat_left, int bat_right, int bat_top,
                                 int ball_sz, bool big,
@@ -5699,8 +5112,7 @@ static int extra_ball_meets_bat(Object *o, int bat_idx, int slot,
         return 2;
     }
     *next_y = bat_top - BALL_H_PX;
-    /* LAB1F_0 on this ball: the owner follows the bat that hit it.
-     * Reachable for an extra since the owner became per-ball. */
+    /* LAB1F_0 on this ball: the owner follows the bat that hit it. */
     ball_owner_side[slot] =
         (unsigned char)((objects[bat_idx].x_coord & 0x80) ? 1 : 0);
     o->dir = bat_deflect_dir(o->dir, next_x + 3 - (int)objects[bat_idx].x_coord,
@@ -5802,14 +5214,6 @@ static void step_ball3(void) {
     step_extra_ball(&ball.extra3_active, OBJ_BALL_3);
 }
 
-/* M3 minimal play loop. For each level: full render once, then poll
- * arrows for bat motion (LEFT/RIGHT = +-4 px, matching the original's
- * handling_bat step). Any non-arrow key advances; ESC quits.
- *
- * In auto-advance mode (the default attract loop) the per-level
- * timeout still trips, so the cycle keeps moving even with no input.
- * Under BATTYALL=1 (test floppy) auto-advance is off and the test
- * orchestrator drives every transition via sendkey. */
 /* Redraw the bat's object window only. Original print_obj_from_buf_to_scr
  * computes a byte-aligned union of previous/current object bounds, then
  * recovers that window from scr_buff instead of repainting the whole
@@ -5906,12 +5310,6 @@ static void carry_dirty_with_previous(void) {
     prev_dirty_y_hi = y_hi;   /* hi < lo when nothing dirty -> restore scans none */
 }
 
-/* Full-frame compose. Walks the same scr_buff -> attr_buff -> VGA
- * path as the original (game_screen_draw_to_buffer @ $BE6B):
- *   - paint bg + bricks + bat + lives into scr_buff/attr_buff
- *   - paint ball, bomb, 400pts, alien into scr_buff (each picks up
- *     its surrounding char cell's bg attr at buff_to_vga time)
- *   - HUD labels/scores join scr_buff before the same buff_to_vga pass. */
 static void mark_live_bullets_dirty(void) {
     int i;
     for (i = 0; i < N_BULLETS; i++)
@@ -6157,12 +5555,10 @@ static void redraw_full_with_ball(unsigned char level_idx) {
      * harmless — and the dirty mark is still needed. */
     apply_magnet_toggle_visual();
     /* Repair the top-frame centre (bytes 8..10, rows 0..23) BEFORE any
-     * moving object is composed. This call used to sit at the END of the
-     * compose (after the enemy/balls), where it ERASED the slice of any
-     * sprite overlapping the frame centre — an alien or ball transiting
-     * x 64..87 / y < 24 flickered out on every full-path frame (found
-     * 2026-06-12 via the fly-over A/B harness, frame-12 247px diff vs
-     * the dirty path, which correctly draws sprites over the frame). */
+     * moving object is composed. At the END of the compose it instead
+     * ERASES the slice of any sprite overlapping the frame centre, and an
+     * alien or ball transiting x 64..87 / y < 24 flickers out on every
+     * full-path frame. */
     restore_top_frame_center(cycle, level_idx);
     prof.bg_pit += prof_elapsed();
 
@@ -6236,9 +5632,9 @@ static unsigned int ball_dirty_blockers(int bat_moved) {
      * 2 bytes × 12 rows), already drawn by render_ball_to_buff + covered by
      * the primary's 16×12 dirty mark — so it needs no blocker at all. */
     if (ball.extra2_active || ball.extra3_active) blockers |= BALL_DIRTY_BLOCK_OBJECTS;
-    /* Resize transitions still force a full frame (the bat changes width,
-     * needing the vacated-area restore); the laser fire-anim is now handled
-     * on the dirty path by redraw_bat_dirty, so it is no longer a blocker. */
+    /* Resize transitions force a full frame: the bat changes width and
+     * the vacated area needs restoring. The laser fire-anim does not —
+     * redraw_bat_dirty handles it on the dirty path. */
     if (bat1.extra_px != bat1.extra_target) blockers |= BALL_DIRTY_BLOCK_BAT_FX;
     return blockers;
 }
@@ -6266,12 +5662,9 @@ static int can_redraw_ball_with_simple_objects(unsigned int blockers) {
         && !any_bullet_active() && !any_bullet_blast() && !bomb.active
         && !ball.extra2_active && !ball.extra3_active) return 0;
     if (rocket.active) return 0;
-    /* The +400 catch popup renders correctly only via the full path; in the
-     * simple tier it leaves a trail (drift + catch-frame transition — a
-     * pre-existing latent issue). It is brief + low-frequency, so route its
-     * frames to the full path. This also keeps the multi-ball CATCH frames
-     * (which spawn the popup) on the full path; steady-state multi-ball
-     * (after the popup falls off) still tiers. */
+    /* The +400 catch popup renders correctly only via the full path — in
+     * the simple tier its drift and catch-frame transition leave a trail.
+     * It is brief and rare, so route those frames to the full path. */
     if (pts_marker.active) return 0;
     return 1;
 }
@@ -6302,24 +5695,6 @@ static void render_enemy_to_buff_and_mark(unsigned char bg_attr) {
                             spr_w_px, spr_h_px);
 }
 
-/* Every moving object, in the ORIGINAL's slot-paint order. Both redraw
- * paths call this, which is the point: they used to hold their own
- * copies of the sequence and drifted apart — the dirty path drew the
- * enemy BEFORE the bomb, the full path after, so a fresh bomb still
- * overlapping its parent UFO rendered differently on each. That was the
- * f50 21 px A/B delta in notes/bird-render-parity.md.
- *
- * call_for_all_obj walks the $9AD0 table low to high, so later slots
- * paint on top:
- *   balls 1-3 < bullets < bats < bonus/bomb/pts400 (the shared $9B80
- *   slot) < ENEMY ($9B96) < rocket ($9BAC)
- * The enemy paints over the bomb and bonus; the rocket over everything,
- * and it is the caller's job since only the full path draws it.
- *
- * The bullets are drawn unconditionally. That is safe only because
- * render_bullet_to_buff no longer carries animation state — it did
- * until known-bugs #10 was fixed, and a bare call would then have
- * advanced the shared phase. */
 /* Compose the moving objects in the ORIGINAL's slot-paint order (the
  * $9AD0 table; call_for_all_obj walks it low->high, so later slots paint
  * ON TOP):
@@ -6327,12 +5702,13 @@ static void render_enemy_to_buff_and_mark(unsigned char bg_attr) {
  *   balls 1-3 < bullets < bats < bonus/bomb/pts400 (they share the $9B80
  *   slot) < ENEMY ($9B96) < rocket ($9BAC)
  *
- * Both redraw paths call this, which is the point: they used to each
- * implement the order and had DRIFTED APART — the dirty path drew the
- * enemy first, the full path last. With a fresh bomb still overlapping
- * its parent UFO the two rendered different pixels (the f50 21px A/B
- * delta, notes/bird-render-parity.md). One implementation cannot drift
- * from itself.
+ * Both redraw paths call this, which is the point: two copies of the
+ * order drift apart, and with a fresh bomb still overlapping its parent
+ * UFO they then render different pixels (the f50 21px A/B delta,
+ * notes/bird-render-parity.md). One implementation cannot drift.
+ *
+ * The bullets are drawn unconditionally, which is safe only because
+ * render_bullet_to_buff carries no animation state (known-bugs #10).
  *
  * The rocket ($9BAC, last, paints over everything) is deliberately NOT
  * here: it is full-path-only. `entities_need_redraw` returns true while
@@ -6430,8 +5806,6 @@ static void draw_text(int x, int y, unsigned char colour,
     for (i = 0; i < n; i++) draw_glyph(x + i * 8, y, colour, codes[i]);
 }
 
-/* Encode an unsigned long as 6 digit-codes (most significant first). */
-
 #ifndef BATTY_SCORELESS_HUD
 static void draw_score_digits_original(int x, int y, unsigned long value) {
     unsigned char digits[6];
@@ -6509,14 +5883,6 @@ static void render_game_over(void) {
     }
 }
 
-/* Three-letter initials entry screen — shown after game-over when
- * the player has beaten the previous high score. LEFT/RIGHT cycle
- * the current letter through A..Z; ENTER (or SPACE) confirms it
- * and advances to the next slot; ESC bails (saves whatever's been
- * entered so far + AAA defaults for the rest).
- *
- * The current slot blinks via blink_phase() so the player can see
- * which one they're editing. */
 /* The name-entry screen's furniture: everything that is drawn once and
  * never repainted. Ink per line is deliberate and gated —
  * test-name-entry-visual checks each band by ink, so a colour change
@@ -6752,15 +6118,15 @@ static void brik_anim_apply_frame(unsigned char frame_idx) {
  * play_sound_metal_brik call gated on the "any-metal-brick" check at
  * $B73F.
  *
- * The original is NOT interruptible by input. An earlier port version
- * aborted on any buffered key, which let a held/typematic-repeating key
- * at level entry (moving the bat, pressing FIRE) skip the animation
- * almost entirely (known-bugs #4 "initial shimmer very fast"). Now only
- * ESC reacts (quit, a port convention); other keys are left IN the BIOS
- * buffer for the main loop. The same version also waited
- * `pit_ticks()-t < 2` from a mid-tick sample = 1..2 ticks per frame;
- * the two do{}while edge-waits below are the HALT equivalent: always
- * two full interrupt edges. */
+ * The original is NOT interruptible by input, and aborting on any
+ * buffered key lets a held or typematic-repeating key at level entry
+ * skip the animation almost entirely (known-bugs #4). Only ESC reacts,
+ * as a port convention; other keys are left IN the BIOS buffer for the
+ * main loop.
+ *
+ * The two do{}while edge-waits below are the HALT equivalent: always two
+ * full interrupt edges. Waiting `pit_ticks()-t < 2` from a mid-tick
+ * sample gives 1..2 ticks per frame instead. */
 static int play_brik_anim(void) {
     int step;
     int ping_played = 0;    /* SMC trick in original: one_play_sound_metal_brik
@@ -6828,16 +6194,11 @@ static void draw_round_banner(int round_num) {
      * exactly like the window itself (anchored at $A4=164, drawn up to
      * y=133). The 6px-tall ink therefore lands at byte-5..byte, i.e. the
      * PLAYER ink top is 138 and ROUND ink top is 153 — 5px above the raw
-     * byte. An earlier port used the raw bytes (143/158) as top-Y, which
-     * jammed both lines against the box bottom (1px gap below vs 6 in the
-     * original). Single-player hardcodes the digit; once 2-player wiring
-     * lands, swap the trailing $01 for the active player number. */
+     * byte. Using the raw bytes (143/158) as top-Y instead jams both
+     * lines against the box bottom. */
     draw_text(text_x, BORDER_Y + 138, 15, player_codes, 7);
     {
-        /* orig: `LD A,(player_number) / INC A / LD (txt_player_x+11),A`.
-         * This was a hardcoded $01 with a comment saying to swap it in
-         * once the 2-player wiring landed; active_player is that wiring.
-         * It renders identically while nothing moves the turn off 0. */
+        /* orig: `LD A,(player_number) / INC A / LD (txt_player_x+11),A`. */
         unsigned char digit = (unsigned char)(active_player + 1);
         draw_text(text_x + 7 * 8, BORDER_Y + 138, 15, &digit, 1);
     }
@@ -6993,13 +6354,6 @@ static void play_rocket_award_tally(unsigned char level_idx) {
     mark_static_bg_cache_dirty();
 }
 
-/* Block in a self-contained PIT-paced loop while the bat explodes —
- * the original's per-frame LBAED keeps running through LBC10's spark
- * lifetime; we play it as a separate phase, then return to the outer
- * run_level for the lives-- + respawn step. Mirrors the LBC10_3 spawn
- * loop: 10 sparks, dir = $1B + 5*i (mod 64), speed 2, starting at
- * (bat_x + bat_body_width/2 - 12 + 3*i, $AE), 5-frame decay with
- * halving speed. */
 /* Reset the primary ball + bat to fresh-life state. Mirror of
  * all_var_init at \$B7F8 (called from LB9E8_1 on each life-start in
  * the original): ball stuck on bat, bat.bonus_applied = \$FF (= no
@@ -7029,10 +6383,10 @@ static void respawn_primary_ball(void) {
     ball.stuck_bat[BALL_PRIMARY] = OBJ_BAT_1;
     BALL_SHOW();
     BALL_X = BAT_X + BALL_X_OFFSET_ON_BAT;
-    /* Ball sits at BAT_Y_PX - BALL_H_PX = 166 (= $A6) so its bottom
-     * row touches the bat's top row. Matches LA27E_15's `LD (IX+$04),
-     * $A6` at the FIRE-launch path. Using eff_ball_size (= 8 width)
-     * for the Y offset was 1 px too high. */
+    /* Ball sits at BAT_Y_PX - BALL_H_PX = 166 (= $A6) so its bottom row
+     * touches the bat's top row, matching LA27E_15's `LD (IX+$04),$A6`
+     * on the FIRE-launch path. BALL_H_PX, not eff_ball_size: the width
+     * would put it 1 px too high. */
     BALL_Y = BAT_Y - BALL_H_PX;
     primary_ball_set_velocity(+1, -BALL_SPEED);
     set_bat_bonus(OBJ_BAT_1, 0xFF);
@@ -7042,9 +6396,9 @@ static void respawn_primary_ball(void) {
     ball.speed_ramp = 0;     /* fresh life: ball restarts at base speed */
     bat1.extra_target  = 0;
     bullet_cooldown = 0;       /* fresh life — no stale fire cooldown */
-    /* Original LBC10 clears flag_extra_life on every life-loss (line
-     * \$6411), so another LIFE bonus can drop on the next life within
-     * the same round. Our port was only resetting per-level. */
+    /* Original LBC10 clears flag_extra_life on every life-loss, so
+     * another LIFE bonus can drop on the next life within the same
+     * round. */
     life_dropped_this_round = 0;
 }
 
@@ -7158,6 +6512,10 @@ static bool step_death_spark(int i) {
     return true;
 }
 
+/* Block in a self-contained PIT-paced loop while the bat explodes. The
+ * original's per-frame LBAED keeps running through LBC10's spark
+ * lifetime; the port plays it as a separate phase and returns to
+ * run_level for the lives-- + respawn step. */
 static void play_bat_explosion(unsigned char level_idx) {
     unsigned long last;
     unsigned long death_pause_start;
@@ -7197,22 +6555,17 @@ static void play_bat_explosion(unsigned char level_idx) {
     sound_stop_all();
     /* The sparks flew over the whole playfield and the bat is gone, so
      * the screen no longer matches anything the per-frame dirty tests
-     * track. Say so.
+     * track — and it has to be said explicitly, because NOTHING coming
+     * back from respawn_primary_ball looks changed to them. The bat
+     * returns to BAT_X_INIT with prev_x set to match, same y, same width,
+     * same bonus byte, so bat_changed() is false and compose_bat_full
+     * flushes one row of running dots over a bat that is not on screen.
+     * Magnets are worse: they repaint only when they toggle.
      *
-     * This has to be stated because NOTHING that comes back from
-     * respawn_primary_ball looks changed to those tests: the bat returns
-     * to BAT_X_INIT with prev_x set to match, at the same y, the same
-     * width, the same bonus byte — so bat_changed() is false and
-     * compose_bat_full flushes one row of running dots over a bat that
-     * is not on screen. The magnets are worse: they only repaint when
-     * they toggle, so a magnet stays missing until it happens to.
-     *
-     * It LOOKED fine for months because losing a life changes the life
-     * counter, and refresh_static_background rebuilds the whole cache on
-     * lives_dirty for the sake of the indicators. The repaint was riding
-     * on a counter it has nothing to do with. BATTY_INFINITE_LIVES
-     * removed the counter change and the bat came back in fragments —
-     * reported from actual play, not from a gate. known-bugs.md #21. */
+     * Do NOT rely on the lives_dirty rebuild for this. It covers the case
+     * only because a death usually changes the life counter —
+     * BATTY_INFINITE_LIVES does not, and the bat comes back in fragments.
+     * known-bugs.md #21. */
     invalidate_static_cache_after_death();
 }
 
@@ -7224,9 +6577,9 @@ static void play_bat_explosion(unsigned char level_idx) {
  * in all_var_init, which restores a template over the whole block. */
 static void reset_level_state(unsigned char lvl_idx) {
     objects[OBJ_ENEMY].sprite_set = 0;     /* alien cleared on level entry */
-    /* Port of all_var_init's LDIR — BAT_X resets to the default
-     * $74 at every level entry. Earlier port kept the bat where
-     * the player left it; original re-centres on each level. */
+    /* Port of all_var_init's LDIR — BAT_X resets to the default $74 at
+     * every level entry: the original re-centres rather than leaving the
+     * bat where the player left it. */
     BAT_X         = BAT_X_INIT;
     BAT_Y         = BAT_Y_PX;
     objects[OBJ_BAT_2].y_coord = BAT_Y_PX;
@@ -7247,11 +6600,7 @@ static void reset_level_state(unsigned char lvl_idx) {
     }
     ball.stuck[BALL_PRIMARY]    = 1;
     ball.stuck_offset_x[BALL_PRIMARY] = BALL_X_OFFSET_ON_BAT;
-    /* Always bat 1: a respawn or a level entry puts the ball on the
-     * player's own bat, whichever bat happened to be holding it
-     * when the life was lost. Without this a ball caught by bat 2
-     * would come back held by bat 2. */
-    ball.stuck_bat[BALL_PRIMARY] = OBJ_BAT_1;
+    ball.stuck_bat[BALL_PRIMARY] = OBJ_BAT_1;   /* see respawn_primary_ball */
     BALL_SHOW();                      /* visible from level entry; sits on the bat */
     /* all_var_init's first act is the alternation, and it happens in
      * every mode — only its effect on the ball's START X is mode-2
@@ -7288,11 +6637,10 @@ static void reset_level_state(unsigned char lvl_idx) {
     ball.speed_ramp = 0;
     bat1.big_ticks   = 0;
     ball.big_ticks  = 0;
-    /* flag_extra_life is NOT cleared at level entry in original —
-     * only LBC10 (death path) clears it. So a LIFE bonus catch
-     * blocks future LIFE drops for the rest of the player's life,
-     * across levels. Earlier port reset on level entry too,
-     * making LIFE bonuses re-available per round. */
+    /* flag_extra_life is deliberately NOT cleared here: only LBC10 (the
+     * death path) clears it in the original, so a LIFE catch blocks
+     * future LIFE drops for the rest of the player's life, across
+     * levels. */
     run_dot_frame = 0x0E;               /* matches running_dot_frame_1up reset */
     bat1.extra_px   = 0;
     bat1.extra_target  = 0;
@@ -7398,18 +6746,14 @@ static int show_level_intro(unsigned int round) {
     return 1;
 }
 
-/* Replay determinism: pin the free-running frame counter at the aligned
- * start, so every counter-phase decision is the same run to run. */
+/* Pin the global frame counter (= the original's counter_misc) at the
+ * aligned start. It has been ticking since boot, so its low-bit PHASE
+ * here is wall-clock roulette — and the enemy steer (&3), the ball speed
+ * ramp (&7) and the other counter_misc cadences all key off it. Un-pinned,
+ * a 4-frame steer turn slides across a probe frame run to run (the
+ * test-enemy-steer flake). Pinned AFTER the WAIT_KEY release, so frame 1
+ * sees counter == pin+1. */
 static void pin_replay_frame_counter(void) {
-    /* Replay determinism hook: pin the global frame counter (= the
-     * original's counter_misc) at the aligned start. The counter has
-     * been ticking since boot, so its low-bit PHASE at this point is
-     * wall-clock roulette — and the enemy steer (&3), the ball speed
-     * ramp (&7), and other counter_misc-gated cadences all key off it.
-     * Un-pinned, a 4-frame steer turn can slide across a probe frame
-     * run-to-run (the test-enemy-steer flake). Hex value; pinned AFTER
-     * the WAIT_KEY release so frame 1 sees counter == pin+1, making
-     * every counter_misc-phase decision deterministic per seed. */
     {
         const char *pc = getenv("BATTY_REPLAY_COUNTER");
         if (pc != NULL && *pc != '\0') {
@@ -7638,16 +6982,13 @@ static bool probe_checkpoint_due(unsigned char active, unsigned int *countdown) 
     return *countdown == 0;
 }
 
-/* Score and lives carry across levels within one game; they reset only
- * on re-entry from ST_HISCORE. */
 /* Replay knobs that SEED player state, applied after new_game_reset has
  * finished zeroing things.
  *
- * Ordering is the whole point of it being a separate function. These
- * lines first sat inline in new_game_reset, above its
- * `player.live_adds_awarded = 0;` — which silently wiped the seeding,
- * and the symptom was a gate sitting in the level for 13 s instead of
- * dying. A reset added to new_game_reset later would do it again. */
+ * Ordering is the whole point of it being a separate function: inline in
+ * new_game_reset, above its `player.live_adds_awarded = 0;`, the seeding
+ * is silently wiped — and the symptom is a gate sitting in the level for
+ * 13 s instead of dying. */
 static void apply_player_seed_env(void) {
     /* BATTY_REPLAY_LIVES: start with fewer lives. The game-over sequence
      * is otherwise unreachable from a gate — three deaths means three
@@ -7664,10 +7005,9 @@ static void apply_player_seed_env(void) {
     }
     /* BATTY_REPLAY_LIVES_2UP: the OTHER player's life count, 0 allowed.
      * Zero is the point of it — two_player_turn_change's `lives <= 0`
-     * guard is what makes a solo player keep playing, and without a way
-     * to empty player 2 no gate can reach it. Mutating that guard to
-     * `< 0` SURVIVED the first version of test-two-player-turn, whose
-     * every case had player 2 on a full three lives. */
+     * guard is what makes a solo player keep playing, and with player 2
+     * always on three lives a mutation of that guard to `< 0` survives
+     * every case. */
     {
         const char *lv = getenv("BATTY_REPLAY_LIVES_2UP");
         long want;
@@ -7687,8 +7027,7 @@ static void apply_player_seed_env(void) {
             /* Seed the extra lives that score would ALREADY have earned.
              * Without this, award_score_milestones hands them out on the
              * first frame and BATTY_REPLAY_LIVES=1 silently becomes
-             * lives=N — a run set up to die immediately never dies.
-             * Found by watching a gate sit in the level for 13 s. */
+             * lives=N — a run set up to die immediately never dies. */
             player.live_adds_awarded = (unsigned char)
                 lives_earned(player.score, 0);
         }
@@ -7759,10 +7098,9 @@ static unsigned char initial_round_number(void) {
  * a moment, then let the caller advance. False means the player pressed
  * ESC during the hold.
  *
- * The pause is LBBFB_0's `pause_long B=2`, about 0.6 s. It plays no
+ * The pause is LBBFB_0's `pause_long B=2`, about 0.6 s. There is NO
  * level-clear sound — the original only drains the queue, so the last
- * brick's click is what the player hears. An earlier port added a
- * 700 Hz beep that drowned it. */
+ * brick's click is what the player hears. */
 static bool finish_cleared_level(unsigned char lvl_idx) {
     unsigned long t;
 
@@ -7820,16 +7158,13 @@ static void play_game_over(void) {
     } else {
         /* 65 BIOS ticks at 18.2 Hz is 3.57 s = 178 PIT frames at ~50 Hz.
          * Counted in PIT frames because bios_ticks() does not advance
-         * during gameplay (known-bugs.md #15) — this loop was therefore
-         * infinite except for the keypress, and the screen sat there
-         * unchanged for the full 40 s a capture watched it. */
-        /* BATTY_FAST_HOLDS cuts the wait to 2 frames. The hold is
-         * 3.5 s of wall time inside a capture window, and it is why
-         * the LBC10_7 hand-over could not be gated: PROBE.TXT kept the
-         * level-ENTRY write from before the death because the capture
-         * ended mid-hold. Not merged with BATTY_HOLD_GAME_OVER, which
-         * makes the hold wait for a KEY — that is for visual gates
-         * that want the screen to stay up, the opposite need. */
+         * during gameplay (known-bugs.md #15), which would leave this
+         * loop infinite except for the keypress.
+         *
+         * BATTY_FAST_HOLDS cuts the wait to 2 frames, so a capture window
+         * does not end mid-hold. NOT merged with BATTY_HOLD_GAME_OVER,
+         * which waits for a KEY instead — that serves visual gates that
+         * want the screen to stay up, the opposite need. */
         const unsigned long hold = dbg.fast_holds ? 2UL : 178UL;
         start = pit_ticks();
         while (pit_ticks() - start < hold) {
@@ -8242,9 +7577,9 @@ static state_t run_level(void) {
              *     LD A,(lives_2up) / AND A / JP Z,game_restart
              *     CALL current_level_2up_copier / JP LB9E8_1
              *
-             * Both of those conditions are two_player_turn_change's
-             * already — asking them again here is the duplicate-guard
-             * mistake that made a mutation survive in stage 4. */
+             * Both conditions are two_player_turn_change's already; do
+             * not re-test them here, or a mutation of the real guard
+             * survives. */
             if (player.lives == 0) {
                 game_overs_reached++;
                 play_game_over();
@@ -8252,11 +7587,10 @@ static state_t run_level(void) {
                     turn_changed = 1;
                     break;      /* the re-entry writes the probe */
                 }
-                /* Nothing else does. Returning to the title leaves
-                 * PROBE.TXT holding the LEVEL-ENTRY write from before
-                 * the death, so every counter reads 0 and a working
-                 * build is indistinguishable from a broken one — which
-                 * is exactly how the LBC10_7 path came to ship ungated. */
+                /* Nothing else does. Returning to the title otherwise
+                 * leaves PROBE.TXT holding the LEVEL-ENTRY write from
+                 * before the death, so every counter reads 0 and a
+                 * working build looks exactly like a broken one. */
                 write_replay_probe();
                 return ST_TITLE;
             }

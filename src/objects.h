@@ -87,7 +87,19 @@ void object_update_buffer_offset(Object &o);
 void object_reflect(Object &o, bool flip_x, bool flip_y);
 
 /* Advance one animation frame, if this object's pace says it is due.
- * misc_12 carries both the countdown and the reload in one byte. */
+ * orig: LAAD2 $AAD2, the shared per-object stepper.
+ *
+ * misc_12 carries both the countdown and the reload in one byte: while
+ * it is >= $40 the call just loses $40; on underflow sprite_num advances
+ * LINEARLY and wraps via misc_13's nibbles — HIGH = last frame, LOW =
+ * first — and the counter reloads as ((res << 2) & $C0) | res. The seeds
+ * give each enemy its cadence: bird $F0/$70 = frames 0..7 every 4;
+ * UFO $60/$90 = frames 0..9 every 3, after a two-call lead-in; blast
+ * $50/$90 = frames 0..9 every 2.
+ *
+ * The original also re-derives the sprite's w/h here via
+ * calc_write_spr_addr; the port reads dims at render time instead.
+ * See notes/bird-render-parity.md. */
 void object_step_animation(Object &o);
 
 #endif /* BATTY_OBJECTS_H */
