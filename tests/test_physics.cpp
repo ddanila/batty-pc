@@ -383,6 +383,120 @@ static void field_destroy(int row, int col) {
     field_cells[row * FIELD_COLS + col] = 0x80;
 }
 
+/* brick_sweep's band edges are inclusive on the near side.
+ *
+ * This is the port's OWN rectangle-overlap path, not a port of LAFFC, so
+ * there is no disassembly to check it against — its contract is what the
+ * code says it is, and these assert that contract at each edge:
+ *
+ *   bottom < FIELD_Y0            -> miss, so bottom == FIELD_Y0 hits
+ *   top    >= FIELD_Y_END        -> miss, so top == FIELD_Y_END-1 hits
+ *   right  < FIELD_X0            -> miss, so right == FIELD_X0 hits
+ *   left   >= right-hand edge    -> miss, so left == edge-1 hits
+ *
+ * Every one of these survived the whole host suite in the 2026-08-10
+ * sweep: the existing brick_sweep tests all place the ball comfortably
+ * inside the band.
+ *
+ * The row/col clamps are asserted too — a ball straddling an outer edge
+ * must still resolve to a legal cell rather than indexing past the
+ * grid. */
+static void test_brick_sweep_band_edges() {
+    const int before = failures;
+    field_fill(true);
+    const BrickField field(field_cells);
+    const int W = 8, H = 7;
+    const int x_end = FIELD_X0 + FIELD_COLS * BRICK_W_PX;
+
+    struct Case { int x, y; bool want_hit; const char *what; };
+    const Case cases[] = {
+        /* bottom = y + h - 1, so y = FIELD_Y0 - H + 1 puts the ball's
+         * last row exactly on the band's first. */
+        { 40, FIELD_Y0 - H + 1, true,  "bottom exactly on FIELD_Y0" },
+        { 40, FIELD_Y0 - H,     false, "bottom one px above the band" },
+        { 40, FIELD_Y_END - 1,  true,  "top on the last band row" },
+        { 40, FIELD_Y_END,      false, "top exactly at FIELD_Y_END" },
+        { FIELD_X0 - W + 1, 40, true,  "right edge exactly on FIELD_X0" },
+        { FIELD_X0 - W,     40, false, "right one px left of the band" },
+        { x_end - 1,        40, true,  "left one px inside the band" },
+        { x_end,            40, false, "left exactly at the band end" },
+    };
+
+    for (unsigned i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+        const Case &c = cases[i];
+        const BrickHit h = brick_sweep(field, W, H, c.x, c.y, c.x, c.y);
+        check(h.hit == c.want_hit,
+              "%s: (%d,%d) gave hit=%d, expected %d\n",
+              c.what, c.x, c.y, (int)h.hit, (int)c.want_hit);
+        if (h.hit)
+            check(h.row >= 0 && h.row < FIELD_ROWS
+                  && h.col >= 0 && h.col < FIELD_COLS,
+                  "%s: resolved to an out-of-grid cell (%d,%d)\n",
+                  c.what, h.row, h.col);
+    }
+    report("brick_sweep_band_edges", before, "8 edge positions     ok");
+}
+
+/* brick_sweep's came-from tests are inclusive: a ball whose edge was
+ * exactly FLUSH with the brick last frame counts as having come from
+ * that side.
+ *
+ *     if (prev_y + ball_h <= brick_top || prev_y >= brick_bot) axis = 1;
+ *     else if (prev_x + ball_w <= brick_left || ...)           axis = 2;
+ *
+ * `<` instead of `<=` drops the flush case through to the overlap
+ * tie-break, which can pick the other axis. Both survived the host
+ * suite, and both need a position where the tie-break disagrees with
+ * the came-from answer — otherwise the mutation is invisible.
+ *
+ * Brick (0,1) spans x 24..39, y 32..39 in both cases below. */
+static void test_brick_sweep_came_from_is_inclusive() {
+    const int before = failures;
+    field_fill(false);
+    field_cells[0 * FIELD_COLS + 1] = 0x01;
+    const BrickField field(field_cells);
+
+    /* Vertical: last frame the ball's bottom was exactly on the brick's
+     * top (24 + 8 == 32). Overlaps now are y=8, x=4, so the tie-break
+     * would say axis 2 — the came-from test must say 1. */
+    const BrickHit v = brick_sweep(field, 8, 8, 36, 24, 36, 32);
+    check(v.hit && v.axis == 1,
+          "a ball flush with the brick's TOP last frame came from above: "
+          "hit=%d axis=%d, expected axis 1\n", (int)v.hit, v.axis);
+
+    /* Horizontal: last frame the ball's right edge was exactly on the
+     * brick's left (16 + 8 == 24), and the y test must not fire.
+     * Overlaps now are x=4, y=4, so the tie-break would say axis 1. */
+    const BrickHit hz = brick_sweep(field, 8, 8, 16, 36, 20, 36);
+    check(hz.hit && hz.axis == 2,
+          "a ball flush with the brick's LEFT last frame came from the "
+          "side: hit=%d axis=%d, expected axis 2\n", (int)hz.hit, hz.axis);
+
+    report("brick_sweep_came_from", before, "both edges flush     ok");
+}
+
+/* brick_sweep's axis tie goes VERTICAL.
+ *
+ * When the ball already overlapped the brick on both axes last frame,
+ * the shallower overlap decides, and `overlap_y <= overlap_x` sends an
+ * exact tie to axis 1 (flip dy). Also the port's own choice — recorded
+ * here so it cannot drift silently. */
+static void test_brick_sweep_axis_tie_is_vertical() {
+    const int before = failures;
+    field_fill(false);
+    field_cells[0 * FIELD_COLS + 1] = 0x01;
+    const BrickField field(field_cells);
+
+    /* Brick (0,1) spans x 24..39, y 32..39. An 8x8 ball at (32,32)
+     * overlaps 8 px on each axis — an exact tie — and `prev` is the same
+     * position so neither came-from test fires. */
+    const BrickHit h = brick_sweep(field, 8, 8, 32, 32, 32, 32);
+    check(h.hit, "the tie setup did not even hit the brick\n");
+    check(h.axis == 1,
+          "equal overlaps must flip dy (axis 1); got axis %d\n", h.axis);
+    report("brick_sweep_axis_tie", before, "equal overlap -> dy  ok");
+}
+
 /* A ball whose x sits exactly on a column edge is in the HIGHER column.
  *
  *     LAFFC_4: SUB B / JR C,LAFFC_5 / INC IY / C += B / ...
@@ -1148,6 +1262,9 @@ int main() {
     test_motion_accel_fraction_carries();
     test_motion_accel_fast_variant_caps();
     test_motion_accel_clamp_is_equality_not_ge();
+    test_brick_sweep_band_edges();
+    test_brick_sweep_came_from_is_inclusive();
+    test_brick_sweep_axis_tie_is_vertical();
     test_laffc_column_edge_takes_higher();
     test_bat_zone_boundary_belongs_above();
     test_laffc_row_scan_edge_is_one_brick();

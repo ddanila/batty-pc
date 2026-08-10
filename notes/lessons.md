@@ -1045,3 +1045,29 @@ The honest form is the one in notes/testing.md: the count, the method,
 the cases decided so far, and an explicit statement that the rest is a
 backlog. A measurement that gets summarised into a verdict stops being
 a measurement.
+
+## A defensive guard elsewhere decides whether a boundary is a bug
+(2026-08-10)
+
+`brick_sweep` had seven untested inclusive comparisons. Three were real.
+Four were equivalent, and not for four different reasons — for one:
+
+- `top >= FIELD_Y_END` and `left >= x_end`: relaxing them lets an
+  out-of-band ball through, but the row/col clamps then compute
+  `row0 > row1` (or `col0 > col1`) and the scan loop never executes.
+- the `col1` / `row1` clamps: relaxing them scans one extra column or
+  row, and `BrickField::standing` returns false for it.
+
+`standing`'s comment is *"Out of range counts as gone"* — one line, in
+`level.h`, written as ordinary defensiveness. It is what makes half this
+cluster harmless.
+
+Two things follow. First, a mutation survivor can be equivalent because
+of code in a different file, so "is this reachable?" is not answerable
+from the function alone. Second, and less comfortable: if that guard
+were ever tightened for performance — an obvious enough thing to try in
+a per-frame path — four latent boundary bugs would appear at once, in a
+function whose own tests would still pass.
+
+The four are recorded in notes/testing.md rather than left implicit,
+because "we checked and it was fine" is not the same as knowing why.

@@ -1303,13 +1303,26 @@ Re-running the twelve physics lines still standing:
 - **3 are dead code.** `delta_to_dir`'s two quadrant tests and its angle
   test; the function has no production consumer (known-bugs #8).
 - **1 is equivalent by construction.** `bat_court_clamp_2`.
-- **7 are one cluster:** `brick_sweep`'s bounds, its came-from tests and
-  its axis tie (`overlap_y <= overlap_x`). That is the LEGACY
-  rectangle-overlap path, still reached when `laffc_collision` returns
-  0, and not one of its boundaries is covered. The next coherent chunk.
 - **1 is `laffc_sweep`'s bottom-edge face** (`cell_y >= FIELD_Y_LAST`).
+- **7 were `brick_sweep`'s cluster — now resolved.** Three real, four
+  equivalent, and the four are equivalent for a reason worth keeping:
 
-That leaves the honest count for physics: 8 open, not 12.
+  | line | verdict |
+  |---|---|
+  | `top >= FIELD_Y_END` | equivalent — `row0` then exceeds `row1`, so the scan loop never runs |
+  | `left >= x_end` | equivalent — same, via `col0 > col1` |
+  | `col1 = (right >= x_end) ? ...` | equivalent — the wider bound scans one extra column and `standing()` returns false out of range |
+  | `row1 = (bottom >= FIELD_Y_END) ? ...` | equivalent — same |
+  | both came-from tests | REAL, fixed |
+  | `overlap_y <= overlap_x` | REAL, fixed |
+
+  `BrickField::standing` bounds-checks — *"Out of range counts as
+  gone"* — and that one line is what makes half this cluster harmless.
+  A defensive guard three files away decides whether a boundary here is
+  a bug or a no-op.
+
+That leaves the honest count for physics: **1 open**, plus 3 dead and
+1 equivalent-by-construction.
 
 | line | verdict |
 |---|---|
