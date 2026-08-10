@@ -806,3 +806,32 @@ problem.
 
 Related: the `bats[OBJ_BAT_1]` out-of-bounds above. Both are the same
 failure — trusting what I meant to write over what is on disk.
+
+## Gate the drift, not the truth (2026-08-10)
+
+PLAN.md's definition-of-done table has gone stale three times. Each
+refresh wrote a paragraph about how bad that is — including one saying
+"a status table nobody re-reads is the same defect as a parity note
+nobody re-reads" — and changed nothing structural. So it went stale
+again, claiming "bonus ownership and bat-2 catch remain" after both
+landed the same day.
+
+Writing a better note is not a fix. It is the same intervention that
+already failed, applied harder.
+
+**What a freshness gate can honestly do:** not decide whether prose is
+true — no gate reads "Done" and knows — but insist the document is
+RE-READ when work lands. `test-plan-table-fresh` compares the table's
+"Table refreshed <date>" against the newest date in any workstream
+section and fails when work is newer.
+
+That targets the actual failure, which was never belief: work lands in a
+WS section and nobody scrolls back up four hundred lines. Bumping the
+date without reading the rows defeats it, and that is the point — an
+omission becomes a choice someone has to make deliberately.
+
+The general shape: when a document keeps rotting, look for the
+mechanical precondition of the rot (here, "was it opened?") rather than
+trying to verify the content. `test-notes-numbers` has never been the
+thing that went stale, because numbers get checked. Prose does not, so
+gate the reading of it instead.

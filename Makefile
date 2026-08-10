@@ -1290,6 +1290,7 @@ test-source-gates:
 	$(MAKE) test-known-bugs-table
 	$(MAKE) test-no-dead-constants
 	$(MAKE) test-no-orphan-gates
+	$(MAKE) test-plan-table-fresh
 
 # Everything that needs no emulator: the host module tests plus the source
 # gates. Seconds, and it is what CI checks.
@@ -1487,6 +1488,11 @@ test-no-dead-constants:
 # directory listing and is not.
 test-no-orphan-gates:
 	python3 scripts/check_no_orphan_gates.py
+
+# PLAN.md's definition-of-done table must be at least as new as the
+# newest dated workstream entry. It has drifted three times.
+test-plan-table-fresh:
+	python3 scripts/check_plan_table_fresh.py
 
 # Proof for WS7: every live brick's attr byte in the captured
 # level_attrs.bin is reproduced by briks_colors + print_border_shadow.

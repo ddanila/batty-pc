@@ -6,7 +6,9 @@ does, the port does, verified against the original wherever it can be
 measured. This file is the roadmap to that goal; status lives in
 `notes/parity-status.md`, open fidelity gaps in `notes/parity-gaps.md`.
 
-Last updated: 2026-07-06.
+Last updated: 2026-08-10. (This line was five weeks stale, which is
+how the definition-of-done table below kept drifting — see the note
+under it, and `test-plan-table-fresh`.)
 
 ## Definition of done
 
@@ -14,21 +16,27 @@ The port is "100%" when all of the following hold:
 
 | # | Criterion | Today |
 |---|-----------|-------|
-| 1 | All three game modes work: 1 Player, 2 Players (alternating), Double Play (simultaneous split-court co-op) | 1P and 2P done; Double Play has its court, both bats, ball physics, scoring and INPUT (2026-08-10); bonus ownership and bat-2 catch remain |
+| 1 | All three game modes work: 1 Player, 2 Players (alternating), Double Play (simultaneous split-court co-op) | **Done** (2026-08-10) — all three, with Double Play's court, both bats, split-keyboard input, ball physics, catches, scoring and per-bat bonuses |
 | 2 | Menu semantics match the original (0 starts the selected game directly; A/B input-device cycling affects play) | Key 0 starts the game (`test-menu-start`); the device byte is per-player state but still selects nothing |
-| 3 | Core gameplay byte-exact where an oracle exists (ball, bat, collision, RNG, enemy, bonuses, scoring) | **Done** — regression-locked by 103 gates |
+| 3 | Core gameplay byte-exact where an oracle exists (ball, bat, collision, RNG, enemy, bonuses, scoring) | **Done** — regression-locked by 104 gates |
 | 4 | Full game FLOW gated end-to-end: level-clear → next, life-loss → respawn, game-over → initials, level wrap | **Done** — `test-level-advance`, `test-life-loss`, `test-game-over-visual`, `test-name-entry-visual` |
 | 5 | Sound faithful to the original's 5-slot beeper queue (envelope/timing, not just effect IDs) | ids, slot count, pitches and envelope ARITHMETIC faithful; durations still round to 20 ms because the sound clock is the 50 Hz frame counter |
 | 6 | All assets derived from the tape at build time; no captured emulator blobs | **Done** — all 13 loaded assets build from `original/blocks/`, held by `test-asset-provenance` |
 | 7 | Runs correctly on real-hardware-representative targets (XT-class + 386) | QEMU + 86Box `ibmxt` verified; real iron untested |
 | 8 | Historical completeness: Kinnock easter egg, pause semantics, hi-score behaviour | **Done** — pause, hi-score, and the easter egg (`BATTY_KINNOCK=1`) |
 
-*Table refreshed 2026-08-09. Four rows were stale, and two of them
-UNDERSTATED the state — criterion 4's transitions had been gated for
-weeks while this table still said "unverified", and criterion 6 was met
-during the WS7 work. A status table nobody re-reads is the same defect
-as a parity note nobody re-reads; `notes/testing.md` and
-`notes/parity-gaps.md` both had the transition gates listed.*
+*Table refreshed 2026-08-10. Criterion 1 still said "bonus ownership
+and bat-2 catch remain" after both had landed the same day.*
+
+*This is the THIRD time it has drifted, and the previous two refreshes
+both wrote a note like this one and changed nothing structural. So the
+drift is now gated: `test-plan-table-fresh` fails when any workstream
+section records a date NEWER than the refresh date above. It cannot
+tell whether the prose is true — no gate can — but it can insist the
+table is re-read on the day work lands, which is the step that was
+being skipped. Refreshing the date without reading the rows defeats it,
+and that is a choice someone has to make deliberately rather than by
+omission.*
 
 Byte-exactness of the already-achieved core (criterion 3) is a floor,
 not a ceiling to re-litigate: every workstream below must keep
@@ -37,9 +45,19 @@ not a ceiling to re-litigate: every workstream below must keep
 
 ## Where we are (August 2026)
 
-Playable end-to-end in 1- and 2-player mode: title → menu → hi-score →
+Playable end-to-end in all THREE modes: title → menu → hi-score →
 all 15 levels → game-over → initials → title, with 2-player handing the
-turn over on each life loss and on a player running out. All 15 levels pixel-perfect at
+turn over on each life loss and on a player running out, and Double Play
+running two bats on a split court — split-keyboard input, court clamps,
+either bat catching the ball or a bonus, per-bat bonuses including the
+width and the laser, and scoring attributed to whoever earned it.
+
+The one thing Double Play does not do is let player 2 choose a device:
+its keys are the original's clusters transcribed, minus SPACE and ENTER,
+which this port had already spent elsewhere. That is WS1's open
+decision, not a gap in the mode.
+
+All 15 levels pixel-perfect at
 entry; ball motion, LAFFC brick collision, bat deflection, RNG walk,
 enemy motion/steering/animation, bonus economy, scoring, and all
 per-frame animations are byte-exact vs the Spectrum and gate-locked.
