@@ -1368,6 +1368,28 @@ Two of the four were MEMORY guards, which is worth noting: this class of
 mutation is usually read as an off-by-one in behaviour, and half of what
 it found here was an out-of-bounds access instead.
 
+**`sound`, `hud` and `replay_parse` resolved (2026-08-10):** 5
+survivors, 4 real, 1 equivalent.
+
+- `sound`: MAGNET's counter LANDS on its terminator ($18 + 4k reaches
+  $78 at k = 24) so `>=` and `>` differ by a frame — REAL, pinned by
+  length. TRIPLE_BALL's does not ($10 + $0Bk never equals $B6) —
+  equivalent, and its length is now asserted anyway so the difference
+  between the two is visible rather than inferred.
+- `hud`: both markup range ends. $2A is the last glyph and $40 the first
+  attribute; the shipped markup uses neither, so no existing test
+  produced one.
+- `replay_parse`: the lowercase hex range. The existing blob was
+  `01A2b3FF` — a lowercase `b`, but no `a` or `f`, so the range ENDS
+  went untested while the range itself looked covered.
+
+The `hud` attribute one needed two attempts and the reason generalises:
+"code $40 draws nothing" is satisfied by an UNRECOGNISED code too, since
+both fall through. What separates them is that an attribute does
+`x -= 8` and consumes no column. **When a branch's effect is "do
+nothing visible", assert what it does INSTEAD, not what it does not
+do.**
+
 | line | verdict |
 |---|---|
 | `bat_court_clamp_2`: `bat_x >= 0x80` | equivalent — both branches return `0x80` |

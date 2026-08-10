@@ -86,6 +86,68 @@ static void test_row_marker_rule() {
 /* A record's glyphs must land one cell apart, and an inline colour change
  * must NOT advance the cursor. Getting that wrong shifts every glyph
  * after the first colour change. */
+/* The two markup ranges are inclusive at both ends.
+ *
+ *     if (c == 0x26)            explicit no-draw
+ *     else if (c <= 0x2A)       a GLYPH
+ *     else if (c >= 0x40 && c <= 0x4F)  an attribute
+ *
+ * $2A is the last glyph code and $40/$4F the attribute range's ends.
+ * The 2026-08-10 sweep mutated `c <= 0x2A` and `c >= 0x40` and both
+ * survived: the shipped markup never uses a boundary code, so the
+ * existing tests never produce one.
+ *
+ * A glyph at $2A must DRAW; an attribute at $40 must change colour
+ * without advancing x — the property test_colour_change_does_not_advance
+ * checks at $47. */
+static void test_markup_range_ends_are_inclusive() {
+    const int before = failures;
+    memset(font, 0xFF, sizeof(font));
+
+    /* $2A: the last glyph code. It must draw something. */
+    const u8 last_glyph[] = { 0x10, 40, 0x07, 1, 0x2A };
+    memcpy(markup, last_glyph, sizeof(last_glyph));
+    markup_len = sizeof(last_glyph);
+    reset_screen();
+    render_markup();
+    int drawn = 0;
+    for (int i = 0; i < SCREEN_W * SCREEN_H; i++) if (screen[i]) drawn++;
+    check(drawn > 0, "glyph code $2A is the last one and must draw\n");
+
+    /* $40: the first attribute code. "Draws nothing" is NOT enough to
+     * pin it — an unrecognised code draws nothing either, by falling
+     * off the end of the chain. What separates them is that an
+     * attribute does `x -= 8` so it consumes no column, while an
+     * unrecognised code still advances. So compare the glyph's landing
+     * column with and without the $40 in front of it. */
+    const u8 plain[] = { 0x10, 60, 0x07, 1, 0x01 };
+    memcpy(markup, plain, sizeof(plain));
+    markup_len = sizeof(plain);
+    reset_screen();
+    render_markup();
+    int plain_col = -1;
+    for (int x = 0; x < SCREEN_W && plain_col < 0; x++)
+        for (int y = 0; y < SCREEN_H; y++)
+            if (screen[y * SCREEN_W + x]) { plain_col = x; break; }
+
+    const u8 with_attr[] = { 0x10, 60, 0x07, 2, 0x40, 0x01 };
+    memcpy(markup, with_attr, sizeof(with_attr));
+    markup_len = sizeof(with_attr);
+    reset_screen();
+    render_markup();
+    int attr_col = -1;
+    for (int x = 0; x < SCREEN_W && attr_col < 0; x++)
+        for (int y = 0; y < SCREEN_H; y++)
+            if (screen[y * SCREEN_W + x]) { attr_col = x; break; }
+
+    check(plain_col >= 0 && attr_col == plain_col,
+          "code $40 is the first ATTRIBUTE and must consume no column: "
+          "the glyph landed at %d with it and %d without\n",
+          attr_col, plain_col);
+
+    report("markup_range_ends", before, "$2A draws, $40 is attr  ok");
+}
+
 static void test_colour_change_does_not_advance() {
     const int before = failures;
 
@@ -200,6 +262,7 @@ int main() {
     printf("hud tests\n");
     test_score_digits();
     test_row_marker_rule();
+    test_markup_range_ends_are_inclusive();
     test_colour_change_does_not_advance();
     test_space_draws_nothing();
     test_bad_glyph_code_is_ignored();

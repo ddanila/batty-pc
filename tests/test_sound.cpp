@@ -151,6 +151,16 @@ static void test_sweeps_last_multiple_frames() {
         { SND_BALL_START, 9,  "C=$09 at $C116" },
         { SND_SHOT,       4,  "C=$04 at $C235" },
         { SND_LIVE_ADD,   16, "$20 counter, -2 a frame, cleared at 0" },
+        /* MAGNET's counter LANDS on its terminator: $18 + 4k reaches
+         * $78 exactly at k = 24, so `>=` and `>` differ by a frame and
+         * the length is what tells them apart.
+         *
+         * TRIPLE_BALL's does NOT: $10 + $0B*k never equals $B6, so its
+         * `>=` is equivalent to `>` and this row is documentation
+         * rather than a guard. Both are here so the difference is
+         * visible rather than inferred. */
+        { SND_MAGNET,     24, "$18 + 4 a frame, terminator $78 hit exactly" },
+        { SND_TRIPLE_BALL,17, "$10 + $0B a frame, $B6 never hit exactly" },
     };
     for (unsigned i = 0; i < sizeof(lengths) / sizeof(lengths[0]); i++) {
         reset();

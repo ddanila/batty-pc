@@ -83,7 +83,21 @@ static void test_hex_blobs_parse() {
           && out[0] == 0x01 && out[1] == 0xA2 && out[2] == 0xB3 && out[3] == 0xFF,
           "mixed-case blob gave %02X%02X%02X%02X\n",
           out[0], out[1], out[2], out[3]);
-    report("hex_blobs_parse", before, "mixed case, 4 bytes  ok");
+    /* Every RANGE END, which the blob above misses: it has a lowercase
+     * `b` but no `a` or `f`, so mutating `c >= 'a'` to `c > 'a'` passed
+     * the suite. Three ranges, six ends, one blob:
+     *
+     *   '0' '9'   the digits
+     *   'a' 'f'   lowercase
+     *   'A' 'F'   uppercase
+     */
+    u8 ends[3];
+    check(replay_parse_hex_bytes("09afAF", ends, 3)
+          && ends[0] == 0x09 && ends[1] == 0xAF && ends[2] == 0xAF,
+          "range-end blob gave %02X%02X%02X, expected 09AFAF\n",
+          ends[0], ends[1], ends[2]);
+
+    report("hex_blobs_parse", before, "mixed case + 6 ends  ok");
 }
 
 /* Length is exact: a truncated blob must not seed a partial object, and
