@@ -49,7 +49,7 @@ static void set_env(const char *name, const char *value) {
 
 static void test_env_ints() {
     const int before = failures;
-    long v[2];
+    long v[2] = {0};
 
     set_env("BATTY_TEST_ENV_INTS", "12,34");
     check(replay_env_ints("BATTY_TEST_ENV_INTS", v, 2) && v[0] == 12 && v[1] == 34,

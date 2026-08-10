@@ -45,7 +45,7 @@ static void reset_screen() {
 
 static void test_score_digits() {
     const int before = failures;
-    u8 d[6];
+    u8 d[6] = {0};
 
     score_to_digits(0, d);
     for (int i = 0; i < 6; i++)

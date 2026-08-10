@@ -61,7 +61,7 @@ static void test_round_trip_from_ours() {
  * sharing a code would make one of them unreachable. */
 static void test_mapping_is_injective() {
     const int before = failures;
-    int seen[256];
+    int seen[256] = {0};
     for (int i = 0; i < 256; i++) seen[i] = 0;
     for (int type = 0; type < BONUS_TYPE_COUNT; type++) {
         const u8 orig = bonus_to_original(u8(type));

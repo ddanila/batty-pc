@@ -71,9 +71,9 @@ static int zx_scr_addr(int y, int x_byte) {
 static u8 gt_pixels[SCR_BUFF_SIZE];
 
 static bool load_gt(int level) {
-    char path[64];
+    char path[64] = {0};
     snprintf(path, sizeof(path), "build/level_gt/level_%02d.scr", level + 1);
-    u8 scr[6912];
+    u8 scr[6912] = {0};
     FILE *f = fopen(path, "rb");
     if (!f) return false;
     const size_t n = fread(scr, 1, sizeof(scr), f);
@@ -139,7 +139,7 @@ static void test_matches_original_screens() {
     }
     check(mismatched == 0, "%d brick body bytes differ from the original\n",
           mismatched);
-    char detail[48];
+    char detail[48] = {0};
     snprintf(detail, sizeof(detail), "%d levels, %d bytes", levels_checked, bytes_compared);
     report("matches_original_screens", before, detail);
 }
@@ -742,7 +742,7 @@ static void test_attrs_generate_without_the_capture() {
           wrong, checked, first_lvl, first_cr, first_cc,
           first_want, first_got);
     if (failures == before) {
-        char detail[64];
+        char detail[64] = {0};
         snprintf(detail, sizeof(detail), "%d cells, 15 levels", checked);
         report("attrs_generate", before, detail);
     } else {

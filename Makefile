@@ -1085,10 +1085,16 @@ HOSTCXX      ?= c++
 # where a FAILED parse left `arr` unread-but-read. Locally everything was
 # green, so CI went red on 2026-08-09 and stayed red for 163 runs.
 #
-# -Wconditional-uninitialized is clang's version of that analysis. Gated
-# on the compiler because g++ does not know the flag and would fail the
-# build on an unrecognised option — turning a warning-parity fix into the
-# very breakage it is meant to prevent.
+# -Wconditional-uninitialized is clang's nearest analysis. Gated on the
+# compiler because g++ does not know the flag and would fail the build on
+# an unrecognised option — turning a warning-parity fix into the very
+# breakage it is meant to prevent.
+#
+# Be clear about what it bought: NOT this. Enabling it left all 14 suites
+# clean while g++ still had four errors to give, because clang does not
+# warn on `check(fill(arr) && ..., fmt, arr[0])` at all. The class was
+# closed by initialising every scratch array in tests/, not by a flag.
+# The flag stays for genuinely conditional cases; it is not the net.
 HOST_CXX_IS_CLANG := $(shell $(HOSTCXX) --version 2>/dev/null | grep -ci clang)
 ifeq ($(HOST_CXX_IS_CLANG),0)
 HOST_WARN_EXTRA =

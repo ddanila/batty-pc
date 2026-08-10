@@ -900,7 +900,7 @@ static int zx_scr_addr(int y, int x_byte) {
 }
 
 static int load_scr(const char *path) {
-    unsigned char scr[6912];
+    unsigned char scr[6912] = {0};
     FILE *f = fopen(path, "rb");
     int y, xb;
     if (!f) return 0;

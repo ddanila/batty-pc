@@ -1425,11 +1425,26 @@ reads is not a check.** Third time this exact lesson has come up in
 this file, and the first time it was about my own habits rather than
 the repo's wiring.
 
-The narrowing fix in the repo: `HOST_WARN_EXTRA` adds clang's
-`-Wconditional-uninitialized` locally, so this class dies before a
-push. It is gated on `$(HOSTCXX) --version | grep -ci clang` — g++ does
-not know the flag and would fail on an unrecognised option, which would
-turn a warning-parity fix into the breakage it exists to prevent.
-It cannot close the gap fully: g++'s `-Wmaybe-uninitialized` and
-clang's analyses genuinely differ, and the only honest way to know what
-g++ thinks is to read the CI run.
+### The fix I reached for first did not work, and CI said so
+
+I added clang's `-Wconditional-uninitialized` locally, swept all 14
+suites under it, got a clean result, and committed that as the net that
+would stop this class before a push. The next CI run failed with a
+fourth error of exactly the same shape.
+
+Clang does not warn on `check(fill(arr) && ..., fmt, arr[0])` at all,
+so the clean sweep meant nothing — I had measured the flag against a
+tree I had just fixed by hand, and read "no findings" as "would have
+found them". A tool that reports nothing on a case you have already
+removed tells you nothing about the case.
+
+What actually closed the class was initialising every scratch array in
+`tests/` — 25 of them, one edit, no compiler involved. The flag stays,
+gated on `$(HOSTCXX) --version | grep -ci clang` because g++ would fail
+on an unrecognised option, but it is not the net and the Makefile now
+says so.
+
+**Validate a would-be safety net against the bug it is supposed to
+catch, before the fix, not after.** And the gap does not close: g++'s
+`-Wmaybe-uninitialized` and clang's analyses genuinely differ, so the
+only honest way to know what g++ thinks is to read the CI run.

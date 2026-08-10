@@ -36,7 +36,7 @@ static void report(const char *name, int before, const char *detail) {
 
 static void test_int_lists_parse() {
     const int before = failures;
-    long v[3];
+    long v[3] = {0};
 
     check(replay_parse_ints("40,40", v, 2) && v[0] == 40 && v[1] == 40,
           "\"40,40\" gave %ld,%ld\n", v[0], v[1]);

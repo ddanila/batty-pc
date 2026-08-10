@@ -65,7 +65,7 @@ static void test_chunked_respects_the_scratch_size() {
      * 64 * 3 + 65 = 257 bytes, which reaches a remainder of 65 on its
      * last full chunk. A round 300 never does, and the first draft used
      * it and saw nothing. */
-    u8 src[257];
+    u8 src[257] = {0};
     for (unsigned i = 0; i < sizeof(src); i++) src[i] = u8(i * 11 + 5);
     check(write_file(TMP, src, sizeof(src)), "could not write the fixture\n");
 
@@ -75,7 +75,7 @@ static void test_chunked_respects_the_scratch_size() {
     memset(guarded, 0xA5, sizeof(guarded));
     const unsigned declared = 64;
 
-    u8 dest[257];
+    u8 dest[257] = {0};
     check(asset_load_chunked(TMP, dest, sizeof(dest), guarded, declared),
           "the chunked load failed outright\n");
     check(memcmp(dest, src, sizeof(src)) == 0,
@@ -95,11 +95,11 @@ static void test_chunked_respects_the_scratch_size() {
  * the caller to mistake for data. */
 static void test_short_file_fails() {
     const int before = failures;
-    u8 src[16];
+    u8 src[16] = {0};
     for (int i = 0; i < 16; i++) src[i] = u8(i);
     check(write_file(TMP, src, 10), "could not write the fixture\n");
 
-    u8 dest[16];
+    u8 dest[16] = {0};
     memset(dest, 0xAA, sizeof(dest));
     check(!asset_load(TMP, dest, 16), "a 10-byte file satisfied a 16-byte load\n");
 
@@ -110,7 +110,7 @@ static void test_short_file_fails() {
 
 static void test_missing_file_fails() {
     const int before = failures;
-    u8 dest[4];
+    u8 dest[4] = {0};
     unsigned size = 999;
     check(!asset_load("build/definitely-not-here.bin", dest, 4),
           "a missing file reported success\n");
@@ -125,17 +125,17 @@ static void test_missing_file_fails() {
  * scratch size — including sizes that do not divide the total. */
 static void test_chunked_matches_whole() {
     const int before = failures;
-    u8 src[300];
+    u8 src[300] = {0};
     for (int i = 0; i < 300; i++) src[i] = u8(i * 7 + 3);
     check(write_file(TMP, src, sizeof(src)), "could not write the fixture\n");
 
-    u8 whole[300];
+    u8 whole[300] = {0};
     check(asset_load(TMP, whole, sizeof(whole)), "whole-file load failed\n");
 
     int mismatches = 0;
     for (unsigned scratch_size = 1; scratch_size <= 64; scratch_size++) {
-        u8 scratch[64];
-        u8 chunked[300];
+        u8 scratch[64] = {0};
+        u8 chunked[300] = {0};
         memset(chunked, 0, sizeof(chunked));
         if (!asset_load_chunked(TMP, chunked, sizeof(chunked), scratch, scratch_size)
             || memcmp(chunked, whole, sizeof(whole)) != 0) mismatches++;
@@ -159,14 +159,14 @@ static void test_chunked_matches_whole() {
  * read lands on the first chunk or a later one. */
 static void test_chunked_short_file_fails() {
     const int before = failures;
-    u8 src[300];
+    u8 src[300] = {0};
     for (int i = 0; i < 300; i++) src[i] = u8(i * 3 + 1);
     check(write_file(TMP, src, 200), "could not write the fixture\n");
 
     int wrongly_ok = 0;
     for (unsigned scratch_size = 1; scratch_size <= 64; scratch_size++) {
-        u8 scratch[64];
-        u8 dest[300];
+        u8 scratch[64] = {0};
+        u8 dest[300] = {0};
         memset(dest, 0xAA, sizeof(dest));
         if (asset_load_chunked(TMP, dest, sizeof(dest), scratch, scratch_size))
             wrongly_ok++;
@@ -176,8 +176,8 @@ static void test_chunked_short_file_fails() {
           wrongly_ok);
 
     /* and the exact size still succeeds, so this is not just "always fail" */
-    u8 scratch[64];
-    u8 dest[200];
+    u8 scratch[64] = {0};
+    u8 dest[200] = {0};
     check(asset_load_chunked(TMP, dest, sizeof(dest), scratch, 64),
           "an exact-size chunked load of the same file failed\n");
     check(memcmp(dest, src, 200) == 0,
@@ -188,11 +188,11 @@ static void test_chunked_short_file_fails() {
 /* Variable-length loads report what actually arrived. */
 static void test_variable_reports_size() {
     const int before = failures;
-    u8 src[40];
+    u8 src[40] = {0};
     for (int i = 0; i < 40; i++) src[i] = u8(0x80 + i);
     check(write_file(TMP, src, sizeof(src)), "could not write the fixture\n");
 
-    u8 dest[100];
+    u8 dest[100] = {0};
     unsigned size = 0;
     check(asset_load_variable(TMP, dest, sizeof(dest), &size), "load failed\n");
     check(size == 40, "reported %u bytes, file holds 40\n", size);
