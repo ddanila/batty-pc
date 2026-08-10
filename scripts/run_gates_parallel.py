@@ -93,6 +93,13 @@ FULL_EXTRA_GATES = [
     "test-ball-left-wall-escape", "test-l3-replay-seed",
     "test-ball-paths-no-tunnel", "test-sprite-attr-parity",
     "test-laffc-ball-l5-metal",
+    # Not a QEMU gate: the host suites rebuilt under ASan + UBSan. It is
+    # here because THIS is the sweep people actually run — parity-check-full
+    # is serial and takes hours, so a pre-merge hook only there is a gate
+    # nobody runs, which is the failure test-no-orphan-gates exists to
+    # prevent. Safe in the pool: PARITY_CHECK_GATES runs no host suites, so
+    # nothing else touches build/test_*.
+    "test-asan",
 ]
 
 

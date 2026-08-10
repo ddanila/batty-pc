@@ -43,12 +43,33 @@ def target_for(stem: str) -> str:
     return ALIASES.get(stem, "test-" + stem.replace("_", "-"))
 
 
+def expand_vars(text: str, line: str) -> str:
+    """Substitute one level of $(NAME) from the Makefile's own definitions.
+
+    The prerequisite list moved into $(HOST_TEST_TARGETS) so that test-asan
+    could share it instead of keeping a second copy — and a second copy is
+    exactly the drift this gate exists to catch, which it would have missed
+    because it reads test-fast's rule and only that rule.
+
+    One level is deliberate. It is enough for a list-of-targets variable,
+    and a general Make expander is a project of its own. If a definition is
+    ever missing, the $(NAME) simply survives into the output, matches no
+    `test-` target, and the gate fails loudly rather than silently passing.
+    """
+    for name in set(re.findall(r"\$\(([A-Z_][A-Z0-9_]*)\)", line)):
+        m = re.search(rf"^{name}\s*[:?]?=(.*?)(?<!\\)\n", text, re.S | re.M)
+        if m:
+            line = line.replace(f"$({name})", m.group(1))
+    return line
+
+
 def test_fast_prereqs(text: str) -> set[str]:
     m = re.search(r"^test-fast:(.*?)\n\t", text, re.S | re.M)
     if not m:
         raise SystemExit("FAIL: no test-fast rule found; this gate reads its "
                          "prerequisite list and cannot work without it")
-    return set(re.findall(r"test-[a-z0-9-]+", m.group(1).replace("\\\n", " ")))
+    line = expand_vars(text, m.group(1)).replace("\\\n", " ")
+    return set(re.findall(r"test-[a-z0-9-]+", line))
 
 
 def main() -> int:

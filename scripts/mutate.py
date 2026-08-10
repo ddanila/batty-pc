@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Apply a mutation, run a test target, report whether it was caught.
+r"""Apply a mutation, run a test target, report whether it was caught.
 
 Mutation testing found five real gaps in this repo's own tests — a gate
 that skipped a third of the gates, two suites that tested the shape of a

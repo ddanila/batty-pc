@@ -77,6 +77,12 @@ def gate_counts() -> dict:
         return set(re.findall(r"\$\(MAKE\) (test-[a-z0-9-]+|test)\b",
                               m.group(1))) if m else set()
 
+    # Named "qemu" because for a long time it was exactly that: the
+    # gates run_gates_parallel.py boots an emulator for. Since
+    # 2026-08-10 the list also carries `test-asan`, which is host-only,
+    # so read this bucket as "the full parallel sweep" — that is what
+    # the notes now call it. The count stays derived from the runner,
+    # which is the point; only the word is approximate.
     qemu_set = all_gates
     source = recipe("test-source-gates")
     # The ZEsarUX-only ones: named by parity-check-full and by nothing

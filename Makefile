@@ -157,6 +157,7 @@ help:
 	@echo "  test-fast     every host suite + every source gate, no emulator, seconds"
 	@echo "  parity-check-parallel   the full QEMU suite, in parallel (~6 min)"
 	@echo "  parity-check-full       the above plus the ZEsarUX-oracle gates"
+	@echo "  test-asan     the host suites under ASan + UBSan (doubles the build)"
 	@echo "  test          the four-state cycle on its own"
 	@echo "  test-video    host-native video-engine tests (clash model, no emulator)"
 	@echo ""
@@ -755,6 +756,12 @@ parity-check-parallel:
 # guards). Slower (many QEMU boots) — run before milestones / merges.
 parity-check-full:
 	$(MAKE) parity-check
+	# ASan + UBSan over the host suites. Here rather than in test-fast
+	# because it rebuilds every suite, and here rather than nowhere
+	# because a target nobody runs is not a gate — the same rule
+	# test-no-orphan-gates enforces for scripts. It found a real
+	# out-of-bounds read in replay_parse_hex_bytes on its first run.
+	$(MAKE) test-asan
 	$(MAKE) test-ball-no-tunnel FULL=1
 	$(MAKE) test-ball-paths-no-tunnel
 	$(MAKE) test-sprite-attr-parity
@@ -1327,19 +1334,22 @@ ASAN_FLAGS = -std=c++98 -O1 -g -fsanitize=address,undefined \
 
 test-asan:
 	@find build -maxdepth 1 -type f -name 'test_*' -delete
-	$(MAKE) HOSTCXXFLAGS="$(ASAN_FLAGS)" test-video test-rng test-physics \
-	        test-assets test-bricks test-sound test-hud-unit test-objects \
-	        test-weapons test-enemies test-bonus-codes test-scoring \
-	        test-replay test-replay-parse
+	$(MAKE) HOSTCXXFLAGS="$(ASAN_FLAGS)" $(HOST_TEST_TARGETS)
 	@find build -maxdepth 1 -type f -name 'test_*' -delete
 	@echo "test-asan: all host suites green under ASan + UBSan"
 
 # Everything that needs no emulator: the host module tests plus the source
 # gates. Seconds, and it is what CI checks.
-test-fast: test-video test-rng test-physics test-assets test-bricks \
-           test-sound test-hud-unit test-objects test-weapons test-enemies \
-           test-bonus-codes test-scoring test-replay test-replay-parse \
-           test-source-gates
+# ONE list, used by test-fast and by test-asan below. It was two lists
+# for a day, which is the same shape as the drift check_host_tests_wired
+# exists to catch — that gate reads test-fast's rule and only that rule,
+# so a suite dropped from the ASan copy would have gone unnoticed.
+HOST_TEST_TARGETS = test-video test-rng test-physics test-assets test-bricks \
+                    test-sound test-hud-unit test-objects test-weapons \
+                    test-enemies test-bonus-codes test-scoring test-replay \
+                    test-replay-parse
+
+test-fast: $(HOST_TEST_TARGETS) test-source-gates
 	@echo "test-fast: all host tests and source gates green"
 
 test-hud: $(FLOPPY_OUT)

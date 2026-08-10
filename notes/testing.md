@@ -8,7 +8,8 @@
 > — in milliseconds. See [`video-engine.md`](video-engine.md).
 >
 > The QEMU gates below cost ~10 s per boot; `make parity-check-parallel`
-> runs all 76 QEMU gates in about six minutes.
+> runs all 77 gates of the full sweep in about six minutes (76 QEMU
+> plus `test-asan`, which is host-only but belongs to the same sweep).
 >
 > (This paragraph read "`make test-video` is the one gate here that
 > needs no emulator" until 2026-08-09. That was true when zxvga was the
@@ -395,6 +396,11 @@ mentioned nowhere in this file, including several of the oldest.
   byte, and `delta_to_dir` has no production caller (known-bugs #14).
 - `test-doc-links` — every file path cited in a comment or note exists.
 - `test-host-tests-wired` — every host suite runs under `make test-fast`.
+- `test-asan` — the same 14 suites rebuilt under ASan + UBSan. Not a
+  source gate but listed here because it is wired into the full sweep:
+  nine memory-safety defects had each needed a bespoke fixture, and two
+  of them were invisible to a normal host build. It found a real
+  out-of-bounds read in `replay_parse_hex_bytes` on its first run.
 - `test-notes-numbers` — the plan's status block still states true numbers.
 - `test-env-passthrough` — every `BATTY_*` knob reaches DOS on the test floppy.
 - `test-frozen-clock` — nothing times anything with `bios_ticks()` (#15).

@@ -1250,3 +1250,37 @@ fine; by the tenth the pattern was obvious and the answer was a
 different tool, not another clever buffer. **When the same shape of
 scaffolding appears three or four times, stop and ask what tool makes
 the scaffolding unnecessary.**
+
+
+## Wire a new gate into the path people actually run (2026-08-10)
+
+`make test-asan` landed yesterday and nothing ran it. The obvious home
+was `parity-check-full`, the target PLAN.md names for pre-merge — but
+that target is serial and takes hours, so what actually gets run is
+`run_gates_parallel.py --full`, seven minutes. A gate reachable only
+from the slow path is a gate nobody runs, which is the exact failure
+`test-no-orphan-gates` and `test-host-tests-wired` were both written
+about, and `test-enemy-brick-residue` sat red for ten commits behind.
+
+So it went in both places. It costs 7s of a 459s sweep.
+
+Two things fell out of doing it:
+
+**A second copy of a list is the drift, not the risk of it.**
+`test-asan` had its own copy of the 14 host suites. `check_host_tests_wired`
+exists to catch a suite that no target runs — and it reads `test-fast`'s
+rule and only that rule, so a suite dropped from the ASan copy would
+have sailed past the gate written to prevent precisely that. Fixed by
+making both consume one `HOST_TEST_TARGETS` variable, which then needed
+one level of `$(NAME)` expansion in the gate. Mutation-tested twice:
+dropping a suite still fails, and an unresolvable `$(NAME)` fails loudly
+rather than matching nothing and passing.
+
+**Adding a gate is a documentation change.** `test-gate-index` refused
+the commit until `notes/testing.md` named it; `test-notes-numbers` then
+refused until three status blocks moved 105 -> 106 and 76 -> 77. Both
+fired without being asked. The one judgement call they could not make
+was the label: the counter's `qemu` bucket is defined as "whatever the
+parallel runner lists", which is now 76 QEMU gates plus one host gate.
+The count stays derived; the notes say "sweep" and a comment in the
+script says why the old word is off by one gate.
