@@ -28,9 +28,9 @@
 #define SCREEN_CHUNK_ROWS 16
 static unsigned char screen_chunk[SCREEN_CHUNK_ROWS * PLAYFIELD_W];
 
-/* Stream a 256x192 8bpp asset straight into VGA. Read 16 scanlines per
- * DOS call to keep floppy/stdio overhead down on XT-class machines
- * while avoiding a full 48 KiB near-data buffer. */
+/* Stream a 256x192 8bpp asset straight into VGA. 16 scanlines per fread is
+ * 12 DOS calls instead of 192, which a real floppy still charges for
+ * (PLAN.md WS8.2), for 4 KiB of static rather than the whole 48 KiB. */
 static int blit_screen(const char *path) {
     FILE *f = fopen(path, "rb");
     int y;
